@@ -1,0 +1,24 @@
+docker:
+  cpu:
+    image: ${ASKCOS_REGISTRY}/value_network:1.0-cpu
+    build: docker build -f Dockerfile_cpu -t ${ASKCOS_REGISTRY}/value_network:1.0-cpu .
+    start: sh scripts/serve_cpu_in_docker.sh
+  gpu:
+    image: ${ASKCOS_REGISTRY}/value_network:1.0-gpu
+    build: docker build -f Dockerfile_gpu -t ${ASKCOS_REGISTRY}/value_network:1.0-gpu .
+    start: sh scripts/serve_gpu_in_docker.sh
+
+singularity:
+  cpu:
+    image: value_network_cpu.sif
+    build: singularity build -f value_network_cpu.sif singularity_cpu.def
+    start: sh scripts/serve_cpu_in_singularity.sh
+  gpu:
+    image: value_network_gpu.sif
+    build: singularity build -f value_network_gpu.sif singularity_gpu.def
+    start: sh scripts/serve_gpu_in_singularity.sh
+
+commands:
+  download: sh scripts/download_trained_models.sh
+  stop-docker: docker stop value_network; docker rm value_network
+  stop-singularity: singularity instance stop value_network

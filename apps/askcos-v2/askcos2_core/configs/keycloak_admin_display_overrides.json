@@ -1,0 +1,44 @@
+{
+  "authenticationFlows": {
+    "first broker login": {
+      "description": "首次通过身份供应商登录后执行的操作，此时身份供应商账户尚未关联到任何 Keycloak 账户。"
+    }
+  },
+  "clients": {
+    "master-realm": {
+      "name": "master 领域"
+    }
+  },
+  "clientScopes": {
+    "acr": {
+      "description": "用于向令牌添加 acr（认证上下文类引用）的 OpenID Connect 范围"
+    },
+    "address": {
+      "description": "OpenID Connect 内置范围：地址"
+    },
+    "basic": {
+      "description": "用于向令牌添加所有基础声明的 OpenID Connect 范围"
+    },
+    "email": {
+      "description": "OpenID Connect 内置范围：电子邮箱"
+    },
+    "microprofile-jwt": {
+      "description": "MicroProfile JWT 内置范围"
+    },
+    "offline_access": {
+      "description": "OpenID Connect 内置范围：离线访问"
+    },
+    "organization": {
+      "description": "主体所属组织的附加声明"
+    },
+    "phone": {
+      "description": "OpenID Connect 内置范围：电话"
+    },
+    "profile": {
+      "description": "用于向令牌添加所有基础声明的 OpenID Connect 范围"
+    },
+    "role_list": {
+      "description": "SAML 角色列表"
+    }
+  }
+}

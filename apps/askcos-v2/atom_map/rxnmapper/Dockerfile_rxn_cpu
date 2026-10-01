@@ -1,0 +1,10 @@
+FROM registry.gitlab.com/mlpds_mit/askcosv2/askcos2_core/retro/template_relevance:1.0-cpu
+
+COPY . /app/IBM_rxnmapper
+WORKDIR /app/IBM_rxnmapper
+
+EXPOSE 9671
+
+ENV CUDA_VISIBLE_DEVICES 10
+
+CMD ["python", "rxnmapper_server.py"]

@@ -1,0 +1,124 @@
+import csv
+import json
+import logging
+import multiprocessing
+import numpy as np
+import os
+from rdkit import Chem
+from tqdm import tqdm
+
+global G_predictions
+
+
+def canonicalize_smiles(smiles: str, remove_atom_number: bool = True):
+    """Adapted from Molecular Transformer"""
+    smiles = "".join(smiles.split())
+    cano_smiles = ""
+
+    mol = Chem.MolFromSmiles(smiles)
+
+    if mol is not None:
+        if remove_atom_number:
+            [a.ClearProp('molAtomMapNumber') for a in mol.GetAtoms()]
+
+        cano_smiles = Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True)
+        # Sometimes stereochem takes another canonicalization... (just in case)
+        mol = Chem.MolFromSmiles(cano_smiles)
+        if mol is not None:
+            cano_smiles = Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True)
+
+    return cano_smiles
+
+
+def csv2kv(_args):
+    prediction_row, n_best = _args
+    k = canonicalize_smiles(prediction_row["prod_smi"])
+    v = []
+
+    for i in range(n_best):
+        try:
+            prediction = prediction_row[f"cand_precursor_{i + 1}"]
+        except KeyError:
+            break
+
+        if not prediction or prediction == "9999":          # padding
+            break
+
+        prediction = canonicalize_smiles(prediction)
+        v.append(prediction)
+
+    return k, v
+
+
+def match_results(_args):
+    global G_predictions
+    test_line, n_best = _args
+    predictions = G_predictions
+
+    accuracy = np.zeros(n_best, dtype=np.float32)
+
+    # rxn_smiles = test_row["rxn_smiles"]
+    rxn_smiles = json.loads(test_line.strip())["rxn_smiles"]
+    gt, reagent, prod = rxn_smiles.strip().split(">")
+    k = canonicalize_smiles(prod)
+
+    if k not in predictions:
+        logging.info(f"Product {prod} not found in predictions (after canonicalization), skipping")
+        return accuracy
+
+    gt = canonicalize_smiles(gt)
+    for j, prediction in enumerate(predictions[k]):
+        if prediction == gt:
+            accuracy[j:] = 1.0
+            break
+
+    return accuracy
+
+
+def score_main(args):
+    """
+        Adapted from Molecular Transformer
+        Parallelized (210826 by ztu)
+    """
+    global G_predictions
+    n_best = args.topk
+    logging.info(f"Scoring predictions with model: {args.model_name}")
+
+    # Load predictions and transform into a huge table {cano_prod: [cano_cand, ...]}
+    args.prediction_file = os.path.join(args.test_output_path, "predictions.csv")
+    logging.info(f"Loading predictions from {args.prediction_file}")
+    predictions = {}
+    p = multiprocessing.Pool(args.num_cores)
+
+    with open(args.prediction_file, "r") as prediction_csv:
+        prediction_reader = csv.DictReader(prediction_csv)
+        for result in tqdm(p.imap(csv2kv,
+                                  ((prediction_row, n_best) for prediction_row in prediction_reader))):
+            k, v = result
+            predictions[k] = v
+
+    G_predictions = predictions
+
+    p.close()
+    p.join()
+    p = multiprocessing.Pool(args.num_cores)        # re-initialize to see the global variable
+
+    # Results matching
+    test_rxns_with_template_file = os.path.join(
+        args.processed_data_path, "test_rxns_with_template.jsonl"
+    )
+    logging.info(f"Matching against ground truth from {test_rxns_with_template_file}")
+    with open(test_rxns_with_template_file, "r") as f:
+        lines = f.readlines()
+
+    accuracies = p.imap(match_results,
+                        ((line, n_best) for line in lines))
+    accuracies = np.stack(list(accuracies))
+
+    p.close()
+    p.join()
+
+    # Log statistics
+    mean_accuracies = np.mean(accuracies, axis=0)
+    for n in range(n_best):
+        logging.info(f"Top {n+1} accuracy: {mean_accuracies[n]}")

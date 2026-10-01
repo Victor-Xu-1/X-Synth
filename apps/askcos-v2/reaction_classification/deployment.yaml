@@ -1,0 +1,23 @@
+docker:
+  cpu:
+    image: ${ASKCOS_REGISTRY}/reaction_classification:1.0-cpu
+    build: docker build -f Dockerfile_rc_cpu -t ${ASKCOS_REGISTRY}/reaction_classification:1.0-cpu .
+    start: sh scripts/serve_cpu_in_docker.sh
+  gpu:
+    image: ${ASKCOS_REGISTRY}/reaction_classification:1.0-gpu
+    build: docker build -f Dockerfile_rc_gpu -t ${ASKCOS_REGISTRY}/reaction_classification:1.0-gpu .
+    start: sh scripts/serve_gpu_in_docker.sh
+
+singularity:
+  cpu:
+    image: reaction_class_cpu.sif
+    build: singularity build -f reaction_class_cpu.sif singularity_rc_cpu.def
+    start: sh scripts/serve_cpu_in_singularity.sh
+  gpu:
+    image: reaction_class_gpu.sif
+    build: singularity build -f reaction_class_gpu.sif singularity_rc_gpu.def
+    start: sh scripts/serve_gpu_in_singularity.sh
+
+commands:
+  stop-docker: docker stop reaction_class; docker rm reaction_class
+  stop-singularity: singularity instance stop reaction_class

@@ -1,0 +1,24 @@
+FROM mambaorg/micromamba:1.4.7-bionic-cuda-11.3.1
+
+USER root
+# Keep the base environment activated
+ARG MAMBA_DOCKERFILE_ACTIVATE=1
+ENV MAMBA_REMOTE_CONNECT_TIMEOUT_SECS=60 \
+    MAMBA_REMOTE_READ_TIMEOUT_SECS=600 \
+    MAMBA_REMOTE_MAX_RETRIES=5
+RUN apt update && apt -y install git gcc g++ make
+
+# Install required packages with micromamba
+RUN micromamba install -y python=3.11* -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
+RUN micromamba install -y pytorch torchvision torchaudio pytorch-cuda=11.8 "mkl>=2022.1,<2023" -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch -c nvidia
+# install fastsolv and import it to trigger model file downloads
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && pip install fastsolv uvicorn fastapi pydantic && python -c "from fastsolv import fastsolv"
+
+COPY . /app/fastsolv
+WORKDIR /app/fastsolv
+
+EXPOSE 9761
+
+ENV CUDA_VISIBLE_DEVICES 10
+
+CMD ["python", "fastsolv_server.py"]

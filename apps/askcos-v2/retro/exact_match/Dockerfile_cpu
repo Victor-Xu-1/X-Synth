@@ -1,0 +1,10 @@
+FROM registry.gitlab.com/mlpds_mit/askcosv2/askcos2_core/tree_search/expand_one:1.0-cpu
+
+COPY . /app/exact_match
+WORKDIR /app/exact_match
+
+EXPOSE 9451
+
+ENV CUDA_VISIBLE_DEVICES 10
+
+CMD ["python", "exact_match_server.py"]

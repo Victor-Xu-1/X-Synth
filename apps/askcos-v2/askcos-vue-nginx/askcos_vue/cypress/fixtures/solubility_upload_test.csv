@@ -1,0 +1,5 @@
+solvent,solute,temp,ref_solvent,ref_solubility,ref_temp,hsub298,cp_gas_298,cp_solid_298
+CCCCO,c1ccoc1,298,,,,,,
+CCCCCO,c1ccoc1,298,,,,,,
+CCCCCCO,c1ccoc1,298,,,,,,
+CCCCCCCO,c1ccoc1,298,,,,,,

@@ -1,0 +1,28 @@
+// ***********************************************************
+// This example support/e2e.js is processed and
+// loaded automatically before your test files.
+//
+// This is a great place to put global configuration and
+// behavior that modifies Cypress.
+//
+// You can change the location of this file or turn off
+// automatically serving support files with the
+// 'supportFile' configuration option.
+//
+// You can read more here:
+// https://on.cypress.io/configuration
+// ***********************************************************
+
+// Import commands.js using ES2015 syntax:
+import './commands';
+import 'cypress-fs';
+import 'fs';
+
+// Change the default test string to look for from
+// data-testId (deafult in @testing-library/cypress)
+// to data-cy, the tag actually used in ASKCOS
+import { configure } from '@testing-library/cypress'
+configure({ testIDAttribute: 'data-cy' });
+
+// Alternatively you can use CommonJS syntax:
+// require('./commands')

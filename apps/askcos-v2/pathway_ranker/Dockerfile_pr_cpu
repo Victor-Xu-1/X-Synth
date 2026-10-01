@@ -1,0 +1,10 @@
+FROM registry.gitlab.com/mlpds_mit/askcosv2/askcos2_core/retro/template_relevance:1.0-cpu
+
+COPY . /app/pathway_ranker
+WORKDIR /app/pathway_ranker
+
+EXPOSE 9681
+
+ENV CUDA_VISIBLE_DEVICES 10
+
+CMD ["python", "pathway_ranker_server.py"]

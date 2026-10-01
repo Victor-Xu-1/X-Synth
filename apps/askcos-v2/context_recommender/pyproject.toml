@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+write_to = "app/_version.py"
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+skip-magic-trailing-comma = true
+
+[tool.pytest.ini_options]
+addopts = "--cov app"
+
+[tool.coverage.run]
+branch = true
+omit = [
+    "app/_version.py",
+]

@@ -1,0 +1,23 @@
+docker:
+  cpu:
+    image: ${ASKCOS_REGISTRY}/pathway_ranker:1.0-cpu
+    build: docker build -f Dockerfile_pr_cpu -t ${ASKCOS_REGISTRY}/pathway_ranker:1.0-cpu .
+    start: sh scripts/serve_cpu_in_docker.sh
+  gpu:
+    image: ${ASKCOS_REGISTRY}/pathway_ranker:1.0-gpu
+    build: docker build -f Dockerfile_pr_gpu -t ${ASKCOS_REGISTRY}/pathway_ranker:1.0-gpu .
+    start: sh scripts/serve_gpu_in_docker.sh
+
+singularity:
+  cpu:
+    image: pathway_ranker_cpu.sif
+    build: singularity build -f pathway_ranker_cpu.sif singularity_pr_cpu.def
+    start: sh scripts/serve_cpu_in_singularity.sh
+  gpu:
+    image: pathway_ranker_gpu.sif
+    build: singularity build -f pathway_ranker_gpu.sif singularity_pr_gpu.def
+    start: sh scripts/serve_gpu_in_singularity.sh
+
+commands:
+  stop-docker: docker stop pathway_ranker; docker rm pathway_ranker
+  stop-singularity: singularity instance stop pathway_ranker

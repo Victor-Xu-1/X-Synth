@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "x-synth"
+version = "0.1.0.dev0"
+description = "ASKCOS-based retrosynthesis orchestration and synthesis research workbench"
+requires-python = ">=3.12,<3.13"
+license = "Apache-2.0"
+dependencies = [
+    "fastapi==0.121.3",
+    "pydantic==2.12.4",
+    "PyYAML==6.0.1",
+    "rdkit==2026.3.1",
+    "uvicorn==0.38.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest==7.4.1", "httpx==0.28.1"]
+
+[project.urls]
+Repository = "https://github.com/Victor-Xu-1/X-Synth"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["packages*", "apps", "apps.synon_orchestrator*", "scripts.diagnostics*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+pythonpath = ["."]

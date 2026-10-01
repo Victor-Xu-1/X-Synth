@@ -1,0 +1,23 @@
+docker:
+  cpu:
+    image: ${ASKCOS_REGISTRY}/descriptors:1.0-cpu
+    build: docker build -f Dockerfile_desc_cpu -t ${ASKCOS_REGISTRY}/descriptors:1.0-cpu .
+    start: sh scripts/serve_cpu_in_docker.sh
+  gpu:
+    image: ${ASKCOS_REGISTRY}/descriptors:1.0-gpu
+    build: docker build -f Dockerfile_desc_gpu -t ${ASKCOS_REGISTRY}/descriptors:1.0-gpu .
+    start: sh scripts/serve_gpu_in_docker.sh
+
+singularity:
+  cpu:
+    image: descriptors_cpu.sif
+    build: singularity build -f descriptors_cpu.sif singularity_desc_cpu.def
+    start: sh scripts/serve_cpu_in_singularity.sh
+  gpu:
+    image: descriptors_gpu.sif
+    build: singularity build -f descriptors_gpu.sif singularity_desc_gpu.def
+    start: sh scripts/serve_gpu_in_singularity.sh
+
+commands:
+  stop-docker: docker stop descriptors; docker rm descriptors
+  stop-singularity: singularity instance stop descriptors

@@ -1,0 +1,536 @@
+services:
+  web:
+    image: synon/askcos-vue-nginx:local
+    build:
+      context: ../askcos-vue-nginx
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8769:8769"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - './nginx.conf:/etc/nginx/nginx.conf'
+      - './askcos.ssl.cert:/etc/ssl/certs/askcos.ssl.cert'
+      - './askcos.ssl.key:/etc/ssl/private/askcos.ssl.key'
+    depends_on:
+      - app
+      - celery_workers
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8769/"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  app:
+    image: synon/askcos2-core-app:local
+    build:
+      context: .
+      dockerfile: Dockerfile_app
+    hostname: app
+    restart: always
+    env_file:
+      - .env
+    network_mode: host
+    volumes:
+      - "askcosv2_precompute:/ASKCOSv2/askcos2_core/data/precompute"
+      - "askcosv2_buyables_cache:/ASKCOSv2/askcos2_core/data/db/buyables"
+      - "./data/db:/usr/local/askcos-data/db"
+      - "./configs/module_config_smiles2route.py:/ASKCOSv2/askcos2_core/configs/module_config_smiles2route.py:ro"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/conda/bin/python3.10 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/api/runtime/services', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  precompute:
+    image: ${ASKCOS_REGISTRY}/precompute:2.0
+    build:
+      context: .
+      dockerfile: Dockerfile_precompute
+    profiles: ["full"]
+    tty: true
+    hostname: precompute
+    restart: always
+    env_file:
+      - .env
+    network_mode: host
+    volumes:
+      - "askcosv2_precompute:/ASKCOSv2/askcos2_core/data/precompute"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -d /ASKCOSv2/askcos2_core/data/precompute"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  mongo:
+    image: mongo:6.0.9-jammy
+    hostname: mongo
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "${MONGO_PORT}:${MONGO_PORT}"
+    volumes:
+      - "askcosv2_mongo_data:/data/db"
+      - "./data/db:/usr/local/askcos-data/db"
+    command: --wiredTigerCacheSizeGB 1.5
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --username \"$${MONGO_USER}\" --password \"$${MONGO_PW}\" --authenticationDatabase admin --eval 'db.adminCommand({ ping: 1 }).ok' | grep 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  rabbitmq:
+    image: rabbitmq:3.11-alpine
+    hostname: rabbitmq
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "${RABBITMQ_PORT}:${RABBITMQ_PORT}"
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  redis:
+    image: redis:7.0-alpine
+    hostname: redis
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "${REDIS_PORT}:${REDIS_PORT}"
+    volumes:
+      - "askcosv2_redisdata:/data"
+    command: redis-server --port ${REDIS_PORT}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p \"$${REDIS_PORT}\" ping | grep PONG"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 10s
+
+  mcts:
+    image: ${ASKCOS_REGISTRY}/tree_search/mcts:1.0-cpu
+    profiles: ["route-tree", "full"]
+    build:
+      context: ../tree_search/mcts
+      dockerfile: Dockerfile_cpu
+    hostname: mcts
+    restart: always
+    env_file:
+      - .env
+    network_mode: host
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/conda/bin/python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9311/docs', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    depends_on:
+      expand_one:
+        condition: service_healthy
+
+  value_network:
+    image: ${ASKCOS_REGISTRY}/value_network:1.0-cpu
+    profiles: ["route-tree", "full"]
+    build:
+      context: ../value_network
+      dockerfile: Dockerfile_cpu
+    hostname: value_network
+    restart: always
+    ports:
+      - "9350-9352:9350-9352"
+    volumes:
+      - "../value_network/mars:/app/value_network/mars:ro"
+    command:
+      - torchserve
+      - --start
+      - --foreground
+      - --ncs
+      - --model-store=/app/value_network/mars
+      - --models
+      - USPTO_FULL=USPTO_FULL.mar
+      - --ts-config
+      - ./config.properties
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/conda/bin/python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9350/ping', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
+  retro_star:
+    image: ${ASKCOS_REGISTRY}/tree_search/retro_star:1.0-cpu
+    profiles: ["route-tree", "full"]
+    build:
+      context: ../tree_search/retro_star
+      dockerfile: Dockerfile_cpu
+    hostname: retro_star
+    restart: always
+    env_file:
+      - .env
+    network_mode: host
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/conda/bin/python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9321/docs', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    depends_on:
+      value_network:
+        condition: service_healthy
+      app:
+        condition: service_started
+
+  retro_template_relevance:
+    image: ${ASKCOS_REGISTRY}/retro/template_relevance:1.0-cpu
+    build:
+      context: ../retro/template_relevance
+      dockerfile: Dockerfile_cpu
+    profiles: ["retro-basic", "route-tree", "full"]
+    restart: always
+    ports:
+      - "19410-19412:9410-9412"
+    volumes:
+      - "../retro/template_relevance/mars:/app/template_relevance/mars:ro"
+      - "../retro/template_relevance/scripts/start_torchserve.sh:/app/template_relevance/scripts/start_torchserve.sh:ro"
+    command:
+      - /bin/bash
+      - ./scripts/start_torchserve.sh
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/conda/bin/python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9410/ping', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
+  retro_exact_match:
+    image: ${ASKCOS_REGISTRY}/retro/exact_match:1.0-cpu
+    profiles: ["retro-basic", "route-tree", "full"]
+    build:
+      context: ../retro/exact_match
+      dockerfile: Dockerfile_cpu
+    restart: always
+    env_file:
+      - .env
+    network_mode: host
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/conda/bin/python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9451/docs', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  retro_retrosim:
+    image: ${ASKCOS_REGISTRY}/retro/retrosim:1.0-cpu
+    profiles: ["retro-basic", "route-tree", "full"]
+    build:
+      context: ../retro/retrosim
+      dockerfile: Dockerfile_cpu
+    restart: always
+    env_file:
+      - .env
+    network_mode: host
+    volumes:
+      - "../retro/retrosim/data:/app/retrosim/data:ro"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/conda/bin/python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9441/docs', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  context_recommender:
+    image: ${ASKCOS_REGISTRY}/context_recommender:1.0-cpu
+    profiles: ["context", "route-tree", "full"]
+    build:
+      context: ../context_recommender
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "9901:9901"
+    volumes:
+      - "../context_recommender/app/resources:/app/context_recommender/app/resources:ro"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/conda/bin/python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9901/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
+  context_quarc:
+    image: ${ASKCOS_REGISTRY}/context_quarc:1.0-cpu
+    profiles: ["context", "route-tree", "full"]
+    build:
+      context: ../context_quarc
+      dockerfile: Dockerfile_cpu
+    restart: always
+    ports:
+      - "9921:9921"
+    volumes:
+      - "../context_quarc/checkpoints:/app/quarc/checkpoints:ro"
+      - "../context_quarc/data:/app/quarc/data:ro"
+    command:
+      - python
+      - quarc_server.py
+      - --server-ip
+      - 0.0.0.0
+      - --server-port
+      - "9921"
+      - --config-path
+      - configs/hybrid_pipeline_oss.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/conda/bin/python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9921/docs', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
+  fast_filter:
+    image: ${ASKCOS_REGISTRY}/fast_filter:1.0-cpu
+    build:
+      context: ../fast_filter
+      dockerfile: Dockerfile_ff_cpu
+    profiles: ["retro-basic", "route-tree", "analysis", "full"]
+    restart: always
+    ports:
+      - "9611:9611"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/conda/bin/python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9611/docs', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  scscore:
+    image: ${ASKCOS_REGISTRY}/scscore:1.0-cpu
+    build:
+      context: ../scscore
+      dockerfile: Dockerfile_cpu
+    profiles: ["retro-basic", "analysis", "route-tree", "full"]
+    restart: always
+    ports:
+      - "9741:9741"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/conda/bin/python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9741/docs', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  atom_map_rxnmapper:
+    image: ${ASKCOS_REGISTRY}/atom_map/rxnmapper:1.0-cpu
+    build:
+      context: ../atom_map/rxnmapper
+      dockerfile: Dockerfile_rxn_cpu
+    profiles: ["analysis", "route-tree", "full"]
+    restart: always
+    ports:
+      - "9671:9671"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/conda/bin/python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9671/docs', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  pathway_ranker:
+    image: ${ASKCOS_REGISTRY}/pathway_ranker:1.0-cpu
+    build:
+      context: ../pathway_ranker
+      dockerfile: Dockerfile_pr_cpu
+    profiles: ["route-tree", "analysis", "full"]
+    restart: always
+    ports:
+      - "9681:9681"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/conda/bin/python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9681/docs', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
+  cluster:
+    image: ${ASKCOS_REGISTRY}/cluster:1.0-cpu
+    build:
+      context: ../cluster
+      dockerfile: Dockerfile_cpu
+    profiles: ["analysis", "route-tree", "full"]
+    restart: always
+    env_file:
+      - .env
+    network_mode: host
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/conda/bin/python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9801/docs', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  expand_one:
+    image: ${ASKCOS_REGISTRY}/tree_search/expand_one:1.0-cpu
+    build:
+      context: ../tree_search/expand_one
+      dockerfile: Dockerfile_cpu
+    profiles: ["route-tree", "full"]
+    restart: always
+    env_file:
+      - .env
+    network_mode: host
+    depends_on:
+      retro_template_relevance:
+        condition: service_healthy
+      retro_exact_match:
+        condition: service_healthy
+      retro_retrosim:
+        condition: service_healthy
+      context_recommender:
+        condition: service_healthy
+      context_quarc:
+        condition: service_healthy
+      fast_filter:
+        condition: service_healthy
+      scscore:
+        condition: service_healthy
+      atom_map_rxnmapper:
+        condition: service_healthy
+      cluster:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/conda/bin/python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9301/docs', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  celery_workers:
+    image: synon/askcos2-core-celery:local
+    build:
+      context: .
+      dockerfile: Dockerfile_celery
+    restart: always
+    env_file:
+      - .env
+    network_mode: host
+    volumes:
+      - "askcosv2_precompute:/ASKCOSv2/askcos2_core/data/precompute"
+      - "askcosv2_buyables_cache:/ASKCOSv2/askcos2_core/data/db/buyables"
+      - "./configs/module_config_smiles2route.py:/ASKCOSv2/askcos2_core/configs/module_config_smiles2route.py:ro"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/conda/bin/python3.10 /opt/conda/bin/celery -A askcos2_celery inspect ping -d generic_worker@$$(hostname) --timeout=5 | grep -q OK"]
+      interval: 30s
+      timeout: 15s
+      retries: 20
+      start_period: 90s
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3.3
+    profiles: ["auth", "full"]
+    hostname: keycloak
+    restart: always
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USERNAME:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_DB: postgres
+      KC_DB_URL_HOST: keycloak-db
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak123}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_HTTP_ENABLED: "false"
+      KC_HTTP_MANAGEMENT_SCHEME: http
+      KC_HTTP_MANAGEMENT_RELATIVE_PATH: /
+      KC_HTTPS_MANAGEMENT_CERTIFICATE_FILE: ""
+      KC_HTTPS_MANAGEMENT_CERTIFICATE_KEY_FILE: ""
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTPS_CERTIFICATE_FILE: '/etc/ssl/certs/askcos.ssl.cert'
+      KC_HTTPS_CERTIFICATE_KEY_FILE: '/etc/ssl/private/askcos.ssl.key'
+    ports:
+      - "${KC_HTTPS_PORT}:${KC_HTTPS_PORT}"
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    command: start
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+      - ./askcos.ssl.cert:/etc/ssl/certs/askcos.ssl.cert
+      - ./askcos.ssl.key:/etc/ssl/private/askcos.ssl.key
+    healthcheck:
+      test: ["CMD-SHELL", "bash -ec 'exec 3<>/dev/tcp/127.0.0.1/9000; printf \"GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3; grep -q \"200\" <&3'"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
+  keycloak_locale_config:
+    image: synon/askcos2-core-app:local
+    profiles: ["auth", "full"]
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      KEYCLOAK_BASE_URL: https://127.0.0.1:${KC_HTTPS_PORT:-8443}/auth
+      KEYCLOAK_ADMIN_LOCALE: zh-CN
+      KEYCLOAK_VERIFY_SSL: "false"
+    network_mode: host
+    working_dir: /ASKCOSv2/askcos2_core
+    volumes:
+      - ".:/ASKCOSv2/askcos2_core:ro"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    command: /opt/conda/bin/python scripts/configure_keycloak_locale.py
+
+  keycloak-db:
+    image: postgres:15-alpine
+    profiles: ["auth", "full"]
+    hostname: keycloak-db
+    restart: always
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak123}
+    ports:
+      - "5433:5432"
+    volumes:
+      - keycloak_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  askcosv2_redisdata:
+  askcosv2_mongo_data:
+  askcosv2_precompute:
+  askcosv2_buyables_cache:
+  keycloak_data:
+  keycloak_db_data:

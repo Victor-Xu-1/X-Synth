@@ -1,0 +1,9 @@
+docker:
+  cpu:
+    image: ${ASKCOS_REGISTRY}/retro/retrosim:1.0-cpu
+    build: docker build -f Dockerfile_cpu -t ${ASKCOS_REGISTRY}/retro/retrosim:1.0-cpu .
+    start: sh scripts/serve_cpu_in_docker.sh
+
+commands:
+  download: sh scripts/download_precomputed_data.sh
+  stop-docker: docker stop retro_retrosim; docker rm retro_retrosim

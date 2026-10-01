@@ -1,0 +1,34 @@
+FROM mambaorg/micromamba:1.4.7-bionic-cuda-11.3.1
+
+USER root
+# Keep the base environment activated
+ARG MAMBA_DOCKERFILE_ACTIVATE=1
+ENV MAMBA_REMOTE_CONNECT_TIMEOUT_SECS=60 \
+    MAMBA_REMOTE_READ_TIMEOUT_SECS=600 \
+    MAMBA_REMOTE_MAX_RETRIES=5
+
+# Use micromamba to resolve conda-forge, much faster than conda
+RUN micromamba install -y python=3.7 pip cudatoolkit=11.2 rdkit=2020.09.5 -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && pip install \
+    fastapi==0.95.1 \
+    nvidia-cudnn-cu11==8.9.1.23 \
+    protobuf==3.19.0 \
+    scipy \
+    tensorflow==2.7 \
+    uvicorn==0.21.1 \
+    zipp==3.20.2
+
+# CUDA postprocessing per tf documentation
+RUN mkdir -p $CONDA_PREFIX/etc/conda/activate.d
+RUN echo 'CUDNN_PATH=$(dirname $(python -c "import nvidia.cudnn;print(nvidia.cudnn.__file__)"))' \
+    >> $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
+RUN echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CONDA_PREFIX/lib/:$CUDNN_PATH/lib' \
+    >> $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
+RUN source $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
+
+COPY . /app/wln_atommapper
+WORKDIR /app/wln_atommapper
+
+EXPOSE 9651
+
+CMD ["python", "wln_server.py"]

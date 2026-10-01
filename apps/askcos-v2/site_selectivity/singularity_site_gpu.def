@@ -1,0 +1,17 @@
+Bootstrap: docker
+From: tensorflow/tensorflow:2.7.4-gpu
+
+%files
+    . /app/site_selectivity
+
+%post
+    pip install \
+        fastapi==0.95.1 \
+        rdkit-pypi==2020.09.5.2 \
+        protobuf==3.19.0 \
+        scipy \
+        uvicorn==0.21.1
+
+%runscript
+    cd /app/site_selectivity
+    python site_selectivity_server.py

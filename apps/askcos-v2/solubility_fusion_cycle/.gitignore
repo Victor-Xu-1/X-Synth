@@ -1,0 +1,15 @@
+__pycache__
+*__pycache__/*
+
+.ipynb_checkpoints
+*.ipynb_checkpoints/*
+.idea/*
+checkpoints/*
+checkpoints_tmp/*
+data/*
+logs/*
+lightning_logs/*
+trained_models/*
+results/*
+mars_old/*
+*.sif

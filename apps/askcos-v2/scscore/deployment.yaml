@@ -1,0 +1,15 @@
+docker:
+  cpu:
+    image: ${ASKCOS_REGISTRY}/scscore:1.0-cpu
+    build: docker build -f Dockerfile_cpu -t ${ASKCOS_REGISTRY}/scscore:1.0-cpu .
+    start: sh scripts/serve_cpu_in_docker.sh
+
+singularity:
+  cpu:
+    image: scscore_cpu.sif
+    build: singularity build -f scscore_cpu.sif singularity_cpu.def
+    start: sh scripts/serve_cpu_in_singularity.sh
+
+commands:
+  stop-docker: docker stop scscore; docker rm scscore
+  stop-singularity: singularity instance stop scscore

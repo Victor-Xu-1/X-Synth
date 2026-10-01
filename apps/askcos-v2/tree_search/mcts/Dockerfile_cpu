@@ -1,0 +1,6 @@
+FROM registry.gitlab.com/mlpds_mit/askcosv2/askcos2_core/tree_search/retro_star:1.0-cpu
+
+COPY . /ASKCOSv2/mcts
+WORKDIR /ASKCOSv2/mcts
+
+CMD ["python", "mcts_server.py"]

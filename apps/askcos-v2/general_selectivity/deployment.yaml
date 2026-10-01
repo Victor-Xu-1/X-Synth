@@ -1,0 +1,23 @@
+docker:
+  cpu:
+    image: ${ASKCOS_REGISTRY}/general_selectivity:1.0-cpu
+    build: docker build -f Dockerfile_gs_cpu -t ${ASKCOS_REGISTRY}/general_selectivity:1.0-cpu .
+    start: sh scripts/serve_cpu_in_docker.sh
+  gpu:
+    image: ${ASKCOS_REGISTRY}/general_selectivity:1.0-gpu
+    build: docker build -f Dockerfile_gs_gpu -t ${ASKCOS_REGISTRY}/general_selectivity:1.0-gpu .
+    start: sh scripts/serve_gpu_in_docker.sh
+
+singularity:
+  cpu:
+    image: general_selectivity_cpu.sif
+    build: singularity build -f general_selectivity_cpu.sif singularity_gs_cpu.def
+    start: sh scripts/serve_cpu_in_singularity.sh
+  gpu:
+    image: general_selectivity_gpu.sif
+    build: singularity build -f general_selectivity_gpu.sif singularity_gs_gpu.def
+    start: sh scripts/serve_gpu_in_singularity.sh
+
+commands:
+  stop-docker: docker stop general_selectivity; docker rm general_selectivity
+  stop-singularity: singularity instance stop general_selectivity

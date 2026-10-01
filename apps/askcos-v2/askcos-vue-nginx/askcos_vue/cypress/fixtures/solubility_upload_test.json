@@ -1,0 +1,18 @@
+[
+    {
+      "solvent": "CCCCO",
+      "solute": "c1ccoc1",
+      "temp": 298
+    },
+    {
+      "solvent": "CCCCO",
+      "solute": "c1ccoc1",
+      "temp": 298,
+      "ref_solvent": "",
+      "ref_solubility": null,
+      "ref_temp": null,
+      "hsub298": null,
+      "cp_gas_298": null,
+      "cp_solid_298": null
+    }
+]

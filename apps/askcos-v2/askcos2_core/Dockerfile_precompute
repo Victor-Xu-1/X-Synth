@@ -1,0 +1,46 @@
+FROM mambaorg/micromamba:1.4.7
+
+USER root
+# Keep the base environment activated
+ARG MAMBA_DOCKERFILE_ACTIVATE=1
+ENV MAMBA_REMOTE_CONNECT_TIMEOUT_SECS=60 \
+    MAMBA_REMOTE_READ_TIMEOUT_SECS=600 \
+    MAMBA_REMOTE_MAX_RETRIES=5 \
+    PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=10 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN apt-get update -o Acquire::Retries=5 && \
+    apt-get install -y --fix-missing -o Acquire::Retries=5 git gcc g++ make
+
+# Use micromamba to resolve conda-forge, much faster than conda
+RUN micromamba install -y python=3.10.12 pip=23.2.1 rdkit=2023.03.3 -c conda-forge
+RUN pip install --index-url https://pypi.org/simple --prefer-binary --retries 10 --timeout 120 \
+    bcrypt==4.3.0 \
+    "celery[gevent,amqp,redis]"==5.6.2 \
+    epam.indigo==1.4.3 \
+    "fastapi[standard]"==0.121.3 \
+    fastapi-mcp==0.4.0 \
+    hdbscan==0.8.33 \
+    networkx==2.6.3 \
+    pandas==1.5.3 \
+    "passlib[bcrypt]"==1.7.4 \
+    pillow==10.1.0 \
+    protobuf==3.19.0 \
+    pulp==2.6.0 \
+    pydantic==2.12.4 \
+    pymongo==4.4.1 \
+    pytest==7.4.1 \
+    "python-jose[cryptography]"==3.3.0 \
+    python-multipart==0.0.20 \
+    pyyaml==6.0.1 \
+    requests==2.31.0 \
+    scikit-learn==1.0.2 \
+    scipy==1.7.3 \
+    svgutils==0.3.4 \
+    tqdm==4.66.1 \
+    uvicorn==0.38.0
+
+RUN pip install --index-url https://pypi.org/simple --prefer-binary --retries 10 --timeout 120 python-keycloak==3.7.0 rdchiral==1.1.0
+
+COPY . /ASKCOSv2/askcos2_core
+WORKDIR /ASKCOSv2/askcos2_core

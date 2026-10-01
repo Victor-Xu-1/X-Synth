@@ -1,0 +1,83 @@
+from rdkit import Chem
+
+BOND_TYPES = [
+    0,
+    Chem.rdchem.BondType.SINGLE,
+    Chem.rdchem.BondType.DOUBLE,
+    Chem.rdchem.BondType.TRIPLE,
+    Chem.rdchem.BondType.AROMATIC,
+]
+
+BOND_ORDER_TO_INDEX = {0.0: 0, 1.0: 1, 2.0: 2, 3.0: 3, 1.5: 4}
+BOND_INDEX_TO_ORDER = {index: order for order, index in BOND_ORDER_TO_INDEX.items()}
+BOND_ORDER_TO_TYPE = {
+    order: BOND_TYPES[index] for order, index in BOND_ORDER_TO_INDEX.items()
+}
+
+INVALID_BOND = -1
+
+ELEMENTS = [
+    "C",
+    "N",
+    "O",
+    "S",
+    "F",
+    "Si",
+    "P",
+    "Cl",
+    "Br",
+    "Mg",
+    "Na",
+    "Ca",
+    "Fe",
+    "As",
+    "Al",
+    "I",
+    "B",
+    "V",
+    "K",
+    "Tl",
+    "Yb",
+    "Sb",
+    "Sn",
+    "Ag",
+    "Pd",
+    "Co",
+    "Se",
+    "Ti",
+    "Zn",
+    "H",
+    "Li",
+    "Ge",
+    "Cu",
+    "Au",
+    "Ni",
+    "Cd",
+    "In",
+    "Mn",
+    "Zr",
+    "Cr",
+    "Pt",
+    "Hg",
+    "Pb",
+    "W",
+    "Ru",
+    "Nb",
+    "Re",
+    "Te",
+    "Rh",
+    "Tc",
+    "Ba",
+    "Bi",
+    "Hf",
+    "Mo",
+    "U",
+    "Sm",
+    "Os",
+    "Ir",
+    "Ce",
+    "Gd",
+    "Ga",
+    "Cs",
+    "unknown",
+]

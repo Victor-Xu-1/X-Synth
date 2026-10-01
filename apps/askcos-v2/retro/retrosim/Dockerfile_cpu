@@ -1,0 +1,10 @@
+FROM registry.gitlab.com/mlpds_mit/askcosv2/askcos2_core/tree_search/expand_one:1.0-cpu
+
+COPY . /app/retrosim
+WORKDIR /app/retrosim
+
+EXPOSE 9441
+
+ENV CUDA_VISIBLE_DEVICES 10
+
+CMD ["python", "simsearch_server.py"]

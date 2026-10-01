@@ -1,0 +1,7 @@
+*__pycache__*
+*.egg-info*
+.flake8
+.gitignore
+TODO.txt
+app/resources/models/*
+*.sif

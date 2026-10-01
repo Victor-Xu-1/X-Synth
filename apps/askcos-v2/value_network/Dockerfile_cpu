@@ -1,0 +1,8 @@
+FROM registry.gitlab.com/mlpds_mit/askcosv2/askcos2_core/retro/template_relevance:1.0-cpu
+
+COPY . /app/value_network
+WORKDIR /app/value_network
+
+ENV CUDA_VISIBLE_DEVICES 10
+
+EXPOSE 9430 9431 9432

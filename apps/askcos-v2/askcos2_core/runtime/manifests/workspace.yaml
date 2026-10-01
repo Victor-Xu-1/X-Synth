@@ -1,0 +1,160 @@
+version: 1
+project:
+  name: ASKCOSv2
+  root: ..
+  description: Local ASKCOSv2 product workspace with centralized runtime control.
+control:
+  compose_file: askcos2_core/compose.yaml
+  services_manifest: askcos2_core/runtime/manifests/services.yaml
+  workspace_manifest: askcos2_core/runtime/manifests/workspace.yaml
+  primary_cli: askcos2_core/runtime/scripts/askcosctl.py
+  wrappers:
+    windows: askcosctl.cmd
+    powershell: askcosctl.ps1
+    shell: askcosctl.sh
+roots:
+  - key: core
+    label: ASKCOS Core API and Celery
+    kind: source
+    path: askcos2_core
+    git: true
+  - key: ui
+    label: ASKCOS Vue UI and Nginx image
+    kind: source
+    path: askcos-vue-nginx
+    git: true
+  - key: retro_models
+    label: Retrosynthesis model services
+    kind: model-family
+    path: retro
+  - key: fast_filter
+    label: Fast Filter scoring service
+    kind: model-service
+    path: fast_filter
+  - key: atom_map
+    label: Atom mapping services
+    kind: model-family
+    path: atom_map
+  - key: tree_search
+    label: Route search services
+    kind: model-family
+    path: tree_search
+  - key: value_network
+    label: Route value network
+    kind: model-service
+    path: value_network
+  - key: pathway_ranker
+    label: Pathway ranking service
+    kind: model-service
+    path: pathway_ranker
+  - key: context_recommender
+    label: Neural reaction context service
+    kind: model-service
+    path: context_recommender
+  - key: context_quarc
+    label: QUARC reaction context service
+    kind: model-service
+    path: context_quarc
+  - key: count_analogs
+    label: Analog counting service
+    kind: analysis-service
+    path: count_analogs
+  - key: descriptors
+    label: Molecular descriptor services
+    kind: descriptor-service
+    path: descriptors
+  - key: fastsolv
+    label: FastSolv service
+    kind: property-service
+    path: fastsolv
+  - key: forward_predictor
+    label: Forward reaction prediction services
+    kind: model-family
+    path: forward_predictor
+  - key: general_selectivity
+    label: General selectivity service
+    kind: selectivity-service
+    path: general_selectivity
+  - key: impurity_predictor
+    label: Impurity prediction service
+    kind: model-service
+    path: impurity_predictor
+  - key: molecular_complexity
+    label: Molecular complexity service
+    kind: analysis-service
+    path: molecular_complexity
+  - key: scscore
+    label: Synthetic complexity scoring service
+    kind: model-service
+    path: scscore
+  - key: cluster
+    label: Clustering service
+    kind: analysis-service
+    path: cluster
+  - key: pmi_calculator
+    label: PMI calculation service
+    kind: analysis-service
+    path: pmi_calculator
+  - key: qm_descriptors
+    label: QM descriptor service
+    kind: descriptor-service
+    path: qm_descriptors
+  - key: reaction_classification
+    label: Reaction classification service
+    kind: model-service
+    path: reaction_classification
+  - key: site_selectivity
+    label: Site selectivity service
+    kind: selectivity-service
+    path: site_selectivity
+  - key: solubility
+    label: Solubility prediction service
+    kind: property-service
+    path: solubility
+  - key: solubility_fusion_cycle
+    label: Solubility fusion cycle service
+    kind: property-service
+    path: solubility_fusion_cycle
+external_mirrors:
+  - key: windows_partial_mirror
+    label: Windows partial ASKCOSv2 checkout
+    path: C:/Users/xs615/Documents/New project/ASKCOSv2
+    authoritative: false
+    reason: Contains only core/UI mirror; WSL /home/victor_1/ASKCOSv2 is the runtime source of truth.
+generated_artifacts:
+  - path: .runtime
+    owner: workspace
+    reason: legacy local runtime scratch directory
+  - path: .runtime-run-proxy.sh
+    owner: workspace
+    reason: legacy local runtime proxy helper
+  - path: askcos-vue-nginx/askcos_vue/node_modules
+    owner: ui
+    reason: local npm dependencies
+  - path: askcos-vue-nginx/askcos_vue/dist
+    owner: ui
+    reason: local Vite build output
+  - path: askcos-vue-nginx/askcos_vue/coverage
+    owner: ui
+    reason: Jest coverage output
+  - path: askcos-vue-nginx/askcos_vue/dev-dist
+    owner: ui
+    reason: development service worker output
+  - path: askcos-vue-nginx/askcos_vue/output
+    owner: ui
+    reason: local generated export output
+  - path: askcos-vue-nginx/askcos_vue/junit.xml
+    owner: ui
+    reason: Jest CI report
+  - path: askcos2_core/.pytest_cache
+    owner: core
+    reason: pytest cache
+  - path: askcos2_core/runtime/__pycache__
+    owner: core
+    reason: Python bytecode cache
+  - path: askcos2_core/tests/runtime/__pycache__
+    owner: core
+    reason: Python bytecode cache
+  - path: askcos2_core/__pycache__
+    owner: core
+    reason: Python bytecode cache

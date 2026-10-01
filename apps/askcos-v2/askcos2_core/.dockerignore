@@ -1,0 +1,10 @@
+data/
+*.sif
+**/__pycache__/
+utils/api_logging.py
+utils/route_dossier.py
+utils/route_dossier_core.py
+tests/utils/route_dossier_test.py
+utils/route_publication.py
+utils/route_publication_core.py
+tests/utils/route_publication_test.py

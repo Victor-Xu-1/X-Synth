@@ -1,0 +1,209 @@
+version: 1
+entrypoints:
+  local_ui: http://127.0.0.1:8769/
+  api: http://127.0.0.1:8769/api/
+  keycloak: https://127.0.0.1:8443/auth/
+profiles:
+  core:
+    label: Core UI/API runtime
+    description: Minimal ASKCOS UI, API, task queue, and databases.
+  retro-basic:
+    label: One-step retrosynthesis runtime
+    description: Retrosynthesis model services used for candidate disconnections.
+  route-tree:
+    label: Route tree runtime
+    description: Expand-one, MCTS, Retro*, value network, and pathway ranking.
+  context:
+    label: Reaction context runtime
+    description: Condition recommendation services.
+  analysis:
+    label: Scoring and analysis runtime
+    description: Filtering, atom mapping, SCScore, and clustering services.
+  auth:
+    label: Authentication runtime
+    description: Keycloak and its PostgreSQL database.
+  full:
+    label: Full runtime
+    description: All ASKCOS services.
+services:
+  web:
+    label: ASKCOS Web UI
+    kind: frontend
+    source: ../askcos-vue-nginx
+    profiles: [core, full]
+    ports:
+      - {host: 80, container: 80}
+      - {host: 8769, container: 8769}
+    health_endpoint: http://127.0.0.1:8769/
+  app:
+    label: ASKCOS FastAPI
+    kind: api
+    source: .
+    profiles: [core, full]
+    ports:
+      - {host: 9100, container: 9100}
+    health_endpoint: http://127.0.0.1:9100/api/runtime/services
+  celery_workers:
+    label: ASKCOS Celery Workers
+    kind: worker
+    source: .
+    profiles: [core, full]
+    health_queue: celery
+  mongo:
+    label: MongoDB
+    kind: database
+    source: docker.io/mongo:6.0.9-jammy
+    profiles: [core, full]
+    ports:
+      - {host: 27017, container: 27017}
+  redis:
+    label: Redis
+    kind: cache
+    source: docker.io/redis:7.0-alpine
+    profiles: [core, full]
+    ports:
+      - {host: 16379, container: 16379}
+  rabbitmq:
+    label: RabbitMQ
+    kind: queue
+    source: docker.io/rabbitmq:3.11-alpine
+    profiles: [core, full]
+    ports:
+      - {host: 5672, container: 5672}
+  precompute:
+    label: Precompute Loader
+    kind: data-loader
+    source: .
+    profiles: [full]
+  retro_template_relevance:
+    label: Template Relevance
+    kind: retrosynthesis-model
+    source: ../retro/template_relevance
+    profiles: [retro-basic, route-tree, full]
+    models: [bkms_metabolic, cas, pistachio, pistachio_ringbreaker, reaxys, reaxys_biocatalysis, uspto_higher_level]
+    ports:
+      - {host: 19410, container: 9410}
+      - {host: 19411, container: 9411}
+      - {host: 19412, container: 9412}
+    health_endpoint: http://127.0.0.1:19410/ping
+  retro_exact_match:
+    label: Exact Match Retrosynthesis
+    kind: retrosynthesis-model
+    source: ../retro/exact_match
+    profiles: [retro-basic, route-tree, full]
+    ports:
+      - {host: 9451, container: 9451}
+    health_endpoint: http://127.0.0.1:9451/docs
+  retro_retrosim:
+    label: RetroSim
+    kind: retrosynthesis-model
+    source: ../retro/retrosim
+    profiles: [retro-basic, route-tree, full]
+    ports:
+      - {host: 9441, container: 9441}
+    health_endpoint: http://127.0.0.1:9441/docs
+  fast_filter:
+    label: Fast Filter
+    kind: scoring
+    source: ../fast_filter
+    profiles: [retro-basic, route-tree, analysis, full]
+    ports:
+      - {host: 9611, container: 9611}
+    health_endpoint: http://127.0.0.1:9611/docs
+  expand_one:
+    label: Expand One
+    kind: route-search
+    source: ../tree_search/expand_one
+    profiles: [route-tree, full]
+    ports:
+      - {host: 9301, container: 9301}
+    health_endpoint: http://127.0.0.1:9301/docs
+  mcts:
+    label: MCTS Route Search
+    kind: route-search
+    source: ../tree_search/mcts
+    profiles: [route-tree, full]
+    ports:
+      - {host: 9311, container: 9311}
+    health_endpoint: http://127.0.0.1:9311/docs
+  retro_star:
+    label: Retro Star Route Search
+    kind: route-search
+    source: ../tree_search/retro_star
+    profiles: [route-tree, full]
+    ports:
+      - {host: 9321, container: 9321}
+    health_endpoint: http://127.0.0.1:9321/docs
+  value_network:
+    label: Value Network
+    kind: route-search-model
+    source: ../value_network
+    profiles: [route-tree, full]
+    ports:
+      - {host: 9350, container: 9350}
+      - {host: 9351, container: 9351}
+      - {host: 9352, container: 9352}
+    health_endpoint: http://127.0.0.1:9350/ping
+  pathway_ranker:
+    label: Pathway Ranker
+    kind: route-scoring
+    source: ../pathway_ranker
+    profiles: [route-tree, analysis, full]
+    ports:
+      - {host: 9681, container: 9681}
+    health_endpoint: http://127.0.0.1:9681/docs
+  context_recommender:
+    label: Neural Context Recommender
+    kind: context-model
+    source: ../context_recommender
+    profiles: [context, route-tree, full]
+    ports:
+      - {host: 9901, container: 9901}
+    health_endpoint: http://127.0.0.1:9901/health
+  context_quarc:
+    label: QUARC Context Recommender
+    kind: context-model
+    source: ../context_quarc
+    profiles: [context, route-tree, full]
+    ports:
+      - {host: 9921, container: 9921}
+    health_endpoint: http://127.0.0.1:9921/docs
+  scscore:
+    label: SCScore
+    kind: scoring
+    source: ../scscore
+    profiles: [retro-basic, analysis, route-tree, full]
+    ports:
+      - {host: 9741, container: 9741}
+    health_endpoint: http://127.0.0.1:9741/docs
+  atom_map_rxnmapper:
+    label: RXNMapper Atom Mapping
+    kind: atom-mapping
+    source: ../atom_map/rxnmapper
+    profiles: [analysis, route-tree, full]
+    ports:
+      - {host: 9671, container: 9671}
+    health_endpoint: http://127.0.0.1:9671/docs
+  cluster:
+    label: Clustering
+    kind: analysis
+    source: ../cluster
+    profiles: [analysis, route-tree, full]
+    ports:
+      - {host: 9801, container: 9801}
+    health_endpoint: http://127.0.0.1:9801/docs
+  keycloak:
+    label: Keycloak
+    kind: auth
+    source: quay.io/keycloak/keycloak:26.3.3
+    profiles: [auth, full]
+    ports:
+      - {host: 8443, container: 8443}
+    health_endpoint: https://127.0.0.1:8443/auth/realms/master
+  keycloak-db:
+    label: Keycloak PostgreSQL
+    kind: database
+    source: docker.io/postgres:15-alpine
+    profiles: [auth, full]
+    ports:
+      - {host: 5433, container: 5432}

@@ -1,0 +1,26 @@
+FROM mambaorg/micromamba:1.4.7-bionic-cuda-11.3.1
+
+USER root
+# Keep the base environment activated
+ARG MAMBA_DOCKERFILE_ACTIVATE=1
+ENV MAMBA_REMOTE_CONNECT_TIMEOUT_SECS=60 \
+    MAMBA_REMOTE_READ_TIMEOUT_SECS=600 \
+    MAMBA_REMOTE_MAX_RETRIES=5
+RUN apt update && apt -y install git gcc g++ make
+
+# Use micromamba to resolve conda-forge, much faster than conda
+RUN micromamba install -y python=3.9.19 pip=23.2.1 rdkit=2020.09.4 openjdk=11.0.15 -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
+RUN micromamba install -y pytorch==1.12.1 cudatoolkit=11.3 "mkl>=2022.1,<2023" -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
+RUN micromamba install -y rdchiral_cpp=1.1.2 -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && pip install \
+    pandas==1.5.3 \
+    pebble==5.0.3 \
+    scipy==1.7.3 \
+    tqdm==4.66.1 \
+    torch-model-archiver==0.3.1 \
+    torchserve==0.3.1
+
+COPY . /app/template_relevance
+WORKDIR /app/template_relevance
+
+EXPOSE 9410 9411 9412

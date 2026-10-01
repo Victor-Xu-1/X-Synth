@@ -1,0 +1,6 @@
+*__pycache__*
+*.egg-info*
+.flake8
+.gitignore
+TODO.txt
+*.sif

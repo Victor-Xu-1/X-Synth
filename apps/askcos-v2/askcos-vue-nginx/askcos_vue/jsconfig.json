@@ -1,0 +1,30 @@
+{
+  // Pull in the @testing-library/cypress into the 
+  // Cypress environment so the DOM objects
+  // can be searched
+  "include": [
+    "./node_modules/cypress",
+    "cypress/**/*.js"
+  ],
+  "compilerOptions": {
+    "ignoreDeprecations": "6.0", //added to address Typescript 6 -> 7 deprecation
+    //"target": "es2020",  //added to address Typescript 6 -> 7 deprecation
+    "target": "es5",
+    "module": "esnext",
+    "baseUrl": "./",
+    //"moduleResolution": "bundler",  //added to address Typescript 6 -> 7 deprecation
+    "moduleResolution": "node",
+    "paths": {
+      "@/*": [
+        "src/*"
+      ],
+    "types": ["cypress"],
+    },
+    "lib": [
+      "esnext",
+      "dom",
+      "dom.iterable",
+      "scripthost"
+    ]
+  }
+}

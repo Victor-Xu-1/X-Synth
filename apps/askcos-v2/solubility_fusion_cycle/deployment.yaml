@@ -1,0 +1,9 @@
+docker:
+  cpu:
+    image: ${ASKCOS_REGISTRY}/solubility_fusion_cycle:1.0-cpu
+    build: docker build -f Dockerfile_cpu -t ${ASKCOS_REGISTRY}/solubility_fusion_cycle:1.0-cpu .
+    start: sh scripts/serve_cpu_in_docker.sh
+
+commands:
+  download: sh scripts/download_trained_models.sh
+  stop-docker: docker stop solubility_fusion_cycle; docker rm solubility_fusion_cycle

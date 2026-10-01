@@ -1,0 +1,15 @@
+Bootstrap: docker
+From: continuumio/miniconda3:23.3.1-0
+
+%environment
+    export CUDA_VISIBLE_DEVICES=10
+
+%post
+    conda install -y mamba=1.4.7 -c conda-forge
+    mamba install -y -q python=3.7 pip rdkit=2020.09.5 -c conda-forge
+    pip install \
+        fastapi==0.95.1 \
+        protobuf==3.19.0 \
+        scipy \
+        tensorflow-cpu==2.7 \
+        uvicorn==0.21.1

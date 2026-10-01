@@ -1,0 +1,93 @@
+stages:
+  - build
+  - test
+
+build-job-dev:
+  stage: build
+  script:
+    - echo $CI_PROJECT_DIR
+    - echo $CI_PROJECT_PATH
+    - echo "Stopping services..."
+    - cd /data/ztu/askcos2-dev-ci/ASKCOSv2/askcos2_core
+    - make stop
+    - echo "Services stopped."
+    - make checkout-dev
+    - make update
+  rules:
+    - if: $CI_MERGE_REQUEST_APPROVED && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+    - allow_failure: false
+  tags:
+    - askcos2-dev
+
+build-job-nightly:
+  stage: build
+  script:
+    - echo "Stopping services..."
+    - cd /data/ztu/askcos2-nightly-ci/ASKCOSv2/askcos2_core
+    - make stop
+    - echo "Services stopped."
+    - make checkout-nightly
+    - make update
+  rules:
+    - if: $CI_MERGE_REQUEST_APPROVED && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "nightly"
+    - allow_failure: false
+  tags:
+    - askcos2-nightly
+
+build-job-main:
+  stage: build
+  script:
+    - echo "Stopping services..."
+    - cd /data/ztu/askcos2-main-ci/ASKCOSv2/askcos2_core
+    - make stop
+    - echo "Services stopped."
+    - make checkout-main
+    - make update
+  rules:
+    - if: $CI_MERGE_REQUEST_APPROVED && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
+    - allow_failure: false
+  tags:
+    - askcos2-main
+
+api-test-job-dev:
+  stage: test
+  script:
+    - echo "Running API tests..."
+    - cd /data/ztu/askcos2-dev-ci/ASKCOSv2/askcos2_core
+    - make test
+  rules:
+    - if: $CI_MERGE_REQUEST_APPROVED && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+    - allow_failure: false
+  tags:
+    - askcos2-dev
+
+api-test-job-nightly:
+  stage: test
+  script:
+    - echo "Running API tests..."
+    - cd /data/ztu/askcos2-nightly-ci/ASKCOSv2/askcos2_core
+    - make test
+  rules:
+    - if: $CI_MERGE_REQUEST_APPROVED && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "nightly"
+    - allow_failure: false
+  tags:
+    - askcos2-nightly
+
+api-test-job-main:
+  stage: test
+  script:
+    - echo "Running API tests..."
+    - cd /data/ztu/askcos2-main-ci/ASKCOSv2/askcos2_core
+    - make test
+  rules:
+    - if: $CI_MERGE_REQUEST_APPROVED && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
+    - allow_failure: false
+  tags:
+    - askcos2-main
+
+cypress-test-job:
+  stage: test
+  script:
+    - echo "Running cypress tests... This will take about 10 seconds."
+    - sleep 10
+    - echo "No cypress issues found."

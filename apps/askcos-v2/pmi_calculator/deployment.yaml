@@ -1,0 +1,15 @@
+docker:
+  cpu:
+    image: ${ASKCOS_REGISTRY}/pmi_calculator:1.0-cpu
+    build: docker build -f Dockerfile_pmi_cpu -t ${ASKCOS_REGISTRY}/pmi_calculator:1.0-cpu .
+    start: sh scripts/serve_cpu_in_docker.sh
+
+singularity:
+  cpu:
+    image: pmi_cpu.sif
+    build: singularity build -f pmi_cpu.sif singularity_pmi_cpu.def
+    start: sh scripts/serve_cpu_in_singularity.sh
+
+commands:
+  stop-docker: docker stop pmi_calculator; docker rm pmi_calculator
+  stop-singularity: singularity instance stop pmi_calculator

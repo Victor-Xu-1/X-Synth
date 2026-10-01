@@ -1,0 +1,6 @@
+# Separate interpreter: the engine pins a different RDKit version from the host.
+aizynthfinder==4.4.1
+rdkit==2023.9.6
+numpy==1.26.4
+PyYAML==6.0.1
+

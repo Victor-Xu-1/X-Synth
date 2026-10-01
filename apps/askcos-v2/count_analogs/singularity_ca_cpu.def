@@ -1,0 +1,29 @@
+Bootstrap: docker
+From: continuumio/miniconda3:22.11.1
+
+%files
+    . /app/count_analogs
+
+%environment
+    export CUDA_VISIBLE_DEVICES=10
+
+%post
+    conda install -y mamba -c conda-forge
+    mamba install -y -q python=3.7 pip rdkit=2020.09.5 -c conda-forge
+    pip install \
+        fastapi==0.95.1 \
+        protobuf==3.19.0 \
+        networkx==2.6 \
+        pulp==2.6 \
+        scipy==1.7 \
+        uvicorn==0.21.1 \
+        numpy==1.21 \
+        requests \
+        tensorflow-cpu==2.7 \
+        joblib \
+        rdchiral \
+        uvicorn==0.21.1
+
+%runscript
+    cd /app/count_analogs
+    python count_analogs_server.py

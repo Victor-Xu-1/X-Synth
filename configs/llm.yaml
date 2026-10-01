@@ -1,0 +1,6 @@
+llm_review:
+  role: rank_review_explain_existing_routes_only
+  may_generate_routes: false
+  may_generate_suppliers: false
+  may_generate_cas: false
+  output_must_reference_existing_route_ids: true

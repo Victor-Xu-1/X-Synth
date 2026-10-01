@@ -1,0 +1,31 @@
+FROM mambaorg/micromamba:1.4.7
+
+USER root
+# Keep the base environment activated
+ARG MAMBA_DOCKERFILE_ACTIVATE=1
+ENV MAMBA_REMOTE_CONNECT_TIMEOUT_SECS=60 \
+    MAMBA_REMOTE_READ_TIMEOUT_SECS=600 \
+    MAMBA_REMOTE_MAX_RETRIES=5
+RUN apt update && apt -y install git gcc g++ make
+
+RUN micromamba install -y python=3.11.2 pip=25.1.1 rdkit=2023.09.5 pandas=2.3.1 -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
+RUN micromamba install -y pytorch==2.1.0 pytorch-lightning==2.5.0 -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && pip install \
+    chemprop==2.0.0 \
+    fastapi==0.88.0 \
+    loguru==0.7.3 \
+    numpy==1.26.4 \
+    prometheus-client==0.22.1 \
+    pydantic==1.10.22 \
+    requests==2.32.4 \
+    tqdm==4.67.1 \
+    uvicorn==0.35.0
+
+COPY . /app/quarc
+WORKDIR /app/quarc
+
+ENV CUDA_VISIBLE_DEVICES 10
+
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && pip install --no-deps -e .
+
+EXPOSE 9921

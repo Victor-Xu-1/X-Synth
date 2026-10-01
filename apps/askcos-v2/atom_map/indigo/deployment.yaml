@@ -1,0 +1,15 @@
+docker:
+  cpu:
+    image: ${ASKCOS_REGISTRY}/atom_map/indigo:1.0-cpu
+    build: docker build -f Dockerfile_indigo_cpu -t ${ASKCOS_REGISTRY}/atom_map/indigo:1.0-cpu .
+    start: sh scripts/serve_cpu_in_docker.sh
+
+singularity:
+  cpu:
+    image: indigo_cpu.sif
+    build: singularity build -f indigo_cpu.sif singularity_indigo_cpu.def
+    start: sh scripts/serve_cpu_in_singularity.sh
+
+commands:
+  stop-docker: docker stop atom_map_indigo; docker rm atom_map_indigo
+  stop-singularity: singularity instance stop atom_map_indigo

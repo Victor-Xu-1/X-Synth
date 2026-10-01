@@ -1,0 +1,11 @@
+Bootstrap: docker
+From: continuumio/miniconda3:23.3.1-0
+
+%post
+    conda install -y mamba=1.4.7 -c conda-forge
+    mamba install -y -q python=3.8 pip rdkit=2020.09.5 -c conda-forge
+    mamba install -y -q pytorch==1.12.1 cudatoolkit=11.3 -c pytorch -c conda-forge
+    pip install \
+        fastapi==0.95.1 \
+        rxnmapper==0.3.0 \
+        uvicorn==0.21.1

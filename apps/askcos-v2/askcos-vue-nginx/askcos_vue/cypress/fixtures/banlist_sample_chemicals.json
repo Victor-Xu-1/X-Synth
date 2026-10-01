@@ -1,0 +1,22 @@
+[
+  {
+    "smiles": "CC(=O)OC1=CC=CC=C1C(=O)O",
+    "description": "Cypress-chemical-banlist-test-from-file",
+    "active": true
+  },
+  {
+    "smiles": "C1=CC=CC=C1",
+    "description": "Cypress-chemical-banlist-test-from-file",
+    "active": true
+  },
+  {
+    "smiles": "CCN(CC)CC",
+    "description": "Cypress-chemical-banlist-test-from-file",
+    "active": true
+  },
+  {
+    "smiles": "CCO",
+    "description": "Cypress-chemical-banlist-test-from-file",
+    "active": false
+  }
+]

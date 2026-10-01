@@ -1,0 +1,118 @@
+stages:
+- install
+- build
+- test
+- coverage-deploy
+
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+  TAG: dev
+  REGISTRY: $CI_REGISTRY_IMAGE
+  npm_config_cache: "$CI_PROJECT_DIR/.npm"
+  CYPRESS_CACHE_FOLDER: "$CI_PROJECT_DIR/cache/Cypress"
+
+default:
+  image: node:20.19-alpine
+  before_script:
+  - cd askcos_vue
+
+install:
+  stage: install
+  script:
+  - npm ci
+  cache:
+    key:
+      files:
+      - package-lock.json
+    paths:
+    - .npm
+  artifacts:
+    paths:
+      - $CI_PROJECT_DIR/askcos_vue/node_modules
+      - cache/Cypress/
+    expire_in: 1 hour
+
+lint-js:
+  stage: test
+  dependencies:
+  - install
+  script:
+  - npm run lint
+  
+# Disable flow pipeline
+# flow-js:
+#   stage: test
+#   dependencies:
+#     - install
+#   before_script:
+#   - apk add gcompat
+#   - cd askcos_vue
+#   script:
+#   - npm run flow
+
+test-js:
+  stage: test
+  dependencies:
+  - install
+  script:
+  - npm run test
+  coverage: /All files[^|]*\|[^|]*\s+([\d\.]+)/
+  cache:
+    paths:
+    - $CI_PROJECT_DIR/askcos_vue/coverage/
+  artifacts:
+    paths:
+    - $CI_PROJECT_DIR/askcos_vue/coverage/
+    when: always
+    reports:
+      junit:
+      - $CI_PROJECT_DIR/askcos_vue/junit.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: $CI_PROJECT_DIR/askcos_vue/coverage/cobertura-coverage.xml
+
+pages:
+  stage: coverage-deploy
+  dependencies:
+  - test-js
+  script:
+  - mkdir  $CI_PROJECT_DIR/.public
+  - cp -r $CI_PROJECT_DIR/askcos_vue/coverage/*  $CI_PROJECT_DIR/.public
+  - mv $CI_PROJECT_DIR/.public $CI_PROJECT_DIR/public
+  artifacts:
+    paths:
+    - $CI_PROJECT_DIR/public
+  only:
+  - main
+
+# cypress-js:
+#   stage: test
+#   image: cypress/browsers:node-20.9.0-chrome-118.0.5993.88-1-ff-118.0.2-edge-118.0.2088.46-1
+#   script:
+#   # start the server in the background
+#   - npm run dev &
+#   # run Cypress tests
+#   - npx cypress run
+#   only:
+#     - main
+
+build_image:
+  stage: build
+  image: docker:24.0.5
+  services:
+  - name: registry.hub.docker.com/library/docker:24.0.5-dind
+    alias: docker
+  before_script:
+  - docker info
+  - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  - apk update && apk add make && apk add git
+  script:
+  - make push
+  - echo "TAG=$TAG" >> .web.artifact.env
+  - echo "IMAGE=$REGISTRY:$TAG" >> .web.artifact.env
+  artifacts:
+    paths:
+    - .web.artifact.env
+  only:
+  - dev
+

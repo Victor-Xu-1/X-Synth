@@ -1,0 +1,22 @@
+[
+  {
+    "smiles": "CC(=O)O.OCC>>CC(=O)OCC.O",
+    "description": "Cypress-reaction-banlist-test-from-file",
+    "active": true
+  },
+  {
+    "smiles": "C=C.[H][H]>>CC",
+    "description": "Cypress-reaction-banlist-test-from-file",
+    "active": true
+  },
+  {
+    "smiles": "CCBr.O>>CCO.Br",
+    "description": "Cypress-reaction-banlist-test-from-file",
+    "active": true
+  },
+  {
+    "smiles": "CC(=O)Cl.N>>CC(=O)N.Cl",
+    "description": "Cypress-reaction-banlist-test-from-file",
+    "active": true
+  }
+]

@@ -1,0 +1,24 @@
+docker:
+  cpu:
+    image: ${ASKCOS_REGISTRY}/atom_map/rxnmapper:1.0-cpu
+    build: docker build -f Dockerfile_rxn_cpu -t ${ASKCOS_REGISTRY}/atom_map/rxnmapper:1.0-cpu .
+    start: sh scripts/serve_cpu_in_docker.sh
+  gpu:
+    image: ${ASKCOS_REGISTRY}/atom_map/rxnmapper:1.0-gpu
+    build: docker build -f Dockerfile_rxn_gpu -t ${ASKCOS_REGISTRY}/atom_map/rxnmapper:1.0-gpu .
+    start: sh scripts/serve_gpu_in_docker.sh
+
+singularity:
+  cpu:
+    image: rxnmapper_cpu.sif
+    build: singularity build -f rxnmapper_cpu.sif singularity_rxn_cpu.def
+    start: sh scripts/serve_cpu_in_singularity.sh
+  gpu:
+    image: rxnmapper_gpu.sif
+    build: singularity build -f rxnmapper_gpu.sif singularity_rxn_gpu.def
+    start: sh scripts/serve_gpu_in_singularity.sh
+
+commands:
+  download:
+  stop-docker: docker stop atom_map_rxnmapper; docker rm atom_map_rxnmapper
+  stop-singularity: singularity instance stop atom_map_rxnmapper

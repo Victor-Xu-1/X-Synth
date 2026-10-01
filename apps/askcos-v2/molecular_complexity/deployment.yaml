@@ -1,0 +1,9 @@
+docker:
+  cpu:
+    image: ${ASKCOS_REGISTRY}/molecular_complexity:1.0-cpu
+    build: docker build -f Dockerfile_cpu -t ${ASKCOS_REGISTRY}/molecular_complexity:1.0-cpu .
+    start: sh scripts/serve_cpu_in_docker.sh
+  
+commands:
+  stop-docker: docker stop molecular_complexity; docker rm molecular_complexity
+  stop-singularity: singularity instance stop molecular_complexity

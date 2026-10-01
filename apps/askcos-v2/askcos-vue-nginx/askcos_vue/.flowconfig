@@ -1,0 +1,14 @@
+[ignore]
+.*/node_modules/.*
+
+[include]
+
+[libs]
+
+[lints]
+
+[options]
+emoji=true
+module.name_mapper='@' -> '<PROJECT_ROOT>/src'
+
+[strict]

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="/nprogress.js"></script>
+    <link rel="stylesheet" href="/nprogress.css" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <!-- <link rel="manifest" href="/site.webmanifest" crossorigin="use-credentials" /> -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- HTML Meta Tags -->
+    <title>X-Synth</title>
+    <meta
+      name="description"
+      content="X-Synth 合成研究平台"
+    />
+
+    <!-- Facebook Meta Tags -->
+    <meta property="og:url" content="https://github.com/Victor-Xu-1/X-Synth" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="X-Synth" />
+    <meta
+      property="og:description"
+      content="X-Synth 合成研究平台"
+    />
+    <meta
+      property="og:image"
+      content="/android-chrome-512x512.png"
+    />
+
+    <!-- Twitter Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta property="twitter:domain" content="github.com" />
+    <meta property="twitter:url" content="https://github.com/Victor-Xu-1/X-Synth" />
+    <meta name="twitter:title" content="X-Synth" />
+    <meta
+      name="twitter:description"
+      content="X-Synth 合成研究平台"
+    />
+    <meta
+      name="twitter:image"
+      content="/android-chrome-512x512.png"
+    />
+    <script>
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker
+          .getRegistrations()
+          .then((registrations) => registrations.forEach((registration) => registration.unregister()))
+          .catch(() => undefined);
+      }
+      if ("caches" in window) {
+        caches
+          .keys()
+          .then((keys) => keys.forEach((key) => caches.delete(key)))
+          .catch(() => undefined);
+      }
+    </script>
+  </head>
+
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,45 @@
+.v-application,
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+}
+
+.v-main,
+.v-main * {
+  box-sizing: border-box;
+}
+
+.v-main .v-container,
+.v-main .v-row,
+.v-main .v-col,
+.v-main .v-sheet,
+.v-main .v-card {
+  min-width: 0;
+}
+
+.v-main .v-img {
+  max-width: 100% !important;
+}
+
+.v-main .v-table__wrapper,
+.v-main .v-data-table__wrapper {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+@media (max-width: 600px) {
+  .v-main .v-btn {
+    min-width: 0;
+  }
+
+  .v-main .v-sheet > .text-center,
+  .v-main .v-card > .text-center,
+  .v-main .text-center {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .v-main img {
+    max-width: 100%;
+    height: auto;
+  }
+}

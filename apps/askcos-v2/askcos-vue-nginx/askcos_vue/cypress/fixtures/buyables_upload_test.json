@@ -1,0 +1,44 @@
+[
+    {
+        "smiles": "CCCCC",
+        "ppg": 10,
+        "source": "Cypress-buyables",
+        "lead_time": "1day",
+        "properties": [
+            {
+                "links": "https://test.com/query=CCCCC"
+            },
+            {
+                "availability": "Out-of-stock"
+            }
+        ]
+    },
+    {
+        "smiles": "CCCC",
+        "ppg": 10,
+        "source": "Cypress-buyables",
+        "lead_time": "1week",
+        "properties": [
+            {
+                "links": "https://test1.com/query=CCCC"
+            },
+            {
+                "availability": "In-stock"
+            }
+        ]
+    },
+    {
+        "smiles": "CCCCCC",
+        "ppg": 100,
+        "source": "Cypress-buyables",
+        "lead_time": "1month",
+        "properties": [
+            {
+                "links": "https://test2.com/query=CCCCCC"
+            },
+            {
+                "availability": "In-stock"
+            }
+        ]
+    }
+]
