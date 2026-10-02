@@ -1,0 +1,133 @@
+import os
+import time
+from dataclasses import dataclass
+from threading import Event
+
+from .transport import AskcosTransport, EngineUnavailable
+
+
+@dataclass(frozen=True)
+class AskcosSearchResult:
+    strategy: str
+    payload: dict
+
+
+def build_search_options(
+    request, *, strategy: str, models: list[str], pass_number: int = 1
+):
+    if strategy not in {"mcts", "retro_star"} or not models:
+        raise ValueError("A configured native search strategy and model are required")
+    expansion = request.expansion_time
+    tuning = request.tuning
+    options = {
+        "smiles": request.smiles,
+        "expand_one_options": {
+            "retro_backend_options": [
+                {
+                    "retro_backend": "template_relevance",
+                    "retro_model_name": name,
+                    "max_num_templates": min(5000, tuning.template_count * pass_number),
+                    "max_cum_prob": tuning.cumulative_probability,
+                }
+                for name in models
+            ],
+            "use_fast_filter": True,
+            "filter_threshold": tuning.minimum_plausibility,
+            "return_reacting_atoms": False,
+            "extract_template": False,
+        },
+        "build_tree_options": {
+            "expansion_time": expansion,
+            "max_trees": request.max_paths,
+            "max_depth": min(50, tuning.max_depth + 4 * (pass_number - 1)),
+            "max_branching": tuning.max_branching,
+            "return_first": False,
+            "termination_logic": {"and": ["buyable"]},
+            "buyables_source": "unified_commercial",
+        },
+        "enumerate_paths_options": {
+            "json_format": "nodelink",
+            "max_paths": request.max_paths,
+            "sorting_metric": "score",
+            "score_trees": True,
+            "cluster_trees": True,
+            "validate_paths": True,
+        },
+    }
+    if strategy == "retro_star":
+        options["build_tree_options"]["use_value_network"] = True
+    return options
+
+
+class AskcosEngine:
+    engine_id = "askcos_v2"
+
+    def __init__(self, transport: AskcosTransport):
+        self.transport = transport
+
+    def search(
+        self,
+        request,
+        *,
+        strategy: str,
+        models: list[str],
+        child_id: str,
+        pass_number: int = 1,
+        cancelled=lambda: False,
+        interrupted: Event | None = None,
+        progress=lambda value: None,
+    ):
+        options = build_search_options(
+            request, strategy=strategy, models=models, pass_number=pass_number
+        )
+        expansion = request.expansion_time
+        port = 9311 if strategy == "mcts" else 9321
+        url = os.environ.get(
+            f"X_SYNTH_{strategy.upper()}_URL", f"http://127.0.0.1:{port}"
+        )
+        native = AskcosTransport(url, budget=self.transport.budget)
+        record = native.call(
+            "/api/search-jobs", body={"id": child_id, "input": options}, timeout=30
+        )
+        deadline = time.monotonic() + expansion + 900
+        last_progress = None
+        while True:
+            if cancelled():
+                native.call("/api/search-jobs/" + child_id, method="DELETE", timeout=5)
+                raise EngineUnavailable("search_cancelled", recoverable=False)
+            if interrupted is not None and interrupted.is_set():
+                # The native child remains alive; a resumed product worker attaches to its ID.
+                raise EngineUnavailable("product_worker_stopped")
+            if not isinstance(record, dict) or record.get("id") != child_id:
+                raise EngineUnavailable(
+                    "invalid_native_search_record", recoverable=False
+                )
+            observed = record.get("progress")
+            if isinstance(observed, dict) and observed != last_progress:
+                progress(observed)
+                last_progress = observed
+            if record.get("status") == "completed":
+                payload = native.call(
+                    "/api/search-jobs/" + child_id + "/result", timeout=60
+                )
+                if not isinstance(payload, dict) or not isinstance(
+                    payload.get("uds"), dict
+                ):
+                    raise EngineUnavailable(
+                        "invalid_native_search_result", recoverable=False
+                    )
+                return AskcosSearchResult(
+                    strategy, {"result": payload, "target_smiles": request.smiles}
+                )
+            if record.get("status") in {"failed", "cancelled", "interrupted"}:
+                raise EngineUnavailable(
+                    record.get("error_code", "native_search_" + record["status"]),
+                    recoverable=record["status"] == "interrupted",
+                )
+            if time.monotonic() >= deadline:
+                raise EngineUnavailable("native_search_deadline")
+            if interrupted is not None:
+                interrupted.wait(1)
+            else:
+                time.sleep(1)
+            record = native.call("/api/search-jobs/" + child_id, timeout=10)

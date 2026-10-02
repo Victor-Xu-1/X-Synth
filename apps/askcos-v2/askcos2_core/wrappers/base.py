@@ -4,6 +4,8 @@ from configs import db_config
 from datetime import date
 from pydantic import BaseModel
 from pymongo import errors, MongoClient
+from packages.adapters.askcos.native_http import NativeSession, NativeProtocolError
+from urllib.parse import urlsplit
 
 
 class BaseResponse(BaseModel):
@@ -48,7 +50,7 @@ class BaseWrapper:
             self.prediction_url = config["deployment"]["default_prediction_url"]
 
         self.config["prediction_url_in_use"] = self.prediction_url
-        self.session_sync = requests.Session()
+        self.session_sync = NativeSession()
 
     def get_config(self) -> dict:
         return self.config
@@ -58,20 +60,10 @@ class BaseWrapper:
 
     def is_ready(self) -> bool:
         try:
-            resp = self.session_sync.get(self.prediction_url)
-            status_code = resp.status_code
-            if status_code != 404:
-                return True
-            # 404 can also be root endpoint not found rather than unavailable service
-            # Right now we only need to check FastAPI (via "detail")
-            # or torchserve (via "message")
-            resp = resp.json()
-            ready = (
-                resp.get("detail") == "Not Found" or
-                resp.get("message") ==
-                "Requested resource is not found, please refer to API document."
-            )
-        except:
+            parsed = urlsplit(self.prediction_url)
+            resp = self.session_sync.get(f"{parsed.scheme}://{parsed.netloc}/health/ready", timeout=2)
+            ready = resp.json().get("status") == "ready"
+        except (requests.RequestException, ValueError):
             ready = False
 
         return ready
@@ -110,6 +102,8 @@ class BaseWrapper:
 
     @staticmethod
     def convert_output_to_response(output: BaseModel) -> BaseResponse:
+        if getattr(output, "status", "SUCCESS") != "SUCCESS":
+            raise NativeProtocolError("Native model execution failed")
         response = {
             "status_code": 200,
             "message": "",

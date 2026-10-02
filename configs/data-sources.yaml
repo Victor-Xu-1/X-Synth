@@ -1,27 +1,24 @@
 reaction_sources:
   - name: USPTO
     role: public_reaction_corpus
-    enabled: true
+    enabled: false
   - name: ORD
     role: open_reaction_database
-    enabled: true
+    enabled: false
   - name: Organic Syntheses
     role: curated_experimental_procedures
-    enabled: true
+    enabled: false
   - name: Reaxys
     role: licensed_reaction_corpus
-    enabled: configured_if_available
+    enabled: false
   - name: Pistachio
     role: licensed_reaction_corpus
-    enabled: configured_if_available
+    enabled: false
   - name: BKMS
     role: biochemical_reaction_corpus
-    enabled: optional
+    enabled: false
 unified_template_registry:
-  source_of_truth: true
-  compiles_to:
-    - askcos_template_relevance
-    - aizynthfinder_policy
-    - exact_match_index
-    - retrosim_similarity_index
-    - condition_forward_validation_index
+  runtime_authority: X_SYNTH_TEMPLATE_LIBRARY_DB
+  query_service: /api/v1/template-library/query
+  native_model_template_ordering: preserved
+  compatible_model_installation_required: true

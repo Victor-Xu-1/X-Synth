@@ -82,9 +82,15 @@ def group_results(
 
     # calculate cluster indices
     if cluster_method == "hdbscan":
-        clusterer = hdbscan.HDBSCAN(min_cluster_size=5, gen_min_span_tree=False)
-        clusterer.fit(diff_fp)
-        res = clusterer.labels_
+        if len(diff_fp) < 5:
+            # Density clusters are not defined for these small batches. Group exact
+            # transformed fingerprints rather than inventing density evidence.
+            _, res = np.unique(diff_fp, axis=0, return_inverse=True)
+        else:
+            clusterer = hdbscan.HDBSCAN(min_cluster_size=5, min_samples=min(5, len(diff_fp) - 1),
+                                      gen_min_span_tree=False)
+            clusterer.fit(diff_fp)
+            res = clusterer.labels_
         # non-clustered inputs have id -1, make them appear as individual clusters
         max_cluster = np.amax(res)
         for i in range(len(res)):
@@ -142,10 +148,8 @@ def group_results(
             best_cluster_score[cluster_id] = max(
                 best_cluster_score.get(cluster_id, -float("inf")), score
             )
-        print(f"best_cluster_score: {best_cluster_score}")
         new_order = list(sorted(best_cluster_score.items(), key=lambda x: -x[1]))
         order_mapping = {new_order[n][0]: n for n in range(len(new_order))}
-        print(f"order_mapping: {order_mapping}")
         res = [order_mapping[n] for n in res]
 
     name_dict = {c: f"Reaction Cluster #{str(c + 1)}" for c in res}

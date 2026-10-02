@@ -1,4 +1,5 @@
 import requests
+from packages.adapters.askcos.native_http import NativeSession, post_json
 import traceback as tb
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
@@ -39,7 +40,7 @@ class RetroAPI:
     def __init__(self, default_url: str, default_backend: str):
         self.default_url = default_url
         self.default_backend = default_backend
-        self.session = requests.Session()
+        self.session = NativeSession()
 
     def __call__(
         self,
@@ -71,21 +72,7 @@ class RetroAPI:
         }
 
         RetroInput(**input)                         # merely validate the input
-        try:
-            response = self.session.post(url=url, json=input).json()
-            RetroResponse(**response)               # merely validate the response
-        except requests.ConnectionError as e:
-            # Handle the connection error appropriately
-            print("Connection error occur for RetroAPI:")
-            tb.print_exc()
-
-            return None
-        except Exception as e:
-            # Handle any other exception that might occur
-            print("An error occurred for RetroAPI:")
-            tb.print_exc()
-
-            return None
+        response = post_json(self.session, url, payload=input, response_model=RetroResponse)
 
         result = response["result"]
 

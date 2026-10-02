@@ -48,6 +48,9 @@ def canonicalize_smiles(smiles: str) -> str:
 
 class MCTS:
     def __init__(self):
+        from threading import Event
+        self.cancel_event = Event()
+        self.checkpoint = None
         self.expand_one_options = None
         self.build_tree_options = None
         self.enumerate_paths_options = None
@@ -134,6 +137,7 @@ class MCTS:
 
         start = time.time()
         self.build_tree(target=target)
+        self.check_cancelled()
         build_time = time.time() - start
 
         start = time.time()
@@ -329,13 +333,16 @@ class MCTS:
         Build retrosynthesis tree by iterative expansion of precursor nodes.
         """
         print("Initializing tree...")
-        self._initialize(target)
+        restored = self.checkpoint.restore(self, target) if self.checkpoint else None
+        if restored is None:
+            self._initialize(target)
 
         print("Starting tree expansion...")
-        start_time = time.time()
+        start_time = time.time() - (restored or 0.0)
         elapsed_time = time.time() - start_time
 
         while elapsed_time < self.build_tree_options.expansion_time and not self.done:
+            self.check_cancelled()
             chem_path, rxn_path = self._select()
             if not chem_path and not rxn_path:
                 # backtracked to the root, which means no path was found
@@ -346,6 +353,8 @@ class MCTS:
             elapsed_time = time.time() - start_time
 
             self.iterations += 1
+            if self.checkpoint:
+                self.checkpoint.save(self, elapsed_time)
             if self.iterations % 100 == 0:
                 print(f"Iteration {self.iterations} ({elapsed_time: .2f}s): "
                       f"|C| = {len(self.chemicals)} "
@@ -358,6 +367,8 @@ class MCTS:
                     print("Stopping expansion to return first pathway.")
                     break
 
+        if self.checkpoint:
+            self.checkpoint.save(self, elapsed_time, force=True)
         print("Tree expansion complete.")
         self.print_stats()
 
@@ -376,6 +387,7 @@ class MCTS:
         invalid_options = set()
 
         while True:
+            self.check_cancelled()
             leaf = chem_path[-1]
 
             self.tree.nodes[leaf]["min_depth"] = min(self.tree.nodes[leaf]["min_depth"], len(chem_path)-1) # update min_depth
@@ -505,6 +517,11 @@ class MCTS:
             ancestors.add(reactant)
 
         return ancestors
+
+    def check_cancelled(self):
+        if self.cancel_event.is_set():
+            from packages.adapters.askcos.native_search_jobs import SearchCancelled
+            raise SearchCancelled()
 
     def _expand(self, chem_path: List[str]) -> None:
         """

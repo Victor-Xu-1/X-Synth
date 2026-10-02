@@ -1,4 +1,5 @@
 import requests
+from packages.adapters.askcos.native_http import NativeSession, post_json, NativeProtocolError
 import traceback as tb
 import json
 from pydantic import BaseModel, Field
@@ -24,7 +25,7 @@ class ValueFnAPI:
     """Value function API"""
     def __init__(self, default_url: str):
         self.default_url = default_url
-        self.session = requests.Session()
+        self.session = NativeSession()
 
     def __call__(
         self,
@@ -41,31 +42,11 @@ class ValueFnAPI:
         }
 
         ValueFnInput(**input)                       # merely validate the input
+        response = post_json(self.session, url, payload=input)
         try:
-            response = self.session.post(url=url, data=json.dumps(input)).json()
-            try:
-                response = {
-                    "value": response["result"][0][0]
-                }
-            except:
-                response = {
-                    "value": 0.0
-                }
-
-            ValueFnResponse(**response)             # merely validate the response
-        except requests.ConnectionError as e:
-            # Handle the connection error appropriately
-            print("Connection error for PricerAPI:")
-            tb.print_exc()
-
-            return 0.0
-        except Exception as e:
-            # Handle any other exception that might occur
-            print("An error occurred for PricerAPI:")
-            tb.print_exc()
-
-            return 0.0
-
-        value = response.get("value", 0.0)
+            value = response["result"][0][0]
+            ValueFnResponse(value=value)
+        except (KeyError, IndexError, TypeError, ValueError):
+            raise NativeProtocolError("Value network returned an invalid score") from None
 
         return value

@@ -6,9 +6,9 @@ def test_publication_keeps_source_and_third_party_notices():
         "README.md", "NOTICE", "LICENSE", ".env.example", "pyproject.toml",
         "apps/askcos-v2/askcos2_core/.env.example",
         "apps/askcos-v2/retro/template_relevance/LICENSE_REAXYS_MODEL",
-        "packages/orchestrator/unified_route_service.py",
+        "packages/orchestrator/pipeline.py",
         "engines/aizynthfinder/models/USPTO/config.yml",
-        "apps/askcos-v2/askcos-vue-nginx/askcos_vue/package-lock.json",
+        "apps/web/package-lock.json",
         ".github/workflows/ci.yml",
     ):
         assert is_public_source(path), path
@@ -26,7 +26,7 @@ def test_publication_excludes_secrets_models_and_private_runtime_data():
         "engines/aizynthfinder/models/uspto_templates.csv.gz",
         "tests/real-cases/supplier_real_batch_20260702_targets.smi",
         "docs/test-results/previous-task.md",
-        "apps/askcos-v2/askcos-vue-nginx/askcos_vue/coverage/summary.json",
+        "apps/web/coverage/summary.json",
         "apps/askcos-v2/.runtime-run-proxy.sh",
         "apps/askcos-v2/solubility_fusion_cycle/Density/qspr_density_model.pkl",
         "apps/askcos-v2/atom_map/wln/utilities/efgs/output/analysis.csv",

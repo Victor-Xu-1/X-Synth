@@ -1,3 +1,3 @@
-from .client import ASKCOSAdapter
+from .engine import AskcosEngine, AskcosSearchResult
 
-__all__ = ["ASKCOSAdapter"]
+__all__ = ["AskcosEngine", "AskcosSearchResult"]

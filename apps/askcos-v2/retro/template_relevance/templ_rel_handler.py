@@ -2,9 +2,11 @@ import argparse
 import glob
 import numpy as np
 import os
+from copy import deepcopy
 import templ_rel_parser
 import torch
 import torch.nn.functional as F
+from attribute_filters import filter_indices
 from utils import canonicalize_smiles
 from rdchiral.initialization import rdchiralReactants, rdchiralReaction
 from rdchiral.main import rdchiralRun
@@ -55,12 +57,15 @@ class TemplRelHandler:
         # Note: the model will be built using pretraining args
         self.model, _ = get_model(self.args, device=self.device)
         self.model.eval()
+        if self.model.output_layer.out_features != len(self.templates):
+            raise ValueError("Trained model output does not match its template index")
+        if any(template.get("index", index) != index for index, template in enumerate(self.templates)):
+            raise ValueError("Template ordering does not match the trained model index")
 
         self.initialized = True
 
     def preprocess(self, data: List[dict]
                    ) -> Tuple[List[str], int, float, List[Dict[str, Any]]]:
-        print(f"input: {data}")
         canonical_smiles = [canonicalize_smiles(smi)
                             for smi in data[0]["body"]["smiles"]]
         max_num_templates = data[0]["body"].get("max_num_templates", 1000)
@@ -72,14 +77,10 @@ class TemplRelHandler:
     def inference(self, inputs: Tuple[List[str], int, float, List[Dict[str, Any]]]
                   ) -> List[Dict[str, Any]]:
         canonical_smiles, max_num_templates, max_cum_prob, attribute_filter = inputs
-        filters = [x for x in attribute_filter
-                   if x.get("name") in self.template_attributes]
+        filters = attribute_filter
 
         if filters:
-            filter_query = " and ".join(
-                [f"({q['name']} {q['logic']} {q['value']})" for q in filters]
-            )
-            filtered_indices = self.template_attributes.query(filter_query).index.values
+            filtered_indices = filter_indices(self.template_attributes, filters)
 
         results = []
 
@@ -122,7 +123,7 @@ class TemplRelHandler:
                     "scores": []
                 }
                 for rank, (score, idx) in enumerate(zip(scores, indices), start=1):
-                    template = self.templates[idx]
+                    template = dict(self.templates[idx])
                     # IMPORTANT MAGIC from v1. DO NOT TOUCH
                     # Force reactants and products to be one pseudo-molecule (bookkeeping)
                     reaction_smarts = template["reaction_smarts"]
@@ -176,7 +177,7 @@ class TemplRelHandler:
                             template["num_examples"] = template["count"]
                             smiles_to_index[joined_smiles] = len(result["templates"])
 
-                            result["templates"].append(template)
+                            result["templates"].append(deepcopy(template))
                             result["reactants"].append(reactant)
                             result["scores"].append(score.item())
 

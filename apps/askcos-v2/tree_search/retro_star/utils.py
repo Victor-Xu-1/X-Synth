@@ -240,7 +240,8 @@ def is_terminal(
     """
 
     def buyable() -> bool:
-        return bool(ppg) or (build_tree_options.custom_buyables and
+        catalog_match = any(isinstance(item, dict) and item.get("buyable") is True for item in (properties or []))
+        return catalog_match or bool(ppg) or (build_tree_options.custom_buyables and
                              smiles in build_tree_options.custom_buyables)
 
     def max_ppg() -> bool:

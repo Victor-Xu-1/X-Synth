@@ -5,8 +5,9 @@ import os
 import sys
 import traceback
 import uvicorn
+from contextlib import asynccontextmanager
 from datetime import datetime
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from rdkit import RDLogger
 from pathway_ranker import PathwayRanker
@@ -18,7 +19,23 @@ base_response = {
     "results": []
 }
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app):
+    global ranker
+    ranker = PathwayRanker()
+    ranker.load(model_path=os.path.join(os.environ.get("ASKCOS_DATA_DIR", "data"), "models"))
+    yield
+    ranker = None
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+@app.get("/health/ready")
+def ready():
+    if globals().get("ranker") is None or ranker.model is None:
+        raise HTTPException(503, "Pathway-ranker checkpoint is not loaded")
+    return {"status": "ready", "model": "treeLSTM512-fp2048"}
 
 
 class PathwayRankerInput(BaseModel):
@@ -82,10 +99,6 @@ if __name__ == "__main__":
     sh.setLevel(logging.INFO)
     logger.addHandler(fh)
     logger.addHandler(sh)
-
-    # set up apis
-    ranker = PathwayRanker()
-    ranker.load(model_path="data/models")
 
     # start running
     uvicorn.run(app, host=args.server_ip, port=args.server_port)

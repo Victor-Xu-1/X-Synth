@@ -8,7 +8,10 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
-from fastapi_mcp import FastApiMCP
+from packages.adapters.askcos.native_http import NativeProtocolError
+from requests.exceptions import RequestException
+from pymongo import timeout as mongo_timeout
+from pymongo.errors import PyMongoError
 from fastapi.middleware.cors import CORSMiddleware
 from tooltips import TOOLTIPS
 from typing import Any, Callable
@@ -67,22 +70,38 @@ allow_headers = os.environ.get("ALLOW_HEADERS")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allow_origins.split(",") if allow_origins else ["*"],
+    allow_origins=allow_origins.split(",") if allow_origins else [],
     allow_credentials=True,
     allow_methods=allow_methods.split(",") if allow_methods else ["*"],
     allow_headers=allow_headers.split(",") if allow_headers else ["*"],
 )
 
 
-# overwritten erro-handling function
+@app.get("/health/ready")
+def ready():
+    try:
+        with mongo_timeout(1):
+            pricer = util_registry.get_util("pricer")
+            pricer._pricer.client.admin.command("ping")
+    except PyMongoError:
+        return JSONResponse(status_code=503, content={"status": "unavailable", "database": "disconnected"})
+    snapshot = pricer.catalog.index.summary if pricer.catalog is not None else None
+    return {"status": "ready", "database": "connected", "stock_snapshot": snapshot}
+
+
+@app.exception_handler(NativeProtocolError)
+@app.exception_handler(RequestException)
+async def native_error(request, exc):
+    return JSONResponse(status_code=503, content={"detail": "Native dependency unavailable"})
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content=jsonable_encoder({
-            "detail": exc.errors(),
-            "body": exc.body,
-            "string_error": str(exc)
+            "detail": [{"loc": error["loc"], "type": error["type"], "msg": error["msg"]}
+                       for error in exc.errors()]
         }),
     )
 
@@ -245,29 +264,22 @@ runtime_router.add_api_route(
 )
 app.include_router(runtime_router)
 
-# mcp_app = FastAPI()
-mcp = FastApiMCP(
-    app,
-    include_operations=INCLUDE_OPERATIONS
-)
-mcp.mount_http(app)
+if os.environ.get("ASKCOS_ENABLE_MCP", "0") == "1":
+    from fastapi_mcp import FastApiMCP
+    mcp = FastApiMCP(app, include_operations=INCLUDE_OPERATIONS)
+    mcp.mount_http(app)
 
 
 def get_api_worker_count() -> int:
-    raw_value = os.environ.get("ASKCOS_API_WORKERS", "2")
-    try:
-        return max(1, int(raw_value))
-    except ValueError:
-        print(
-            f"Invalid ASKCOS_API_WORKERS={raw_value!r}; falling back to 2 workers.",
-            file=sys.stderr,
-        )
-        return 2
+    workers = int(os.environ.get("ASKCOS_API_WORKERS", "1"))
+    if not 1 <= workers <= 8:
+        raise ValueError("ASKCOS_API_WORKERS must be between 1 and 8")
+    return workers
 
 
 if __name__ == "__main__":
     uvicorn_kwargs = {
-        "host": "0.0.0.0",
+        "host": os.environ.get("ASKCOS_BIND_HOST", "127.0.0.1"),
         "port": 9100,
         "ssl_certfile": os.environ.get("ASKCOS_SSL_CERT_FILE"),
         "ssl_keyfile": os.environ.get("ASKCOS_SSL_KEY_FILE"),
@@ -278,11 +290,3 @@ if __name__ == "__main__":
         uvicorn.run("app:app", workers=workers, **uvicorn_kwargs)
     else:
         uvicorn.run(app, **uvicorn_kwargs)
-
-    # uvicorn.run(
-    #     mcp_app,
-    #     host="0.0.0.0",
-    #     port=9150,
-    #     ssl_certfile=os.environ.get("ASKCOS_MCP_SSL_CERT_FILE"),
-    #     ssl_keyfile=os.environ.get("ASKCOS_MCP_SSL_KEY_FILE")
-    # )

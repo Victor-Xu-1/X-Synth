@@ -11,7 +11,7 @@ import shutil
 import subprocess
 
 
-ROOT_FILES = {".gitignore", ".env.example", "README.md", "LICENSE", "NOTICE", "pyproject.toml"}
+ROOT_FILES = {".gitignore", ".env.example", "README.md", "LICENSE", "NOTICE", "pyproject.toml", "VERSION"}
 SOURCE_DIRS = {"apps", "configs", "engines", "packages", "requirements", "scripts", "tests", "docs", ".github"}
 PRIVATE_PARTS = {
     ".git", ".venv", "__pycache__", ".pytest_cache", "node_modules", "dist", "build",

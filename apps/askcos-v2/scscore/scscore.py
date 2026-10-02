@@ -1,4 +1,4 @@
-import askcos_pickle as pickle
+import os
 import math
 import numpy as np
 import rdkit.Chem as Chem
@@ -28,8 +28,9 @@ class SCScorePrecursorPrioritizer:
             score_scale (float, optional): Upper-bound of scale for scoring.
                 (default: {5.0})
         """
-        with open("data/model_1024bool.pickle", "rb") as fid:
-            self.vars = pickle.load(fid)
+        model_path = os.path.join(os.environ.get("ASKCOS_DATA_DIR", "data"), "models", "scscore", "model_1024bool.npz")
+        with np.load(model_path, allow_pickle=False) as weights:
+            self.vars = [weights[f"weight_{index}"] for index in range(12)]
         self.FP_rad = 2
         self.FP_len = 1024
         self.score_scale = score_scale

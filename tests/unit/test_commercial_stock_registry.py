@@ -154,9 +154,8 @@ def test_stock_registry_adds_supplier_evidence_to_already_closed_routes():
 
     updated = registry.close_route_if_buyable(route)
 
-    assert updated.closed is True
-    assert updated.closure_sources == ["askcos_buyables", "pubchem:Sigma-Aldrich:459844"]
-    assert updated.metadata["external_stock_closure"] == ["pubchem:Sigma-Aldrich:459844"]
+    assert updated.closed is False
+    assert updated.metadata["unclosed_precursors"] == ["C"]
 
 
 def test_stock_registry_exposes_bounded_accepted_smiles_without_copying_all_decisions():

@@ -36,7 +36,7 @@ def build_domestic_stock_artifacts(
     source_paths: Iterable[Path | str],
     output_dir: Path | str,
     default_source: str = "operator_supplier_export",
-    default_ppg: float = 1.0,
+    default_ppg: float | None = None,
 ) -> DomesticStockArtifacts:
     """Compile one domestic supplier export set into ASKCOS, Synon, and AiZynthFinder stock artifacts."""
     output = Path(output_dir)
@@ -127,7 +127,7 @@ def _compile_row(
     source_path: Path,
     row_number: int,
     default_source: str,
-    default_ppg: float,
+    default_ppg: float | None,
 ) -> dict[str, Any]:
     raw_smiles = _first_text(row, FIELD_ALIASES["smiles"])
     if not raw_smiles:
@@ -142,6 +142,9 @@ def _compile_row(
     cas = _first_text(row, FIELD_ALIASES["cas"])
     url = _first_text(row, FIELD_ALIASES["url"])
     availability = _first_text(row, FIELD_ALIASES["availability"])
+
+    if row.get("evidence_role") == "structure_metadata" or catalog_id.startswith("PubChemCID:"):
+        return _rejected(row, source_path, row_number, "compound_metadata_is_not_a_supplier_catalog", smiles=smiles, source=source)
 
     if not any([cas, supplier, catalog_id, url, availability]):
         return _rejected(
@@ -295,13 +298,13 @@ def _clean_text(value: Any) -> str:
     return "" if text.lower() in {"nan", "none", "null"} else text
 
 
-def _parse_ppg(value: str, default_ppg: float) -> float:
+def _parse_ppg(value: str, default_ppg: float | None) -> float | None:
     if not value:
-        return float(default_ppg)
-    import re
+        return default_ppg
+    import math
 
-    match = re.search(r"\d+(?:\.\d+)?", value.replace(",", ""))
-    if not match:
-        return float(default_ppg)
-    parsed = float(match.group(0))
-    return parsed if parsed > 0 else float(default_ppg)
+    try:
+        parsed = float(value.replace(",", ""))
+    except ValueError:
+        return None
+    return parsed if math.isfinite(parsed) and parsed > 0 else None

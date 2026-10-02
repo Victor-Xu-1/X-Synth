@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable
-import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 from packages.adapters.stock.commercial_stock import CommercialStockRegistry
+from packages.platform.atomic_file import write_json
 from packages.route_schema.route_schema import RouteCandidate
 from packages.validation.route_quality import RouteQualityPolicy
 
@@ -70,6 +70,10 @@ def build_unified_route_pool_artifacts(
 
     for source in askcos_sources or []:
         routes = normalize_askcos_tree_result(source.payload, engine=source.engine)
+        if hasattr(stock_registry, "prefetch"):
+            stock_registry.prefetch(
+                [smiles for route in routes for smiles in route.starting_materials]
+            )
         routes = _apply_stock_registry(routes, stock_registry)
         if route_transform is not None:
             routes = route_transform(routes)
@@ -101,6 +105,10 @@ def build_unified_route_pool_artifacts(
 
     for source in aizynthfinder_sources or []:
         routes = normalize_aizynthfinder_payload(source.payload)
+        if hasattr(stock_registry, "prefetch"):
+            stock_registry.prefetch(
+                [smiles for route in routes for smiles in route.starting_materials]
+            )
         routes = _apply_stock_registry(routes, stock_registry)
         if route_transform is not None:
             routes = route_transform(routes)
@@ -117,8 +125,7 @@ def build_unified_route_pool_artifacts(
     all_routes = pool.ranked_routes()
     selected_routes = pool.final_candidates()
     quality_decisions = [
-        effective_quality_policy.evaluate_route(route)
-        for route in all_routes
+        effective_quality_policy.evaluate_route(route) for route in all_routes
     ]
     quality_rejection_counts = Counter(
         reason
@@ -127,27 +134,22 @@ def build_unified_route_pool_artifacts(
         for reason in decision.reasons
     )
     quality_rejected_route_count = sum(
-        not decision.accepted
-        for decision in quality_decisions
+        not decision.accepted for decision in quality_decisions
     )
     selected_closed_route_count = sum(1 for route in selected_routes if route.closed)
     unified_routes_path = output_dir / "unified_routes.json"
     selected_routes_path = output_dir / "selected_routes.json"
     summary_path = output_dir / "summary.json"
 
-    unified_routes_path.write_text(
-        json.dumps([asdict(route) for route in all_routes], ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    selected_routes_path.write_text(
-        json.dumps([asdict(route) for route in selected_routes], ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    write_json(unified_routes_path, [asdict(route) for route in all_routes])
+    write_json(selected_routes_path, [asdict(route) for route in selected_routes])
 
     summary = {
         "id": id,
         "target_key": pool.target_key(),
-        "source_summaries": [_compact_source_summary(item) for item in source_summaries],
+        "source_summaries": [
+            _compact_source_summary(item) for item in source_summaries
+        ],
         "total_route_count": len(all_routes),
         "closed_route_count": pool.closed_route_count(),
         "quality_accepted_route_count": len(all_routes) - quality_rejected_route_count,
@@ -175,7 +177,7 @@ def build_unified_route_pool_artifacts(
         "unified_routes_path": str(unified_routes_path),
         "selected_routes_path": str(selected_routes_path),
     }
-    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_json(summary_path, summary)
 
     return UnifiedRoutePoolBuildResult(
         summary=summary,
@@ -216,28 +218,28 @@ def _askcos_frontier_summary(payload: dict[str, Any]) -> dict[str, Any]:
             "build_time",
         )
         summary["search_stats"] = {
-            name: stats[name]
-            for name in stat_names
-            if stats.get(name) is not None
+            name: stats[name] for name in stat_names if stats.get(name) is not None
         }
     if not isinstance(frontier, dict):
         return summary
     top_leaves = frontier.get("top_frontier_leaves")
     if not isinstance(top_leaves, list):
         top_leaves = []
-    summary.update({
-        "frontier_leaf_count": frontier.get("frontier_leaf_count"),
-        "frontier_reaction_node_count": frontier.get("reaction_node_count"),
-        "frontier_examples": [
-            {
-                "smiles": item.get("smiles"),
-                "heavy_atom_count": item.get("heavy_atom_count"),
-                "score": item.get("score"),
-            }
-            for item in top_leaves[:5]
-            if isinstance(item, dict)
-        ],
-    })
+    summary.update(
+        {
+            "frontier_leaf_count": frontier.get("frontier_leaf_count"),
+            "frontier_reaction_node_count": frontier.get("reaction_node_count"),
+            "frontier_examples": [
+                {
+                    "smiles": item.get("smiles"),
+                    "heavy_atom_count": item.get("heavy_atom_count"),
+                    "score": item.get("score"),
+                }
+                for item in top_leaves[:5]
+                if isinstance(item, dict)
+            ],
+        }
+    )
     return summary
 
 
@@ -267,7 +269,9 @@ def _closure_diagnostics(
     selected_closed = [route for route in selected_routes if route.closed]
     top_unclosed = _top_unclosed_precursors(selected_routes or all_routes)
     route_count_by_engine = _route_counts_by_engine(all_routes)
-    closed_count_by_engine = _route_counts_by_engine([route for route in all_routes if route.closed])
+    closed_count_by_engine = _route_counts_by_engine(
+        [route for route in all_routes if route.closed]
+    )
     askcos_route_count = sum(
         int(item.get("route_count") or 0)
         for item in source_summaries
@@ -291,7 +295,9 @@ def _closure_diagnostics(
     return {
         "blockers": blockers,
         "selected_closed_route_count": len(selected_closed),
-        "selected_unclosed_route_count": len([route for route in selected_routes if not route.closed]),
+        "selected_unclosed_route_count": len(
+            [route for route in selected_routes if not route.closed]
+        ),
         "top_unclosed_precursors": top_unclosed,
         "route_count_by_engine": route_count_by_engine,
         "closed_count_by_engine": closed_count_by_engine,
@@ -299,7 +305,9 @@ def _closure_diagnostics(
     }
 
 
-def _top_unclosed_precursors(routes: list[RouteCandidate], *, limit: int = 10) -> list[dict[str, Any]]:
+def _top_unclosed_precursors(
+    routes: list[RouteCandidate], *, limit: int = 10
+) -> list[dict[str, Any]]:
     counts: dict[str, dict[str, Any]] = {}
     for route in routes:
         unclosed = route.metadata.get("unclosed_precursors") or []

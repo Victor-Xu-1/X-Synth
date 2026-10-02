@@ -26,7 +26,7 @@ class PathwayRanker:
         model_path = os.path.join(model_path, "pathway_ranker", "treeLSTM512-fp2048.pt")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        state = torch.load(model_path, map_location=self.device)
+        state = torch.load(model_path, map_location=self.device, weights_only=True)
         state_dict = state["state_dict"]
 
         self.model = PathwayRankingModel(self.fp_size, self.lstm_size, encoder=True)
@@ -66,9 +66,10 @@ class PathwayRanker:
         num_nodes = data["num_nodes"]
 
         # Forward pass
-        scores, encoded_trees = self.model(
-            pfp, rxnfp, adjacency_list, node_order, edge_order, num_nodes
-        )
+        with torch.inference_mode():
+            scores, encoded_trees = self.model(
+                pfp, rxnfp, adjacency_list, node_order, edge_order, num_nodes
+            )
 
         return {"scores": scores, "encoded_trees": encoded_trees}
 
@@ -127,12 +128,13 @@ class PathwayRanker:
         output = convert_askcos_trees(trees)
 
         # Separate out one-step trees because they can't be ranked
-        try:
-            original_indices, remaining_trees = zip(
-                *((i, tree) for i, tree in enumerate(output) if tree["depth"] > 1)
-            )
-        except:
-            raise Exception("All trees do not have depth > 1")
+        multi_step = [(i, tree) for i, tree in enumerate(output) if tree["depth"] > 1]
+        if not multi_step:
+            result = {"scores": [-1] * len(trees), "encoded_trees": [[] for _ in trees]}
+            if clustering:
+                result["clusters"] = list(range(len(trees)))
+            return result
+        original_indices, remaining_trees = zip(*multi_step)
 
         # Run prediction
         result = self.predict(remaining_trees)
@@ -182,6 +184,9 @@ class PathwayRanker:
         """
         if not encoded_trees:
             return []
+
+        if len(encoded_trees) < max(min_samples, min_cluster_size):
+            return list(range(len(encoded_trees)))
 
         if cluster_method == "hdbscan":
             clusterer = hdbscan.HDBSCAN(

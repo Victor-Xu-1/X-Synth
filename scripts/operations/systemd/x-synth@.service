@@ -1,0 +1,24 @@
+[Unit]
+Description=X-Synth product and ASKCOS runtime
+After=network.target docker.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+WorkingDirectory=/srv/wsl/projects/x-synth
+EnvironmentFile=/home/%i/.config/x-synth/service.env
+ExecStart=/home/%i/.local/share/x-synth/product-env/bin/python -m scripts.operations.serve_platform --credentials ${X_SYNTH_CREDENTIALS} --native-python ${X_SYNTH_NATIVE_PYTHON} --assets ${X_SYNTH_ASSETS} --state ${X_SYNTH_STATE_DIR} --stock-index ${X_SYNTH_STOCK_INDEX} --template-library ${X_SYNTH_TEMPLATE_LIBRARY_DB} --port 8769
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=90
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

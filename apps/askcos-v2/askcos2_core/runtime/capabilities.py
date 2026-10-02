@@ -9,7 +9,7 @@ from runtime.manifest_loader import load_runtime_manifest
 
 
 def probe_endpoint(url: str, timeout: float = 1.5) -> dict[str, Any]:
-    context = ssl._create_unverified_context() if url.startswith("https://") else None
+    context = ssl.create_default_context() if url.startswith("https://") else None
     try:
         with urllib.request.urlopen(url, timeout=timeout, context=context) as response:
             return {

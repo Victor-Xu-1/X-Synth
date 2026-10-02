@@ -5,15 +5,34 @@ import os
 import sys
 import traceback
 import uvicorn
+from contextlib import asynccontextmanager
 from api.cluster_api import ClusterSetting
 from datetime import datetime
 from expand_one_controller import ExpandOneController, RetroBackendOption
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from rdkit import RDLogger
 from typing import List
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app):
+    global controller
+    controller = ExpandOneController()
+    try:
+        yield
+    finally:
+        controller.close()
+        controller = None
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+@app.get("/health/ready")
+def ready():
+    if globals().get("controller") is None:
+        raise HTTPException(503, "One-step controller is not initialized")
+    return {"status": "ready", "engine": "askcos_expand_one"}
 
 base_response = {
     "status": "FAIL",
@@ -45,7 +64,7 @@ class RequestBody(BaseModel):
     atom_map_backend: str = "rxnmapper"
     cluster_precursors: bool = True
     cluster_setting: ClusterSetting = ClusterSetting()
-    max_num_for_clustering: int = 100,
+    max_num_for_clustering: int = 100
     extract_template: bool = False
     return_reacting_atoms: bool = True
     selectivity_check: bool = False
@@ -67,6 +86,7 @@ def expand_one_service(request: RequestBody):
             atom_map_backend=request.atom_map_backend,
             cluster_precursors=request.cluster_precursors,
             cluster_setting=request.cluster_setting,
+            max_num_for_clustering=request.max_num_for_clustering,
             extract_template=request.extract_template,
             return_reacting_atoms=request.return_reacting_atoms,
             selectivity_check=request.selectivity_check,
@@ -99,9 +119,6 @@ if __name__ == "__main__":
     sh.setLevel(logging.INFO)
     logger.addHandler(fh)
     logger.addHandler(sh)
-
-    # set up model
-    controller = ExpandOneController()
 
     # start running
     uvicorn.run(app, host=args.server_ip, port=args.server_port)

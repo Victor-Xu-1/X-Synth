@@ -1,88 +1,26 @@
-import json
-
-from packages.adapters.stock.commercial_stock import EvidenceDecision
+import pytest
+from packages.adapters.stock.stock_index import compile_stock_index
 from packages.adapters.stock.unified_stock_service import UnifiedStockService
 
 
-def test_unified_stock_service_discovers_project_stock_sources(tmp_path):
-    repo_root = tmp_path
-    commercial_dir = repo_root / "data" / "compiled" / "commercial_stock"
-    domestic_dir = repo_root / "data" / "compiled" / "domestic_stock"
-    buyables_dir = repo_root / "apps" / "askcos-v2" / "askcos2_core" / "data" / "db" / "buyables"
-    aizynth_dir = repo_root / "engines" / "aizynthfinder" / "models"
-    for path in [commercial_dir, domestic_dir, buyables_dir, aizynth_dir]:
-        path.mkdir(parents=True)
-
-    commercial_stock = commercial_dir / "synon_stock.json"
-    domestic_stock = domestic_dir / "synon_stock.json"
-    buyables = buyables_dir / "chemspace_buyables_2026Apr.json.gz"
-    aizynth_stock = aizynth_dir / "zinc_stock.hdf5"
-    commercial_stock.write_text(
-        json.dumps(
-            [
-                {
-                    "smiles": "CCO",
-                    "source": "chemspace",
-                    "decision": "accepted",
-                    "reason": "exact",
-                    "catalog_id": "CSSB1",
-                }
-            ]
-        ),
-        encoding="utf-8",
-    )
-    domestic_stock.write_text(
-        json.dumps(
-            [
-                {
-                    "smiles": "CCN",
-                    "source": "chemicalbook_cn",
-                    "decision": "accepted",
-                    "reason": "exact",
-                    "catalog_id": "CB1",
-                }
-            ]
-        ),
-        encoding="utf-8",
-    )
-    buyables.write_bytes(b"not-loaded-by-service")
-    aizynth_stock.write_bytes(b"hdf5-placeholder")
-
-    service = UnifiedStockService(repo_root=repo_root)
-
-    summary = service.summary()
-    names = {source["name"] for source in summary["sources"]}
-    assert {
-        "compiled_commercial_stock",
-        "compiled_domestic_stock",
-        "askcos_buyables_raw",
-        "aizynthfinder_zinc_stock",
-        "pubchem_suppliers",
-        "operator_supplier_import_cache",
-    }.issubset(names)
-    assert service.external_stock_paths() == [str(commercial_stock), str(domestic_stock)]
-
-    registry = service.load_registry()
-    assert registry is not None
-    assert registry.is_buyable("CCO")
-    assert registry.is_buyable("CCN")
+def test_one_index_is_shared_by_runtime_and_closure(tmp_path):
+    path = tmp_path / "catalog.sqlite"
+    compile_stock_index([{"smiles": "CCO", "source": "chemspace",
+                          "url": "https://chem-space.com/CSSB20785368330", "ppg": 253}],
+                        output=path, source_id="real-catalog-row", source_sha256="a" * 64)
+    service = UnifiedStockService(repo_root=tmp_path, env={"X_SYNTH_STOCK_INDEX": str(path)})
+    assert service.summary()["status"] == "ready"
+    assert [row["name"] for row in service.summary()["sources"]] == ["commercial_catalog"]
+    assert service.load_registry().accepted_sources("OCC") == ["chemspace"]
 
 
-def test_unified_stock_service_uses_online_supplier_decisions_without_files(tmp_path):
-    service = UnifiedStockService(
-        repo_root=tmp_path,
-        online_decisions=[
-            EvidenceDecision(
-                smiles="CCO",
-                source="pubchem:Sigma-Aldrich",
-                decision="accepted",
-                reason="exact PubChem vendor evidence",
-                catalog_id="459844",
-            )
-        ],
-    )
+def test_missing_index_does_not_advertise_unavailable_suppliers(tmp_path):
+    service = UnifiedStockService(repo_root=tmp_path, env={})
+    assert service.summary()["sources"] == []
+    assert service.summary()["status"] == "unavailable"
+    assert service.load_registry() is None
 
-    registry = service.load_registry()
 
-    assert registry is not None
-    assert registry.accepted_sources("CCO") == ["pubchem:Sigma-Aldrich"]
+def test_unsealed_online_or_json_evidence_cannot_change_a_runtime_snapshot(tmp_path):
+    with pytest.raises(ValueError, match="Compile"):
+        UnifiedStockService(repo_root=tmp_path, external_stock_paths=["unverified.json"], env={})

@@ -5,7 +5,6 @@ import time
 from fingerprinting import reac_prod_smi_to_morgan_fp
 from logger import MyLogger
 from scorer import Scorer
-from tensorflow.keras.models import load_model
 from typing import List
 
 fast_filter_loc = "fast_filter"
@@ -29,7 +28,11 @@ class FastFilterScorer(Scorer):
             model_path (str): Path to file specifying model.
         """
         MyLogger.print_and_log("Starting to load fast filter", fast_filter_loc)
-        self.model = load_model(model_path)
+        self.model = tf.saved_model.load(model_path)
+        self._signature = self.model.signatures["serving_default"]
+        self._input_names = sorted(self._signature.structured_input_signature[1])
+        if len(self._input_names) != 2:
+            raise ValueError("Fast-filter checkpoint must expose the trained two-input signature")
         MyLogger.print_and_log("Done loading fast filter", fast_filter_loc)
 
     def smiles_to_fp(self, reactant_smiles, target):
@@ -68,7 +71,7 @@ class FastFilterScorer(Scorer):
         # print(f"fingerprinting: {time.time() - start}")
 
         # start = time.time()
-        result = self.model([pfp, rxnfp]).numpy().item(0)
+        result = self._predict_fingerprints(pfp, rxnfp).numpy().item(0)
         # print(f"model call: {time.time() - start}")
 
         # print(f"shape: {pfp.shape}")
@@ -119,6 +122,8 @@ class FastFilterScorer(Scorer):
         return all_outcomes
 
     def evaluate_batch(self, rxn_smis: List[str]) -> List[float]:
+        if not rxn_smis:
+            return []
         pfps = []
         rxnfps = []
 
@@ -135,11 +140,20 @@ class FastFilterScorer(Scorer):
         # print(f"fingerprinting: {time.time() - start}")
 
         # start = time.time()
-        scores = self.model([pfps, rxnfps]).numpy()
+        scores = self._predict_fingerprints(pfps, rxnfps).numpy()
         scores = np.array(scores).reshape(-1).tolist()
         # print(f"model call: {time.time() - start}")
 
         return scores
+
+    def _predict_fingerprints(self, product_fp, reaction_fp):
+        inputs = {name: tf.cast(value, tf.float32) for name, value in zip(self._input_names, (product_fp, reaction_fp))}
+        outputs = self._signature(**inputs)
+        if len(outputs) != 1:
+            raise ValueError("Unexpected trained fast-filter output signature")
+        result = next(iter(outputs.values()))
+        tf.debugging.assert_all_finite(result, "Fast-filter score must be finite")
+        return result
 
     def evaluate_reaction_score(self, reaction_smiles, **kwargs):
         """

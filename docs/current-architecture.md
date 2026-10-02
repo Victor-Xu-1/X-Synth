@@ -1,148 +1,169 @@
-# Current Retrosynthesis Architecture
+# X-Synth v0.1.0 Architecture
 
-This document records the architecture currently wired into Synon. ASKCOS stays
-the primary UI, task-history, and route-viewing product. Synon adds a WSL host
-orchestrator that runs ASKCOS and AiZynthFinder in parallel, merges their route
-outputs, and writes the selected route pool back into ASKCOS Mongo history.
+## Product Boundary
 
-## Current Runtime Chain
+X-Synth owns the existing Chinese Vue workbench, product API, job state,
+history, unified stock evidence, route selection, and delivery. ASKCOS V2 is
+the only integrated chemistry engine. New engines must implement the same
+adapter contract; they are not prerequisites for ASKCOS. LLM integration is
+deferred. Neither model login tokens nor browser sessions are extracted.
 
 ```mermaid
 flowchart TD
-  A["Synon ASKCOS Vue UI"] --> A1["/synon-api/unified-route/call-async"]
-  A1 --> B["Synon Orchestrator FastAPI :8790 on WSL"]
-  B --> C["job_state.json + target.smi checkpoint"]
-  C --> D["run_unified_route_case.py"]
-
-  D --> E["ASKCOS task API"]
-  D --> T0["TemplateLibraryService API"]
-  T0 --> T1["template_library.sqlite"]
-  T1 --> T2["strategy query: high_precision / ringbreaker / uspto_backfill / ord_backfill / all"]
-  D --> D0["domestic stock compiler: ChemicalBook / CN supplier exports"]
-  D0 --> D01["ASKCOS buyables JSON"]
-  D0 --> D02["Synon exact stock JSON"]
-  D0 --> D03["AiZynthFinder InChIKey stock + config overlay"]
-  E --> E1["/api/tree-search/controller/call-async"]
-  E1 --> E2["ASKCOS RetroStar default"]
-  E1 --> E3["ASKCOS MCTS optional backend"]
-  E2 --> F["ExpandOne + template relevance"]
-  E3 --> F
-  F --> F1["reaxys"]
-  F --> F2["pistachio"]
-  F --> F3["pistachio_ringbreaker"]
-  F --> F4["USPTO public corpus: higher_level / USPTO_50k / AiZynthFinder USPTO"]
-  F --> F5["ORD extracted templates when local source files are present"]
-  F --> F6["exact match / retrosim"]
-  E2 --> G["ASKCOS closed route enumeration"]
-  E3 --> G
-
-  D --> H["AiZynthFinder adapter"]
-  H --> H1["deepretro conda env"]
-  H1 --> H2["USPTO ONNX + ringbreaker + selected stock: zinc/domestic"]
-  H2 --> H3["AiZynthFinder route JSON"]
-
-  G --> I["RouteCandidate normalizer"]
-  H3 --> I
-  D02 --> J1["commercial closure exact canonical SMILES"]
-  I --> J["UnifiedRoutePool selector"]
-  J --> J1
-  J --> J2["loop and duplicate pruning"]
-  J --> J3["route-family dedup"]
-  J --> J4["engine diversity"]
-  J --> J5["final 3-10 closed routes"]
-  J5 --> K0["interim_summary.json when one engine already meets 3+ routes"]
-  K0 --> L0["early write back to ASKCOS Mongo result"]
-  J5 --> K["unified_routes.json / selected_routes.json / summary.json"]
-  K --> L["final write back to ASKCOS Mongo result"]
-  L0 --> M
-  L --> M["/api/results/list"]
-  M --> N["Results page and route-tree links"]
-  N --> A
+  UI["X-Synth Chinese Workbench"] --> API["X-Synth Product API"]
+  API --> JOB["Transactional Job Repository / Queue / Checkpoint"]
+  API --> NATIVE["ASKCOS Native Capability Adapter"]
+  JOB --> ENGINE["ASKCOS Engine Adapter"]
+  ENGINE --> MCTS["Native MCTS Search"]
+  ENGINE --> RS["Native RetroStar Search"]
+  MCTS --> EXPAND["Native One-Step Expansion"]
+  RS --> EXPAND
+  EXPAND --> MODELS["Persistent Trained Models / Matching Template Index"]
+  MODELS --> FF["Native Fast Filter"]
+  STOCK["Unified Immutable Catalog Snapshot"] --> EXPAND
+  STOCK --> REVIEW["Exact Leaf Closure / Cycle Check / Family Dedup / Ranking"]
+  MCTS --> REVIEW
+  RS --> REVIEW
+  REVIEW --> GATE{"3-10 Qualified Routes?"}
+  GATE -- "Yes" --> RESULT["Private Results / Existing Route Viewer"]
+  GATE -- "No, First Pass" --> ENGINE
+  GATE -- "Engine Recovery Required" --> WAIT["Checkpoint / Waiting for Engine"]
+  WAIT --> JOB
+  GATE -- "Search Completed Without Closure" --> INCOMPLETE["Persist Actual Result; Never Claim Closure"]
+  RESULT --> API
+  INCOMPLETE --> API
+  NATIVE --> CAP["Configured ASKCOS Native Functions"]
 ```
 
-## Shared Data Rule
+## Source and Data Ownership
 
-The long-term data model is one shared reaction/template/stock layer. Engines
-may need compiled artifacts, but those artifacts should be generated from and
-traceable to the shared source:
-
-| Data product | Current state | Target state |
+| Boundary | Authoritative Location | Responsibility |
 |---|---|---|
-| Reaction records | ASKCOS Mongo data is active; AiZynthFinder uses model-packaged data | Shared imports from USPTO, ORD, Organic Syntheses, licensed Pistachio/Reaxys where available, and patent/literature sources |
-| Template library | ASKCOS template sets active; AiZynthFinder policy files separate; Synon now compiles a shared SQLite template database plus manifest and exposes it through TemplateLibraryService | One canonical template source, queried by strategy and compiled into ASKCOS and AiZynthFinder-specific trained/serving artifacts |
-| Buyables stock | ASKCOS buyables, AiZynthFinder ZINC stock, Synon exact stock matching, and domestic stock compiler are active | Keep ChemicalBook/domestic supplier exports refreshed, audited, and promoted into all three runtime stock artifacts |
+| Product version | VERSION | Product SemVer; currently 0.1.0 |
+| Frontend | apps/web | Existing Vue workbench, Chinese UI, editor, history, route viewer |
+| Product API | apps/api | Input validation, identity boundary, capability delegation, response models |
+| Product jobs | packages/orchestrator | One lifecycle, resource admission, checkpoints, route workflow |
+| ASKCOS integration | packages/adapters/askcos | Typed transport, native search invocation, recoverable errors |
+| Native algorithms and functions | apps/askcos-v2 | Full ASKCOS source, isolated native runtime |
+| Commercial evidence | packages/adapters/stock | Exact catalog validation, immutable indexed snapshots, batch lookup |
+| Shared knowledge | packages/knowledge_base | Reaction/template provenance and query index |
+| Normalized routes | packages/route_schema, packages/route_pool | Engine-independent routes, family selection, existing viewer projection |
+| Deterministic checks | packages/validation, packages/scoring | Structural validation, closure, cycles, scoring |
+| Repeatable operations | scripts/operations, scripts/data_import | Startup, asset installation, imports, source publication |
+| Verification | tests, .github/workflows | Unit, integration, contracts, security, build and deployment gates |
 
-## Availability
+Source checkouts use stable unversioned paths. Models, supplier data, database
+volumes, private jobs, logs, caches, generated reports and screenshots are not
+source. The runtime state root is configured by X_SYNTH_STATE_DIR; assets are
+configured through explicit operator paths. A source release does not contain
+private data or model weights.
 
-| Component | Current status |
-|---|---|
-| ASKCOS UI/API/history | Active primary product shell |
-| Synon Orchestrator | Active UI/API path at `/synon-api/unified-route/call-async` |
-| ASKCOS RetroStar | Default ASKCOS route-tree backend |
-| ASKCOS MCTS | Available optional backend |
-| ASKCOS exact/retrosim/template relevance pools | Active inside ASKCOS search |
-| Pistachio ringbreaker | Imported as `pistachio:ringbreaker` and available in ASKCOS pool |
-| AiZynthFinder USPTO | Active real runner through local `deepretro` conda environment |
-| UnifiedRoutePool | Active selector for 3-10 closed routes with route-family dedup and engine diversity |
-| Mongo write-back | Active; unified selected routes appear in ASKCOS results history |
-| AiZynthFinder Pistachio_100+ | Not enabled; licensed assets are missing |
-| LLM review | Not connected to final selector; should only review/rank/explain after deterministic gates |
-| External stock-file exact matching | Active through `--external-stock`, `external_stock_paths`, or orchestrator default `SYNON_EXTERNAL_STOCK_PATHS`; supports CSV/TSV/SMI/JSONL/JSON with exact SMILES |
-| ChemicalBook/domestic stock | Active as an import-and-compile pipeline for supplier exports; automatic web crawling is intentionally not used as a source of truth |
-| AiZynthFinder domestic stock | Active as compiled InChIKey stock plus `domestic` stock config overlay; route jobs can pass `--aizynth-stock domestic` when the compiled stock is present in the selected config |
-| Canonical template database/service | Active through `scripts/data_import/compile_template_library.py`; supports `--source-dir` auto-discovery plus `--include-standard-local-sources`, outputs `template_library.sqlite`, stores `direction` and `domain`, exports ASKCOS runtime template files from the database, and exposes `/synon-api/template-library/health` plus `/synon-api/template-library/query` when `SYNON_TEMPLATE_LIBRARY_DB` is configured |
-| ASKCOS template runtime overlay | Active when `SYNON_TEMPLATE_RUNTIME_ASSETS_DIR` points to compiled runtime assets; `import_askcos_core_data.sh` seeds ASKCOS from `retro.templates.synon_unified.json.gz` and `forward.templates.json.gz` instead of the default hard-coded template bundle |
+ASKCOS component versions, model checksums, template ordering, database schema
+versions and inventory snapshot versions are independent of product SemVer.
+The package metadata and frontend lockfile verify VERSION rather than define
+another product version.
 
-## Verified Real Task
+## Single Authorities
 
-| Date | Target | Submission path | Result |
-|---|---|---|---|
-| 2026-07-01 | `OC(C(F)=CC=C1)=C1C2=CC3=C(NCC34CCNCC4)N=N2` | `http://127.0.0.1:8769/synon-api/unified-route/call-async` | ASKCOS RetroStar produced 10 closed routes, AiZynthFinder produced 6 closed routes, unified pool selected 6 closed route families, and the result appeared first in `/results` |
+- Browser requests terminate at the product API, never a second direct gateway.
+- Product job IDs and ownership are authoritative in the transactional job store.
+  Native engine execution is a child operation, not another product task owner.
+- Search and final closure must use the same immutable stock snapshot. Snapshot
+  identity is retained in the checkpoint and delivered result.
+- A CID, CAS, supplier name or Mongo internal ID alone is not commercial evidence.
+  Unknown prices remain unknown; no synthetic price is allowed.
+- Native trained models retain their exact template index and fingerprint
+  parameters. A shared template query database cannot replace a trained output
+  ordering. Imported ORD/USPTO templates are knowledge assets until a compatible
+  native proposal mechanism is configured.
+- Quality evaluation and a bounded second search are coordinated once by the
+  product pipeline. Layered repair loops must not multiply silently.
+- Native status polling contains progress only. Every full explored graph is
+  preserved privately, while a separate bounded artifact delivers every enumerated
+  route. Large graphs must not be serialized into every status response.
+- Asset identity includes the actual catalog bytes, model/checkpoint/template
+  checksums and native algorithm source. Recovery cannot mix altered assets.
+- Loopback workspace mode is explicitly single-user and rejects cross-site access.
+  Shared deployments require configured identity verification and private owners.
+- Native ASKCOS functions without installed models or required authorization must
+  remain unavailable, not be presented as working features.
 
-## Verified Data Compiler Smoke
+## Performance Contract
 
-| Date | Compiler | Input | Result |
-|---|---|---|---|
-| 2026-07-04 | ORD official data import | Official `open-reaction-database/ord-data` Hugging Face/Git LFS dataset mirror downloaded to `data/external/ord-data`; first 1,000 real ORD reactions atom-mapped through local `atom_map_rxnmapper` and extracted through `scripts/data_import/extract_ord_templates.py` | Wrote `data/compiled/ord_templates/retro.templates.ord_extracted.json.gz` with 316 deduplicated ORD templates from 997 accepted template occurrences; 3 reactions rejected by strict extraction audit |
-| 2026-07-04 | Canonical template database/service | Real ASKCOS template directory plus standard local USPTO sources and extracted ORD templates: `ord_extracted`, `uspto_higher_level`, `USPTO_50k`, AiZynthFinder `uspto_templates.csv.gz`, and AiZynthFinder `uspto_ringbreaker_templates.csv.gz` | Auto-discovered 11 local template sources, indexed 531,571 raw records, wrote 531,546 valid SMARTS records into `template_library.sqlite`, rejected 25 invalid records, and verified `high_precision`, `ringbreaker`, `public_reaction_corpus`, `uspto_backfill`, `ord_backfill`, `metabolism`, `biocatalysis`, and `forward_validation` strategy queries |
-| 2026-07-04 | Canonical template runtime export | Same real local template sources | Exported ASKCOS runtime gzip JSON arrays from `template_library.sqlite`, including `retro.templates.synon_unified.json.gz` with 514,457 retro templates plus per-source retro files and `forward.templates.json.gz`; `ord_backfill` now resolves to `ord_extracted` |
-| 2026-07-01 | Domestic stock compiler | ChemicalBook-format CSV row with exact SMILES, CAS, catalog id, product URL, availability | Wrote ASKCOS buyables JSON, Synon stock JSON, AiZynthFinder InChIKey stock, AiZynthFinder stock config overlay, and rejected-row audit files |
+PerformanceBudget is the product resource authority. Native runtime setup maps
+its values into native worker/thread settings. Resource ceilings do not relax
+chemical validation or mark unfinished searches complete.
 
-## Remaining Gaps
-
-| Gap | Current state | Required next implementation |
+| Resource | Default | Reason |
 |---|---|---|
-| Early partial write-back | Implemented: `interim_summary.json` is written when a completed engine reaches 3+ selected routes, and Mongo write-back runs early when the ASKCOS task id is known | UI can next add a distinct `partial_ready` visual state instead of relying only on final completion |
-| Route-tree detail labeling | Results card shows unified source counts | Route graph should label each route/source as ASKCOS or AiZynthFinder inside the detail view |
-| Domestic buyables | Structured stock compiler is implemented and outputs ASKCOS/Synon/AiZynthFinder artifacts | Add scheduled import jobs from approved supplier exports and data freshness checks |
-| Shared template provenance | Canonical SQLite database and query service exist with `direction` and `domain`; ASKCOS serving assets are now exported from the database; USPTO ASKCOS, AiZynthFinder template CSV files, and extracted ORD templates are now in the shared database, while AiZynthFinder model-serving assets remain separate | Continue full ORD extraction beyond the initial 1,000-reaction import and add AiZynthFinder artifact build manifests for retraining/serving |
-| LLM review | Not part of final live selector | Add post-gate review for ranking tie-breaks, conflict analysis, and conditions narrative only |
+| Active product tasks | 1 | Avoid competing large route graphs on a local workstation |
+| Queued product tasks | 64 | Bounded admission with explicit queue-full response |
+| Native search parallelism | 2 | MCTS and RetroStar proceed independently |
+| Model execution parallelism | 1 | Shared model weights are loaded once, not per task |
+| Route review process | 1 | CPU-heavy chemistry checks cannot block the API interpreter |
+| Model CPU threads | 4 | Prevent native pools consuming all host CPUs |
+| Stock SQL chunk | 500 structures | Indexed batched lookup, bounded parameters |
+| Native child queue | 8 per strategy | Bounded internal admission |
+| Molecular input | 1024 atoms | Reject unsupported inputs before expensive normalization |
+| Readiness cache | 10 seconds | UI polling does not repeatedly import models or probe every dependency |
+| Dependency probe timeout | 2 seconds | Independent parallel probes; a dead engine does not stall other checks |
+| Request budget | 10 MiB | Bounded untrusted input |
+| Native response budget | 32 MiB | Explicit oversized-response handling, no silent truncation |
 
-## Hard Rules
+The existing service-status page reads product health and runtime metrics.
+Runtime memory is sampled only for supervised PIDs with matching start-time
+identity, preventing PID reuse from attributing another project's process.
+12 GiB native RSS is a warning threshold, not a chemical-completion shortcut.
 
-| Rule | Status |
-|---|---|
-| ASKCOS remains primary UI and task/history system | Enforced |
-| New route tasks use the unified ASKCOS + AiZynthFinder orchestrator | Enforced for Synon UI route-tree submissions |
-| Final output is 3-10 closed route families | Enforced by `UnifiedRoutePool` |
-| No silent model fallback | Enforced for AiZynthFinder model configs |
-| LLM does not invent routes | Enforced by omission; LLM is not yet connected to route generation |
-| Every live task appears in history | Enforced through ASKCOS task creation and Mongo write-back |
-| Any early sufficient route set appears before the slower engine finishes | Enforced through `interim_summary.json` and early Mongo write-back |
-| ChemicalBook/domestic supplier evidence must be exact structure evidence | Enforced by domestic stock compiler and stock registry; weak rows are rejected |
+## Repository Governance
 
-## Data Compiler Commands
+The stable checkout is /srv/wsl/projects/x-synth. Allowed root files are VERSION,
+README.md, LICENSE, NOTICE, pyproject.toml, .env.example and .gitignore. Allowed
+directories are apps, packages, configs, requirements, scripts, tests, docs and
+.github. Source publication uses the same allowlist and excludes runtime data.
 
-| Task | Command |
-|---|---|
-| Compile ChemicalBook/domestic supplier exports | `PYTHONPATH=. python3 scripts/data_import/compile_domestic_stock.py --source supplier_export.csv --output-dir data/compiled/domestic_stock` |
-| Use compiled stock for unified closure | Pass `data/compiled/domestic_stock/synon_stock.json` through `external_stock_paths` or `--external-stock` |
-| Use compiled stock by default in UI route jobs | Start the Synon orchestrator with `SYNON_EXTERNAL_STOCK_PATHS=data/compiled/domestic_stock/synon_stock.json` |
-| Use compiled stock in AiZynthFinder search | Merge `data/compiled/domestic_stock/aizynthfinder_stock_config.yml` into the selected AiZynthFinder config and run with `--aizynth-stock domestic` |
-| Build canonical template database from all local ASKCOS and standard USPTO/ORD sources | `PYTHONPATH=. python3 scripts/data_import/compile_template_library.py --source-dir apps/askcos-v2/askcos2_core/data/db/templates --include-standard-local-sources --project-root . --output-dir data/compiled/template_library --version 2026.07` |
-| Build canonical template database and ASKCOS runtime assets | `PYTHONPATH=. python3 scripts/data_import/compile_template_library.py --source-dir apps/askcos-v2/askcos2_core/data/db/templates --include-standard-local-sources --project-root . --output-dir data/compiled/template_library --version 2026.07 --export-runtime-assets` |
-| Seed ASKCOS from compiled template runtime assets | `SYNON_TEMPLATE_RUNTIME_ASSETS_DIR=data/compiled/template_library/runtime_assets/askcos_templates scripts/data_import/import_askcos_core_data.sh` |
-| Enable template service API | Set `SYNON_TEMPLATE_LIBRARY_DB=data/compiled/template_library/template_library.sqlite` before starting the Synon orchestrator |
-| Query templates by strategy | `POST /synon-api/template-library/query` with `{"strategy":"high_precision","min_count":10,"limit":100}` |
-| Query public USPTO/ORD backfill domains | `POST /synon-api/template-library/query` with `{"strategy":"uspto_backfill","limit":100}` or `{"strategy":"ord_backfill","limit":100}` |
-| Query specialized domains | `POST /synon-api/template-library/query` with `{"strategy":"biocatalysis","limit":50}` or `{"domain":"metabolism","limit":50}` |
+The product API contract is /api/v1; the existing /api native capability and
+result projections serve the ASKCOS-derived UI through that same host. There is
+no separate legacy orchestrator or /synon-api job owner. Job schema 1 and native
+UDS schema 2 are independent of product 0.1.0. First-party dependency authorities
+are the two Python runtime locks and apps/web/package-lock.json; upstream
+requirements and deployment samples do not define the product installation.
+
+Task worktrees use refactor/ or fix/ branches and contain no private assets.
+Deploy a tested revision with matching immutable assets; preserve private state
+and the previous revision for rollback. Generated dist, coverage, logs, screenshots
+and downloads are not source. Public exports cannot include model weights or
+supplier/database dumps. Third-party notices are retained beside their sources.
+
+Acceptance targets are measured against the actual configured snapshot and
+models, not mocked latency. Targets are not claims of an already-passed run.
+
+| Path | Acceptance Target | Evidence |
+|---|---|---|
+| Warm exact stock lookup | p95 <= 25 ms | At least 100 real accepted structures plus misses |
+| Stock batch lookup | p95 <= 500 ms for 500 structures | Real SQLite snapshot; no per-structure connection loop |
+| Warm product status/history | p95 <= 250 ms | Concurrent UI polling while a real search is active |
+| Cold dependency readiness | <= timeout + 1 second | Independent probes, including unavailable services |
+| Native model memory | One resident copy per configured model | RSS and process inventory |
+| Job concurrency | Never exceed configured admission | Real DB transactions and concurrent claim tests |
+| Task cancellation/recovery | No late completion overwrites cancellation; no duplicate search on resume | Lifecycle and real engine integration tests |
+| Route delivery | 3-10 qualified distinct families or explicit incomplete/recovery state | Actual native outputs, exact catalog evidence, deterministic review |
+| UI | Desktop/mobile layout stable, structure editor and history refresh work | Real Chrome smoke and screenshots |
+
+Route duration depends on target complexity, model coverage and purchasable
+precursors. It is not a performance promise that an arbitrary target will always
+produce three routes in a fixed time.
+
+## Validation and Deployment
+
+Verification scope follows the changed modules and their direct consumers;
+full local regression or publication CI requires explicit user authorization.
+The exact candidate revision must pass relevant Python regression, frontend tests,
+frontend build, dependency audits, API security/input tests, stock/database
+integration tests, and real Chrome checks. Native inference must be tested with
+the actual installed checkpoints. Final chemistry acceptance runs through the
+software, not hand-authored routes or target-specific scripts.
+
+Deploy only the tested candidate to the existing host entry. Keep a rollback
+revision and immutable data snapshots. Do not stop unrelated WSL workloads,
+mutate recovery backups, replace user changes, or publish private assets.

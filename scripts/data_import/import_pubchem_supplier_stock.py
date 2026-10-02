@@ -191,9 +191,11 @@ def supplier_stock_record(row: dict[str, Any], *, source: dict[str, str]) -> dic
         "smiles": smiles,
         "source": source["source"],
         "supplier": source["supplier"],
-        "catalog_id": f"PubChemCID:{cid}",
+        "cid": cid,
+        "catalog_id": None,
         "url": f"https://pubchem.ncbi.nlm.nih.gov/compound/{cid}",
-        "availability": "PubChem SourceName supplier record",
+        "availability": None,
+        "evidence_role": "structure_metadata",
         "inchi_key": str(row.get("InChIKey") or "").strip(),
     }
 

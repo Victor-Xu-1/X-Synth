@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import csv
 import gzip
 import hashlib
 import json
-import csv
 import sqlite3
+from collections.abc import Iterable
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
-
+from typing import Any
 
 DEFAULT_TEMPLATE_STRATEGIES: dict[str, dict[str, Any]] = {
     "all": {},
@@ -72,12 +73,18 @@ class TemplateLibraryService:
     def __init__(self, database_path: Path | str) -> None:
         self.database_path = Path(database_path)
         if not self.database_path.is_file():
-            raise FileNotFoundError(f"Template database not found: {self.database_path}")
+            raise FileNotFoundError(
+                f"Template database not found: {self.database_path}"
+            )
 
     def summary(self) -> dict[str, Any]:
-        with sqlite3.connect(self.database_path) as connection:
-            template_count = connection.execute("select count(*) from templates").fetchone()[0]
-            source_count = connection.execute("select count(*) from template_sources").fetchone()[0]
+        with self.connect() as connection:
+            template_count = connection.execute(
+                "select count(*) from templates"
+            ).fetchone()[0]
+            source_count = connection.execute(
+                "select count(*) from template_sources"
+            ).fetchone()[0]
             sources = [
                 row[0]
                 for row in connection.execute(
@@ -106,6 +113,13 @@ class TemplateLibraryService:
             "strategies": sorted(DEFAULT_TEMPLATE_STRATEGIES),
         }
 
+    def connect(self):
+        return closing(
+            sqlite3.connect(
+                self.database_path.resolve().as_uri() + "?mode=ro&immutable=1", uri=True
+            )
+        )
+
     def query_templates(
         self,
         *,
@@ -121,8 +135,12 @@ class TemplateLibraryService:
         profile = _template_strategy(strategy)
         resolved_sources = tuple(sources or profile.get("sources") or ())
         resolved_domain = domain if domain is not None else profile.get("domain")
-        resolved_min_count = min_count if min_count is not None else profile.get("min_count")
-        resolved_direction = direction if direction is not None else profile.get("direction", "retro")
+        resolved_min_count = (
+            min_count if min_count is not None else profile.get("min_count")
+        )
+        resolved_direction = (
+            direction if direction is not None else profile.get("direction", "retro")
+        )
 
         where = ["direction = ?"]
         params: list[Any] = [resolved_direction]
@@ -161,7 +179,7 @@ class TemplateLibraryService:
             order by template_count desc, source asc, template_id asc
             limit ?
         """
-        with sqlite3.connect(self.database_path) as connection:
+        with self.connect() as connection:
             rows = connection.execute(sql, params).fetchall()
         return [_template_record_from_row(row) for row in rows]
 
@@ -231,7 +249,9 @@ def build_template_library_database(
     paths = [Path(path) for path in source_paths]
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
-    manifest = build_template_library_manifest(source_paths=paths, output_dir=output, version=version)
+    manifest = build_template_library_manifest(
+        source_paths=paths, output_dir=output, version=version
+    )
 
     database_path = output / database_name
     if database_path.exists():
@@ -315,7 +335,9 @@ def export_template_runtime_assets(
         path = askcos_dir / filename
         _write_template_json_array_gzip(
             path,
-            _raw_templates_for_source(service.database_path, source=source, direction=direction),
+            _raw_templates_for_source(
+                service.database_path, source=source, direction=direction
+            ),
         )
         entry = {
             "path": str(path),
@@ -349,7 +371,9 @@ def export_template_runtime_assets(
             },
             "forward_templates": forward_file,
         },
-        "strategies": _runtime_strategy_manifest(retro_files=retro_files, forward_file=forward_file),
+        "strategies": _runtime_strategy_manifest(
+            retro_files=retro_files, forward_file=forward_file
+        ),
         "aizynthfinder": {
             "status": "requires_policy_training_or_model_specific_asset_builder",
             "source": str(service.database_path),
@@ -368,25 +392,29 @@ def export_template_runtime_assets(
 
 
 def infer_template_source_name(path: Path) -> str:
+    if path.name in {"templates.jsonl", "templates.jsonl.gz"}:
+        return path.parent.name.lower().replace(".", "_")
     name = path.name
     if name.startswith("forward.templates"):
-        name = name[len("forward.templates"):].lstrip(".")
+        name = name[len("forward.templates") :].lstrip(".")
         if name in ("json.gz", "jsonl.gz", "json", "jsonl", "gz", ""):
             return "forward"
     elif name.startswith("retro.templates."):
-        name = name[len("retro.templates."):]
+        name = name[len("retro.templates.") :]
     elif name == "uspto_templates.csv.gz" or name == "uspto_templates.csv":
         return "uspto_aizynthfinder"
-    elif name == "uspto_ringbreaker_templates.csv.gz" or name == "uspto_ringbreaker_templates.csv":
+    elif (
+        name == "uspto_ringbreaker_templates.csv.gz"
+        or name == "uspto_ringbreaker_templates.csv"
+    ):
         return "uspto_ringbreaker_aizynthfinder"
     elif name.startswith("ord.templates."):
-        name = name[len("ord.templates."):]
+        name = name[len("ord.templates.") :]
     for suffix in (".json.gz", ".jsonl.gz", ".json", ".jsonl", ".gz"):
         if name.endswith(suffix):
             name = name[: -len(suffix)]
             break
-    if name.endswith(".csv"):
-        name = name[: -len(".csv")]
+    name = name.removesuffix(".csv")
     if name == "USPTO_50k":
         return "uspto_50k"
     if name == "ord" or name.startswith("ord_"):
@@ -411,7 +439,11 @@ def infer_template_domain(path: Path) -> str:
         return "public_reaction_corpus"
     if "biocatalysis" in source_name:
         return "biocatalysis"
-    if "bkms" in source_name or "metabolic" in source_name or "metabolism" in source_name:
+    if (
+        "bkms" in source_name
+        or "metabolic" in source_name
+        or "metabolism" in source_name
+    ):
         return "metabolism"
     return "strict_synthesis"
 
@@ -420,7 +452,11 @@ def discover_template_source_paths(source_dir: Path | str) -> list[Path]:
     root = Path(source_dir)
     if not root.is_dir():
         raise NotADirectoryError(f"Template source directory not found: {root}")
-    return sorted(path for path in root.iterdir() if path.is_file() and _is_template_source_file(path))
+    return sorted(
+        path
+        for path in root.iterdir()
+        if path.is_file() and _is_template_source_file(path)
+    )
 
 
 def discover_standard_template_source_paths(project_root: Path | str) -> list[Path]:
@@ -431,7 +467,8 @@ def discover_standard_template_source_paths(project_root: Path | str) -> list[Pa
     """
     root = Path(project_root)
     candidates = [
-        root / "apps/askcos-v2/retro/template_enumeration/data/retro.templates.USPTO_50k.json",
+        root
+        / "apps/askcos-v2/retro/template_enumeration/data/retro.templates.USPTO_50k.json",
         root / "engines/aizynthfinder/models/uspto_templates.csv.gz",
         root / "engines/aizynthfinder/models/uspto_ringbreaker_templates.csv.gz",
     ]
@@ -444,7 +481,13 @@ def discover_standard_template_source_paths(project_root: Path | str) -> list[Pa
         directory = root / relative_dir
         if directory.is_dir():
             candidates.extend(path for path in directory.rglob("*") if path.is_file())
-    return sorted({path for path in candidates if path.is_file() and _is_template_source_file(path)})
+    return sorted(
+        {
+            path
+            for path in candidates
+            if path.is_file() and _is_template_source_file(path)
+        }
+    )
 
 
 def count_template_records(path: Path) -> int:
@@ -493,9 +536,7 @@ def _is_template_source_file(path: Path) -> bool:
     if _is_csv_template_source_file(path):
         return True
     if not (
-        name.startswith("retro.templates.")
-        or name.startswith("forward.templates")
-        or name.startswith("ord.templates.")
+        name.startswith(("retro.templates.", "forward.templates", "ord.templates."))
     ):
         return False
     return name.endswith((".json.gz", ".jsonl.gz", ".json", ".jsonl"))
@@ -508,9 +549,7 @@ def _is_csv_template_source_file(path: Path) -> bool:
         "uspto_templates.csv.gz",
         "uspto_ringbreaker_templates.csv",
         "uspto_ringbreaker_templates.csv.gz",
-    } or (
-        name.startswith("ord.templates.") and name.endswith((".csv", ".csv.gz"))
-    )
+    } or (name.startswith("ord.templates.") and name.endswith((".csv", ".csv.gz")))
 
 
 def _iter_csv_template_records(path: Path) -> Iterable[dict[str, Any]]:
@@ -522,17 +561,27 @@ def _iter_csv_template_records(path: Path) -> Iterable[dict[str, Any]]:
         reader = csv.DictReader(handle, delimiter=delimiter)
         for row in reader:
             reaction_smarts = str(
-                row.get("reaction_smarts") or row.get("retro_template") or row.get("template") or ""
+                row.get("reaction_smarts")
+                or row.get("retro_template")
+                or row.get("template")
+                or ""
             ).strip()
             if not reaction_smarts:
                 continue
             template_hash = str(row.get("template_hash") or "").strip()
-            template_code = str(row.get("template_code") or row.get("id") or row.get("_id") or "").strip()
+            template_code = str(
+                row.get("template_code") or row.get("id") or row.get("_id") or ""
+            ).strip()
             template_id = template_hash or template_code
             yield {
                 "_id": template_id,
                 "reaction_smarts": reaction_smarts,
-                "count": _safe_int(row.get("library_occurence") or row.get("library_occurrence") or row.get("count"), default=0),
+                "count": _safe_int(
+                    row.get("library_occurence")
+                    or row.get("library_occurrence")
+                    or row.get("count"),
+                    default=0,
+                ),
                 "template_set": source,
                 "references": [],
                 "attributes": {
@@ -624,7 +673,11 @@ def _runtime_strategy_manifest(
             if direction == "forward":
                 sources = ["forward"] if forward_file else []
             else:
-                sources = [source for source, entry in retro_files.items() if entry["domain"] == domain]
+                sources = [
+                    source
+                    for source, entry in retro_files.items()
+                    if entry["domain"] == domain
+                ]
         elif not sources:
             sources = sorted(retro_files)
         elif direction == "retro":
@@ -720,7 +773,9 @@ def _normalise_template_record(
     )
 
 
-def _insert_template_record(connection: sqlite3.Connection, record: TemplateRecord) -> None:
+def _insert_template_record(
+    connection: sqlite3.Connection, record: TemplateRecord
+) -> None:
     connection.execute(
         """
         insert into templates(

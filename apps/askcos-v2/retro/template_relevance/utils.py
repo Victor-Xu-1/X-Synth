@@ -1,3 +1,4 @@
+import argparse
 import datetime
 import gzip
 import json
@@ -112,7 +113,8 @@ def get_model(args, device) -> Tuple[nn.Module, Dict[str, Any]]:
     state = {}
     if args.load_from:
         misc.log_rank_0(f"Loading pretrained state from {args.load_from}")
-        state = torch.load(args.load_from, map_location=torch.device("cpu"))
+        with torch.serialization.safe_globals([argparse.Namespace]):
+            state = torch.load(args.load_from, map_location=torch.device("cpu"), weights_only=True)
         pretrain_args = state["args"]
         misc.log_args(pretrain_args, message="Logging pretraining args")
 

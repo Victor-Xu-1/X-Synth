@@ -18,11 +18,6 @@ roots:
     kind: source
     path: askcos2_core
     git: true
-  - key: ui
-    label: ASKCOS Vue UI and Nginx image
-    kind: source
-    path: askcos-vue-nginx
-    git: true
   - key: retro_models
     label: Retrosynthesis model services
     kind: model-family
