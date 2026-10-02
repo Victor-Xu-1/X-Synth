@@ -63,6 +63,13 @@ def read_private_environment(path: Path) -> dict[str, str]:
     return values
 
 
+def ensure_port_available(port: int) -> None:
+    with socket.socket() as probe:
+        # Match Uvicorn: closed connections in TIME_WAIT are not live listeners.
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        probe.bind(("127.0.0.1", port))
+
+
 class NativeRuntime:
     def __init__(
         self,
@@ -183,8 +190,7 @@ class NativeRuntime:
         logs.mkdir(parents=True, exist_ok=True)
         # Refuse occupied ports before starting any process. Never kill another stack.
         for name in self.services:
-            with socket.socket() as probe:
-                probe.bind(("127.0.0.1", SERVICES[name].port))
+            ensure_port_available(SERVICES[name].port)
         try:
             for name in self.services:
                 self._spawn(name, logs)
