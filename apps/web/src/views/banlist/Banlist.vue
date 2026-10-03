@@ -11,7 +11,7 @@
     <div v-else-if="!workspace.can('native_account')" class="workspace-empty">
       <v-icon icon="mdi-server-off" size="32" />
       <h2>当前工作区未启用禁用规则服务</h2>
-      <router-link to="/status">查看服务状态</router-link>
+      <router-link to="/environments?tab=monitor">查看运行监测</router-link>
     </div>
     <template v-else>
       <div class="banlist-toolbar">

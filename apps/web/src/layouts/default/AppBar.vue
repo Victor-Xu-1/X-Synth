@@ -28,15 +28,15 @@
               : "服务未就绪"
         }}</span
       >
-      <v-tooltip text="服务与性能"
+      <v-tooltip text="环境部署"
         ><template #activator="{ props }"
           ><v-btn
             v-bind="props"
-            to="/status"
+            to="/environments"
             icon="mdi-pulse"
             variant="text"
             size="small"
-            aria-label="服务与性能" /></template
+            aria-label="环境部署" /></template
       ></v-tooltip>
     </div>
   </header>

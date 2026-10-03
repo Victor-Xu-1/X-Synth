@@ -85,10 +85,14 @@ const workspacePages = [
     meta: { title: "结构绘制", feature: "drawing" },
   },
   {
+    path: "environments",
+    name: "EnvironmentDeployment",
+    component: () => import("@/views/environments/EnvironmentDeployment.vue"),
+    meta: { title: "环境部署" },
+  },
+  {
     path: "status",
-    name: "服务状态",
-    component: () => import("@/views/status/Status.vue"),
-    meta: { title: "服务状态", public: true },
+    redirect: (to) => ({ path: "/environments", query: { ...to.query, tab: "monitor" } }),
   },
   {
     path: "forward",

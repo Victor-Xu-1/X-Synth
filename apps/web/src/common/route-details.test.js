@@ -145,9 +145,18 @@ test("confidence is displayed as its own field and unknown closure stays unknown
     expect(confidenceText(value)).toBe("未记录");
   expect(closureLabel({ closed: true })).toBe("库存闭合");
   expect(closureLabel({ closed: "true" })).toBe("闭合未记录");
-  expect(engineLabel(candidate.engine)).toBe("ASKCOS · RetroStar");
+  expect(engineLabel(candidate.engine)).toBe("启发式搜索 · RetroStar");
   expect(engineLabel("unrecognized")).toBe("unrecognized");
   expect(stepDetails(branch, graph)[1].confidence).toBe("0.000");
+});
+
+test("neutral engine labels preserve raw backend and template provenance", () => {
+  const before = JSON.stringify(candidate);
+  expect(engineLabel("askcos_mcts")).toBe("树搜索 · MCTS");
+  expect(engineLabel("ASKCOS / pistachio")).toBe("单步分析 · pistachio");
+  expect(engineLabel(candidate.engine)).not.toContain("ASKCOS");
+  expect(JSON.stringify(candidate)).toBe(before);
+  expect(candidate.steps[0].source).toBe("askcos:template_relevance:pistachio");
 });
 test("longest linear length traverses all branches and ignores provider depth or score", () => {
   const branched = {

@@ -35,6 +35,10 @@ function isRecord(value) {
 export function taskTitle(task) {
   return task?.description || task?.target_smiles || "未命名任务";
 }
+export function taskSourceLabel(task) {
+  const tags = (Array.isArray(task?.tags) ? task.tags : []).filter(tag => typeof tag === "string" && !/^askcos(?: v2)?$/i.test(tag));
+  return tags.join(" / ") || "路线记录";
+}
 
 export function taskDetailLocation(task) {
   return `/results/${encodeURIComponent(task.result_id)}`;

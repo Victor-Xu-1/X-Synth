@@ -66,6 +66,8 @@ def mock_frontend(monkeypatch, before, after, old_records, new_records):
         "scripts/diagnostics/ci_scope_profile.py",
         "scripts/diagnostics/ci_scope_dependencies.py",
         "apps/api/document_routes.py",
+        "apps/api/environment_routes.py",
+        "packages/platform/environments.py",
         "packages/workspace/new_document_module.py",
         "apps/web/src/views/workspace/NewView.vue",
         "apps/web/src/common/unified-route.js",
@@ -106,6 +108,18 @@ def test_python_workspace_maps_document_contracts_not_native_engine_suite(tmp_pa
     assert profile.python_tests(
         before, after, {"packages/workspace/route_graph.py"}
     ) == sorted(profile.WORKSPACE_TESTS)
+
+
+def test_environment_changes_select_only_environment_contracts(tmp_path):
+    files = {
+        "tests/unit/test_environment_api.py": "pass",
+        **{path: "pass" for path in profile.WORKSPACE_TESTS},
+        "tests/unit/test_askcos_adapter.py": "pass",
+    }
+    item = snapshot(tmp_path, files)
+    assert profile.python_tests(item, item, profile.ENVIRONMENT_FILES) == [
+        "tests/unit/test_environment_api.py"
+    ]
 
 
 def test_api_selects_actual_direct_consumers_including_nested_imports(tmp_path):

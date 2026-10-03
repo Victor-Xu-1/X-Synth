@@ -5,6 +5,6 @@ export function normalizeRouteReadiness(payload) {
   return {
     ready: false,
     label: "后端未就绪",
-    message: "ASKCOS 搜索服务、模型或统一商业库存尚未就绪。",
+    message: "计算搜索服务、模型或统一商业库存尚未就绪。",
   };
 }

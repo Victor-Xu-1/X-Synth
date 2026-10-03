@@ -37,7 +37,7 @@
         <div v-else class="workspace-empty">暂无路线数据</div>
       </div>
       <footer class="route-preview-footer">
-        <span class="workspace-muted">{{ candidate?.engine || "ASKCOS" }}</span>
+        <span class="workspace-muted">{{ engineLabel(candidate?.engine) }}</span>
         <div class="page-actions">
           <v-btn
             v-if="jobId"
@@ -66,6 +66,7 @@ import { useRouter } from "vue-router";
 import RouteGraph from "./RouteGraph.vue";
 import { graphFromCandidate, predictionScores } from "@/common/route-graph";
 import { API } from "@/common/api";
+import { engineLabel } from "@/common/route-details";
 import { errorMessage } from "@/common/workspace-errors";
 const open = defineModel({ type: Boolean, default: false });
 const props = defineProps({

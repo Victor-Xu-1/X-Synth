@@ -27,7 +27,7 @@
     <div v-else-if="feature && !workspace.can(feature)" class="workspace-empty">
       <v-icon icon="mdi-server-off" size="32" />
       <h2>当前服务未启用</h2>
-      <router-link to="/status">查看服务状态</router-link>
+      <router-link to="/environments?tab=monitor">查看运行监测</router-link>
     </div>
     <div v-else class="workbench-content"><slot /></div>
   </section>

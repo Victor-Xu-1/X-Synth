@@ -17,7 +17,7 @@
           :disabled="!first.trim() || (reactionMode && !second.trim())"
           >计算</v-btn
         ><span class="workspace-muted">{{
-          reactionMode ? "ASKCOS Fast Filter" : "SCScore"
+          reactionMode ? "反应可行性模型" : "SCScore"
         }}</span>
       </form>
       <section class="tool-result-panel">

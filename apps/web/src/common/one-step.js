@@ -26,7 +26,7 @@ export async function expandMolecule(
   );
   const outcomes = Array.isArray(value) ? value : value.result;
   if (!Array.isArray(outcomes))
-    throw new Error("ASKCOS 返回了无效的候选格式。");
+    throw new Error("计算后端返回了无效的候选格式。");
   return {
     canonical,
     model,

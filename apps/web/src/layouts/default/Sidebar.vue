@@ -69,7 +69,7 @@
       </button>
       <router-link
         class="nav-item"
-        :to="workspace.local ? '/status' : '/login'"
+        :to="workspace.local ? '/environments?tab=configuration' : '/login'"
         @click="$emit('navigate')"
         ><v-icon
           :icon="workspace.local ? 'mdi-laptop' : 'mdi-account-outline'"

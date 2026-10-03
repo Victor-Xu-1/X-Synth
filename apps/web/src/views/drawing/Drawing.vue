@@ -10,7 +10,7 @@
     <div v-else-if="!workspace.can('drawing')" class="workspace-empty">
       <v-icon icon="mdi-server-off" size="32" />
       <h2>当前结构服务未启用</h2>
-      <router-link to="/status">查看服务状态</router-link>
+      <router-link to="/environments?tab=monitor">查看运行监测</router-link>
     </div>
     <div v-else class="drawing-layout">
       <section class="drawing-editor">

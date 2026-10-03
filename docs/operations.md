@@ -90,11 +90,18 @@ pkill。每模型一个 worker、统一 CPU 线程预算。WSL 长任务应留�
 ```bash
 curl --fail http://127.0.0.1:8769/api/v1/health
 curl --fail http://127.0.0.1:8769/api/v1/runtime
+curl --fail http://127.0.0.1:8769/api/v1/environments
 curl --fail http://127.0.0.1:8769/api/v1/stock-sources/summary
 ```
 
 只有真实探针通过才显示 route_search_ready；端口或文档页存在不算就绪。默认本机
 单用户模式拒绝跨站访问。共享部署必须用经过服务端验证的身份，不能公开本机模式。
+
+环境部署界面在 `/environments`：引擎环境读取实际接入的 ASKCOS V2，
+部署配置显示产品版本、提交、访问模式及库存绑定，运行监测复用就绪探针、进程内存
+和统一资源预算。旧 `/status` 重定向到监测页。环境 API 在共享部署中同样需要身份，
+不返回凭据文件、连接口令或完整环境变量。该模块只读；安装、启动和重启仍使用
+本节的统一运维入口，不提供网页系统命令接口。
 
 ## 持续运行
 
