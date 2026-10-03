@@ -50,7 +50,7 @@ API 不开始路线任务，不以模拟数据、空文件或人工路线代替�
 ```bash
 .venv/bin/python -m scripts.operations.serve_platform \
   --credentials "$HOME/.config/x-synth/native.env" \
-  --native-python "$HOME/.local/share/x-synth/engine-env/bin/python" \
+  --native-python "$HOME/.local/share/x-synth/native-env/bin/python" \
   --assets "$HOME/.local/share/x-synth" \
   --state "$HOME/.local/state/x-synth" \
   --stock-index "$HOME/.local/share/x-synth/stock/catalog.sqlite" \

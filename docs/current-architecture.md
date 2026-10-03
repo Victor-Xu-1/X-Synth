@@ -164,6 +164,11 @@ integration tests, and real Chrome checks. Native inference must be tested with
 the actual installed checkpoints. Final chemistry acceptance runs through the
 software, not hand-authored routes or target-specific scripts.
 
-Deploy only the tested candidate to the existing host entry. Keep a rollback
+Delivery is complete only after every task PR is merged into main and the exact
+main revision is deployed to the existing host entry. PR submission or green CI
+alone is not completion. Verify the deployed revision, clean source status,
+startup, API/browser connectivity, service readiness and persisted history.
+
+Deploy only the tested main revision. Keep a rollback
 revision and immutable data snapshots. Do not stop unrelated WSL workloads,
 mutate recovery backups, replace user changes, or publish private assets.
