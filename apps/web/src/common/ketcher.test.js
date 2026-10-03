@@ -115,8 +115,20 @@ test("failed and cancelled imports remove their listeners without claiming succe
   controller.abort();
   await expect(cancelled).rejects.toThrow("cancelled");
   expect(ketcher.eventBus.eventNames()).toEqual([]);
+  await expect(replaceKetcherMolecule(ketcher, "CCN")).rejects.toThrow(
+    "reloaded",
+  );
+  const timed = importProtocol();
+  timed.setMolecule = () => Promise.resolve();
   await expect(
-    replaceKetcherMolecule(ketcher, "CCO", { timeoutMs: 1 }),
+    replaceKetcherMolecule(timed, "CCO", { timeoutMs: 1 }),
   ).rejects.toThrow("timed out");
-  expect(ketcher.eventBus.eventNames()).toEqual([]);
+  expect(timed.eventBus.eventNames()).toEqual([]);
+  timed.eventBus.emit("SUCCESS");
+  await expect(replaceKetcherMolecule(timed, "CCN")).rejects.toThrow(
+    "reloaded",
+  );
+  await expect(
+    replaceKetcherMolecule(importProtocol(), "CCN"),
+  ).resolves.toBeUndefined();
 });

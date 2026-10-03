@@ -1,4 +1,5 @@
 export const KETCHER_URL = "/ketcher-standalone/index.html";
+const interruptedEditors = new WeakSet();
 
 export function waitForKetcher(getFrame, { signal, timeoutMs = 18000 } = {}) {
   return new Promise((resolve, reject) => {
@@ -37,6 +38,8 @@ export async function replaceKetcherMolecule(
   { signal, timeoutMs = 18000 } = {},
 ) {
   if (signal?.aborted) throw new Error("Ketcher operation cancelled");
+  if (interruptedEditors.has(ketcher))
+    throw new Error("Ketcher must be reloaded after an interrupted import");
   if (!value) {
     ketcher.editor.clear();
     return;
@@ -62,11 +65,14 @@ export async function replaceKetcherMolecule(
     };
     const success = () => finish();
     const failure = () => finish(new Error("Ketcher structure import failed"));
-    const abort = () => finish(new Error("Ketcher operation cancelled"));
-    const timer = setTimeout(
-      () => finish(new Error("Ketcher structure import timed out")),
-      timeoutMs,
-    );
+    const abort = () => {
+      interruptedEditors.add(ketcher);
+      finish(new Error("Ketcher operation cancelled"));
+    };
+    const timer = setTimeout(() => {
+      interruptedEditors.add(ketcher);
+      finish(new Error("Ketcher structure import timed out"));
+    }, timeoutMs);
     bus.on("SUCCESS", success);
     bus.on("FAILURE", failure);
     signal?.addEventListener("abort", abort, { once: true });

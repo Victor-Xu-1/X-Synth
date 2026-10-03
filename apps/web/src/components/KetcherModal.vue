@@ -12,6 +12,7 @@
           editorError
         }}</v-alert>
         <iframe
+          :key="frameKey"
           ref="ketcherIframe"
           data-cy="ketcher-iframe"
           :src="KETCHER_URL"
@@ -46,7 +47,7 @@
 </template>
 
 <script>
-import { ref, watch, computed, onBeforeUnmount } from "vue";
+import { ref, watch, computed, nextTick, onBeforeUnmount } from "vue";
 import {
   KETCHER_URL,
   createKetcherWriter,
@@ -74,6 +75,7 @@ export default {
     const editorError = ref("");
     const busy = ref(false);
     const loading = ref(false);
+    const frameKey = ref(0);
     const editorLifetime = new AbortController();
     let generation = 0;
     onBeforeUnmount(() => {
@@ -104,9 +106,12 @@ export default {
         loading.value = false;
         busy.value = false;
         if (!show) return;
+        frameKey.value++;
         editorError.value = "";
         loading.value = true;
         try {
+          await nextTick();
+          if (current !== generation || editorLifetime.signal.aborted) return;
           await writeMolecule(smiles);
         } catch {
           if (current === generation && !editorLifetime.signal.aborted)
@@ -147,6 +152,7 @@ export default {
       KETCHER_URL,
       busy,
       loading,
+      frameKey,
       editorError,
       commitStructure,
       propShow,
