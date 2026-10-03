@@ -3,7 +3,9 @@ const path = require("path");
 const readSource = (value) =>
   fs.readFileSync(path.resolve(__dirname, "..", value), "utf8");
 test("composer uses the authoritative product payload and task lifecycle", () => {
-  const source = readSource("views/workspace/RouteComposer.vue");
+  const page = readSource("views/workspace/RouteComposer.vue");
+  expect(page).toContain("useRouteWorkbench");
+  const source = readSource("composables/useRouteWorkbench.js");
   expect(source).toContain("buildUnifiedRouteRequestBody");
   expect(source).toContain("UNIFIED_ROUTE_ENDPOINT");
   expect(source).not.toContain("tree-search/controller");

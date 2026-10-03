@@ -18,7 +18,7 @@ export const navigation = [
       {
         title: "一步逆合成",
         icon: "mdi-source-branch",
-        to: "/retro",
+        to: "/?mode=manual",
         feature: "retro",
       },
       {
@@ -112,6 +112,8 @@ export const optionalTools = [
   },
 ];
 export function pageFeature(route) {
+  if (route.path === "/" && route.query.mode === "manual") return "retro";
+  if (route.path === "/" && route.query.mode === "import") return null;
   if (route.path === "/forward")
     return {
       context: "conditions",
@@ -130,5 +132,12 @@ export function activeNavigation(item, route) {
     (path === "/" || !route.path.startsWith(`${path}/`))
   )
     return false;
-  return !query || new URLSearchParams(query).get("tab") === route.query.tab;
+  if (path === "/" && !query)
+    return !route.query.mode || route.query.mode === "auto";
+  return (
+    !query ||
+    [...new URLSearchParams(query)].every(
+      ([key, value]) => route.query[key] === value,
+    )
+  );
 }

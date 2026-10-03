@@ -61,7 +61,7 @@ const props = defineProps({
 const ketcherIframe = ref(null);
 const ketcherFrame = ref(null);
 const busy = ref(false);
-const editorStatus = ref("绘制完成后点击应用结构，系统会读取当前画板。");
+const editorStatus = ref("画板就绪");
 const writingFromEditor = ref(false);
 const KETCHER_BASE_WIDTH = 808;
 const KETCHER_BASE_HEIGHT = 432;
@@ -124,7 +124,7 @@ const syncKetcherLayout = () => {
     )
   );
 
-  if (props.fillHeight && availableWidth >= KETCHER_BASE_WIDTH) {
+  if (props.fillHeight) {
     ketcherScale.value = 1;
     ketcherViewportWidth.value = availableWidth;
     ketcherViewportHeight.value = visualHeightLimit;
@@ -199,9 +199,16 @@ const setSmilesToEditor = async (value = smiles.value, options = {}) => {
 const readSmilesFromEditor = async () => {
   busy.value = true;
   try {
+    await nextTick();
+    await writeMolecule.flush();
     const ketcher = await waitForKetcher();
     const rawSmiles = String(await ketcher.getSmiles()).trim();
     if (!rawSmiles) {
+      writingFromEditor.value = true;
+      smiles.value = "";
+      emit("commit", "");
+      await nextTick();
+      writingFromEditor.value = false;
       editorStatus.value = "当前画板为空。";
       return null;
     }
@@ -211,7 +218,7 @@ const readSmilesFromEditor = async () => {
     writingFromEditor.value = true;
     smiles.value = nextSmiles;
     emit("commit", nextSmiles);
-    editorStatus.value = "结构已读取，可继续生成路线。";
+    editorStatus.value = "结构已读取。";
     await nextTick();
     writingFromEditor.value = false;
     return nextSmiles;
@@ -279,6 +286,7 @@ onBeforeUnmount(() => {
 
 defineExpose({
   readSmilesFromEditor,
+  captureDraft: () => ketcherIframe.value?.contentWindow?.ketcher?.editor ? readSmilesFromEditor() : null,
   clearEditor,
   setSmilesToEditor,
 });
@@ -305,9 +313,8 @@ defineExpose({
   min-height: min(360px, var(--ketcher-visual-height, 420px));
   overflow: hidden;
   border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 20px;
+  border-radius: 7px;
   background: #ffffff;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.65);
 }
 
 .inline-ketcher-editor.fill-height-mode .inline-ketcher-frame {

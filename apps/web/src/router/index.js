@@ -51,7 +51,7 @@ const workspacePages = [
   {
     path: "retro",
     name: "一步逆合成",
-    component: () => import("@/views/workspace/OneStep.vue"),
+    redirect: (to) => ({ path: "/", query: { ...to.query, mode: "manual" } }),
     meta: { title: "一步逆合成", feature: "retro" },
   },
   {

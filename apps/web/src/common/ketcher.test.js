@@ -37,9 +37,11 @@ test("queued updates coalesce to the latest structure and recover after invalid 
   const latest = write("CCC");
   expect(await first).toBe(false);
   expect(await latest).toBe(true);
+  expect(await write.flush()).toBe(true);
   expect(ketcher.setMolecule).toHaveBeenCalledTimes(1);
   expect(ketcher.setMolecule).toHaveBeenCalledWith("CCC");
   ketcher.setMolecule.mockRejectedValueOnce(new Error("Invalid molecule"));
   await expect(write("invalid")).rejects.toThrow("Invalid molecule");
+  await expect(write.flush()).rejects.toThrow("Invalid molecule");
   expect(await write("CCN")).toBe(true);
 });

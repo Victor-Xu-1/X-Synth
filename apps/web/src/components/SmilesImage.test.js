@@ -28,8 +28,24 @@ test("loading, error and retry preserve the real drawing URL", async () => {
 test("a timed-out image has a recoverable error state, not a blank success", async () => {
   jest.useFakeTimers();
   const wrapper = shallowMount(SmilesImage, { props: { smiles: "CCO" } });
+  wrapper.vm.startLoadTimer();
   jest.advanceTimersByTime(8000);
   await wrapper.vm.$nextTick();
   expect(wrapper.vm.renderFailed).toBe(true);
+  wrapper.unmount();
+});
+test("offscreen lazy images do not time out before the browser starts loading", async () => {
+  jest.useFakeTimers();
+  const wrapper = shallowMount(SmilesImage, { props: { smiles: "CCO" } });
+  jest.advanceTimersByTime(16000);
+  expect(wrapper.vm.renderFailed).toBe(false);
+  wrapper.vm.startLoadTimer();
+  await wrapper.setProps({ smiles: "CCN" });
+  jest.advanceTimersByTime(16000);
+  expect(wrapper.vm.renderFailed).toBe(false);
+  wrapper.vm.startLoadTimer();
+  wrapper.vm.onImageLoad(true);
+  jest.advanceTimersByTime(16000);
+  expect(wrapper.vm.renderFailed).toBe(false);
   wrapper.unmount();
 });
