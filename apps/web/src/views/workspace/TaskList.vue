@@ -1,18 +1,18 @@
 <template>
-  <section class="standard-page">
+  <section class="standard-page task-history">
     <header class="page-heading">
       <div>
         <h1>任务历史</h1>
-        <p>本页 {{ rows.length }} 个任务</p>
+        <p role="status">{{ countLabel }}</p>
       </div>
       <div class="page-actions">
-        <v-btn
-          icon="mdi-refresh"
-          variant="text"
-          aria-label="刷新任务"
-          :loading="loading"
-          @click="refresh"
-        /><v-btn color="primary" variant="flat" prepend-icon="mdi-plus" to="/"
+        <v-tooltip text="刷新任务">
+          <template #activator="{ props }">
+            <v-btn v-bind="props" icon="mdi-refresh" variant="text" aria-label="刷新任务"
+              :loading="loading" :disabled="loading" @click="refresh" />
+          </template>
+        </v-tooltip>
+        <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" to="/"
           >新建任务</v-btn
         >
       </div>
@@ -21,28 +21,60 @@
       <v-text-field
         v-model="query"
         prepend-inner-icon="mdi-magnify"
-        label="搜索名称、结构或 ID"
+        label="搜索本页名称、结构或 ID"
         density="compact"
         variant="outlined"
         hide-details
         clearable
       /><v-select
         v-model="status"
-        :items="statusOptions"
+        :items="historyStatusOptions"
         density="compact"
         variant="outlined"
         label="任务状态"
         hide-details
       />
+      <v-btn-toggle v-model="view" mandatory divided density="compact" variant="outlined"
+        class="history-view-toggle" aria-label="任务历史视图">
+        <v-tooltip text="结构卡片">
+          <template #activator="{ props }">
+            <v-btn v-bind="props" value="cards" icon="mdi-view-grid-outline"
+              aria-label="结构卡片" :aria-pressed="view === 'cards'" />
+          </template>
+        </v-tooltip>
+        <v-tooltip text="高密度列表">
+          <template #activator="{ props }">
+            <v-btn v-bind="props" value="list" icon="mdi-format-list-bulleted"
+              aria-label="高密度列表" :aria-pressed="view === 'list'" />
+          </template>
+        </v-tooltip>
+      </v-btn-toggle>
     </div>
-    <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
-    <v-progress-linear v-if="loading" indeterminate />
-    <div v-if="!loading && !rows.length && !error" class="workspace-empty">
+    <div v-if="historyError" class="tool-error history-error" role="alert">
+      <span>{{ historyError }}</span>
+      <v-btn variant="text" size="small" prepend-icon="mdi-refresh" :disabled="loading" @click="refresh">重试</v-btn>
+    </div>
+    <div v-if="actionError" class="tool-error" role="alert">{{ actionError }}</div>
+    <div class="history-progress"><v-progress-linear v-show="loading" indeterminate height="2" aria-label="刷新任务历史" /></div>
+    <div v-if="loading && !rows.length" class="workspace-loading" role="status">正在读取任务历史</div>
+    <div v-else-if="hasLoaded && !rows.length && !historyError" class="workspace-empty">
       <v-icon icon="mdi-history" size="30" />
       <h2>暂无任务结果</h2>
       <v-btn variant="outlined" prepend-icon="mdi-plus" to="/">新建任务</v-btn>
     </div>
-    <div v-else class="task-table-scroll">
+    <div v-else-if="rows.length && !filtered.length && !loading && !historyError" class="workspace-empty">
+      <v-icon icon="mdi-magnify" size="30" />
+      <h2>本页没有匹配的任务</h2>
+      <v-btn variant="text" prepend-icon="mdi-filter-remove-outline" @click="clearFilters">清除筛选</v-btn>
+    </div>
+    <div v-if="filtered.length && view === 'cards'" class="task-card-grid" :aria-busy="loading">
+      <TaskCard v-for="task in filtered" :key="task.result_id" :task="task"
+        :selected="showInfo && infoTask?.result_id === task.result_id"
+        :pending="pending[task.result_id]" :info-loading="isInfoLoading(task)"
+        @info="info(task)" @preview="preview(task)" @rerun="rerun(task)"
+        @cancel="cancel(task)" @archive="archive(task)" />
+    </div>
+    <div v-else-if="filtered.length" class="task-table-scroll" :aria-busy="loading">
       <table class="data-table task-table">
         <thead>
           <tr>
@@ -58,20 +90,24 @@
             v-for="task in filtered"
             :key="task.result_id"
             class="task-history-row"
+            :class="{ selected: showInfo && infoTask?.result_id === task.result_id }"
           >
             <td>
               <router-link
-                :to="`/results/${task.result_id}`"
+                :to="taskDetailLocation(task)"
                 class="task-target-cell"
+                @click.capture="preserveStructureControl"
+                :aria-label="`打开路线结果：${taskTitle(task)}`"
                 ><SmilesImage
                   :smiles="task.target_smiles"
-                  :width="88"
-                  :height="65"
+                  class="task-list-thumbnail"
+                  :width="80"
+                  :height="54"
                   :show-error-image="false"
                 />
                 <div>
-                  <strong>{{ task.description }}</strong
-                  ><span class="workspace-code">{{ task.target_smiles }}</span>
+                  <strong :title="taskTitle(task)">{{ taskTitle(task) }}</strong
+                  ><span class="workspace-code" :title="task.target_smiles">{{ task.target_smiles }}</span>
                 </div></router-link
               >
             </td>
@@ -82,58 +118,18 @@
                 >{{ taskStateLabel(task.result_state) }}</span
               >
             </td>
-            <td>{{ task.num_trees }}</td>
+            <td>{{ taskRouteCount(task) ?? '未记录' }}</td>
             <td class="workspace-muted">{{ displayTime(task.modified) }}</td>
             <td>
-              <div class="page-actions task-row-actions">
-                <v-tooltip text="预览路线"
-                  ><template #activator="{ props }"
-                    ><v-btn
-                      v-bind="props"
-                      icon="mdi-eye-outline"
-                      size="small"
-                      variant="text"
-                      :disabled="!task.num_trees"
-                      aria-label="预览路线"
-                      @click="preview(task)" /></template></v-tooltip
-                ><v-tooltip text="打开任务"
-                  ><template #activator="{ props }"
-                    ><v-btn
-                      v-bind="props"
-                      icon="mdi-arrow-top-right"
-                      size="small"
-                      variant="text"
-                      :to="`/results/${task.result_id}`"
-                      aria-label="打开任务" /></template></v-tooltip
-                ><v-menu
-                  ><template #activator="{ props }"
-                    ><v-btn
-                      v-bind="props"
-                      icon="mdi-dots-horizontal"
-                      size="small"
-                      variant="text"
-                      aria-label="更多任务操作" /></template
-                  ><v-list density="compact"
-                    ><v-list-item
-                      title="重新运行"
-                      @click="rerun(task)" /><v-list-item
-                      v-if="activeTaskStates.includes(task.result_state)"
-                      title="取消任务"
-                      @click="cancel(task)" /><v-list-item
-                      v-else
-                      title="移除记录"
-                      @click="remove(task)" /></v-list
-                ></v-menu>
-              </div>
+              <TaskActions :task="task" :pending="pending[task.result_id]" :info-loading="isInfoLoading(task)"
+                @info="info(task)" @preview="preview(task)" @rerun="rerun(task)"
+                @cancel="cancel(task)" @archive="archive(task)" />
             </td>
           </tr>
         </tbody>
       </table>
-      <div v-if="rows.length && !filtered.length" class="workspace-empty">
-        没有匹配的任务
-      </div>
     </div>
-    <div v-if="page > 0 || more" class="page-actions mt-4">
+    <nav v-if="page > 0 || more" class="page-actions history-pagination" aria-label="任务历史分页">
       <v-btn
         variant="text"
         prepend-icon="mdi-chevron-left"
@@ -149,7 +145,11 @@
         @click="nextPage"
         >下一页</v-btn
       >
-    </div>
+    </nav>
+    <TaskInfoDialog v-model="showInfo" :task="infoTask" :loading="infoLoading"
+      :error="infoError || actionError" :busy="Boolean(pending[infoTask?.result_id])"
+      :rerunning="pending[infoTask?.result_id] === 'rerun'"
+      @retry="info(infoTask)" @preview="preview(infoTask)" @rerun="rerun(infoTask)" />
     <RoutePreview
       v-model="showPreview"
       :candidates="previewRoutes"
@@ -159,19 +159,25 @@
   </section>
 </template>
 <script setup>
-import { onMounted, onBeforeUnmount, ref } from "vue";
+import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useTaskHistory } from "@/composables/useTaskHistory";
+import { useTaskActions } from "@/composables/useTaskActions";
 import {
   taskStateLabel,
   taskStateClass,
   displayTime,
   activeTaskStates,
 } from "@/common/task-state";
-import { API } from "@/common/api";
-import { errorMessage } from "@/common/workspace-errors";
+import {
+  historyCountLabel, historyStatusOptions, normalizeTaskInfo, preserveStructureControl,
+  taskDetailLocation, taskRouteCount, taskTitle,
+} from "@/common/task-history-view";
 import SmilesImage from "@/components/SmilesImage.vue";
 import RoutePreview from "@/components/routes/RoutePreview.vue";
+import TaskCard from "@/components/workspace/TaskCard.vue";
+import TaskActions from "@/components/workspace/TaskActions.vue";
+import TaskInfoDialog from "@/components/workspace/TaskInfoDialog.vue";
 const {
   rows,
   filtered,
@@ -186,61 +192,42 @@ const {
   previousPage,
 } = useTaskHistory();
 const router = useRouter();
+const view = ref("cards"), hasLoaded = ref(false), loadedPage = ref(0), lastHistoryError = ref("");
+const {
+  showInfo, infoTask, infoLoading, infoError, actionError, pending,
+  showPreview, previewRoutes, previewJob, previewTitle,
+  info, preview, rerun, cancel, archive,
+} = useTaskActions({ router, refresh });
+const historyError = computed(() => error.value || (loading.value ? lastHistoryError.value : ""));
+const countLabel = computed(() => historyCountLabel({
+  loaded: hasLoaded.value, loading: loading.value,
+  count: rows.value.length, matched: filtered.value.length,
+  filtering: Boolean(query.value) || status.value !== "all",
+  page: page.value, loadedPage: loadedPage.value,
+}));
 let timer;
-const statusOptions = [
-  { title: "全部状态", value: "all" },
-  { title: "进行中 / 等待恢复", value: "active" },
-  { title: "已完成", value: "completed" },
-  { title: "路线不足", value: "completed_not_enough_routes" },
-  { title: "已取消", value: "cancelled" },
-  { title: "执行失败", value: "failed" },
-];
-const showPreview = ref(false),
-  previewRoutes = ref([]),
-  previewJob = ref(""),
-  previewTitle = ref("");
-async function preview(task) {
-  try {
-    const value = await API.get("/api/results/retrieve", {
-      result_id: task.result_id,
-    });
-    previewRoutes.value =
-      value.result?.unified_route_pool?.selected_routes || [];
-    previewJob.value = task.result_id;
-    previewTitle.value = task.description;
-    showPreview.value = true;
-  } catch (e) {
-    error.value = errorMessage(e, "预览加载失败。");
+function isInfoLoading(task) {
+  return infoLoading.value && infoTask.value?.result_id === task.result_id;
+}
+function clearFilters() {
+  query.value = "";
+  status.value = "all";
+}
+watch(loading, (value) => {
+  if (!value) {
+    lastHistoryError.value = error.value;
+    if (!error.value) {
+      hasLoaded.value = true;
+      loadedPage.value = page.value;
+    }
   }
-}
-function rerun(task) {
-  router.push({
-    path: "/",
-    query: { smiles: task.target_smiles, task_name: task.description },
-  });
-}
-async function cancel(task) {
-  if (!window.confirm("取消当前任务？")) return;
-  try {
-    await API.post(`/api/v1/unified-route/jobs/${task.result_id}/cancel`);
-    await refresh();
-  } catch (e) {
-    error.value = errorMessage(e, "取消失败。");
+});
+watch(rows, (tasks) => {
+  const selected = tasks.find((task) => task.result_id === infoTask.value?.result_id);
+  if (selected) {
+    infoTask.value = normalizeTaskInfo(infoTask.value, selected);
   }
-}
-async function remove(task) {
-  if (!window.confirm("从任务列表移除此记录？")) return;
-  try {
-    await API.delete(
-      "/api/results/destroy",
-      { result_id: task.result_id },
-      true,
-    );
-    await refresh();
-  } catch (e) {
-    error.value = errorMessage(e, "记录移除失败。");
-  }
-}
+});
 onMounted(() => {
   refresh();
   timer = setInterval(() => {
@@ -256,23 +243,75 @@ onBeforeUnmount(() => clearInterval(timer));
 <style scoped>
 .task-list-filters {
   display: grid;
-  grid-template-columns: minmax(0, 430px) 190px;
-  gap: 14px;
-  margin-bottom: 22px;
+  grid-template-columns: minmax(0, 1fr) 210px auto;
+  gap: 12px;
+  margin-bottom: 14px;
+  align-items: center;
+}
+.history-view-toggle {
+  height: 40px;
+  border-radius: 6px;
+}
+.history-view-toggle :deep(.v-btn) {
+  width: 42px;
+  min-width: 42px;
+  height: 40px;
+  border-radius: 0 !important;
+}
+.history-progress {
+  height: 2px;
+  margin-bottom: 18px;
+}
+.history-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.task-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 265px), 1fr));
+  gap: 18px;
 }
 .task-table-scroll {
   overflow-x: auto;
 }
 .task-table {
-  min-width: 730px;
+  min-width: 700px;
+}
+.task-table td {
+  padding: 10px 12px;
+}
+.task-history-row.selected {
+  background: var(--ws-muted-surface);
 }
 .task-target-cell {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   max-width: 440px;
+  color: var(--ws-text);
+  text-decoration: none;
 }
-.task-target-cell > div {
+.task-list-thumbnail {
+  width: 80px;
+  height: 54px;
+  flex: 0 0 80px;
+}
+.task-list-thumbnail :deep(.structure-error-state) {
+  padding: 4px;
+  gap: 2px;
+  overflow: hidden;
+}
+.task-list-thumbnail :deep(.structure-error-state > .v-icon),
+.task-list-thumbnail :deep(.structure-error-state > span) {
+  display: none;
+}
+.task-list-thumbnail :deep(.structure-error-state strong) {
+  font-size: 10px;
+  line-height: 12px;
+}
+.task-target-cell > div:not(.task-list-thumbnail) {
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -294,16 +333,21 @@ onBeforeUnmount(() => clearInterval(timer));
   white-space: nowrap;
   max-width: 280px;
 }
-.task-row-actions {
-  flex-wrap: nowrap;
-  gap: 1px;
-}
 .task-actions-cell {
-  width: 125px;
+  width: 154px;
+}
+.history-pagination {
+  margin-top: 22px;
 }
 @media (max-width: 700px) {
   .task-list-filters {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .task-list-filters > :first-child {
+    grid-column: 1 / -1;
+  }
+  .task-card-grid {
+    gap: 14px;
   }
   .task-table {
     min-width: 630px;

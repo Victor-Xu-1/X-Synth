@@ -100,7 +100,10 @@ another product version.
 
 The layout shell owns navigation, theme and live readiness only. Task composition,
 task history, result detail, route documents and graph editing are separate pages.
-There is one route handler per page. Legacy `/network` URLs redirect to their new
+The structure-first composer has three explicit modes: route search, one-step
+analysis, and X-Synth JSON import. `/retro` redirects to `/?mode=manual`; the
+replaced standalone one-step page is removed. There is one route handler per page.
+Legacy `/network` URLs redirect to their new
 destination; retired Launchpad, vis-network graph views and their global result
 store are removed. Chinese workspace labels do not use third-party branding.
 
@@ -126,8 +129,36 @@ change invalidates original prediction scores and closure, even if restored
 later. Edited documents are drafts, not independently validated model outputs.
 JSON import creates a draft. PNG export captures all nodes and branches, not
 just the current zoomed viewport. Interactive continuation uses the same real
-ASKCOS one-step adapter as the one-step page; it cannot turn manual edits into
+ASKCOS one-step adapter as manual mode; it cannot turn manual edits into
 a completed computation task.
+
+### Structure-First Interaction
+
+The interaction organization was informed by the observable Chemiscal home,
+task list and route list, not its private source code or search implementation.
+X-Synth retains its own identity, Ketcher and the actual ASKCOS capability
+boundary. Unsupported groups, similar-molecule routes, price/risk/yield claims,
+process optimization and proprietary CDX/Marvin integrations are not added.
+
+- The composer owns mode/navigation; `useRouteWorkbench` owns real submission;
+  `workbench-model` owns supported query presets; the authoritative
+  `buildUnifiedRouteRequestBody` continues to own route payload bounds.
+- A shared session-only store preserves structure/settings across navigation.
+  Mode switches and readiness polling do not recreate the drawing board.
+  Submission awaits the pending typed-structure import before reading Ketcher.
+  The UI displays minutes while the existing API receives seconds.
+- Manual candidate results retain their own target/model snapshot. Display is
+  paged without losing candidates; editing creates an unclosed draft, not a
+  completed task. Both import entries use `route-document-file` and server DAG
+  validation; client provenance cannot certify a route.
+- History offers structural cards and a compact list, bounded pagination,
+  real state filters, actual parameter details, route preview and rerun presets.
+  Rerun only restores supported settings; submission remains an explicit action.
+- Route detail supports graph, steps and comparison overview, using only actual
+  structures/metadata. Filtering and ordering retain original source indices for
+  `from-task` copies. No fabricated difficulty, cost, yield or literature is shown.
+- Graph/list images begin their timeout only when actual browser loading starts.
+  Offscreen lazy images cannot be mislabeled failed before entering the viewport.
 
 ## Performance Contract
 

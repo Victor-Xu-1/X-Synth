@@ -189,6 +189,7 @@ import RouteInspector from "@/components/routes/RouteInspector.vue";
 import ExpandMolecule from "@/components/routes/ExpandMolecule.vue";
 import { useWorkspaceStore } from "@/store/workspace";
 import { API } from "@/common/api";
+import { importRouteDocument } from "@/common/route-document-file";
 import {
   cleanGraph,
   layoutGraph,
@@ -362,14 +363,7 @@ async function importDocument(event) {
   const file = event.target.files?.[0];
   if (!file) return;
   try {
-    if (file.size > 10 * 1024 * 1024) throw new Error("size");
-    const value = JSON.parse(await file.text());
-    if (value.format !== "x-synth-route" || value.version !== 1)
-      throw new Error("format");
-    const saved = await API.post("/api/v1/route-documents", {
-      title: value.title || "导入路线",
-      graph: cleanGraph(value.graph),
-    });
+    const saved = await importRouteDocument(API, file);
     dirty.value = false;
     router.replace(`/editor/${saved.id}`);
   } catch (e) {

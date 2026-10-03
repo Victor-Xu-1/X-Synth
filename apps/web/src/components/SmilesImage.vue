@@ -36,6 +36,7 @@
       v-bind="imageProps"
       v-else
       :class="'hide-invalid' + (isDark ? ' invert' : '')"
+      @loadstart="startLoadTimer"
       @load="onImageLoad(true)"
       @error="onImageLoad(false)"
     >
@@ -130,7 +131,7 @@ export default defineComponent({
   methods: {
     retryImage() {
       this.renderAttempt += 1;
-      this.startLoadTimer();
+      this.resetLoadState();
     },
     onImageLoad(isValid) {
       this.clearLoadTimer();
@@ -139,16 +140,19 @@ export default defineComponent({
       this.$emit(isValid ? "load" : "error");
     },
     startLoadTimer() {
-      this.clearLoadTimer();
+      this.resetLoadState();
       if (!this.smiles) return;
-      this.isLoading = true;
-      this.renderFailed = false;
       this.loadTimer = window.setTimeout(() => {
         if (this.isLoading) {
           this.isLoading = false;
           this.renderFailed = true;
         }
       }, 8000);
+    },
+    resetLoadState() {
+      this.clearLoadTimer();
+      this.isLoading = !!this.smiles;
+      this.renderFailed = false;
     },
     clearLoadTimer() {
       if (this.loadTimer) {
@@ -203,15 +207,12 @@ export default defineComponent({
       renderAttempt: 0,
     };
   },
-  mounted() {
-    this.startLoadTimer();
-  },
   beforeUnmount() {
     this.clearLoadTimer();
   },
   watch: {
     url() {
-      this.startLoadTimer();
+      this.resetLoadState();
     },
   },
   setup() {

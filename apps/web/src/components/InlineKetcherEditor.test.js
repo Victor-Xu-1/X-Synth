@@ -33,7 +33,8 @@ test("inline Ketcher editor scales the fixed-width Ketcher app to the available 
   expect(text).toContain("const availableParentHeight = Math.max(0, frame.parentElement?.clientHeight || 0);");
   expect(text).toContain("const parentVisualLimit = availableParentHeight >= KETCHER_MIN_VISUAL_HEIGHT");
   expect(text).toContain("viewportHeight - viewportHeightReserve");
-  expect(text).toContain("if (props.fillHeight && availableWidth >= KETCHER_BASE_WIDTH) {");
+  expect(text).toContain("if (props.fillHeight) {");
+  expect(text).not.toContain("props.fillHeight && availableWidth >= KETCHER_BASE_WIDTH");
   expect(text).toContain("ketcherViewportWidth.value = availableWidth;");
   expect(text).toContain("ketcherViewportHeight.value = visualHeightLimit;");
   expect(text).toContain("const heightScale = visualHeightLimit / KETCHER_BASE_HEIGHT;");

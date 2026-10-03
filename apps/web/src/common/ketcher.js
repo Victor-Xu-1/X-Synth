@@ -35,7 +35,7 @@ export async function replaceKetcherMolecule(ketcher, value) {
 export function createKetcherWriter(getEditor) {
   let pending = Promise.resolve();
   let revision = 0;
-  return (value) => {
+  const enqueue = (value) => {
     const requested = ++revision;
     const write = async () => {
       if (requested !== revision) return false;
@@ -47,4 +47,6 @@ export function createKetcherWriter(getEditor) {
     pending = pending.then(write, write);
     return pending;
   };
+  enqueue.flush = () => pending;
+  return enqueue;
 }

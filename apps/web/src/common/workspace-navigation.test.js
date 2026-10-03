@@ -25,3 +25,18 @@ test("optional native subpages are keyed by actual capabilities", () => {
     );
   }
 });
+test("automatic and manual workbench modes select exactly one navigation entry", () => {
+  for (const mode of ["auto", "manual"]) {
+    const selected = navigation
+      .flatMap((group) => group.items)
+      .filter((item) => activeNavigation(item, { path: "/", query: { mode } }));
+    expect(selected).toHaveLength(1);
+    expect(selected[0].title).toBe(mode === "auto" ? "新建任务" : "一步逆合成");
+  }
+  expect(pageFeature({ path: "/", query: { mode: "manual" }, meta: {} })).toBe(
+    "retro",
+  );
+  expect(
+    pageFeature({ path: "/", query: { mode: "import" }, meta: {} }),
+  ).toBeNull();
+});

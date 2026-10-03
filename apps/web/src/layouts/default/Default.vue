@@ -34,12 +34,15 @@ const workspace = useWorkspaceStore();
 const online = useOnline();
 const { width } = useWindowSize();
 const mobile = computed(() => width.value < 900);
-const compact = ref(false);
+const preferredCompact = ref(null);
+const compact = computed(
+  () => !mobile.value && (preferredCompact.value ?? width.value < 1180),
+);
 const mobileOpen = ref(false);
 let timer;
 function toggleNavigation() {
   if (mobile.value) mobileOpen.value = !mobileOpen.value;
-  else compact.value = !compact.value;
+  else preferredCompact.value = !compact.value;
 }
 onMounted(() => {
   workspace.refresh(true);
