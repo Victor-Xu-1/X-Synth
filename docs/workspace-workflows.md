@@ -72,7 +72,10 @@
 ## 验证与性能
 
 只运行当前 diff 映射到的 Python/前端测试、构建和相关安全检查，不回退到全局套件。
-模板导航契约测试使用真实 SQLite/FastAPI 响应；CI 只在选择到这些测试时安装
+模板导航契约测试使用真实 SQLite/FastAPI 响应与独立接口测试记录，公开 SMARTS 示例来自
+[RDKit 文档](https://www.rdkit.org/docs/RDKit_Book.html#reaction-smarts)。测试中的计数、
+ID 与分页参考记录仅是接口输入，不是预测结果、商业目录或实验文献。
+它们不进入产品运行目录，也不替代本机真实模板库、库存和模型验收。CI 只在选择到这些测试时安装
 产品 API 的哈希锁定依赖。`ci_scope` 传递所用 Python 解释器，
 直接运行这些 npm 测试时可显式设置 `X_SYNTH_TEST_PYTHON`。
 

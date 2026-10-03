@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 
-// Every response comes from the real authenticated router and installed SQLite.
+// Real authenticated router and SQLite; portable interface records are not scientific acceptance.
 export function templateContractApi() {
   const root = resolve(process.cwd(), "../..");
   const virtualPython = resolve(root, ".venv/bin/python");
@@ -22,7 +22,9 @@ export function templateContractApi() {
   const pending = new Map(),
     requests = [];
   let id = 0,
-    stderr = "";
+    stderr = "",
+    closed = false,
+    terminalError = null;
   child.stderr.on("data", (data) => {
     stderr = (stderr + data).slice(-8192);
   });
@@ -43,13 +45,24 @@ export function templateContractApi() {
     }
     pending.clear();
   };
-  child.on("error", fail);
+  child.on("error", (error) => {
+    closed = true;
+    terminalError = error;
+    fail(error);
+  });
   child.on("exit", (code) => {
-    if (code)
-      fail(new Error(`Template contract process exited ${code}: ${stderr}`));
+    closed = true;
+    terminalError ||= new Error(
+      `Template contract process exited ${code}: ${stderr}`,
+    );
+    fail(terminalError);
   });
   const request = (method, path, payload) =>
     new Promise((yes, no) => {
+      if (closed) {
+        no(terminalError || new Error("Template contract process closed"));
+        return;
+      }
       const command = { id: ++id, method, path, ...payload };
       requests.push(command);
       const timer = setTimeout(() => {
@@ -65,6 +78,11 @@ export function templateContractApi() {
     post: (path, body) => request("POST", path, { body }),
     stop: () =>
       new Promise((yes) => {
+        if (closed || child.exitCode !== null || child.signalCode !== null) {
+          lines.close();
+          yes();
+          return;
+        }
         child.once("close", () => {
           lines.close();
           yes();

@@ -45,13 +45,13 @@ beforeAll(async () => {
   api = templateContractApi();
   native = (
     await api.get(detailPath, {
-      source: "pistachio",
-      template_id: "pistachio:7bc41b373203fc50b7bada7b31865f35",
+      source: "reference_main",
+      template_id: "reference_main:example-0",
     })
   ).template;
   other = (
     await api.post("/api/v1/template-library/query", {
-      sources: ["pistachio_ringbreaker"],
+      sources: ["reference_variants"],
       limit: 1,
     })
   ).templates[0];
@@ -91,7 +91,7 @@ test("deep-link reload fetches exactly its real source-scoped record without pre
 test("row drill-down, back and URL reload preserve criteria and bounded results", async () => {
   const { state, router, wrapper } = await setup();
   Object.assign(state.filters, {
-    source: "pistachio_ringbreaker",
+    source: "reference_variants",
     direction: "retro",
     minCount: 2,
     limit: 2,
@@ -142,12 +142,12 @@ test("an old real 404 cannot replace a newer successful detail", async () => {
   const held = holdContractResponses(
     api,
     (_, path, params) =>
-      path === detailPath && params.template_id === "pistachio:absent",
+      path === detailPath && params.template_id === "reference_main:absent",
   );
   const { state, router } = await setup(
     {
       path: "/template",
-      query: { source: "pistachio", id: "pistachio:absent" },
+      query: { source: "reference_main", id: "reference_main:absent" },
     },
     held,
   );
@@ -181,7 +181,7 @@ test("invalid deep links are errors without a detail call; actual 404 supports e
   const start = api.requests.length;
   const invalid = await setup({
     path: "/template",
-    query: { source: "pistachio", id: "3325" },
+    query: { source: "reference_main", id: "3325" },
   });
   expect(invalid.state.detailError.value).not.toBe("");
   expect(
@@ -189,7 +189,7 @@ test("invalid deep links are errors without a detail call; actual 404 supports e
   ).toHaveLength(0);
   const missing = await setup({
     path: "/template",
-    query: { source: "pistachio", id: "pistachio:absent" },
+    query: { source: "reference_main", id: "reference_main:absent" },
   });
   await eventually(() => Boolean(missing.state.detailError.value));
   expect(missing.state.detail.value).toBeNull();

@@ -7,6 +7,7 @@ import sys
 from contextlib import closing
 from dataclasses import asdict
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
 from fastapi import FastAPI
@@ -379,12 +380,16 @@ def test_cached_summary_is_defensive_and_refreshes_on_asset_replacement(database
 
 
 def contract_rpc():
-    """In-process HTTP contracts for frontend tests; no server or model is started."""
+    """Portable HTTP/SQLite interface checks; native scientific acceptance is separate."""
+    from test_template_contract_data import create_contract_database
+
     os.environ["X_SYNTH_AUTH_MODE"] = "local"
-    path = installed_database()
-    if not path.is_file():
-        raise FileNotFoundError("Real installed template SQLite is required")
-    with template_client(path) as client:
+    with (
+        TemporaryDirectory(prefix="x-synth-template-contract-") as directory,
+        template_client(
+            create_contract_database(Path(directory) / "contract.sqlite")
+        ) as client,
+    ):
         for line in sys.stdin:
             command = json.loads(line)
             response = client.request(
