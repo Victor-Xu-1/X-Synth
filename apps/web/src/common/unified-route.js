@@ -5,69 +5,167 @@ function unifiedRouteStatusEndpoint(jobId) {
   return `/api/v1/unified-route/jobs/${encodeURIComponent(jobId)}`;
 }
 
-function boundedNumber(value, fallback, min, max) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return fallback;
-  return Math.min(Math.max(number, min), max);
+function boundedNumber(
+  value,
+  fallback,
+  min,
+  max,
+  { strict, integer, positive, name } = {},
+) {
+  if (value === undefined) return fallback;
+  const numeric =
+    typeof value === "number" ||
+    (!strict && typeof value === "string" && value.trim() !== "");
+  const number = numeric ? Number(value) : NaN;
+  if (
+    strict &&
+    (!Number.isFinite(number) ||
+      number < min ||
+      number > max ||
+      (integer && !Number.isInteger(number)) ||
+      (positive && number <= 0))
+  ) {
+    throw new Error("搜索参数 " + name + " 不符合后端约束。");
+  }
+  if (!Number.isFinite(number) || (positive && number <= 0)) return fallback;
+  const bounded = Math.min(Math.max(number, min), max);
+  return integer ? Math.round(bounded) : bounded;
 }
 
-function buildUnifiedRouteRequestBody(treeBody) {
-  const buildTreeOptions = treeBody?.build_tree_options || {};
-  const enumeratePathsOptions = treeBody?.enumerate_paths_options || {};
-  const expandOneOptions = treeBody?.expand_one_options || {};
-  const tuning = treeBody?.tuning || {};
+function record(value, strict) {
+  if (value === undefined) return {};
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  if (strict) throw new Error("搜索参数格式无效。");
+  return {};
+}
+function strategies(value) {
+  if (value === undefined) return ["mcts", "retro_star"];
+  if (
+    !Array.isArray(value) ||
+    !value.length ||
+    value.length > 2 ||
+    value.some((item) => !["mcts", "retro_star"].includes(item))
+  )
+    throw new Error("搜索策略不符合后端约束。");
+  return [...new Set(value)];
+}
+const supplied = (value, legacy) => (value === undefined ? legacy : value);
+
+function buildUnifiedRouteRequestBody(treeBody, { strict = false } = {}) {
+  treeBody = record(treeBody, strict);
+  const buildTreeOptions = record(treeBody.build_tree_options, strict);
+  const enumeratePathsOptions = record(
+    treeBody.enumerate_paths_options,
+    strict,
+  );
+  const expandOneOptions = record(treeBody.expand_one_options, strict);
+  const tuning = record(treeBody.tuning, strict);
   const smiles = String(treeBody?.smiles || "").trim();
   const description = String(treeBody?.description || smiles).trim() || smiles;
+  const number = (
+    name,
+    value,
+    fallback,
+    min,
+    max,
+    integer = false,
+    positive = false,
+  ) =>
+    boundedNumber(value, fallback, min, max, {
+      strict,
+      integer,
+      positive,
+      name,
+    });
+  const minRoutes = number("min_routes", treeBody.min_routes, 3, 3, 10, true);
+  const maxRoutes = number(
+    "max_routes",
+    supplied(treeBody.max_routes, enumeratePathsOptions.max_paths),
+    10,
+    3,
+    10,
+    true,
+  );
+  if (minRoutes > maxRoutes) throw new Error("路线数量下限不能高于上限。");
+  const legacyPaths =
+    Number(enumeratePathsOptions.max_paths) <= 10
+      ? undefined
+      : enumeratePathsOptions.max_paths;
 
   return {
     smiles,
     description,
     backend: "askcos",
-    strategies: ["mcts", "retro_star"],
-    expansion_time: boundedNumber(
-      treeBody?.expansion_time ?? buildTreeOptions.expansion_time,
+    strategies: strategies(treeBody.strategies),
+    expansion_time: number(
+      "expansion_time",
+      supplied(treeBody.expansion_time, buildTreeOptions.expansion_time),
       1800,
       60,
       7200,
+      true,
     ),
-    max_paths:
-      Number(enumeratePathsOptions.max_paths) <= 10
-        ? 200
-        : boundedNumber(enumeratePathsOptions.max_paths, 200, 50, 500),
-    min_routes: 3,
-    max_routes: boundedNumber(
-      treeBody?.max_routes ?? enumeratePathsOptions.max_paths,
-      10,
-      3,
-      10,
+    max_paths: number(
+      "max_paths",
+      supplied(treeBody.max_paths, legacyPaths),
+      200,
+      treeBody.max_paths === undefined ? 50 : 10,
+      500,
+      true,
+    ),
+    min_routes: minRoutes,
+    max_routes: maxRoutes,
+    repair_attempts: number(
+      "repair_attempts",
+      treeBody.repair_attempts,
+      1,
+      0,
+      1,
+      true,
     ),
     tuning: {
-      max_depth: boundedNumber(
-        tuning.max_depth ?? buildTreeOptions.max_depth,
+      max_depth: number(
+        "max_depth",
+        supplied(tuning.max_depth, buildTreeOptions.max_depth),
         12,
         3,
         50,
+        true,
       ),
-      max_branching: boundedNumber(
-        tuning.max_branching ?? buildTreeOptions.max_branching,
+      max_branching: number(
+        "max_branching",
+        supplied(tuning.max_branching, buildTreeOptions.max_branching),
         50,
         1,
         200,
+        true,
       ),
-      template_count: boundedNumber(
-        tuning.template_count ?? expandOneOptions.template_max_count,
+      template_count: number(
+        "template_count",
+        supplied(tuning.template_count, expandOneOptions.template_max_count),
         1000,
         10,
         5000,
+        true,
       ),
-      cumulative_probability: boundedNumber(
-        tuning.cumulative_probability ?? expandOneOptions.template_max_cum_prob,
+      cumulative_probability: number(
+        "cumulative_probability",
+        supplied(
+          tuning.cumulative_probability,
+          expandOneOptions.template_max_cum_prob,
+        ),
         0.999,
-        0.01,
+        0,
         1,
+        false,
+        true,
       ),
-      minimum_plausibility: boundedNumber(
-        tuning.minimum_plausibility ?? expandOneOptions.filter_threshold,
+      minimum_plausibility: number(
+        "minimum_plausibility",
+        supplied(
+          tuning.minimum_plausibility,
+          expandOneOptions.filter_threshold,
+        ),
         0.75,
         0,
         1,

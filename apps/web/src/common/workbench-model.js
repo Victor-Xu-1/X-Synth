@@ -12,30 +12,63 @@ export const searchSettings = [
   {
     key: "cumulative_probability",
     label: "累计模板概率",
-    min: 0.01,
+    min: Number.MIN_VALUE,
     max: 1,
-    step: 0.001,
+    step: "any",
   },
   {
     key: "minimum_plausibility",
     label: "FF 筛选阈值",
     min: 0,
     max: 1,
-    step: 0.01,
+    step: "any",
   },
 ];
 export function normalizeMode(value) {
   return workbenchModes.some((mode) => mode.value === value) ? value : "auto";
 }
-export function defaultSearchSettings() {
-  const body = buildUnifiedRouteRequestBody({});
+function searchDraft(body) {
   return {
+    strategies: [...body.strategies],
+    maxPaths: body.max_paths,
+    minRoutes: body.min_routes,
+    repairAttempts: body.repair_attempts,
     maxRoutes: body.max_routes,
     minutes: body.expansion_time / 60,
     tuning: body.tuning,
   };
 }
+export function defaultSearchSettings() {
+  return searchDraft(buildUnifiedRouteRequestBody({}));
+}
+export function buildWorkbenchRequest({ smiles, name, settings }) {
+  if (
+    typeof settings.minutes !== "number" ||
+    !Number.isFinite(settings.minutes)
+  )
+    throw new Error("搜索预算必须为有效数字。");
+  return buildUnifiedRouteRequestBody(
+    {
+      smiles,
+      description: name,
+      strategies: settings.strategies,
+      max_paths: settings.maxPaths,
+      min_routes: settings.minRoutes,
+      max_routes: settings.maxRoutes,
+      repair_attempts: settings.repairAttempts,
+      expansion_time: Math.round(settings.minutes * 60),
+      tuning: settings.tuning,
+    },
+    { strict: true },
+  );
+}
 export function querySeed(query) {
+  if (
+    ["smiles", "q", "task_name", "search_settings"].some(
+      (key) => query[key] !== undefined && typeof query[key] !== "string",
+    )
+  )
+    throw new Error("任务链接参数格式无效。");
   if (!query.smiles && !query.q && !query.task_name && !query.search_settings)
     return null;
   const text = String(query.search_settings || "");
@@ -46,7 +79,9 @@ export function querySeed(query) {
     (!settings || typeof settings !== "object" || Array.isArray(settings))
   )
     throw new Error("任务参数格式无效。");
-  const body = settings ? buildUnifiedRouteRequestBody(settings) : null;
+  const body = settings
+    ? buildUnifiedRouteRequestBody(settings, { strict: true })
+    : null;
   return {
     key: JSON.stringify([
       query.smiles || query.q || "",
@@ -55,13 +90,7 @@ export function querySeed(query) {
     ]),
     smiles: String(query.smiles || query.q || settings?.smiles || ""),
     name: String(query.task_name || settings?.description || "").slice(0, 160),
-    settings: body
-      ? {
-          maxRoutes: body.max_routes,
-          minutes: body.expansion_time / 60,
-          tuning: body.tuning,
-        }
-      : null,
+    settings: body ? searchDraft(body) : defaultSearchSettings(),
   };
 }
 export function oneStepCandidate(result, index) {
@@ -77,6 +106,7 @@ export function oneStepCandidate(result, index) {
           .split(".")
           .filter(Boolean),
         confidence: item.plausibility,
+        metadata: item,
       },
     ],
     closed: false,

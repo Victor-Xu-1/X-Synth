@@ -30,6 +30,7 @@
           v-model="label"
           maxlength="120"
           :readonly="!editable"
+          :disabled="busy"
       /></label>
       <label v-if="node.type === 'molecule'"
         ><span class="field-label">SMILES</span
@@ -38,12 +39,14 @@
           v-model="smiles"
           rows="4"
           :readonly="!editable"
+          :disabled="busy"
         />
       </label>
       <v-btn
         v-if="editable && node.type === 'molecule'"
         prepend-icon="mdi-draw"
         variant="outlined"
+        :disabled="busy"
         @click="drawing = true"
         >绘制结构</v-btn
       >
@@ -55,11 +58,19 @@
           rows="5"
           maxlength="4096"
           :readonly="!editable"
+          :disabled="busy"
         />
       </label>
       <div v-if="typeof score === 'number'" class="workspace-muted">
         模型分数 {{ score.toFixed(3) }}
       </div>
+      <RouteNodeContext
+        :node="node"
+        :graph="graph"
+        :step="step"
+        :snapshot="snapshot"
+        @navigate="$emit('navigate')"
+      />
       <div v-if="message" class="tool-error" role="alert">{{ message }}</div>
       <v-btn
         v-if="editable"
@@ -74,6 +85,7 @@
         prepend-icon="mdi-trash-can-outline"
         variant="text"
         color="error"
+        :disabled="busy"
         @click="$emit('remove')"
         >删除节点</v-btn
       >
@@ -86,9 +98,10 @@
   </aside>
 </template>
 <script setup>
-import { ref, watch } from "vue";
+import { onBeforeUnmount, ref, watch } from "vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import KetcherModal from "@/components/KetcherModal.vue";
+import RouteNodeContext from "./RouteNodeContext.vue";
 import { API } from "@/common/api";
 import { errorMessage } from "@/common/workspace-errors";
 const props = defineProps({
@@ -96,14 +109,19 @@ const props = defineProps({
   editable: Boolean,
   target: Boolean,
   score: Number,
+  graph: Object,
+  step: Object,
+  snapshot: String,
 });
-const emit = defineEmits(["update", "close", "remove"]);
+const emit = defineEmits(["update", "close", "remove", "navigate"]);
 const label = ref(""),
   smiles = ref(""),
   note = ref(""),
   busy = ref(false),
   message = ref(""),
   drawing = ref(false);
+let generation = 0,
+  disposed = false;
 watch(
   () => [
     props.node?.id,
@@ -112,6 +130,9 @@ watch(
     props.node?.note,
   ],
   () => {
+    generation++;
+    busy.value = false;
+    drawing.value = false;
     label.value = props.node?.label || "";
     smiles.value = props.node?.smiles || "";
     note.value = props.node?.note || "";
@@ -120,26 +141,42 @@ watch(
   { immediate: true },
 );
 async function apply() {
+  if (!props.node || !props.editable || busy.value) return;
+  const current = ++generation;
+  const node = { ...props.node };
+  const draft = { label: label.value, smiles: smiles.value, note: note.value };
   busy.value = true;
   message.value = "";
   try {
     let canonical = "";
-    if (props.node.type === "molecule")
+    if (node.type === "molecule")
       canonical = (
-        await API.post("/api/v1/structure/validate", { smiles: smiles.value })
+        await API.post("/api/v1/structure/validate", { smiles: draft.smiles })
       ).smiles;
+    if (
+      disposed ||
+      current !== generation ||
+      node.id !== props.node?.id ||
+      !props.editable
+    )
+      return;
     emit("update", {
-      ...props.node,
-      label: label.value,
+      ...node,
+      label: draft.label,
       smiles: canonical,
-      note: note.value,
+      note: draft.note,
     });
   } catch (e) {
-    message.value = errorMessage(e, "节点修改无效。");
+    if (!disposed && current === generation)
+      message.value = errorMessage(e, "节点修改无效。");
   } finally {
-    busy.value = false;
+    if (!disposed && current === generation) busy.value = false;
   }
 }
+onBeforeUnmount(() => {
+  disposed = true;
+  generation++;
+});
 </script>
 <style scoped>
 .route-inspector {

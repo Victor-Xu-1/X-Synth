@@ -20,6 +20,7 @@ X-Synth 是基于 ASKCOS V2 的中文合成研究工作台。X-Synth 负责前�
 
 模型、供应商数据、数据库卷、任务、日志、截图与缓存都保存在源码目录之外。
 详细链路、边界和性能契约见 [架构](docs/current-architecture.md)。
+软件接入状态与逐层操作链路见 [工作区交互](docs/workspace-workflows.md)。
 
 ## 安装
 

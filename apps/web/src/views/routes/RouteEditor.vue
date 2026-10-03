@@ -6,14 +6,12 @@
           v-if="document"
           v-model="title"
           class="document-title-input"
-          :disabled="saving"
+          :disabled="saving || importing"
           aria-label="路线名称"
           maxlength="160"
           @input="dirty = true"
         /><strong v-else>路线编辑</strong
-        ><span class="state-badge">{{
-          dirty ? "未保存" : document ? "已保存" : "新路线"
-        }}</span>
+        ><span class="state-badge" role="status">{{ persistenceLabel }}</span>
       </div>
       <div class="page-actions">
         <v-tooltip
@@ -26,7 +24,7 @@
               :icon="action.icon"
               size="small"
               variant="text"
-              :disabled="action.disabled || saving"
+              :disabled="action.disabled || saving || importing"
               :aria-label="action.label"
               @click="action.run" /></template
         ></v-tooltip>
@@ -36,7 +34,7 @@
               v-bind="props"
               prepend-icon="mdi-download"
               variant="text"
-              :disabled="!document"
+              :disabled="!document || importing"
               >导出</v-btn
             ></template
           ><v-list density="compact"
@@ -48,7 +46,7 @@
         ></v-menu>
         <v-btn
           variant="outlined"
-          :disabled="!document || saving"
+          :disabled="!document || saving || importing"
           @click="saveDocument(true)"
           >另存副本</v-btn
         >
@@ -56,13 +54,19 @@
           color="primary"
           variant="flat"
           prepend-icon="mdi-content-save-outline"
-          :disabled="!document || !dirty"
+          :disabled="!document || !dirty || importing"
           :loading="saving"
           @click="saveDocument(false)"
           >保存</v-btn
         >
       </div>
     </header>
+    <div v-if="document" class="route-document-source">
+      <span class="state-badge">{{ sourceStateLabel }}</span>
+      <router-link v-if="origin" :to="origin.to">
+        {{ origin.label }} <v-icon icon="mdi-arrow-top-right" size="14" />
+      </router-link>
+    </div>
     <div v-if="error" class="route-editor-error" role="alert">
       {{ error
       }}<v-btn
@@ -100,12 +104,13 @@
             color="primary"
             variant="flat"
             type="submit"
-            :disabled="!newSmiles.trim()"
+            :disabled="!newSmiles.trim() || importing"
             :loading="saving"
             >创建路线</v-btn
           ><v-btn
             variant="text"
             prepend-icon="mdi-folder-open-outline"
+            :disabled="saving || importing"
             @click="fileInput.click()"
             >打开文件</v-btn
           >
@@ -119,7 +124,7 @@
       <RouteGraph
         ref="canvas"
         :graph="graph"
-        :editable="!saving"
+        :editable="!saving && !importing"
         :scores="scores"
         @update:graph="replaceGraph"
         @select="selected = $event"
@@ -129,7 +134,8 @@
       <RouteInspector
         v-if="selectedNode"
         :node="selectedNode"
-        :editable="!saving"
+        :graph="graph"
+        :editable="!saving && !importing"
         :target="selected === graph.target_id"
         :score="scores[selected]"
         @close="selected = null"
@@ -191,6 +197,12 @@ import { useWorkspaceStore } from "@/store/workspace";
 import { API } from "@/common/api";
 import { importRouteDocument } from "@/common/route-document-file";
 import {
+  createDocumentNavigation,
+  documentOrigin,
+  documentPersistenceLabel,
+  documentStateLabel,
+} from "@/common/document-navigation";
+import {
   cleanGraph,
   layoutGraph,
   attachPrecursors,
@@ -225,11 +237,46 @@ const {
   removeSelected,
 } = useRouteDocument();
 const canvas = ref(null),
+  importing = ref(false),
   fileInput = ref(null),
   newTitle = ref("未命名路线"),
   newSmiles = ref(""),
   moleculeDialog = ref(false),
   moleculeSmiles = ref("");
+const hasUnsavedChanges = computed(
+  () =>
+    dirty.value ||
+    (!document.value &&
+      !loading.value &&
+      Boolean(
+        newSmiles.value.trim() ||
+        (newTitle.value.trim() && newTitle.value !== "未命名路线"),
+      )),
+);
+const documentNavigation = createDocumentNavigation({
+  isDirty: () => hasUnsavedChanges.value,
+  snapshot: () =>
+    JSON.stringify({
+      id: document.value?.id,
+      title: title.value,
+      graph: cleanGraph(graph.value),
+      form: document.value
+        ? null
+        : { title: newTitle.value, smiles: newSmiles.value },
+    }),
+  confirm: (message) => window.confirm(message),
+});
+const persistenceLabel = computed(() =>
+  documentPersistenceLabel(document.value, {
+    dirty: hasUnsavedChanges.value,
+    saving: saving.value,
+    importing: importing.value,
+  }),
+);
+const sourceStateLabel = computed(() =>
+  documentStateLabel(document.value, graph.value),
+);
+const origin = computed(() => documentOrigin(document.value));
 const editActions = computed(() => [
   {
     label: "打开文件",
@@ -286,6 +333,7 @@ const editActions = computed(() => [
 watch(
   () => route.params.id,
   (identifier) => {
+    documentNavigation.invalidate();
     if (identifier) load(identifier);
     else clear();
   },
@@ -361,31 +409,34 @@ async function exportImage() {
 }
 async function importDocument(event) {
   const file = event.target.files?.[0];
-  if (!file) return;
+  if (!file || importing.value || saving.value) return;
+  importing.value = true;
   try {
-    const saved = await importRouteDocument(API, file);
-    dirty.value = false;
-    router.replace(`/editor/${saved.id}`);
+    await documentNavigation.importFile(
+      file,
+      (selectedFile) => importRouteDocument(API, selectedFile),
+      (location) => router.replace(location),
+    );
   } catch (e) {
     error.value = errorMessage(e, "文件不是有效的 X-Synth 路线文档。");
   } finally {
+    importing.value = false;
     event.target.value = "";
   }
 }
-onBeforeRouteLeave(
-  () => !dirty.value || window.confirm("存在未保存修改，仍要离开？"),
-);
-onBeforeRouteUpdate(
-  () => !dirty.value || window.confirm("存在未保存修改，仍要离开？"),
-);
+onBeforeRouteLeave(documentNavigation.guard);
+onBeforeRouteUpdate(documentNavigation.guard);
 function beforeUnload(event) {
-  if (dirty.value) {
+  if (hasUnsavedChanges.value) {
     event.preventDefault();
     event.returnValue = "";
   }
 }
 window.addEventListener("beforeunload", beforeUnload);
-onBeforeUnmount(() => window.removeEventListener("beforeunload", beforeUnload));
+onBeforeUnmount(() => {
+  documentNavigation.dispose();
+  window.removeEventListener("beforeunload", beforeUnload);
+});
 </script>
 <style scoped>
 .route-editor-workspace {
@@ -409,6 +460,20 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", beforeUnload));
   gap: 10px;
   align-items: center;
   min-width: 0;
+  flex-wrap: wrap;
+}
+.route-document-source {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--ws-border);
+  font-size: 12px;
+}
+.route-document-source a {
+  color: var(--ws-muted);
+  overflow-wrap: anywhere;
 }
 .document-title-input {
   max-width: 270px;

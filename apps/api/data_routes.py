@@ -1,8 +1,10 @@
+import json
 import sqlite3
 from dataclasses import asdict
+from functools import lru_cache
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from packages.knowledge_base.template_library import TemplateLibraryService
@@ -18,14 +20,15 @@ class TemplateQuery(BaseModel):
         default_factory=list, max_length=20
     )
     domain: str | None = Field(default=None, max_length=100)
-    min_count: int = Field(default=0, ge=0, le=2147483647)
+    min_count: int | None = Field(default=None, ge=0, le=2147483647)
     limit: int = Field(default=100, ge=1, le=500)
-    direction: Literal["retro", "forward"] = "retro"
+    direction: Literal["retro", "forward"] | None = None
 
 
 def data_router(*, template_path=None, transport):
     router = APIRouter()
 
+    @lru_cache(maxsize=1)
     def service():
         if not template_path:
             raise HTTPException(503, "统一模板索引未配置。")
@@ -39,8 +42,25 @@ def data_router(*, template_path=None, transport):
         authenticate(request, transport)
         try:
             return {"status": "ready", **public_summary(service().summary())}
-        except sqlite3.Error as exc:
+        except (OSError, sqlite3.Error) as exc:
             raise HTTPException(503, "统一模板索引不可用。") from exc
+
+    @router.get("/template-library/template")
+    def template(
+        request: Request,
+        source: Annotated[str, Query(min_length=1, max_length=128)],
+        template_id: Annotated[str, Query(min_length=1, max_length=256)],
+    ):
+        authenticate(request, transport)
+        try:
+            record = service().get_template(source=source, template_id=template_id)
+        except (OSError, sqlite3.Error, json.JSONDecodeError) as exc:
+            raise HTTPException(503, "统一模板索引不可用。") from exc
+        except ValueError as exc:
+            raise HTTPException(422, "模板标识必须包含匹配的来源命名空间。") from exc
+        if record is None:
+            raise HTTPException(404, "该来源中没有对应模板。")
+        return {"template": public_summary(asdict(record))}
 
     @router.post("/template-library/query")
     def query(body: TemplateQuery, request: Request):
@@ -58,9 +78,9 @@ def data_router(*, template_path=None, transport):
                 "count": len(records),
                 "templates": [public_summary(asdict(record)) for record in records],
             }
+        except (OSError, sqlite3.Error, json.JSONDecodeError) as exc:
+            raise HTTPException(503, "统一模板索引不可用。") from exc
         except ValueError as exc:
             raise HTTPException(422, "模板查询条件无效。") from exc
-        except sqlite3.Error as exc:
-            raise HTTPException(503, "统一模板索引不可用。") from exc
 
     return router

@@ -8,8 +8,15 @@
       <div class="page-actions">
         <v-tooltip text="刷新任务">
           <template #activator="{ props }">
-            <v-btn v-bind="props" icon="mdi-refresh" variant="text" aria-label="刷新任务"
-              :loading="loading" :disabled="loading" @click="refresh" />
+            <v-btn
+              v-bind="props"
+              icon="mdi-refresh"
+              variant="text"
+              aria-label="刷新任务"
+              :loading="loading"
+              :disabled="loading"
+              @click="refresh"
+            />
           </template>
         </v-tooltip>
         <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" to="/"
@@ -34,47 +41,109 @@
         label="任务状态"
         hide-details
       />
-      <v-btn-toggle v-model="view" mandatory divided density="compact" variant="outlined"
-        class="history-view-toggle" aria-label="任务历史视图">
+      <v-btn-toggle
+        v-model="view"
+        mandatory
+        divided
+        density="compact"
+        variant="outlined"
+        class="history-view-toggle"
+        aria-label="任务历史视图"
+      >
         <v-tooltip text="结构卡片">
           <template #activator="{ props }">
-            <v-btn v-bind="props" value="cards" icon="mdi-view-grid-outline"
-              aria-label="结构卡片" :aria-pressed="view === 'cards'" />
+            <v-btn
+              v-bind="props"
+              value="cards"
+              icon="mdi-view-grid-outline"
+              aria-label="结构卡片"
+              :aria-pressed="view === 'cards'"
+            />
           </template>
         </v-tooltip>
         <v-tooltip text="高密度列表">
           <template #activator="{ props }">
-            <v-btn v-bind="props" value="list" icon="mdi-format-list-bulleted"
-              aria-label="高密度列表" :aria-pressed="view === 'list'" />
+            <v-btn
+              v-bind="props"
+              value="list"
+              icon="mdi-format-list-bulleted"
+              aria-label="高密度列表"
+              :aria-pressed="view === 'list'"
+            />
           </template>
         </v-tooltip>
       </v-btn-toggle>
     </div>
     <div v-if="historyError" class="tool-error history-error" role="alert">
       <span>{{ historyError }}</span>
-      <v-btn variant="text" size="small" prepend-icon="mdi-refresh" :disabled="loading" @click="refresh">重试</v-btn>
+      <v-btn
+        variant="text"
+        size="small"
+        prepend-icon="mdi-refresh"
+        :disabled="loading"
+        @click="refresh"
+        >重试</v-btn
+      >
     </div>
-    <div v-if="actionError" class="tool-error" role="alert">{{ actionError }}</div>
-    <div class="history-progress"><v-progress-linear v-show="loading" indeterminate height="2" aria-label="刷新任务历史" /></div>
-    <div v-if="loading && !rows.length" class="workspace-loading" role="status">正在读取任务历史</div>
-    <div v-else-if="hasLoaded && !rows.length && !historyError" class="workspace-empty">
+    <div v-if="actionError" class="tool-error" role="alert">
+      {{ actionError }}
+    </div>
+    <div class="history-progress">
+      <v-progress-linear
+        v-show="loading"
+        indeterminate
+        height="2"
+        aria-label="刷新任务历史"
+      />
+    </div>
+    <div v-if="loading && !rows.length" class="workspace-loading" role="status">
+      正在读取任务历史
+    </div>
+    <div
+      v-else-if="hasLoaded && !rows.length && !historyError"
+      class="workspace-empty"
+    >
       <v-icon icon="mdi-history" size="30" />
       <h2>暂无任务结果</h2>
       <v-btn variant="outlined" prepend-icon="mdi-plus" to="/">新建任务</v-btn>
     </div>
-    <div v-else-if="rows.length && !filtered.length && !loading && !historyError" class="workspace-empty">
+    <div
+      v-else-if="rows.length && !filtered.length && !loading && !historyError"
+      class="workspace-empty"
+    >
       <v-icon icon="mdi-magnify" size="30" />
       <h2>本页没有匹配的任务</h2>
-      <v-btn variant="text" prepend-icon="mdi-filter-remove-outline" @click="clearFilters">清除筛选</v-btn>
+      <v-btn
+        variant="text"
+        prepend-icon="mdi-filter-remove-outline"
+        @click="clearFilters"
+        >清除筛选</v-btn
+      >
     </div>
-    <div v-if="filtered.length && view === 'cards'" class="task-card-grid" :aria-busy="loading">
-      <TaskCard v-for="task in filtered" :key="task.result_id" :task="task"
+    <div
+      v-if="filtered.length && view === 'cards'"
+      class="task-card-grid"
+      :aria-busy="loading"
+    >
+      <TaskCard
+        v-for="task in filtered"
+        :key="task.result_id"
+        :task="task"
         :selected="showInfo && infoTask?.result_id === task.result_id"
-        :pending="pending[task.result_id]" :info-loading="isInfoLoading(task)"
-        @info="info(task)" @preview="preview(task)" @rerun="rerun(task)"
-        @cancel="cancel(task)" @archive="archive(task)" />
+        :pending="pending[task.result_id]"
+        :info-loading="isInfoLoading(task)"
+        @info="info(task)"
+        @preview="preview(task)"
+        @rerun="rerun(task)"
+        @cancel="cancel(task)"
+        @archive="archive(task)"
+      />
     </div>
-    <div v-else-if="filtered.length" class="task-table-scroll" :aria-busy="loading">
+    <div
+      v-else-if="filtered.length"
+      class="task-table-scroll"
+      :aria-busy="loading"
+    >
       <table class="data-table task-table">
         <thead>
           <tr>
@@ -90,7 +159,9 @@
             v-for="task in filtered"
             :key="task.result_id"
             class="task-history-row"
-            :class="{ selected: showInfo && infoTask?.result_id === task.result_id }"
+            :class="{
+              selected: showInfo && infoTask?.result_id === task.result_id,
+            }"
           >
             <td>
               <router-link
@@ -107,7 +178,9 @@
                 />
                 <div>
                   <strong :title="taskTitle(task)">{{ taskTitle(task) }}</strong
-                  ><span class="workspace-code" :title="task.target_smiles">{{ task.target_smiles }}</span>
+                  ><span class="workspace-code" :title="task.target_smiles">{{
+                    task.target_smiles
+                  }}</span>
                 </div></router-link
               >
             </td>
@@ -118,18 +191,29 @@
                 >{{ taskStateLabel(task.result_state) }}</span
               >
             </td>
-            <td>{{ taskRouteCount(task) ?? '未记录' }}</td>
+            <td>{{ taskRouteCount(task) ?? "未记录" }}</td>
             <td class="workspace-muted">{{ displayTime(task.modified) }}</td>
             <td>
-              <TaskActions :task="task" :pending="pending[task.result_id]" :info-loading="isInfoLoading(task)"
-                @info="info(task)" @preview="preview(task)" @rerun="rerun(task)"
-                @cancel="cancel(task)" @archive="archive(task)" />
+              <TaskActions
+                :task="task"
+                :pending="pending[task.result_id]"
+                :info-loading="isInfoLoading(task)"
+                @info="info(task)"
+                @preview="preview(task)"
+                @rerun="rerun(task)"
+                @cancel="cancel(task)"
+                @archive="archive(task)"
+              />
             </td>
           </tr>
         </tbody>
       </table>
     </div>
-    <nav v-if="page > 0 || more" class="page-actions history-pagination" aria-label="任务历史分页">
+    <nav
+      v-if="page > 0 || more"
+      class="page-actions history-pagination"
+      aria-label="任务历史分页"
+    >
       <v-btn
         variant="text"
         prepend-icon="mdi-chevron-left"
@@ -146,15 +230,23 @@
         >下一页</v-btn
       >
     </nav>
-    <TaskInfoDialog v-model="showInfo" :task="infoTask" :loading="infoLoading"
-      :error="infoError || actionError" :busy="Boolean(pending[infoTask?.result_id])"
+    <TaskInfoDialog
+      v-model="showInfo"
+      :task="infoTask"
+      :loading="infoLoading"
+      :error="infoError || actionError"
+      :busy="Boolean(pending[infoTask?.result_id])"
       :rerunning="pending[infoTask?.result_id] === 'rerun'"
-      @retry="info(infoTask)" @preview="preview(infoTask)" @rerun="rerun(infoTask)" />
+      @retry="info(infoTask)"
+      @preview="preview(infoTask)"
+      @rerun="rerun(infoTask)"
+    />
     <RoutePreview
       v-model="showPreview"
       :candidates="previewRoutes"
       :job-id="previewJob"
       :title="previewTitle"
+      :stock-snapshot="previewSnapshot"
     />
   </section>
 </template>
@@ -170,8 +262,13 @@ import {
   activeTaskStates,
 } from "@/common/task-state";
 import {
-  historyCountLabel, historyStatusOptions, normalizeTaskInfo, preserveStructureControl,
-  taskDetailLocation, taskRouteCount, taskTitle,
+  historyCountLabel,
+  historyStatusOptions,
+  normalizeTaskInfo,
+  preserveStructureControl,
+  taskDetailLocation,
+  taskRouteCount,
+  taskTitle,
 } from "@/common/task-history-view";
 import SmilesImage from "@/components/SmilesImage.vue";
 import RoutePreview from "@/components/routes/RoutePreview.vue";
@@ -192,19 +289,42 @@ const {
   previousPage,
 } = useTaskHistory();
 const router = useRouter();
-const view = ref("cards"), hasLoaded = ref(false), loadedPage = ref(0), lastHistoryError = ref("");
+const view = ref("cards"),
+  hasLoaded = ref(false),
+  loadedPage = ref(0),
+  lastHistoryError = ref("");
 const {
-  showInfo, infoTask, infoLoading, infoError, actionError, pending,
-  showPreview, previewRoutes, previewJob, previewTitle,
-  info, preview, rerun, cancel, archive,
+  showInfo,
+  infoTask,
+  infoLoading,
+  infoError,
+  actionError,
+  pending,
+  showPreview,
+  previewRoutes,
+  previewJob,
+  previewTitle,
+  previewSnapshot,
+  info,
+  preview,
+  rerun,
+  cancel,
+  archive,
 } = useTaskActions({ router, refresh });
-const historyError = computed(() => error.value || (loading.value ? lastHistoryError.value : ""));
-const countLabel = computed(() => historyCountLabel({
-  loaded: hasLoaded.value, loading: loading.value,
-  count: rows.value.length, matched: filtered.value.length,
-  filtering: Boolean(query.value) || status.value !== "all",
-  page: page.value, loadedPage: loadedPage.value,
-}));
+const historyError = computed(
+  () => error.value || (loading.value ? lastHistoryError.value : ""),
+);
+const countLabel = computed(() =>
+  historyCountLabel({
+    loaded: hasLoaded.value,
+    loading: loading.value,
+    count: rows.value.length,
+    matched: filtered.value.length,
+    filtering: Boolean(query.value) || status.value !== "all",
+    page: page.value,
+    loadedPage: loadedPage.value,
+  }),
+);
 let timer;
 function isInfoLoading(task) {
   return infoLoading.value && infoTask.value?.result_id === task.result_id;
@@ -223,7 +343,9 @@ watch(loading, (value) => {
   }
 });
 watch(rows, (tasks) => {
-  const selected = tasks.find((task) => task.result_id === infoTask.value?.result_id);
+  const selected = tasks.find(
+    (task) => task.result_id === infoTask.value?.result_id,
+  );
   if (selected) {
     infoTask.value = normalizeTaskInfo(infoTask.value, selected);
   }

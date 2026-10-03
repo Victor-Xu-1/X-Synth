@@ -40,6 +40,7 @@
       <div v-if="!snapshot.environments.engines.length" class="workspace-empty">
         暂无已接入引擎
       </div>
+      <BackendInventory :inventory="snapshot.environments" />
     </div>
     <section
       v-else-if="tab === 'configuration'"
@@ -137,6 +138,7 @@ import { loadRuntimeStatus } from "@/common/runtime-status";
 import { errorMessage } from "@/common/workspace-errors";
 import EngineEnvironment from "@/components/environments/EngineEnvironment.vue";
 import EnvironmentMonitoring from "@/components/environments/EnvironmentMonitoring.vue";
+import BackendInventory from "@/components/environments/BackendInventory.vue";
 const route = useRoute(),
   router = useRouter();
 const productVersion = __X_SYNTH_VERSION__;

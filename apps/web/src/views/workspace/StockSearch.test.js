@@ -1,0 +1,116 @@
+import { nextTick, reactive } from "vue";
+import { flushPromises, mount } from "@vue/test-utils";
+import { useRoute } from "vue-router";
+import { API } from "@/common/api";
+import { useWorkspaceStore } from "@/store/workspace";
+import StockSearch from "./StockSearch.vue";
+
+jest.mock("vue-router", () => ({ useRoute: jest.fn() }));
+jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
+jest.mock("@/store/workspace", () => ({ useWorkspaceStore: jest.fn() }));
+jest.mock("@/components/SmilesImage.vue", () => ({
+  name: "SmilesImage",
+  template: "<div />",
+}));
+jest.mock("@/components/workspace/StructureInput.vue", () => ({
+  name: "StructureInput",
+  template: "<div />",
+}));
+const snapshot = "a".repeat(64),
+  otherSnapshot = "b".repeat(64);
+const stubs = {
+  ModuleWorkbench: { template: "<section><slot /></section>" },
+  StructureInput: {
+    props: ["modelValue"],
+    emits: ["update:modelValue"],
+    template:
+      '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+  },
+  SmilesImage: {
+    props: ["smiles"],
+    template: '<span class="matched-structure">{{ smiles }}</span>',
+  },
+  VBtn: { template: "<button><slot /></button>" },
+  VIcon: true,
+  VProgressCircular: true,
+};
+const wrappers = [];
+function setup() {
+  const route = reactive({ query: { smiles: "CCO", snapshot } });
+  useRoute.mockReturnValue(route);
+  useWorkspaceStore.mockReturnValue({ health: {} });
+  const wrapper = mount(StockSearch, { global: { stubs } });
+  wrappers.push(wrapper);
+  return { route, wrapper };
+}
+beforeEach(() => {
+  jest.clearAllMocks();
+  API.post.mockReset();
+});
+afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
+
+test("route prefill performs no lookup and a changed query resets both input and expected snapshot", async () => {
+  const { route, wrapper } = setup();
+  expect(wrapper.get("textarea").element.value).toBe("CCO");
+  expect(API.post).not.toHaveBeenCalled();
+  route.query = { smiles: "O", snapshot: otherSnapshot };
+  await nextTick();
+  expect(wrapper.get("textarea").element.value).toBe("O");
+  expect(API.post).not.toHaveBeenCalled();
+});
+test("response and task snapshots are labelled separately and missing prices remain unknown", async () => {
+  const { wrapper } = setup();
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({
+    snapshot: otherSnapshot,
+    results: { CCO: [{ smiles: "CCO", catalog_id: "record-a", ppg: null }] },
+  });
+  await wrapper.get("form").trigger("submit");
+  await flushPromises();
+  expect(wrapper.text()).toContain(snapshot);
+  expect(wrapper.text()).toContain(otherSnapshot);
+  expect(wrapper.text()).toContain("快照不同");
+  expect(wrapper.text()).toContain("待询");
+  expect(wrapper.text()).not.toMatch(/包装|纯度|交期/);
+});
+test("query changes immediately hide old records and do not automatically fetch replacement evidence", async () => {
+  const { route, wrapper } = setup();
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({
+    snapshot,
+    results: { CCO: [{ smiles: "CCO", catalog_id: "record-a" }] },
+  });
+  await wrapper.get("form").trigger("submit");
+  await flushPromises();
+  expect(wrapper.text()).toContain("record-a");
+  route.query = { smiles: "O", snapshot: otherSnapshot };
+  await nextTick();
+  expect(wrapper.text()).not.toContain("record-a");
+  expect(wrapper.find(".matched-structure").exists()).toBe(false);
+  expect(API.post).toHaveBeenCalledTimes(2);
+});
+test("supplier anchors use the shared safe URL boundary", async () => {
+  const { wrapper } = setup();
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({
+    snapshot,
+    results: {
+      CCO: [
+        { smiles: "CCO", catalog_id: "one", url: "javascript:alert(1)" },
+        {
+          smiles: "CCO",
+          catalog_id: "two",
+          url: "https://user:password@example.org/catalog",
+        },
+        {
+          smiles: "CCO",
+          catalog_id: "three",
+          url: "https://example.org/catalog",
+        },
+      ],
+    },
+  });
+  await wrapper.get("form").trigger("submit");
+  await flushPromises();
+  expect(wrapper.findAll("a")).toHaveLength(1);
+  expect(wrapper.get("a").attributes("href")).toBe(
+    "https://example.org/catalog",
+  );
+});

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -171,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
                 invocation,
                 cwd=root / "apps/web" if args.suite == "frontend" else root,
                 check=False,
+                env={**os.environ, "X_SYNTH_TEST_PYTHON": sys.executable},
             ).returncode
         return 0
     except (

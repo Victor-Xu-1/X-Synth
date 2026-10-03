@@ -7,6 +7,7 @@
   >
     <v-card>
       <v-card-text>
+        <v-progress-linear v-if="loading" indeterminate height="2" />
         <v-alert v-if="editorError" type="error" variant="tonal" class="mb-3">{{
           editorError
         }}</v-alert>
@@ -16,6 +17,7 @@
           :src="KETCHER_URL"
           title="结构绘制器"
           class="structure-editor-frame"
+          :inert="loading || busy || undefined"
         ></iframe>
       </v-card-text>
       <v-card-actions>
@@ -34,6 +36,7 @@
           data-cy="ketcher-Done-button"
           color="primary"
           :loading="busy"
+          :disabled="loading"
           @click="commitStructure"
           >完成</v-btn
         >
@@ -46,7 +49,7 @@
 import { ref, watch, computed, onBeforeUnmount } from "vue";
 import {
   KETCHER_URL,
-  replaceKetcherMolecule,
+  createKetcherWriter,
   waitForKetcher,
 } from "@/common/ketcher";
 
@@ -70,9 +73,13 @@ export default {
     const ketcherIframe = ref(null);
     const editorError = ref("");
     const busy = ref(false);
+    const loading = ref(false);
     const editorLifetime = new AbortController();
-    onBeforeUnmount(() => editorLifetime.abort());
-    // const ketcherSpinner = ref(null);
+    let generation = 0;
+    onBeforeUnmount(() => {
+      generation++;
+      editorLifetime.abort();
+    });
 
     const propShow = computed({
       get() {
@@ -83,53 +90,67 @@ export default {
       },
     });
 
-    watch(propShow, (show) => {
-      if (show) {
-        editorError.value = "";
-        smilesToKetcher().catch((error) => {
-          editorError.value = "结构绘制器加载失败，请重新打开。";
-          console.error("结构绘制器加载失败：", error);
-        });
-      }
+    const getEditor = () =>
+      waitForKetcher(() => ketcherIframe.value, {
+        signal: editorLifetime.signal,
+      });
+    const writeMolecule = createKetcherWriter(getEditor, {
+      signal: editorLifetime.signal,
     });
-
-    const smilesToKetcher = async () => {
-      const ketcher = await waitForKetcher(() => ketcherIframe.value, {
-        signal: editorLifetime.signal,
-      });
-      await replaceKetcherMolecule(ketcher, props.smiles);
-    };
-
-    const smilesFromKetcher = async () => {
-      const ketcher = await waitForKetcher(() => ketcherIframe.value, {
-        signal: editorLifetime.signal,
-      });
-      context.emit("update:smiles", String(await ketcher.getSmiles()).trim());
-    };
+    watch(
+      () => [propShow.value, props.smiles],
+      async ([show, smiles]) => {
+        const current = ++generation;
+        loading.value = false;
+        busy.value = false;
+        if (!show) return;
+        editorError.value = "";
+        loading.value = true;
+        try {
+          await writeMolecule(smiles);
+        } catch {
+          if (current === generation && !editorLifetime.signal.aborted)
+            editorError.value = "结构绘制器加载失败，请重新打开。";
+        } finally {
+          if (current === generation) loading.value = false;
+        }
+      },
+      { immediate: true },
+    );
 
     const commitStructure = async () => {
+      if (busy.value || loading.value || !propShow.value) return;
+      const current = generation;
       busy.value = true;
       editorError.value = "";
       try {
-        await smilesFromKetcher();
+        await writeMolecule.flush();
+        const ketcher = await getEditor();
+        const value = String(await ketcher.getSmiles()).trim();
+        if (
+          current !== generation ||
+          editorLifetime.signal.aborted ||
+          !propShow.value
+        )
+          return;
+        context.emit("update:smiles", value);
         propShow.value = false;
-      } catch (error) {
-        editorError.value = "结构读取失败，请检查画板内容。";
-        console.error("结构读取失败：", error);
+      } catch {
+        if (current === generation && !editorLifetime.signal.aborted)
+          editorError.value = "结构读取失败，请检查画板内容。";
       } finally {
-        busy.value = false;
+        if (current === generation) busy.value = false;
       }
     };
 
     return {
       KETCHER_URL,
       busy,
+      loading,
       editorError,
       commitStructure,
       propShow,
       ketcherIframe,
-      smilesToKetcher,
-      smilesFromKetcher,
     };
   },
 };
@@ -144,26 +165,5 @@ export default {
 }
 .structure-editor-dialog .v-card-text {
   padding: 12px;
-}
-div.modal .modal-dialog.modal-fit {
-  width: fit-content !important;
-  max-width: 1000px !important;
-}
-
-#ketcher-iframe {
-  border-width: 0;
-}
-
-#ketcher-spinner {
-  position: absolute;
-  z-index: 1;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  overflow: auto;
-  margin: auto;
-  width: 50px;
-  height: 50px;
 }
 </style>
