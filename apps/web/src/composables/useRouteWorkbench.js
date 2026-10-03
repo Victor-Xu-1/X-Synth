@@ -2,14 +2,13 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import { API } from "@/common/api";
 import { errorMessage } from "@/common/workspace-errors";
-import {
-  UNIFIED_ROUTE_ENDPOINT,
-  buildUnifiedRouteRequestBody,
-} from "@/common/unified-route";
+import { UNIFIED_ROUTE_ENDPOINT } from "@/common/unified-route";
 import {
   normalizeMode,
   querySeed,
   oneStepCandidate,
+  defaultSearchSettings,
+  buildWorkbenchRequest,
 } from "@/common/workbench-model";
 import { expandMolecule } from "@/common/one-step";
 import { cleanGraph, graphFromCandidate } from "@/common/route-graph";
@@ -31,19 +30,37 @@ export function useRouteWorkbench() {
     mode.value === "manual" ? workspace.can("retro") : workspace.ready,
   );
   let lifetime = 0;
-  let appliedSeed = "";
+  let appliedSeed = null,
+    seedError = false;
   watch(
     () => route.query,
     (query) => {
       try {
         const seed = querySeed(query);
-        if (!seed || seed.key === appliedSeed) return;
+        if (!seed) {
+          if (appliedSeed !== "") {
+            lifetime++;
+            busy.value = false;
+            draft.settings = defaultSearchSettings();
+            appliedSeed = "";
+          }
+          seedError = false;
+          error.value = "";
+          return;
+        }
+        if (seed.key === appliedSeed && !seedError) return;
+        lifetime++;
+        busy.value = false;
         draft.smiles = seed.smiles;
         draft.name = seed.name;
-        if (seed.settings) draft.settings = seed.settings;
+        draft.settings = seed.settings;
         appliedSeed = seed.key;
         error.value = "";
+        seedError = false;
       } catch (e) {
+        lifetime++;
+        busy.value = false;
+        seedError = true;
         error.value = errorMessage(e, "任务参数无法读取。");
       }
     },
@@ -64,14 +81,24 @@ export function useRouteWorkbench() {
     draft.smiles = "";
   }
   async function submit() {
-    if (busy.value || !ready.value || mode.value === "import") return;
+    if (busy.value || !ready.value || seedError || mode.value === "import")
+      return;
     busy.value = true;
     error.value = "";
     const generation = lifetime;
     const selectedMode = mode.value;
     try {
+      const request =
+        selectedMode === "auto"
+          ? buildWorkbenchRequest({
+              smiles: "",
+              name: draft.name,
+              settings: draft.settings,
+            })
+          : null;
       const smiles = await structure.value?.read();
-      if (!smiles) throw new Error("目标结构为空或无法读取。");
+      if (!smiles)
+        throw new Error(JSON.stringify({ detail: "目标结构为空或无法读取。" }));
       if (generation !== lifetime) return;
       if (selectedMode === "manual") {
         const result = await expandMolecule(API, { smiles, ...draft.manual });
@@ -82,13 +109,11 @@ export function useRouteWorkbench() {
         smiles,
       });
       if (generation !== lifetime) return;
-      const body = buildUnifiedRouteRequestBody({
+      const body = {
+        ...request,
         smiles: canonical.smiles,
-        description: draft.name.trim() || canonical.smiles,
-        expansion_time: draft.settings.minutes * 60,
-        max_routes: draft.settings.maxRoutes,
-        tuning: draft.settings.tuning,
-      });
+        description: request.description || canonical.smiles,
+      };
       const result = await API.post(UNIFIED_ROUTE_ENDPOINT, body);
       if (generation === lifetime)
         await router.push(`/results/${result.job_id}`);

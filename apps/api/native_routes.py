@@ -1,3 +1,4 @@
+import os
 import re
 from urllib import error
 from urllib import request as urllib_request
@@ -6,6 +7,12 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
 
 from packages.adapters.askcos.transport import NoRedirect
+from packages.orchestrator.runtime_health import route_runtime_status
+from packages.platform.native_capabilities import (
+    REPO_ROOT,
+    native_runtime_payload,
+    optional_proxy_module,
+)
 
 from .security import authenticate
 
@@ -48,11 +55,37 @@ NATIVE_GROUPS = frozenset(
         "get-top-class-batch",
     }
 )
+OPTIONAL_GROUPS = frozenset(
+    group for group in ("fastsolv", "count-analogs") if optional_proxy_module(group)
+)
+NATIVE_GROUPS = NATIVE_GROUPS | OPTIONAL_GROUPS
 
 
-def native_router(*, transport, budget):
+def native_router(*, transport, budget, read_health=None):
     router = APIRouter()
     opener = urllib_request.build_opener(urllib_request.ProxyHandler({}), NoRedirect())
+    read_health = read_health or (lambda: route_runtime_status(REPO_ROOT))
+
+    def runtime_projection(include_services=False):
+        return native_runtime_payload(
+            health=read_health(),
+            configured_models=os.environ.get(
+                "X_SYNTH_ASKCOS_MODELS", "pistachio,pistachio_ringbreaker"
+            ),
+            include_services=include_services,
+        )
+
+    @router.get("/runtime/capabilities")
+    @router.get("/runtime/capabilities/")
+    async def capabilities(request: Request):
+        authenticate(request, transport)
+        return await run_in_threadpool(runtime_projection)
+
+    @router.get("/runtime/services")
+    @router.get("/runtime/services/")
+    async def services(request: Request):
+        authenticate(request, transport)
+        return await run_in_threadpool(runtime_projection, True)
 
     @router.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
     async def native(path: str, request: Request):
@@ -66,6 +99,25 @@ def native_router(*, transport, budget):
             raise HTTPException(404, "Native capability is not supported")
         if parts[0] == "tree-search" and not path.startswith("tree-search/expand-one/"):
             raise HTTPException(409, "路线任务必须通过 X-Synth 任务入口提交。")
+        if parts[-1].replace("_", "-") == "call-async":
+            raise HTTPException(
+                501,
+                {
+                    "code": "unmanaged_native_queue",
+                    "managed_endpoint": "/api/v1/unified-route/call-async",
+                },
+            )
+        if parts[0] in OPTIONAL_GROUPS:
+            module = optional_proxy_module(parts[0])
+            if module is None or not module["configured"]:
+                raise HTTPException(503, {"code": "native_service_not_configured"})
+            health = await run_in_threadpool(read_health)
+            checks = health.get("service_checks", {})
+            if (
+                checks.get("gateway") is not True
+                or checks.get(module["service_id"]) is not True
+            ):
+                raise HTTPException(503, {"code": "native_service_not_ready"})
         data = bytearray()
         async for chunk in request.stream():
             data.extend(chunk)

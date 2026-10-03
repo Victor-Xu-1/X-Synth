@@ -37,7 +37,7 @@ const normalizePatentNumber = (rawPatent) => {
 
 const createPatentLinks = (rawPatent) => {
   const value = normalizePatentNumber(rawPatent);
-  if (!value) return [];
+  if (!/^(?:WO|US|EP|CN|JP|KR)\d{4,15}(?:[A-Z]\d?)?$/.test(value)) return [];
 
   return [
     {
@@ -59,7 +59,10 @@ const createPatentLinks = (rawPatent) => {
 
 const createDoiLink = (doi) => {
   if (isBlank(doi)) return null;
-  const value = String(doi).trim().replace(/^https?:\/\/(dx\.)?doi\.org\//i, "");
+  const value = String(doi)
+    .trim()
+    .replace(/^https?:\/\/(dx\.)?doi\.org\//i, "");
+  if (!/^10\.\d{4,9}\/[^\s<>]+$/i.test(value)) return null;
   return {
     key: `doi-${value}`,
     label: "DOI",
@@ -120,7 +123,9 @@ const buildReactionEvidence = ({
       key: `source-${sourceUrl}`,
       label: "原始来源",
       href: String(sourceUrl),
-      value: firstValue(reactionData, ["reference", "title", "patent_number"]) || "原始来源",
+      value:
+        firstValue(reactionData, ["reference", "title", "patent_number"]) ||
+        "原始来源",
       type: "source",
     });
   }
@@ -135,35 +140,89 @@ const buildReactionEvidence = ({
   links.push(...createPatentLinks(patentNumber));
 
   const doiLink = createDoiLink(
-    firstValue(reactionData, ["doi", "DOI", "reference_doi", "publication_doi"])
+    firstValue(reactionData, [
+      "doi",
+      "DOI",
+      "reference_doi",
+      "publication_doi",
+    ]),
   );
   if (doiLink) links.push(doiLink);
 
-  const pmidLink = createPmidLink(firstValue(reactionData, ["pmid", "PMID", "pubmed_id"]));
+  const pmidLink = createPmidLink(
+    firstValue(reactionData, ["pmid", "PMID", "pubmed_id"]),
+  );
   if (pmidLink) links.push(pmidLink);
 
-  pushField(fields, "反应 ID", reactionId || firstValue(reactionData, ["reaction_id"]), "text");
-  pushField(fields, "反应集", reactionSet || firstValue(reactionData, ["reaction_set"]), "text");
+  pushField(
+    fields,
+    "反应 ID",
+    reactionId || firstValue(reactionData, ["reaction_id"]),
+    "text",
+  );
+  pushField(
+    fields,
+    "反应集",
+    reactionSet || firstValue(reactionData, ["reaction_set"]),
+    "text",
+  );
   pushField(
     fields,
     "参考反应",
-    firstValue(reactionData, ["reaction_smiles", "reference_reaction", "rxn_smiles"]),
-    "reaction"
+    firstValue(reactionData, [
+      "reaction_smiles",
+      "reference_reaction",
+      "rxn_smiles",
+    ]),
+    "reaction",
   );
   pushField(fields, "专利号", patentNumber, "text");
-  pushField(fields, "文献", firstValue(reactionData, ["reference", "title", "citation"]), "text");
+  pushField(
+    fields,
+    "文献",
+    firstValue(reactionData, ["reference", "title", "citation"]),
+    "text",
+  );
 
-  pushCondition(conditions, "试剂", firstValue(reactionData, ["reagent", "reagents"]));
-  pushCondition(conditions, "溶剂", firstValue(reactionData, ["solvent", "solvents"]));
-  pushCondition(conditions, "催化剂", firstValue(reactionData, ["catalyst", "catalysts"]));
-  pushCondition(conditions, "温度", firstValue(reactionData, ["temperature", "temp"]));
+  pushCondition(
+    conditions,
+    "试剂",
+    firstValue(reactionData, ["reagent", "reagents"]),
+  );
+  pushCondition(
+    conditions,
+    "溶剂",
+    firstValue(reactionData, ["solvent", "solvents"]),
+  );
+  pushCondition(
+    conditions,
+    "催化剂",
+    firstValue(reactionData, ["catalyst", "catalysts"]),
+  );
+  pushCondition(
+    conditions,
+    "温度",
+    firstValue(reactionData, ["temperature", "temp"]),
+  );
   pushCondition(conditions, "压力", firstValue(reactionData, ["pressure"]));
-  pushCondition(conditions, "时间", firstValue(reactionData, ["time", "duration"]));
-  pushCondition(conditions, "收率", firstValue(reactionData, ["yield", "yield_percent", "isolated_yield"]));
+  pushCondition(
+    conditions,
+    "时间",
+    firstValue(reactionData, ["time", "duration"]),
+  );
+  pushCondition(
+    conditions,
+    "收率",
+    firstValue(reactionData, ["yield", "yield_percent", "isolated_yield"]),
+  );
   pushCondition(
     conditions,
     "实验步骤",
-    firstValue(reactionData, ["procedure", "experimental_procedure", "reaction_procedure"])
+    firstValue(reactionData, [
+      "procedure",
+      "experimental_procedure",
+      "reaction_procedure",
+    ]),
   );
 
   return {
@@ -178,8 +237,8 @@ const createReactionEvidenceInput = (reaction = {}) => ({
   reactionData:
     reaction.reaction_data ||
     reaction.source?.reaction_data ||
-    reaction.model_metadata?.find((model) => model?.source?.reaction_data)?.source
-      ?.reaction_data ||
+    reaction.model_metadata?.find((model) => model?.source?.reaction_data)
+      ?.source?.reaction_data ||
     {},
   reactionId: reaction.reaction_id || reaction.source?.reaction_id || "",
   reactionSet: reaction.reaction_set || reaction.source?.reaction_set || "",

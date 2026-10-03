@@ -10,6 +10,7 @@
             variant="text"
             size="x-small"
             :aria-label="`绘制${label}`"
+            :disabled="disabled"
             @click="drawing = true" /></template
       ></v-tooltip>
     </div>

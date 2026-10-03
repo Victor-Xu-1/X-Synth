@@ -42,8 +42,19 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { KETCHER_URL, createKetcherWriter, waitForKetcher as waitForEditor } from "@/common/ketcher";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
+import {
+  KETCHER_URL,
+  createKetcherWriter,
+  waitForKetcher as waitForEditor,
+} from "@/common/ketcher";
 
 const smiles = defineModel("smiles", { required: true, default: "" });
 const emit = defineEmits(["commit"]);
@@ -102,26 +113,33 @@ const syncKetcherLayout = () => {
     KETCHER_MIN_VIEWPORT_WIDTH,
     frame.clientWidth,
     frame.getBoundingClientRect().width,
-    frame.parentElement?.clientWidth || 0
+    frame.parentElement?.clientWidth || 0,
   );
-  const viewportHeight = window.visualViewport?.height || window.innerHeight || 900;
-  const viewportWidth = window.visualViewport?.width || window.innerWidth || KETCHER_BASE_WIDTH;
-  const viewportHeightReserve = viewportWidth <= 1120
-    ? KETCHER_COMPACT_VIEWPORT_HEIGHT_RESERVE
-    : viewportWidth <= 1320
-      ? KETCHER_MEDIUM_VIEWPORT_HEIGHT_RESERVE
-      : KETCHER_VIEWPORT_HEIGHT_RESERVE;
-  const availableParentHeight = Math.max(0, frame.parentElement?.clientHeight || 0);
-  const parentVisualLimit = availableParentHeight >= KETCHER_MIN_VISUAL_HEIGHT
-    ? availableParentHeight
-    : KETCHER_MAX_VISUAL_HEIGHT;
+  const viewportHeight =
+    window.visualViewport?.height || window.innerHeight || 900;
+  const viewportWidth =
+    window.visualViewport?.width || window.innerWidth || KETCHER_BASE_WIDTH;
+  const viewportHeightReserve =
+    viewportWidth <= 1120
+      ? KETCHER_COMPACT_VIEWPORT_HEIGHT_RESERVE
+      : viewportWidth <= 1320
+        ? KETCHER_MEDIUM_VIEWPORT_HEIGHT_RESERVE
+        : KETCHER_VIEWPORT_HEIGHT_RESERVE;
+  const availableParentHeight = Math.max(
+    0,
+    frame.parentElement?.clientHeight || 0,
+  );
+  const parentVisualLimit =
+    availableParentHeight >= KETCHER_MIN_VISUAL_HEIGHT
+      ? availableParentHeight
+      : KETCHER_MAX_VISUAL_HEIGHT;
   const visualHeightLimit = Math.max(
     KETCHER_MIN_VISUAL_HEIGHT,
     Math.min(
       KETCHER_MAX_VISUAL_HEIGHT,
       parentVisualLimit,
-      viewportHeight - viewportHeightReserve
-    )
+      viewportHeight - viewportHeightReserve,
+    ),
   );
 
   if (props.fillHeight) {
@@ -137,7 +155,7 @@ const syncKetcherLayout = () => {
   const nextScale = clampNumber(
     Math.min(widthScale, heightScale),
     KETCHER_MIN_SCALE,
-    KETCHER_MAX_SCALE
+    KETCHER_MAX_SCALE,
   );
   const nextVisualHeight = KETCHER_BASE_HEIGHT * nextScale;
 
@@ -183,11 +201,15 @@ const scheduleKetcherLayoutSync = () => {
 };
 
 const waitForKetcher = async () => {
-  const ketcher = await waitForEditor(() => ketcherIframe.value, { signal: editorLifetime.signal });
+  const ketcher = await waitForEditor(() => ketcherIframe.value, {
+    signal: editorLifetime.signal,
+  });
   patchKetcherDocument();
   return ketcher;
 };
-const writeMolecule = createKetcherWriter(waitForKetcher);
+const writeMolecule = createKetcherWriter(waitForKetcher, {
+  signal: editorLifetime.signal,
+});
 
 const setSmilesToEditor = async (value = smiles.value, options = {}) => {
   const applied = await writeMolecule(value);
@@ -286,7 +308,10 @@ onBeforeUnmount(() => {
 
 defineExpose({
   readSmilesFromEditor,
-  captureDraft: () => ketcherIframe.value?.contentWindow?.ketcher?.editor ? readSmilesFromEditor() : null,
+  captureDraft: () =>
+    ketcherIframe.value?.contentWindow?.ketcher?.editor
+      ? readSmilesFromEditor()
+      : null,
   clearEditor,
   setSmilesToEditor,
 });

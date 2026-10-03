@@ -6,7 +6,10 @@ test("composer uses the authoritative product payload and task lifecycle", () =>
   const page = readSource("views/workspace/RouteComposer.vue");
   expect(page).toContain("useRouteWorkbench");
   const source = readSource("composables/useRouteWorkbench.js");
-  expect(source).toContain("buildUnifiedRouteRequestBody");
+  expect(source).toContain("buildWorkbenchRequest");
+  expect(readSource("common/workbench-model.js")).toContain(
+    "buildUnifiedRouteRequestBody",
+  );
   expect(source).toContain("UNIFIED_ROUTE_ENDPOINT");
   expect(source).not.toContain("tree-search/controller");
 });

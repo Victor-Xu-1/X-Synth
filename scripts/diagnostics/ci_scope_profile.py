@@ -37,6 +37,7 @@ DOCS = {
     "docs/current-architecture.md",
     "docs/operations.md",
     "docs/real-case-testing.md",
+    "docs/workspace-workflows.md",
     "NOTICE",
 }
 API_FILES = {
@@ -44,12 +45,28 @@ API_FILES = {
     "apps/api/document_routes.py",
     "apps/api/structure_routes.py",
     "apps/api/environment_routes.py",
+    "apps/api/native_routes.py",
+    "apps/api/data_routes.py",
+    "apps/api/job_views.py",
 }
 ENVIRONMENT_FILES = {
     "packages/platform/environments.py",
     "apps/api/environment_routes.py",
 }
+NATIVE_CAPABILITY_FILES = {
+    "apps/api/native_routes.py",
+    "packages/platform/native_capabilities.py",
+    "packages/platform/native_capability_catalog.py",
+    "packages/platform/environment_dependencies.py",
+}
+TEMPLATE_FILES = {
+    "apps/api/data_routes.py",
+    "packages/knowledge_base/template_library.py",
+}
+HISTORY_FILES = {"apps/api/job_views.py", "packages/workspace/history_projection.py"}
 WEB_BUILD_FILES = {WEB + name for name in ("index.html", "vite.config.js")}
+WEB_TEST_TOOLING = {WEB + "jest.config.js"}
+FRONTEND_API_TESTS = {SOURCE + "composables/useTemplateSearch.test.js"}
 SOURCE_EXTENSIONS = analysis.SOURCE_EXTENSIONS
 ASSET_EXTENSIONS = {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico"}
 # These tests scan source without importing it; other literal file reads are
@@ -69,7 +86,11 @@ def guard_paths(paths: set[str]) -> None:
             | MANIFESTS
             | API_FILES
             | WEB_BUILD_FILES
+            | WEB_TEST_TOOLING
             | ENVIRONMENT_FILES
+            | NATIVE_CAPABILITY_FILES
+            | TEMPLATE_FILES
+            | HISTORY_FILES
             | {
                 PYTHON_LOCK,
                 "VERSION",
@@ -141,6 +162,30 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
     }
     if roots & ENVIRONMENT_FILES:
         selected.add("tests/unit/test_environment_api.py")
+    if roots & NATIVE_CAPABILITY_FILES:
+        selected.update(
+            {
+                "tests/unit/test_native_capability_boundary.py",
+                "tests/unit/test_environment_api.py",
+                "tests/unit/test_native_drawing_proxy.py",
+                "tests/unit/test_product_api_security.py",
+            }
+        )
+    if roots & TEMPLATE_FILES:
+        selected.update(
+            {
+                "tests/unit/test_template_library_api.py",
+                "tests/unit/test_product_api_security.py",
+            }
+        )
+    if roots & HISTORY_FILES:
+        selected.update(
+            {
+                "tests/unit/test_history_projection.py",
+                "tests/unit/test_route_document_api.py",
+                "tests/unit/test_product_api_security.py",
+            }
+        )
     if roots & CI_FILES:
         selected.update(CI_SAFETY_TESTS)
     if any(path.startswith("packages/workspace/") for path in roots) or roots & (

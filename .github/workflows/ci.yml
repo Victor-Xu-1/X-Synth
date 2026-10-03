@@ -51,6 +51,22 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
+      - name: Prepare product API dependencies only for selected contract tests
+        working-directory: .
+        run: |
+          python scripts/diagnostics/ci_scope.py --github-event "$GITHUB_EVENT_PATH" --suite frontend > "$RUNNER_TEMP/frontend-scope.json"
+          python - "$RUNNER_TEMP/frontend-scope.json" <<'PY'
+          import json
+          import subprocess
+          import sys
+          from scripts.diagnostics.ci_scope_profile import FRONTEND_API_TESTS
+          with open(sys.argv[1], encoding="utf-8") as source:
+              tests = set(json.load(source)["tests"])
+          if tests & FRONTEND_API_TESTS:
+              subprocess.run([sys.executable, "-m", "pip", "install", "--require-hashes",
+                              "-r", "requirements/orchestrator-linux-py312.lock"], check=True)
+              subprocess.run([sys.executable, "-m", "pip", "check"], check=True)
+          PY
       - name: Run related frontend tests (exact paths, no full-suite fallback)
         working-directory: .
         run: python scripts/diagnostics/ci_scope.py --github-event "$GITHUB_EVENT_PATH" --suite frontend --run

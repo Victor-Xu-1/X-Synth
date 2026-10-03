@@ -5,10 +5,12 @@
         <StructureInput
           v-model="first"
           :label="reactionMode ? '反应物' : '分子结构'"
+          :disabled="loading"
         /><StructureInput
           v-if="reactionMode"
           v-model="second"
           label="产物"
+          :disabled="loading"
         /><v-btn
           color="primary"
           variant="flat"
@@ -58,54 +60,98 @@
   </ModuleWorkbench>
 </template>
 <script setup>
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { API } from "@/common/api";
 import { errorMessage } from "@/common/workspace-errors";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
+import { nativeResult } from "@/common/native-response";
 const route = useRoute(),
   reactionMode = computed(() => route.path === "/feasibility");
-const first = ref(String(route.query.smiles || "")),
+const first = ref(""),
   second = ref(""),
   canonicalFirst = ref(""),
   canonicalSecond = ref(""),
   score = ref(null),
   error = ref(""),
   loading = ref(false);
+let generation = 0,
+  disposed = false;
+watch(
+  () => [
+    route.path,
+    route.query.smiles,
+    route.query.reactants,
+    route.query.product,
+  ],
+  () => {
+    generation++;
+    loading.value = false;
+    score.value = null;
+    error.value = "";
+    first.value =
+      typeof route.query.reactants === "string" && reactionMode.value
+        ? route.query.reactants
+        : typeof route.query.smiles === "string"
+          ? route.query.smiles
+          : "";
+    second.value =
+      reactionMode.value && typeof route.query.product === "string"
+        ? route.query.product
+        : "";
+    canonicalFirst.value = "";
+    canonicalSecond.value = "";
+  },
+  { immediate: true },
+);
 async function calculate() {
+  if (loading.value) return;
+  const current = ++generation,
+    reactants = first.value,
+    product = second.value,
+    reaction = reactionMode.value;
   loading.value = true;
   error.value = "";
   score.value = null;
   try {
-    canonicalFirst.value = (
-      await API.post("/api/v1/structure/validate", { smiles: first.value })
+    const canonical = (
+      await API.post("/api/v1/structure/validate", { smiles: reactants })
     ).smiles;
-    if (reactionMode.value)
-      canonicalSecond.value = (
-        await API.post("/api/v1/structure/validate", { smiles: second.value })
+    if (disposed || current !== generation) return;
+    let canonicalProduct = "";
+    if (reaction)
+      canonicalProduct = (
+        await API.post("/api/v1/structure/validate", { smiles: product })
       ).smiles;
+    if (disposed || current !== generation) return;
     const value = await API.post(
-      reactionMode.value
-        ? "/api/fast-filter/call-sync"
-        : "/api/scscore/call-sync",
-      reactionMode.value
-        ? { smiles: [canonicalFirst.value, canonicalSecond.value] }
-        : { smiles: canonicalFirst.value },
+      reaction ? "/api/fast-filter/call-sync" : "/api/scscore/call-sync",
+      reaction
+        ? { smiles: [canonical, canonicalProduct] }
+        : { smiles: canonical },
     );
-    const result = value.result;
+    if (disposed || current !== generation) return;
+    const result = nativeResult(value);
     const number =
       typeof result === "number" ? result : (result?.score ?? result?.scscore);
     if (typeof number !== "number" || !Number.isFinite(number))
       throw new Error("invalid_model_response");
     score.value = number;
+    canonicalFirst.value = canonical;
+    canonicalSecond.value = canonicalProduct;
   } catch (e) {
-    error.value = errorMessage(e, "模型计算失败。");
+    if (!disposed && current === generation)
+      error.value = errorMessage(e, "模型计算失败。");
   } finally {
-    loading.value = false;
+    if (!disposed && current === generation) loading.value = false;
   }
 }
+onBeforeUnmount(() => {
+  disposed = true;
+  generation++;
+});
 </script>
 <style scoped>
 .calculation-structures {

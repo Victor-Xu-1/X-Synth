@@ -1,3 +1,5 @@
+import { nativeResult } from "./native-response";
+
 export async function expandMolecule(
   api,
   { smiles, model = "pistachio", count = 1000, threshold = 0.75 },
@@ -24,7 +26,7 @@ export async function expandMolecule(
       selectivity_check: false,
     },
   );
-  const outcomes = Array.isArray(value) ? value : value.result;
+  const outcomes = nativeResult(value);
   if (!Array.isArray(outcomes))
     throw new Error("计算后端返回了无效的候选格式。");
   return {

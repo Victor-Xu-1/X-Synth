@@ -6,6 +6,16 @@ import {
   normalizePatentNumber,
 } from "@/common/reaction-evidence";
 
+test("internal template references cannot become fabricated publication or patent links", () => {
+  const evidence = buildReactionEvidence({
+    reactionData: {
+      document_id: "7bc41b373203fc50b7bada7b31865f35",
+      doi: "internal-record-id",
+    },
+  });
+  expect(evidence.links).toEqual([]);
+});
+
 test("normalizes WO patent numbers into public patent links", () => {
   expect(normalizePatentNumber("WO2024/59806; A1")).toBe("WO2024059806A1");
 
@@ -40,19 +50,19 @@ test("builds evidence links from reaction data without an explicit source URL", 
   });
 
   expect(evidence.links.map((link) => link.href)).toContain(
-    "https://patents.google.com/patent/WO2024059806A1"
+    "https://patents.google.com/patent/WO2024059806A1",
   );
   expect(evidence.links.map((link) => link.href)).toContain(
-    "https://doi.org/10.1021/acs.joc.0c00000"
+    "https://doi.org/10.1021/acs.joc.0c00000",
   );
   expect(evidence.links.map((link) => link.href)).toContain(
-    "https://pubmed.ncbi.nlm.nih.gov/12345678/"
+    "https://pubmed.ncbi.nlm.nih.gov/12345678/",
   );
   expect(evidence.fields).toEqual(
     expect.arrayContaining([
       { label: "参考反应", value: "CCO>>CC=O", kind: "reaction" },
       { label: "专利号", value: "WO2024/59806; A1", kind: "text" },
-    ])
+    ]),
   );
 });
 
@@ -107,6 +117,6 @@ test("extracts evidence input from ASKCOS reaction records", () => {
 
 test("builds condition recommendation URLs from route reaction smiles", () => {
   expect(createConditionRecommendationUrl("CCO>>CC=O")).toBe(
-    "/forward?tab=context&rxnsmiles=CCO%3E%3ECC%3DO"
+    "/forward?tab=context&rxnsmiles=CCO%3E%3ECC%3DO",
   );
 });

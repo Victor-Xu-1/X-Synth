@@ -2,6 +2,8 @@ import json
 
 from fastapi import HTTPException
 
+from packages.workspace.history_projection import historical_routes
+
 
 def job_response(job: dict) -> dict:
     summary = public_summary(job.get("summary") or {})
@@ -47,6 +49,27 @@ def route_result(job, *, artifacts, budget):
             raise HTTPException(413, "Historical artifact exceeds the response budget")
         document = json.loads(path.read_text(encoding="utf-8"))
         document["history_provenance"] = public_summary(job["summary"])
+        try:
+            routes = public_summary(historical_routes(document))
+        except (TypeError, ValueError, KeyError) as exc:
+            raise HTTPException(
+                409, "Historical route records cannot be projected"
+            ) from exc
+        result = document.get("result")
+        if not isinstance(result, dict):
+            raise HTTPException(409, "Historical result format is invalid")
+        document["result_state"] = job["status"]
+        result["unified_route_pool"] = {
+            "summary": public_summary(job["summary"]),
+            "selected_routes": routes,
+        }
+        if (
+            len(json.dumps(document, ensure_ascii=False).encode("utf-8"))
+            > budget.response_bytes
+        ):
+            raise HTTPException(
+                413, "Historical route projection exceeds the response budget"
+            )
         return document
     path = artifacts / job["id"] / "selected_routes.json"
     selected = []

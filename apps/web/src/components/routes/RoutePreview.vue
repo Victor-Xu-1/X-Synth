@@ -10,6 +10,7 @@
           <v-select
             v-if="candidates.length > 1"
             v-model="index"
+            :disabled="editing"
             :items="
               candidates.map((_, i) => ({ title: `路线 ${i + 1}`, value: i }))
             "
@@ -26,18 +27,33 @@
           />
         </div>
       </header>
-      <div class="route-preview-canvas">
-        <RouteGraph
-          v-if="candidate"
-          :key="index"
+      <div class="route-preview-body">
+        <div class="route-preview-canvas">
+          <RouteGraph
+            v-if="candidate"
+            :key="index"
+            :graph="graph"
+            :scores="scores"
+            @select="selected = $event"
+          />
+          <div v-else class="workspace-empty">暂无路线数据</div>
+        </div>
+        <RouteInspector
+          v-if="node"
+          :node="node"
           :graph="graph"
-          :scores="scores"
-          @select="selected = $event"
+          :step="stepForNode(candidate, selected)"
+          :snapshot="stockSnapshot"
+          :score="scores[selected]"
+          :target="selected === graph.target_id"
+          @close="selected = null"
+          @navigate="open = false"
         />
-        <div v-else class="workspace-empty">暂无路线数据</div>
       </div>
       <footer class="route-preview-footer">
-        <span class="workspace-muted">{{ engineLabel(candidate?.engine) }}</span>
+        <span class="workspace-muted">{{
+          engineLabel(candidate?.engine)
+        }}</span>
         <div class="page-actions">
           <v-btn
             v-if="jobId"
@@ -61,12 +77,14 @@
   </v-dialog>
 </template>
 <script setup>
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import RouteGraph from "./RouteGraph.vue";
+import RouteInspector from "./RouteInspector.vue";
 import { graphFromCandidate, predictionScores } from "@/common/route-graph";
 import { API } from "@/common/api";
-import { engineLabel } from "@/common/route-details";
+import { engineLabel, taskIdentifier } from "@/common/route-details";
+import { stepForNode } from "@/common/route-node-context";
 import { errorMessage } from "@/common/workspace-errors";
 const open = defineModel({ type: Boolean, default: false });
 const props = defineProps({
@@ -74,6 +92,7 @@ const props = defineProps({
   jobId: String,
   title: String,
   initialIndex: { type: Number, default: 0 },
+  stockSnapshot: String,
 });
 const router = useRouter(),
   index = ref(0),
@@ -87,27 +106,54 @@ const graph = computed(() =>
     : { nodes: [], edges: [], target_id: "" },
 );
 const scores = computed(() => predictionScores(candidate.value || {}));
+const node = computed(() =>
+  graph.value.nodes.find((value) => value.id === selected.value),
+);
+let generation = 0,
+  disposed = false;
+watch(index, () => (selected.value = null));
 watch(open, (value) => {
+  generation++;
+  editing.value = false;
   if (value) {
     index.value = props.initialIndex;
     error.value = "";
+    selected.value = null;
   }
 });
 async function edit() {
+  if (editing.value || !candidate.value || !open.value) return;
+  const current = generation,
+    jobId = props.jobId,
+    originalIndex = index.value;
   editing.value = true;
   try {
     const value = await API.post("/api/v1/route-documents/from-task", {
-      job_id: props.jobId,
-      route_index: index.value,
+      job_id: jobId,
+      route_index: originalIndex,
     });
+    if (
+      disposed ||
+      !open.value ||
+      current !== generation ||
+      props.jobId !== jobId
+    )
+      return;
+    const identifier = taskIdentifier(value.id);
+    if (!identifier) throw new Error("编辑副本文档标识无效。");
     open.value = false;
-    router.push(`/editor/${value.id}`);
+    router.push("/editor/" + identifier);
   } catch (e) {
-    error.value = errorMessage(e, "无法创建编辑副本。");
+    if (!disposed && current === generation)
+      error.value = errorMessage(e, "无法创建编辑副本。");
   } finally {
-    editing.value = false;
+    if (!disposed && current === generation) editing.value = false;
   }
 }
+onBeforeUnmount(() => {
+  disposed = true;
+  generation++;
+});
 </script>
 <style scoped>
 .route-preview-dialog {
@@ -133,6 +179,16 @@ async function edit() {
   height: 560px;
   min-height: 320px;
 }
+.route-preview-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.route-preview-body > :deep(.route-inspector) {
+  position: static;
+  width: 290px;
+  box-shadow: none;
+  max-height: 560px;
+}
 .route-preview-footer {
   border-bottom: 0;
   border-top: 1px solid var(--ws-border);
@@ -141,6 +197,15 @@ async function edit() {
   width: 130px;
 }
 @media (max-width: 700px) {
+  .route-preview-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .route-preview-body > :deep(.route-inspector) {
+    width: 100%;
+    border-left: 0;
+    border-top: 1px solid var(--ws-border);
+    max-height: 360px;
+  }
   .route-preview-canvas {
     height: 62dvh;
   }

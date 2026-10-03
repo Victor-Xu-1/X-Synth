@@ -5,7 +5,13 @@ from __future__ import annotations
 import platform
 from datetime import UTC, datetime
 
-MODEL_NAMES = frozenset({"pistachio", "pistachio_ringbreaker"})
+from .environment_dependencies import (
+    dependency_inventory,
+    inactive_integrations,
+)
+from .native_capabilities import native_inventory, native_operations
+from .native_capability_catalog import configured_model_names
+
 ENGINE_SERVICES = (
     "gateway",
     "expand_one",
@@ -21,14 +27,15 @@ ENGINE_SERVICES = (
 
 
 def environment_snapshot(
-    *, health: dict, runtime: dict, configured_models: str
+    *,
+    health: dict,
+    runtime: dict,
+    configured_models: str,
+    template_library: dict | None = None,
 ) -> dict:
     checks = health.get("service_checks", {})
     resources = runtime.get("resources", {})
-    configured = set(configured_models.split(","))
-    configured = {name.strip() for name in configured if name.strip()}
-    # Configuration mistakes must not expose secrets placed in a model field.
-    known_models = sorted(configured & MODEL_NAMES)
+    known_models, unknown_count = configured_model_names(configured_models)
     ready = health.get("backends", {}).get("askcos_v2") is True
     status = (
         "ready"
@@ -66,12 +73,22 @@ def environment_snapshot(
                 if services
                 else "external_services",
                 "configured_models": known_models,
-                "unrecognized_model_count": len(configured - MODEL_NAMES),
-                "models_verified": checks.get("configured_models_loaded") is True,
+                "unrecognized_model_count": unknown_count,
+                "models_verified": bool(known_models)
+                and unknown_count == 0
+                and checks.get("configured_models_loaded") is True,
                 "available_strategies": health.get("available_strategies", []),
                 "service_ids": list(ENGINE_SERVICES),
             }
         ],
+        "native": native_inventory(
+            health=health, runtime=runtime, configured_models=configured_models
+        ),
+        "integrations": inactive_integrations(),
+        "dependencies": dependency_inventory(
+            health=health, template_library=template_library
+        ),
+        "operations": native_operations(),
         "health": health,
         "runtime": runtime,
     }

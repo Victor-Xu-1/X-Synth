@@ -68,6 +68,12 @@ def mock_frontend(monkeypatch, before, after, old_records, new_records):
         "apps/api/document_routes.py",
         "apps/api/environment_routes.py",
         "packages/platform/environments.py",
+        "packages/platform/native_capabilities.py",
+        "apps/api/native_routes.py",
+        "apps/api/data_routes.py",
+        "apps/api/job_views.py",
+        "packages/knowledge_base/template_library.py",
+        "apps/web/jest.config.js",
         "packages/workspace/new_document_module.py",
         "apps/web/src/views/workspace/NewView.vue",
         "apps/web/src/common/unified-route.js",
@@ -91,7 +97,7 @@ def test_workspace_profile_accepts_explicitly_scoped_paths(path):
         "requirements/askcos-runtime-linux-py312.lock",
         ".github/workflows/deploy.yml",
         "tests/unit/conftest.py",
-        "apps/web/jest.config.js",
+        "apps/web/playwright.config.js",
         "apps/web/src/unknown.wasm",
         "private/runtime.json",
     ],
@@ -120,6 +126,36 @@ def test_environment_changes_select_only_environment_contracts(tmp_path):
     assert profile.python_tests(item, item, profile.ENVIRONMENT_FILES) == [
         "tests/unit/test_environment_api.py"
     ]
+
+
+def test_native_template_and_history_changes_use_explicit_related_contracts(tmp_path):
+    files = {
+        path: "pass"
+        for path in (
+            "tests/unit/test_environment_api.py",
+            "tests/unit/test_native_capability_boundary.py",
+            "tests/unit/test_native_drawing_proxy.py",
+            "tests/unit/test_product_api_security.py",
+            "tests/unit/test_template_library_api.py",
+            "tests/unit/test_history_projection.py",
+            "tests/unit/test_route_document_api.py",
+        )
+    }
+    item = snapshot(tmp_path, files)
+    assert profile.python_tests(
+        item, item, {"packages/knowledge_base/template_library.py"}
+    ) == sorted(
+        [
+            "tests/unit/test_template_library_api.py",
+            "tests/unit/test_product_api_security.py",
+        ]
+    )
+    assert "tests/unit/test_native_capability_boundary.py" in profile.python_tests(
+        item, item, {"packages/platform/native_capabilities.py"}
+    )
+    assert "tests/unit/test_history_projection.py" in profile.python_tests(
+        item, item, {"apps/api/job_views.py"}
+    )
 
 
 def test_api_selects_actual_direct_consumers_including_nested_imports(tmp_path):

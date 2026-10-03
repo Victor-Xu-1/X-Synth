@@ -7,8 +7,10 @@ import json
 import sqlite3
 from collections.abc import Iterable
 from contextlib import closing
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 DEFAULT_TEMPLATE_STRATEGIES: dict[str, dict[str, Any]] = {
@@ -46,6 +48,14 @@ DEFAULT_TEMPLATE_STRATEGIES: dict[str, dict[str, Any]] = {
     },
 }
 
+_TEMPLATE_SELECT = """
+    select template_id, source, source_path, template_set, direction, domain,
+           reaction_smarts, template_count, necessary_reagent, intra_only,
+           dimer_only, ring_delta, chiral_delta, references_json,
+           attributes_json, raw_json
+    from templates
+"""
+
 
 @dataclass(frozen=True)
 class TemplateRecord:
@@ -76,8 +86,27 @@ class TemplateLibraryService:
             raise FileNotFoundError(
                 f"Template database not found: {self.database_path}"
             )
+        self._summary_lock = Lock()
+        self._summary_identity: tuple[int, ...] | None = None
+        self._cached_summary: dict[str, Any] | None = None
 
     def summary(self) -> dict[str, Any]:
+        # Assets are immutable; an atomic replacement invalidates cached statistics.
+        with self._summary_lock:
+            stat = self.database_path.stat()
+            identity = (
+                stat.st_dev,
+                stat.st_ino,
+                stat.st_size,
+                stat.st_mtime_ns,
+                stat.st_ctime_ns,
+            )
+            if self._cached_summary is None or identity != self._summary_identity:
+                self._cached_summary = self._read_summary()
+                self._summary_identity = identity
+            return deepcopy(self._cached_summary)
+
+    def _read_summary(self) -> dict[str, Any]:
         with self.connect() as connection:
             template_count = connection.execute(
                 "select count(*) from templates"
@@ -103,6 +132,32 @@ class TemplateLibraryService:
                     "select direction, count(*) from templates group by direction order by direction"
                 ).fetchall()
             }
+            indexed_sources = {
+                row[0]
+                for row in connection.execute("select distinct source from templates")
+            }
+            availability = {}
+            for strategy in sorted(DEFAULT_TEMPLATE_STRATEGIES):
+                profile = DEFAULT_TEMPLATE_STRATEGIES[strategy]
+                where, params = _template_filters(strategy=strategy)
+                if (
+                    not directions.get(params[0], 0)
+                    or (profile.get("domain") and profile["domain"] not in domains)
+                    or (
+                        profile.get("sources")
+                        and not indexed_sources.intersection(profile["sources"])
+                    )
+                ):
+                    count = 0
+                elif len(where) == 1:
+                    count = directions[params[0]]
+                else:
+                    count = _count_template_matches(connection, where, params)
+                availability[strategy] = {
+                    "template_count": count,
+                    "available": count > 0,
+                    "reason": None if count else "no_matching_templates",
+                }
         return {
             "path": str(self.database_path),
             "template_count": template_count,
@@ -111,6 +166,7 @@ class TemplateLibraryService:
             "domains": domains,
             "directions": directions,
             "strategies": sorted(DEFAULT_TEMPLATE_STRATEGIES),
+            "strategy_availability": availability,
         }
 
     def connect(self):
@@ -132,56 +188,44 @@ class TemplateLibraryService:
     ) -> list[TemplateRecord]:
         if limit < 1:
             raise ValueError("limit must be at least 1")
-        profile = _template_strategy(strategy)
-        resolved_sources = tuple(sources or profile.get("sources") or ())
-        resolved_domain = domain if domain is not None else profile.get("domain")
-        resolved_min_count = (
-            min_count if min_count is not None else profile.get("min_count")
+        where, params = _template_filters(
+            strategy=strategy,
+            sources=sources,
+            domain=domain,
+            min_count=min_count,
+            direction=direction,
         )
-        resolved_direction = (
-            direction if direction is not None else profile.get("direction", "retro")
-        )
-
-        where = ["direction = ?"]
-        params: list[Any] = [resolved_direction]
-        if resolved_sources:
-            placeholders = ",".join("?" for _ in resolved_sources)
-            where.append(f"source in ({placeholders})")
-            params.extend(resolved_sources)
-        if resolved_domain:
-            where.append("domain = ?")
-            params.append(str(resolved_domain))
-        if resolved_min_count is not None:
-            where.append("template_count >= ?")
-            params.append(int(resolved_min_count))
         params.append(limit)
 
-        sql = f"""
-            select
-              template_id,
-              source,
-              source_path,
-              template_set,
-              direction,
-              domain,
-              reaction_smarts,
-              template_count,
-              necessary_reagent,
-              intra_only,
-              dimer_only,
-              ring_delta,
-              chiral_delta,
-              references_json,
-              attributes_json,
-              raw_json
-            from templates
+        sql = (
+            _TEMPLATE_SELECT
+            + f"""
             where {" and ".join(where)}
             order by template_count desc, source asc, template_id asc
             limit ?
         """
+        )
         with self.connect() as connection:
             rows = connection.execute(sql, params).fetchall()
         return [_template_record_from_row(row) for row in rows]
+
+    def get_template(self, *, source: str, template_id: str) -> TemplateRecord | None:
+        if (
+            not source
+            or len(source) > 128
+            or ":" in source
+            or any(character.isspace() for character in source)
+            or len(template_id) > 256
+            or not template_id.startswith(f"{source}:")
+            or not template_id[len(source) + 1 :]
+        ):
+            raise ValueError("A source-matching namespaced template_id is required")
+        with self.connect() as connection:
+            row = connection.execute(
+                _TEMPLATE_SELECT + " where template_id = ? and source = ? limit 1",
+                (template_id, source),
+            ).fetchone()
+        return _template_record_from_row(row) if row is not None else None
 
 
 def build_template_library_manifest(
@@ -826,6 +870,52 @@ def _template_strategy(strategy: str | None) -> dict[str, Any]:
         return DEFAULT_TEMPLATE_STRATEGIES[strategy]
     except KeyError as exc:
         raise ValueError(f"Unknown template strategy: {strategy}") from exc
+
+
+def _template_filters(
+    *,
+    strategy: str | None = None,
+    sources: Iterable[str] | None = None,
+    domain: str | None = None,
+    min_count: int | None = None,
+    direction: str | None = None,
+) -> tuple[list[str], list[Any]]:
+    profile = _template_strategy(strategy)
+    resolved_sources = tuple(sources or profile.get("sources") or ())
+    resolved_domain = domain if domain is not None else profile.get("domain")
+    resolved_min_count = (
+        min_count if min_count is not None else profile.get("min_count")
+    )
+    resolved_direction = (
+        direction if direction is not None else profile.get("direction", "retro")
+    )
+    where, params = ["direction = ?"], [resolved_direction]
+    if resolved_sources:
+        where.append("source in (" + ",".join("?" for _ in resolved_sources) + ")")
+        params.extend(resolved_sources)
+    if resolved_domain:
+        where.append("domain = ?")
+        params.append(str(resolved_domain))
+    if resolved_min_count is not None:
+        where.append("template_count >= ?")
+        params.append(int(resolved_min_count))
+    return where, params
+
+
+def _count_template_matches(connection, where, params) -> int:
+    # Intersect covering indexes rather than fetching wide native records.
+    sql = (
+        """
+        select count(*) from (
+            select rowid from templates where """
+        + " and ".join(where[1:])
+        + """
+            intersect
+            select rowid from templates where direction = ?
+        )
+    """
+    )
+    return connection.execute(sql, [*params[1:], params[0]]).fetchone()[0]
 
 
 def _template_record_from_row(row: tuple[Any, ...]) -> TemplateRecord:
