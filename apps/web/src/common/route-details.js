@@ -26,7 +26,8 @@ export function readSelectedRoutes(response) {
   return routes;
 }
 export function engineLabel(engine) {
-  return { askcos_mcts: "ASKCOS · MCTS", askcos_retro_star: "ASKCOS · RetroStar" } [engine] ||
+  if (typeof engine === "string" && engine.startsWith("ASKCOS / ")) return `单步分析 · ${engine.slice(9)}`;
+  return { askcos_mcts: "树搜索 · MCTS", askcos_retro_star: "启发式搜索 · RetroStar" } [engine] ||
   (typeof engine === "string" && engine.trim() ? engine : "来源未记录");
 }
 export function closureLabel(route) {

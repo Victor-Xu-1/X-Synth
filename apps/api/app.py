@@ -20,6 +20,7 @@ from packages.workspace.route_repository import RouteDocumentRepository
 
 from .data_routes import data_router
 from .document_routes import document_router
+from .environment_routes import environment_router
 from .job_routes import job_router
 from .job_views import route_result
 from .native_routes import native_router
@@ -145,6 +146,9 @@ def create_app(
     @app.get("/api/v1/runtime")
     def runtime(request: Request):
         authenticate(request, transport)
+        return runtime_snapshot()
+
+    def runtime_snapshot():
         metrics = runtime_resources(state_root / "native/runtime.json")
         return {
             "budget": budget.summary(),
@@ -152,6 +156,13 @@ def create_app(
             "memory_warning": metrics["rss_bytes"]
             > PerformanceTargets().native_rss_warning_bytes,
         }
+
+    app.include_router(
+        environment_router(
+            transport=transport, read_health=health, read_runtime=runtime_snapshot
+        ),
+        prefix="/api/v1",
+    )
 
     router = job_router(
         repository=repository,

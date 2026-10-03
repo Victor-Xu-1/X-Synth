@@ -19,7 +19,7 @@
       </div>
     </router-link>
     <footer class="task-card-footer">
-      <span class="task-card-source">{{ task.tags?.join(' / ') || 'ASKCOS' }}</span>
+      <span class="task-card-source">{{ taskSourceLabel(task) }}</span>
       <TaskActions :task="task" :pending="pending" :info-loading="infoLoading"
         @info="$emit('info')" @preview="$emit('preview')" @rerun="$emit('rerun')"
         @cancel="$emit('cancel')" @archive="$emit('archive')" />
@@ -32,7 +32,7 @@ import { computed } from "vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import TaskActions from "./TaskActions.vue";
 import { activeTaskStates, displayTime, taskStateClass, taskStateLabel } from "@/common/task-state";
-import { preserveStructureControl, taskDetailLocation, taskRouteCount, taskTitle } from "@/common/task-history-view";
+import { preserveStructureControl, taskDetailLocation, taskRouteCount, taskTitle, taskSourceLabel } from "@/common/task-history-view";
 const props = defineProps({
   task: { type: Object, required: true },
   selected: Boolean,

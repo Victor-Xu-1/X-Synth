@@ -32,7 +32,7 @@
       hide-details
       :disabled="disabled"
     />
-    <div class="one-step-engine">ASKCOS V2 · SCScore 排序</div>
+    <div class="one-step-engine">结构复杂度排序</div>
   </div>
 </template>
 <script setup>

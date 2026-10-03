@@ -43,6 +43,11 @@ API_FILES = {
     "apps/api/app.py",
     "apps/api/document_routes.py",
     "apps/api/structure_routes.py",
+    "apps/api/environment_routes.py",
+}
+ENVIRONMENT_FILES = {
+    "packages/platform/environments.py",
+    "apps/api/environment_routes.py",
 }
 WEB_BUILD_FILES = {WEB + name for name in ("index.html", "vite.config.js")}
 SOURCE_EXTENSIONS = analysis.SOURCE_EXTENSIONS
@@ -57,10 +62,19 @@ def guard_paths(paths: set[str]) -> None:
     unknown = []
     for path in sorted(paths):
         suffix = PurePosixPath(path).suffix
-        known = path in CI_FILES | DOCS | MANIFESTS | API_FILES | WEB_BUILD_FILES | {
-            PYTHON_LOCK,
-            "VERSION",
-        }
+        known = (
+            path
+            in CI_FILES
+            | DOCS
+            | MANIFESTS
+            | API_FILES
+            | WEB_BUILD_FILES
+            | ENVIRONMENT_FILES
+            | {
+                PYTHON_LOCK,
+                "VERSION",
+            }
+        )
         known |= path.startswith("packages/workspace/") and suffix == ".py"
         known |= path.startswith("tests/unit/test_") and suffix == ".py"
         known |= path.startswith(SOURCE) and suffix in SOURCE_EXTENSIONS
@@ -125,10 +139,12 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
         and path.endswith(".py")
         and path in after.files
     }
+    if roots & ENVIRONMENT_FILES:
+        selected.add("tests/unit/test_environment_api.py")
     if roots & CI_FILES:
         selected.update(CI_SAFETY_TESTS)
     if any(path.startswith("packages/workspace/") for path in roots) or roots & (
-        API_FILES - {"apps/api/app.py"}
+        {"apps/api/document_routes.py", "apps/api/structure_routes.py"}
     ):
         selected.update(WORKSPACE_TESTS)
     if "apps/api/app.py" in roots:

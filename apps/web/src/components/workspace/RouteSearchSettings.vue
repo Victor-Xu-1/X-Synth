@@ -50,16 +50,8 @@
     </details>
     <dl class="search-engine-facts">
       <div>
-        <dt>计算引擎</dt>
-        <dd>ASKCOS V2</dd>
-      </div>
-      <div>
         <dt>搜索策略</dt>
-        <dd>MCTS / RetroStar</dd>
-      </div>
-      <div>
-        <dt>模板模型</dt>
-        <dd>Pistachio / Ringbreaker</dd>
+        <dd>多策略搜索</dd>
       </div>
       <div>
         <dt>终点判定</dt>

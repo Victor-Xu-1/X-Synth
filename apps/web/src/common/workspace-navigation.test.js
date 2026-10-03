@@ -8,6 +8,7 @@ test("task details and editor documents retain a single selected navigation item
   for (const route of [
     { path: "/results/123", query: {} },
     { path: "/editor/123", query: {} },
+    { path: "/environments", query: { tab: "monitor" } },
   ]) {
     const selected = navigation
       .flatMap((group) => group.items)

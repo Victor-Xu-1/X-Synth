@@ -10,6 +10,7 @@ import {
   taskParameterGroups,
   taskRouteCount,
   taskTimestampLabel,
+  taskSourceLabel,
 } from "./task-history-view";
 import { useTaskActions } from "@/composables/useTaskActions";
 import { querySeed } from "./workbench-model";
@@ -37,6 +38,14 @@ const settings = {
   public: false,
   tuning: { max_depth: 15, minimum_plausibility: 0 },
 };
+
+test("task cards omit backend branding without mutating source tags", () => {
+  const task = { tags: ["ASKCOS", "ASKCOS V2", "RetroStar", "真实任务"] };
+  expect(taskSourceLabel(task)).toBe("RetroStar / 真实任务");
+  expect(task.tags).toEqual(["ASKCOS", "ASKCOS V2", "RetroStar", "真实任务"]);
+  expect(taskSourceLabel({ tags: ["ASKCOS V2"] })).toBe("路线记录");
+  expect(taskSourceLabel({ tags: [] })).toBe("路线记录");
+});
 
 test("reads jobrequest settings from the retrieve response, not its route result", () => {
   const info = normalizeTaskInfo(row, {

@@ -10,6 +10,7 @@ export const navigation = [
         icon: "mdi-file-document-multiple-outline",
         to: "/documents",
       },
+      { title: "环境部署", icon: "mdi-server-network", to: "/environments" },
     ],
   },
   {

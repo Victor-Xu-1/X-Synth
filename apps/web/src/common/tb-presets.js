@@ -26,7 +26,7 @@ const HIGH_QUALITY_ROUTE_SETTINGS = {
 const TB_PRESETS = {
   quality: {
     label: "最高质量路线",
-    info: "使用 ASKCOS 路线打分、路线聚类和严格 fast filter；内部扩大候选池，最终只输出 3-10 条闭合路线。",
+    info: "使用路线打分、路线聚类和严格反应可行性筛选；内部扩大候选池，最终只输出 3-10 条闭合路线。",
     settings: HIGH_QUALITY_ROUTE_SETTINGS,
   },
 };

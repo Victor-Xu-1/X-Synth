@@ -13,8 +13,8 @@
           @click="reload"
           >重新加载</v-btn
         >
-        <v-btn to="/status" variant="text" prepend-icon="mdi-server-outline"
-          >服务状态</v-btn
+        <v-btn to="/environments?tab=monitor" variant="text" prepend-icon="mdi-server-outline"
+          >运行监测</v-btn
         >
       </div>
     </div>
