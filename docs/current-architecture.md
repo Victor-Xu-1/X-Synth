@@ -25,7 +25,7 @@ flowchart TD
   MCTS --> REVIEW
   RS --> REVIEW
   REVIEW --> GATE{"3-10 Qualified Routes?"}
-  GATE -- "Yes" --> RESULT["Private Results / Existing Route Viewer"]
+  GATE -- "Yes" --> RESULT["Private Immutable Results / Vue Flow Preview"]
   GATE -- "No, First Pass" --> ENGINE
   GATE -- "Engine Recovery Required" --> WAIT["Checkpoint / Waiting for Engine"]
   WAIT --> JOB
@@ -33,24 +33,32 @@ flowchart TD
   RESULT --> API
   INCOMPLETE --> API
   NATIVE --> CAP["Configured ASKCOS Native Functions"]
+  UI --> DOCAPI["Route Document API / Owner / Revision"]
+  RESULT --> COPY["Copy Actual Selected Route"]
+  COPY --> DOCAPI
+  DOCAPI --> DOC["Independent Workspace SQLite / DAG / RDKit Validation"]
+  DOC --> EDIT["Vue Flow Editor / Dagre Layout / Ketcher Structures"]
+  EDIT --> DOCAPI
+  EDIT -- "One-Step Candidate" --> NATIVE
 ```
 
 ## Source and Data Ownership
 
-| Boundary | Authoritative Location | Responsibility |
-|---|---|---|
-| Product version | VERSION | Product SemVer; currently 0.1.0 |
-| Frontend | apps/web | Existing Vue workbench, Chinese UI, editor, history, route viewer |
-| Product API | apps/api | Input validation, identity boundary, capability delegation, response models |
-| Product jobs | packages/orchestrator | One lifecycle, resource admission, checkpoints, route workflow |
-| ASKCOS integration | packages/adapters/askcos | Typed transport, native search invocation, recoverable errors |
-| Native algorithms and functions | apps/askcos-v2 | Full ASKCOS source, isolated native runtime |
-| Commercial evidence | packages/adapters/stock | Exact catalog validation, immutable indexed snapshots, batch lookup |
-| Shared knowledge | packages/knowledge_base | Reaction/template provenance and query index |
-| Normalized routes | packages/route_schema, packages/route_pool | Engine-independent routes, family selection, existing viewer projection |
-| Deterministic checks | packages/validation, packages/scoring | Structural validation, closure, cycles, scoring |
-| Repeatable operations | scripts/operations, scripts/data_import | Startup, asset installation, imports, source publication |
-| Verification | tests, .github/workflows | Unit, integration, contracts, security, build and deployment gates |
+| Boundary                        | Authoritative Location                     | Responsibility                                                                                    |
+| ------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| Product version                 | VERSION                                    | Product SemVer; currently 0.1.0                                                                   |
+| Frontend                        | apps/web                                   | Existing Vue workbench, Chinese UI, editor, history, route viewer                                 |
+| Product API                     | apps/api                                   | Input validation, identity boundary, capability delegation, response models                       |
+| Product jobs                    | packages/orchestrator                      | One lifecycle, resource admission, checkpoints, route workflow                                    |
+| Route documents                 | packages/workspace                         | Independent documents, canonical chemical DAGs, immutable source provenance, optimistic revisions |
+| ASKCOS integration              | packages/adapters/askcos                   | Typed transport, native search invocation, recoverable errors                                     |
+| Native algorithms and functions | apps/askcos-v2                             | Full ASKCOS source, isolated native runtime                                                       |
+| Commercial evidence             | packages/adapters/stock                    | Exact catalog validation, immutable indexed snapshots, batch lookup                               |
+| Shared knowledge                | packages/knowledge_base                    | Reaction/template provenance and query index                                                      |
+| Normalized routes               | packages/route_schema, packages/route_pool | Engine-independent routes, family selection, existing viewer projection                           |
+| Deterministic checks            | packages/validation, packages/scoring      | Structural validation, closure, cycles, scoring                                                   |
+| Repeatable operations           | scripts/operations, scripts/data_import    | Startup, asset installation, imports, source publication                                          |
+| Verification                    | tests, .github/workflows                   | Unit, integration, contracts, security, build and deployment gates                                |
 
 Source checkouts use stable unversioned paths. Models, supplier data, database
 volumes, private jobs, logs, caches, generated reports and screenshots are not
@@ -88,27 +96,60 @@ another product version.
 - Native ASKCOS functions without installed models or required authorization must
   remain unavailable, not be presented as working features.
 
+## Workspace Interaction and Documents
+
+The layout shell owns navigation, theme and live readiness only. Task composition,
+task history, result detail, route documents and graph editing are separate pages.
+There is one route handler per page. Legacy `/network` URLs redirect to their new
+destination; retired Launchpad, vis-network graph views and their global result
+store are removed. Chinese workspace labels do not use third-party branding.
+
+Preview and edit share `components/routes/RouteGraph.vue`. Scientific structures
+are generated by the actual RDKit capability. Vue Flow owns pan, zoom, selection,
+drag and connections; Dagre supplies layout and graph cycle checks. UI-only graph
+state is not serialized into scientific records. Graphs contain alternating
+molecule/reaction nodes and directed precursor-to-reaction-to-product edges.
+The server repeats graph and RDKit validation rather than trusting UI checks.
+
+The `/api/v1/route-documents` API stores private documents in `workspace.sqlite`
+under the configured state root. Schema version 1 is independent of product
+version 0.1.0. Unknown schema versions are refused before mutation. Save requires
+the current revision; conflicts return 409 without losing the unsaved client
+graph. Lists return bounded summaries, not full graphs. Deleting a document
+actually deletes its record; moving a task out of history retains the existing
+archive contract and is labeled accordingly.
+
+`from-task` copies only a real selected route owned by the caller. Provenance and
+scores are set by the server, never an imported JSON or client-supplied flag.
+Layout and annotations preserve the original chemical signature. Any chemistry
+change invalidates original prediction scores and closure, even if restored
+later. Edited documents are drafts, not independently validated model outputs.
+JSON import creates a draft. PNG export captures all nodes and branches, not
+just the current zoomed viewport. Interactive continuation uses the same real
+ASKCOS one-step adapter as the one-step page; it cannot turn manual edits into
+a completed computation task.
+
 ## Performance Contract
 
 PerformanceBudget is the product resource authority. Native runtime setup maps
 its values into native worker/thread settings. Resource ceilings do not relax
 chemical validation or mark unfinished searches complete.
 
-| Resource | Default | Reason |
-|---|---|---|
-| Active product tasks | 1 | Avoid competing large route graphs on a local workstation |
-| Queued product tasks | 64 | Bounded admission with explicit queue-full response |
-| Native search parallelism | 2 | MCTS and RetroStar proceed independently |
-| Model execution parallelism | 1 | Shared model weights are loaded once, not per task |
-| Route review process | 1 | CPU-heavy chemistry checks cannot block the API interpreter |
-| Model CPU threads | 4 | Prevent native pools consuming all host CPUs |
-| Stock SQL chunk | 500 structures | Indexed batched lookup, bounded parameters |
-| Native child queue | 8 per strategy | Bounded internal admission |
-| Molecular input | 1024 atoms | Reject unsupported inputs before expensive normalization |
-| Readiness cache | 10 seconds | UI polling does not repeatedly import models or probe every dependency |
-| Dependency probe timeout | 2 seconds | Independent parallel probes; a dead engine does not stall other checks |
-| Request budget | 10 MiB | Bounded untrusted input |
-| Native response budget | 32 MiB | Explicit oversized-response handling, no silent truncation |
+| Resource                    | Default        | Reason                                                                 |
+| --------------------------- | -------------- | ---------------------------------------------------------------------- |
+| Active product tasks        | 1              | Avoid competing large route graphs on a local workstation              |
+| Queued product tasks        | 64             | Bounded admission with explicit queue-full response                    |
+| Native search parallelism   | 2              | MCTS and RetroStar proceed independently                               |
+| Model execution parallelism | 1              | Shared model weights are loaded once, not per task                     |
+| Route review process        | 1              | CPU-heavy chemistry checks cannot block the API interpreter            |
+| Model CPU threads           | 4              | Prevent native pools consuming all host CPUs                           |
+| Stock SQL chunk             | 500 structures | Indexed batched lookup, bounded parameters                             |
+| Native child queue          | 8 per strategy | Bounded internal admission                                             |
+| Molecular input             | 1024 atoms     | Reject unsupported inputs before expensive normalization               |
+| Readiness cache             | 10 seconds     | UI polling does not repeatedly import models or probe every dependency |
+| Dependency probe timeout    | 2 seconds      | Independent parallel probes; a dead engine does not stall other checks |
+| Request budget              | 10 MiB         | Bounded untrusted input                                                |
+| Native response budget      | 32 MiB         | Explicit oversized-response handling, no silent truncation             |
 
 The existing service-status page reads product health and runtime metrics.
 Runtime memory is sampled only for supervised PIDs with matching start-time
@@ -138,17 +179,17 @@ supplier/database dumps. Third-party notices are retained beside their sources.
 Acceptance targets are measured against the actual configured snapshot and
 models, not mocked latency. Targets are not claims of an already-passed run.
 
-| Path | Acceptance Target | Evidence |
-|---|---|---|
-| Warm exact stock lookup | p95 <= 25 ms | At least 100 real accepted structures plus misses |
-| Stock batch lookup | p95 <= 500 ms for 500 structures | Real SQLite snapshot; no per-structure connection loop |
-| Warm product status/history | p95 <= 250 ms | Concurrent UI polling while a real search is active |
-| Cold dependency readiness | <= timeout + 1 second | Independent probes, including unavailable services |
-| Native model memory | One resident copy per configured model | RSS and process inventory |
-| Job concurrency | Never exceed configured admission | Real DB transactions and concurrent claim tests |
-| Task cancellation/recovery | No late completion overwrites cancellation; no duplicate search on resume | Lifecycle and real engine integration tests |
-| Route delivery | 3-10 qualified distinct families or explicit incomplete/recovery state | Actual native outputs, exact catalog evidence, deterministic review |
-| UI | Desktop/mobile layout stable, structure editor and history refresh work | Real Chrome smoke and screenshots |
+| Path                        | Acceptance Target                                                         | Evidence                                                            |
+| --------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Warm exact stock lookup     | p95 <= 25 ms                                                              | At least 100 real accepted structures plus misses                   |
+| Stock batch lookup          | p95 <= 500 ms for 500 structures                                          | Real SQLite snapshot; no per-structure connection loop              |
+| Warm product status/history | p95 <= 250 ms                                                             | Concurrent UI polling while a real search is active                 |
+| Cold dependency readiness   | <= timeout + 1 second                                                     | Independent probes, including unavailable services                  |
+| Native model memory         | One resident copy per configured model                                    | RSS and process inventory                                           |
+| Job concurrency             | Never exceed configured admission                                         | Real DB transactions and concurrent claim tests                     |
+| Task cancellation/recovery  | No late completion overwrites cancellation; no duplicate search on resume | Lifecycle and real engine integration tests                         |
+| Route delivery              | 3-10 qualified distinct families or explicit incomplete/recovery state    | Actual native outputs, exact catalog evidence, deterministic review |
+| UI                          | Desktop/mobile layout stable, structure editor and history refresh work   | Real Chrome smoke and screenshots                                   |
 
 Route duration depends on target complexity, model coverage and purchasable
 precursors. It is not a performance promise that an arbitrary target will always

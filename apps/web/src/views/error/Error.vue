@@ -1,32 +1,26 @@
-<!-- path/to/src/components/ErrorPage.vue -->
 <template>
-    <v-container>
-      <v-row justify="center" align="center">
-        <v-col cols="12" md="6">
-          <v-card>
-            <v-card-title class="headline">Service Unavailable</v-card-title>
-            <v-card-text>
-              <p>We're sorry, but the server is currently unavailable. Please try again later.</p>
-            </v-card-text>
-            <v-card-actions>
-              <v-btn @click="reload">Reload Page</v-btn>
-            </v-card-actions>
-          </v-card>
-        </v-col>
-      </v-row>
-    </v-container>
-  </template>
-  
-  <script>
-  export default {
-    methods: {
-      reload() {
-        window.location.reload();
-      }
-    }
-  }
-  </script>
-  
-  <style scoped>
-  /* Add any custom styles here */
-  </style>
+  <section class="standard-page">
+    <header class="page-heading"><h1>服务不可用</h1></header>
+    <div class="workspace-empty">
+      <v-icon icon="mdi-server-off" size="32" />
+      <h2>暂时无法连接服务</h2>
+      <p class="workspace-muted">请检查服务状态后重试。</p>
+      <div class="page-actions">
+        <v-btn
+          color="primary"
+          variant="flat"
+          prepend-icon="mdi-refresh"
+          @click="reload"
+          >重新加载</v-btn
+        >
+        <v-btn to="/status" variant="text" prepend-icon="mdi-server-outline"
+          >服务状态</v-btn
+        >
+      </div>
+    </div>
+  </section>
+</template>
+
+<script setup>
+const reload = () => window.location.reload();
+</script>

@@ -33,7 +33,7 @@ def test_client_cannot_read_other_tasks_or_bypass_product_search(tmp_path):
 def test_session_and_template_routes_share_the_server_security_boundary(tmp_path):
     browser = client(create_app(jobs_root=tmp_path))
     assert browser.get("/api/v1/session").json() == {
-        "mode": "local", "owner": "local_workspace", "workspace_access": True,
+        "mode": "local", "owner": "local_workspace", "administrator": True, "workspace_access": True,
     }
     for endpoint in ("/api/v1/session", "/api/v1/template-library/health"):
         assert browser.get(endpoint, headers={"Origin": "https://attacker.example"}).status_code == 403

@@ -50,25 +50,24 @@ test("front-end source does not expose retired non-ASKCOS modules", () => {
   expect(offenders).toStrictEqual([]);
 });
 
-test("home launchpad carries former sidebar destinations inside the workbench", () => {
-  const launchpadPath = path.resolve(sourceRoot, "components/home/Launchpad.vue");
-  const text = fs.readFileSync(launchpadPath, "utf8");
-
+test("workspace has one navigation authority and no retired route renderer", () => {
+  const navigation = fs.readFileSync(
+    path.join(sourceRoot, "common/workspace-navigation.js"),
+    "utf8",
+  );
   for (const marker of [
-    "服务状态",
-    "我的结果",
-    "禁用列表",
-    'action: "status"',
-    'action: "results"',
-    'action: "banlist"',
+    "新建任务",
+    "任务历史",
+    "路线文档",
+    "一步逆合成",
+    "商业原料",
+  ])
+    expect(navigation).toContain(marker);
+  for (const retired of [
+    "components/home/Launchpad.vue",
+    "views/network/Network.vue",
+    "store/results.js",
   ]) {
-    expect(text).toContain(marker);
+    expect(fs.existsSync(path.join(sourceRoot, retired))).toBe(false);
   }
-
-  expect(text).not.toContain("核心工作台");
-  expect(text).not.toContain("模块工作台");
-  expect(text).not.toContain("左侧统一入口");
-  expect(text).not.toContain("modules-heading");
-  expect(text).not.toContain("路线实验包");
-  expect(text).not.toContain("NMR 和文稿草稿");
 });

@@ -1,416 +1,494 @@
 <template>
-    <module-workbench
-        title="账号管理工作台"
-        eyebrow="管理后台"
-        icon="mdi-account-cog-outline"
-        accent="blue-grey"
-        description="管理 synon 用户账号、权限、登录状态和账号启停。"
-        :summary-items="summaryItems"
-    >
-        <v-row class="justify-center">
-            <v-col cols="12" md="12" xl="10">
-                <div class="my-5">
-                    <h5 class="text-h4 text-blue">你好，{{ username }}！</h5>
-                </div>
-            </v-col>
-        </v-row>
-        <v-row dense v-if="isAdmin && !dataLoading">
-            <v-alert density="compact" type="warning" title="管理员操作提醒" class="my-2" closable>
-                <template v-slot:text>
-                    <p class="text-body-1">
-                        管理员操作会影响其他用户的数据和账号状态，请确认后再执行。
-                    </p>
-                    <p class="text-body-1">1. 尊重其他用户的数据。</p>
-                    <p class="text-body-1">2. 批量操作前先检查选择范围。</p>
-                    <p class="text-body-1">3. 权限变更和删除操作需要谨慎执行。</p>
+  <module-workbench title="账号管理">
+    <template #actions>
+      <v-btn
+        v-if="workspace.can('native_account')"
+        variant="text"
+        prepend-icon="mdi-refresh"
+        :loading="dataLoading"
+        :disabled="busy"
+        @click="fetchData"
+        >刷新</v-btn
+      >
+    </template>
+    <div v-if="workspace.loading" class="workspace-loading" role="status">
+      <v-progress-linear indeterminate />
+    </div>
+    <div v-else-if="!workspace.can('native_account')" class="workspace-empty">
+      <v-icon icon="mdi-account-off-outline" size="32" />
+      <h2>当前工作区未启用账号服务</h2>
+      <router-link to="/">返回工作区</router-link>
+    </div>
+    <template v-else>
+      <p v-if="dataError" class="tool-error" role="alert">{{ dataError }}</p>
+      <p v-if="notice" class="workspace-muted mb-4" role="status">
+        {{ notice }}
+      </p>
+      <v-progress-linear v-if="dataLoading" indeterminate color="primary" />
+      <template v-else-if="currentUser">
+        <template v-if="isAdmin">
+          <div class="account-toolbar">
+            <v-select
+              v-model="filterSelected"
+              label="账号类型"
+              :items="filterOptions"
+              item-title="title"
+              item-value="key"
+              variant="outlined"
+              density="compact"
+              hide-details
+              clearable
+              data-cy="admin-user-table-filter-by-account-type"
+            />
+            <v-checkbox
+              v-model="filterInactive"
+              label="30 天未登录"
+              hide-details
+              density="compact"
+              data-cy="admin-user-table-show-older-30days"
+            />
+            <div class="page-actions">
+              <v-menu v-if="selection.length">
+                <template #activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    variant="outlined"
+                    append-icon="mdi-chevron-down"
+                    :disabled="busy"
+                  >
+                    已选 {{ selection.length }} 项
+                  </v-btn>
                 </template>
-            </v-alert>
-            <v-col cols="12">
-                <v-sheet rounded="lg" elevation="2" class="pa-5">
-                    <v-data-table :headers="headers" :items="tableItems" multi-sort show-select v-model="selection"
-                        item-value="username" height="500" :loading=dataLoading data-cy="admin-user-table">
-                        <template v-slot:top>
-                            <v-toolbar flat>
-                                <v-toolbar-title>synon 用户</v-toolbar-title>
-                                <v-select label="按账号类型筛选" density="comfortable" variant="outlined"
-                                    hide-details clearable :items="filterOptions" item-text="title" item-value="key"
-                                    v-model="filterSelected" class="mr-3" data-cy="admin-user-table-filter-by-account-type"></v-select>
-                                <v-checkbox v-model="filterCreatedDate" data-cy="admin-user-table-show-older-30days" label="只显示 30 天未登录账号"
-                                    hide-details></v-checkbox>
-                                <v-menu location="end">
-                                    <template v-slot:activator="{ props }">
-                                        <v-btn color="primary" dark v-bind="props" append-icon="mdi-chevron-down"
-                                            v-if="selection.length" variant="flat">
-                                            批量操作
-                                        </v-btn>
-                                    </template>
-
-                                    <v-list>
-                                        <v-list-item v-if="showMakeAdminButton">
-                                            <v-btn variant="tonal" data-cy="admin-user-bulk-make-admin" color="warning" @click="mutateAll('admin')">设为管理员</v-btn>
-                                        </v-list-item>
-                                        <v-list-item v-if="showMakeNormalButton">
-                                            <v-btn variant="tonal" data-cy="admin-user-bulk-make-normal" color="primary" @click="mutateAll('normal')">设为普通用户</v-btn>
-                                        </v-list-item>
-                                        <v-list-item>
-                                            <v-btn variant="tonal" data-cy="admin-user-bulk-unlock-selected" color="primary" @click="mutateAll('enable')">解锁选中账号</v-btn>
-                                        </v-list-item>
-                                        <v-list-item>
-                                            <v-btn variant="tonal" data-cy="admin-user-bulk-lock-selected" color="primary" @click="mutateAll('disable')">锁定选中账号</v-btn>
-                                        </v-list-item>
-                                        <v-list-item>
-                                            <v-btn variant="tonal" data-cy="admin-user-bulk-delete-selected" color="error" @click="mutateAll('delete')">删除选中账号</v-btn>
-                                        </v-list-item>
-                                    </v-list>
-                                </v-menu>
-                                <v-spacer></v-spacer>
-                                <v-btn color="primary" variant="flat" prepend-icon="mdi-plus"
-                                    @click="openDialogNewUser = true">新建用户</v-btn>
-                            </v-toolbar>
-                        </template>
-                        <template v-slot:item.is_superuser="{ item }">
-                            <span v-if="item.is_superuser === true">管理员</span>
-                            <span v-else>非管理员</span>
-                        </template>
-                        <template v-slot:item.disabled="{ item }">
-                            <span v-if="item.disabled === true">是</span>
-                            <span v-else>否</span>
-                        </template>
-                        <template v-slot:item.accountType="{ item }">
-                            <v-chip :color="getColor(item.accountType)">
-                                {{ formatAccountType(item.accountType) }}
-                            </v-chip>
-                        </template>
-                        <template v-slot:item.last_login="{ item }">
-                            <span>{{ formatDateWithoutTimezone(item.last_login) }}</span>
-                        </template>
-                        <template v-slot:item.actions="{ item }">
-                            <v-menu location="end">
-                                <template v-slot:activator="{ props }">
-                                    <v-btn color="primary" dark v-bind="props" append-icon="mdi-chevron-down"
-                                        :disabled="selection.length !== 0">
-                                        更多
-                                    </v-btn>
-                                </template>
-
-                                <v-list>
-                                    <v-list-item v-if="!(item.accountType === 'Guest' || item.accountType === 'Admin')">
-                                        <v-btn variant="tonal" color="warning" data-cy="admin-user-single-make-admin"
-                                            @click="mutate(item.username, 'admin')">设为管理员</v-btn>
-                                    </v-list-item>
-                                    <v-list-item
-                                        v-if="!(item.accountType === 'Guest' || item.accountType === 'Normal')">
-                                        <v-btn variant="tonal" color="primary" data-cy="admin-user-single-make-normal"
-                                            @click="mutate(item.username, 'normal')">设为普通用户</v-btn>
-                                    </v-list-item>
-                                    <v-list-item v-if="!(item.disabled === false)">
-                                        <v-btn variant="tonal" color="primary" data-cy="admin-user-single-unlock-selected"
-                                            @click="mutate(item.username, 'enable')">解锁账号</v-btn>
-                                    </v-list-item>
-                                    <v-list-item v-if="!(item.disabled === true)">
-                                        <v-btn variant="tonal" color="primary" data-cy="admin-user-single-lock-selected"
-                                            @click="mutate(item.username, 'disable')">锁定账号</v-btn>
-                                    </v-list-item>
-                                    <v-list-item v-if="!(item.accountType === 'Guest')">
-                                        <v-btn variant="tonal" color="primary" data-cy="admin-user-single-change-password"
-                                            @click="mutate(item.username, 'pwd')">修改密码</v-btn>
-                                    </v-list-item>
-                                    <v-list-item v-if="!(item.accountType === 'Guest')">
-                                        <v-btn variant="tonal" color="primary" data-cy="admin-user-single-change-email"
-                                            @click="mutate(item.username, 'email')">修改邮箱</v-btn>
-                                    </v-list-item>
-                                    <v-list-item>
-                                        <v-btn variant="tonal" color="error" data-cy="admin-user-single-delete-account"
-                                            @click="mutate(item.username, 'delete')">删除账号</v-btn>
-                                    </v-list-item>
-                                </v-list>
-                            </v-menu>
-                        </template>
-                    </v-data-table>
-                </v-sheet>
-            </v-col>
-        </v-row>
-        <v-row class="d-flex flex-row justify-center align-center" v-if="!isAdmin && !dataLoading">
-            <v-col cols="12" sm="3">
-                <v-sheet class="pa-5 rounded-lg" elevation="2">
-                    <h4 class="text-h4">个人资料</h4>
-                    <v-divider></v-divider>
-                    <div class="d-flex flex-column justify-center align-center mt-1">
-                        <v-img :src="wp" width="200" style="border-radius: 50%;"></v-img>
-                    </div>
-                </v-sheet>
-            </v-col>
-            <v-col cols="12" sm="4" class="d-flex flex-row justify-center align-center">
-                <v-sheet class="pa-5 rounded-lg" elevation="2">
-                    <h4 class="text-h4">邮箱</h4>
-                    <v-divider></v-divider>
-                    <p class="text-body-1" data-cy="admin-get-email-address-normal-user">{{ userEmail }}</p>
-                    <v-btn color="warning" data-cy="admin-change-email-normal-user" class="mr-2" @click="mutate(username, 'email')" size="small">更新邮箱</v-btn>
-                    <h4 class="mt-4 text-h4">密码</h4>
-                    <v-divider></v-divider>
-                    <p class="text-body-1">上次登录：
-                        <timeago :datetime="userLastLogin" :converter-options="{
-                        includeSeconds: true,
-                        addSuffix: false,
-                        useStrict: false,
-                    }" auto-update v-if="userLastLogin" />
-                        <span v-else>暂无记录</span>
-                    </p>
-                    <v-btn color="warning" class="mr-2" data-cy="admin-change-password-normal-user" @click="mutate(username, 'pwd')" size="small">修改密码</v-btn>
-                    <v-alert text="如需删除当前账号，可以点击下方按钮。"
-                        title="危险操作" type="warning" class="mt-2" density="compact" color="#FF0000"
-                        variant="outlined"></v-alert>
-                    <v-btn color="error" data-cy="admin-delete-normal-user" @click="mutate(username, 'delete')" size="small" class="mt-2">删除账号</v-btn>
-                </v-sheet>
-            </v-col>
-        </v-row>
-        <loader v-if="dataLoading" />
-    </module-workbench>
-    <new-user-dialog-box v-model:openDialog="openDialogNewUser" />
-    <edit-user-dialog-box v-model:openDialog="openDialogEditEmail" v-model:value="newEmail" @updateValue="changeEmail()"
-        label="邮箱" />
-    <edit-user-dialog-box v-model:openDialog="openDialogEditPassword" v-model:value="newPassword"
-        @updateValue="changePassword()" label="密码" :hide="true" />
-
+                <v-list density="compact">
+                  <v-list-item
+                    v-for="action in bulkActions"
+                    :key="action.value"
+                    :title="action.title"
+                    :prepend-icon="action.icon"
+                    :data-cy="action.cy"
+                    @click="applyAction(selection, action.value)"
+                  />
+                </v-list>
+              </v-menu>
+              <v-btn
+                color="primary"
+                variant="flat"
+                prepend-icon="mdi-plus"
+                :disabled="busy"
+                @click="openEditor('new')"
+                >新建用户</v-btn
+              >
+            </div>
+          </div>
+          <v-data-table
+            v-model="selection"
+            :headers="headers"
+            :items="tableItems"
+            item-value="username"
+            show-select
+            :loading="saving"
+            density="comfortable"
+            :items-per-page="10"
+            data-cy="admin-user-table"
+            no-data-text="暂无账号"
+            loading-text="正在加载账号"
+          >
+            <template #item.accountType="{ item }"
+              ><span class="state-badge">{{
+                accountLabels[item.accountType]
+              }}</span></template
+            >
+            <template #item.disabled="{ item }"
+              ><span class="state-badge" :class="{ error: item.disabled }">{{
+                item.disabled ? "已锁定" : "正常"
+              }}</span></template
+            >
+            <template #item.last_login="{ item }">{{
+              formatDate(item.last_login)
+            }}</template>
+            <template #item.actions="{ item }">
+              <v-menu>
+                <template #activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    icon="mdi-dots-horizontal"
+                    variant="text"
+                    size="small"
+                    :aria-label="'管理账号 ' + item.username"
+                    :title="'管理账号 ' + item.username"
+                    :disabled="busy || selection.length > 0"
+                  />
+                </template>
+                <v-list density="compact">
+                  <v-list-item
+                    v-if="item.accountType === 'Normal'"
+                    title="设为管理员"
+                    prepend-icon="mdi-shield-account-outline"
+                    data-cy="admin-user-single-make-admin"
+                    @click="applyAction([item.username], 'admin')"
+                  />
+                  <v-list-item
+                    v-if="item.accountType === 'Admin'"
+                    title="设为普通用户"
+                    prepend-icon="mdi-account-outline"
+                    data-cy="admin-user-single-make-normal"
+                    @click="applyAction([item.username], 'normal')"
+                  />
+                  <v-list-item
+                    :title="item.disabled ? '解锁账号' : '锁定账号'"
+                    prepend-icon="mdi-lock-outline"
+                    :data-cy="
+                      item.disabled
+                        ? 'admin-user-single-unlock-selected'
+                        : 'admin-user-single-lock-selected'
+                    "
+                    @click="
+                      applyAction(
+                        [item.username],
+                        item.disabled ? 'enable' : 'disable',
+                      )
+                    "
+                  />
+                  <v-list-item
+                    v-if="item.accountType !== 'Guest'"
+                    title="修改密码"
+                    prepend-icon="mdi-key-outline"
+                    data-cy="admin-user-single-change-password"
+                    @click="openEditor('password', item)"
+                  />
+                  <v-list-item
+                    v-if="item.accountType !== 'Guest'"
+                    title="修改邮箱"
+                    prepend-icon="mdi-email-outline"
+                    data-cy="admin-user-single-change-email"
+                    @click="openEditor('email', item)"
+                  />
+                  <v-list-item
+                    title="删除账号"
+                    prepend-icon="mdi-delete-outline"
+                    class="text-error"
+                    data-cy="admin-user-single-delete-account"
+                    @click="applyAction([item.username], 'delete')"
+                  />
+                </v-list>
+              </v-menu>
+            </template>
+          </v-data-table>
+        </template>
+        <section v-else class="account-profile">
+          <h2 class="tool-section-title">个人资料</h2>
+          <dl>
+            <dt>用户名</dt>
+            <dd>{{ currentUser.username }}</dd>
+            <dt>邮箱</dt>
+            <dd data-cy="admin-get-email-address-normal-user">
+              {{ currentUser.email || "未设置" }}
+            </dd>
+            <dt>上次登录</dt>
+            <dd :title="formatDate(currentUser.last_login)">
+              <timeago
+                v-if="currentUser.last_login"
+                :datetime="currentUser.last_login"
+                :converter-options="{
+                  includeSeconds: true,
+                  addSuffix: false,
+                  useStrict: false,
+                }"
+                auto-update
+              />
+              <span v-else>暂无记录</span>
+            </dd>
+          </dl>
+          <div class="page-actions">
+            <v-btn
+              variant="outlined"
+              prepend-icon="mdi-email-outline"
+              :disabled="busy"
+              data-cy="admin-change-email-normal-user"
+              @click="openEditor('email', currentUser)"
+              >修改邮箱</v-btn
+            >
+            <v-btn
+              variant="outlined"
+              prepend-icon="mdi-key-outline"
+              :disabled="busy"
+              data-cy="admin-change-password-normal-user"
+              @click="openEditor('password', currentUser)"
+              >修改密码</v-btn
+            >
+          </div>
+          <section class="account-danger">
+            <h2 class="tool-section-title">删除账号</h2>
+            <p class="workspace-muted mb-3">此操作无法撤销。</p>
+            <v-btn
+              color="error"
+              variant="outlined"
+              prepend-icon="mdi-delete-outline"
+              :disabled="busy"
+              data-cy="admin-delete-normal-user"
+              @click="applyAction([currentUser.username], 'delete')"
+              >删除账号</v-btn
+            >
+          </section>
+        </section>
+      </template>
+    </template>
+    <account-user-dialog
+      v-model="editorOpen"
+      :mode="editorMode"
+      :username="selectedUser?.username || ''"
+      :initial-email="selectedUser?.email || ''"
+      :loading="saving"
+      :error="editorError"
+      @save="submitEditor"
+    />
+  </module-workbench>
 </template>
 
 <script setup>
-import EditUserDialogBox from "@/components/admin/EditUserDialogBox"
-import NewUserDialogBox from "@/components/admin/NewUserDialogBox"
-import Loader from "@/components/admin/Loader"
-import { ref, onMounted, computed } from 'vue'
+import { computed, onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
+import { useConfirm } from "vuetify-use-dialog";
 import { API } from "@/common/api";
-import { useSnackbar } from 'vuetify-use-dialog';
-import wp from "@/assets/wp.png"
-import ModuleWorkbench from "@/components/ModuleWorkbench.vue"
+import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
+import { useWorkspaceStore } from "@/store/workspace";
+import AccountUserDialog from "./AccountUserDialog.vue";
+import { loadAccounts, mutateAccount, saveAccount } from "./account-api";
 
-const createSnackbar = useSnackbar()
-const summaryItems = [
-    { label: "用户", value: "账号、邮箱和权限", icon: "mdi-account-group-outline" },
-    { label: "权限", value: "管理员、普通用户、访客", icon: "mdi-shield-account-outline" },
-    { label: "操作", value: "新建、锁定、解锁、删除", icon: "mdi-account-edit-outline" },
-]
-const username = ref(localStorage.getItem('username'))
-const userEmail = ref('')
-const userLastLogin = ref('')
-const newPassword = ref('')
-const newEmail = ref('')
-const selectedUser = ref('')
-const isAdmin = ref(false)
-const users = ref([])
+const workspace = useWorkspaceStore();
+const router = useRouter();
+const confirm = useConfirm();
+const currentUser = ref(null);
+const isAdmin = ref(false);
+const users = ref([]);
 const selection = ref([]);
-const filterOptions = ref([
-    { key: 'Guest', title: '访客' },
-    { key: 'Normal', title: '普通用户' },
-    { key: 'Admin', title: '管理员' },
-]);
-const headers = ref([
-    { title: '用户名', key: 'username' },
-    { title: '邮箱', key: 'email' },
-    { title: '账号类型', key: 'accountType' },
-    { title: '已禁用', key: 'disabled' },
-    { title: '上次登录', key: 'last_login' },
-    { title: '操作', key: 'actions', align: 'center' },
-])
-const openDialogNewUser = ref(false)
-const openDialogEditPassword = ref(false)
-const openDialogEditEmail = ref(false)
-const usersDict = ref({})
-const filterSelected = ref(null)
-const filterCreatedDate = ref(false)
-const dataLoading = ref(true)
-
-const tableItems = computed(() => {
-    const daysOld = 30;
-    const currentDate = new Date();
-    let items = users.value;
-    if (filterSelected.value !== null) {
-        items = items.filter(item => item.accountType === filterSelected.value);
-    }
-    if (filterCreatedDate.value === true) {
-        items = items.filter(item => {
-            const itemDate = new Date(item.last_login);
-            const diffTime = Math.abs(currentDate - itemDate);
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            return diffDays > daysOld;
-        });
-    }
-    return items;
-})
-
-const formatDateWithoutTimezone = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    const options = {
-        weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
-        hour: '2-digit', minute: '2-digit', second: '2-digit'
-    };
-    return date.toLocaleString('zh-CN', options);
+const filterSelected = ref(null);
+const filterInactive = ref(false);
+const dataLoading = ref(false);
+const saving = ref(false);
+const confirming = ref(false);
+const busy = computed(
+  () => dataLoading.value || saving.value || confirming.value,
+);
+const dataError = ref("");
+const notice = ref("");
+const editorOpen = ref(false);
+const editorMode = ref("new");
+const selectedUser = ref(null);
+const editorError = ref("");
+const accountLabels = { Admin: "管理员", Normal: "普通用户", Guest: "访客" };
+const filterOptions = Object.entries(accountLabels).map(([key, title]) => ({
+  key,
+  title,
+}));
+const headers = [
+  { title: "用户名", key: "username" },
+  { title: "邮箱", key: "email" },
+  { title: "账号类型", key: "accountType" },
+  { title: "状态", key: "disabled" },
+  { title: "上次登录", key: "last_login" },
+  { title: "", key: "actions", sortable: false, align: "end" },
+];
+const bulkActions = [
+  {
+    value: "admin",
+    title: "设为管理员",
+    icon: "mdi-shield-account-outline",
+    cy: "admin-user-bulk-make-admin",
+  },
+  {
+    value: "normal",
+    title: "设为普通用户",
+    icon: "mdi-account-outline",
+    cy: "admin-user-bulk-make-normal",
+  },
+  {
+    value: "enable",
+    title: "解锁账号",
+    icon: "mdi-lock-open-outline",
+    cy: "admin-user-bulk-unlock-selected",
+  },
+  {
+    value: "disable",
+    title: "锁定账号",
+    icon: "mdi-lock-outline",
+    cy: "admin-user-bulk-lock-selected",
+  },
+  {
+    value: "delete",
+    title: "删除账号",
+    icon: "mdi-delete-outline",
+    cy: "admin-user-bulk-delete-selected",
+  },
+];
+const tableItems = computed(() =>
+  users.value.filter((user) => {
+    if (filterSelected.value && user.accountType !== filterSelected.value)
+      return false;
+    if (!filterInactive.value) return true;
+    const lastLogin = new Date(user.last_login).getTime();
+    return (
+      !user.last_login ||
+      (Number.isFinite(lastLogin) && Date.now() - lastLogin > 30 * 86400000)
+    );
+  }),
+);
+const formatDate = (value) => {
+  if (!value) return "暂无记录";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "暂无记录"
+    : date.toLocaleString("zh-CN");
 };
-
-const changePassword = async () => {
-    openDialogEditPassword.value = false;
-    await API.post('/api/user/reset-password', { username: selectedUser.value, password: newPassword.value }, true)
-        .then(async response => {
-            console.log(response.Error)
-            if (response === "OK") {
-                await fetchData()
-                createSnackbar({ text: "密码已更新。", snackbarProps: { timeout: 3000 } });
-            }
-        })
-        .catch((err) => {
-            const match = err.toString().match(/"detail":"([^"]+)"/);
-            const detail = match[1];
-            createSnackbar({ text: `修改密码失败：${detail}`, snackbarProps: { timeout: 3000 } });
-        }).finally(() => {
-            selectedUser.value = "";
-            newPassword.value = "";
-        })
-}
-
-
-const changeEmail = async () => {
-    openDialogEditEmail.value = false;
-    await API.post('/api/user/update', { username: selectedUser.value, email: newEmail.value }, true)
-        .then(async response => {
-            console.log(response.Error)
-            if (response === "OK") {
-                await fetchData()
-                createSnackbar({ text: "邮箱已更新。", snackbarProps: { timeout: 3000 } });
-            }
-        })
-        .catch((err) => {
-            const match = err.toString().match(/"detail":"([^"]+)"/);
-            const detail = match[1];
-            createSnackbar({ text: `修改邮箱失败：${detail}`, snackbarProps: { timeout: 3000 } });
-        }).finally(() => {
-            selectedUser.value = "";
-            newEmail.value = "";
-        })
-}
-
-
-onMounted(async () => {
-    await fetchData()
-})
 
 const fetchData = async () => {
-    dataLoading.value = true
-    try {
-        // check if the username is admin
-        isAdmin.value = await API.get("/api/user/am-i-superuser", null, false);
-
-        usersDict.value = {};
-
-        if (isAdmin.value) {
-            let response = await API.get("/api/user/get-all-users", null, false);
-            if (Array.isArray(response)) {
-                response.forEach((user) => {
-                    usersDict.value[user.username] = user;
-                    if (user.username.startsWith('guest_')) {
-                        usersDict.value[user.username].accountType = "Guest"
-                    } else if (user.is_superuser) {
-                        usersDict.value[user.username].accountType = "Admin"
-                    } else {
-                        usersDict.value[user.username].accountType = "Normal"
-                    }
-                })
-                users.value = Object.values(usersDict.value)
-            } else {
-                console.error("API did not return an array as expected:", response);
-            }
-        } else {
-            let response = await API.get("/api/user/get-current-user", null, false);
-            if (response) {
-                userEmail.value = response.email
-                userLastLogin.value = response.last_login
-            }
-        }
-    } catch (error) {
-        console.error("Error fetching users:", error);
-    } finally {
-        dataLoading.value = false;
-    }
-}
-
-const mutate = async (username, method) => {
-    try {
-        let response;
-        switch (method) {
-            case 'email':
-                openDialogEditEmail.value = true;
-                selectedUser.value = username;
-                break;
-            case 'pwd':
-                openDialogEditPassword.value = true;
-                selectedUser.value = username;
-                break;
-            case 'admin':
-                response = await API.get('/api/user/promote', { username: username }, true);
-                break;
-            case 'normal':
-                response = await API.get('/api/user/demote', { username: username }, true);
-                break;
-            case 'disable':
-                response = await API.post('/api/user/update', { username: username, disabled: true }, true);
-                break;
-            case 'enable':
-                response = await API.post('/api/user/update', { username: username, disabled: false }, true);
-                break;
-            case 'delete':
-                response = await API.delete('/api/user/delete', { username: username }, true);
-                break;
-        }
-
-        if (response && response === "OK") {
-            await fetchData();
-            createSnackbar({ text: `用户操作已完成。`, snackbarProps: { timeout: 3000 } });
-        }
-    } catch (err) {
-        const match = err.toString().match(/"detail":"([^"]+)"/);
-        const detail = match ? match[1] : 'Unknown error';
-        createSnackbar({ text: `用户操作失败：${detail}`, snackbarProps: { timeout: 3000 } });
-    }
+  if (!workspace.can("native_account") || dataLoading.value) return;
+  dataLoading.value = true;
+  dataError.value = "";
+  try {
+    const result = await loadAccounts();
+    currentUser.value = result.current;
+    isAdmin.value = result.admin;
+    users.value = result.users;
+    selection.value = selection.value.filter((name) =>
+      users.value.some((user) => user.username === name),
+    );
+  } catch {
+    currentUser.value = null;
+    users.value = [];
+    selection.value = [];
+    dataError.value = "账号信息加载失败，请检查身份权限与认证服务状态。";
+  } finally {
+    dataLoading.value = false;
+  }
 };
 
-const mutateAll = async (method) => {
-    try {
-        const promises = selection.value.map(username => mutate(username, method));
-        await Promise.all(promises);
-        if (method === 'delete') {
-            selection.value = [];
-        }
-    } catch (error) {
-        console.error(`Error in bulk ${method}:`, error);
-    }
+const openEditor = (mode, user = null) => {
+  if (busy.value || !workspace.can("native_account")) return;
+  editorMode.value = mode;
+  selectedUser.value = user;
+  editorError.value = "";
+  editorOpen.value = true;
 };
 
-const showMakeAdminButton = computed(() => {
-    return selection.value.some(username =>
-        usersDict.value[username].accountType === 'Normal'
-    ) && !selection.value.some(username =>
-        usersDict.value[username].accountType === 'Admin'
-    );
-});
+const submitEditor = async (values) => {
+  if (busy.value || !workspace.can("native_account")) return;
+  saving.value = true;
+  editorError.value = "";
+  try {
+    if (editorMode.value === "email") {
+      values.disabled = selectedUser.value.disabled === true;
+      if (typeof selectedUser.value.full_name === "string")
+        values.full_name = selectedUser.value.full_name;
+    }
+    await saveAccount(editorMode.value, values);
+    editorOpen.value = false;
+    notice.value = "账号信息已保存。";
+    await fetchData();
+  } catch {
+    editorError.value = "保存失败，请检查输入、身份权限与认证服务状态。";
+  } finally {
+    saving.value = false;
+  }
+};
 
-const showMakeNormalButton = computed(() => {
-    return selection.value.some(username =>
-        usersDict.value[username].accountType === 'Admin'
-    ) && !selection.value.some(username =>
-        usersDict.value[username].accountType === 'Normal'
-    );
-});
+const applyAction = async (names, action) => {
+  if (busy.value || !workspace.can("native_account") || !names.length) return;
+  const targets = [...names];
+  confirming.value = true;
+  try {
+    const accepted = await confirm({
+      title: action === "delete" ? "删除账号" : "修改账号状态",
+      content:
+        action === "delete"
+          ? `确定删除 ${targets.length} 个账号？此操作无法撤销。`
+          : `确定修改 ${targets.length} 个账号的状态或权限？`,
+      dialogProps: { width: 440 },
+    });
+    if (!accepted) return;
+    saving.value = true;
+    dataError.value = "";
+    notice.value = "";
+    let completed = 0;
+    let signOut = false;
+    for (const name of targets) {
+      try {
+        const profile =
+          users.value.find((user) => user.username === name) ||
+          currentUser.value;
+        await mutateAccount(name, action, profile);
+        completed++;
+        if (
+          name === currentUser.value.username &&
+          ["delete", "disable"].includes(action)
+        )
+          signOut = true;
+      } catch {
+        dataError.value = "部分账号操作失败，请刷新后检查权限与账号状态。";
+      }
+    }
+    notice.value = `已完成 ${completed} / ${targets.length} 项操作。`;
+    selection.value = [];
+    if (signOut) {
+      API.clearAuthState();
+      await router.replace("/login");
+    } else {
+      const mutationError = dataError.value;
+      await fetchData();
+      if (mutationError) dataError.value = mutationError;
+    }
+  } catch {
+    dataError.value = "账号操作未完成，请刷新后重试。";
+  } finally {
+    saving.value = false;
+    confirming.value = false;
+  }
+};
 
-const getColor = (type) => {
-    if (type === "Admin") return 'primary'
-    if (type === "Normal") return 'blue'
-    else return 'orange'
-}
-
-const formatAccountType = (type) => {
-    if (type === "Admin") return "管理员"
-    if (type === "Normal") return "普通用户"
-    if (type === "Guest") return "访客"
-    return type
-}
+watch(
+  () => workspace.can("native_account"),
+  (allowed) => {
+    if (allowed) fetchData();
+  },
+  { immediate: true },
+);
+onMounted(() => workspace.refresh());
 </script>
+
+<style scoped>
+.account-toolbar {
+  display: grid;
+  grid-template-columns: minmax(170px, 230px) minmax(170px, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.account-profile {
+  max-width: 720px;
+}
+.account-profile dl {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 18px;
+  margin-bottom: 28px;
+  font-size: 13px;
+}
+.account-profile dt {
+  color: var(--ws-muted);
+}
+.account-profile dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.account-danger {
+  border-top: 1px solid var(--ws-border);
+  margin-top: 36px;
+  padding-top: 24px;
+}
+@media (max-width: 1000px) {
+  .account-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+}
+</style>
