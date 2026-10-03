@@ -4,11 +4,9 @@
  * Automatically included in `./src/main.js`
  */
 
-import { loadResultStore } from "./resultstoreloader";
 import vuetify from "./vuetify";
 import pinia from "../store";
 import router from "../router";
-import VueConfetti from "vue-confetti";
 import VuetifyUseDialog from "vuetify-use-dialog";
 import keycloakPlugin from "./keycloak";
 import timeago from "vue-timeago3";
@@ -20,7 +18,6 @@ export function registerPlugins(app) {
   app
     .use(vuetify)
     .use(pinia)
-    .use(VueConfetti)
     .use(timeago, {
       locale: zhCN,
       defaultConverterOptions: {
@@ -44,7 +41,6 @@ export function registerPlugins(app) {
         tagId: "",
         initMode: "manual",
         pageTracker: { router },
-      })
+      }),
     );
-  loadResultStore();
 }

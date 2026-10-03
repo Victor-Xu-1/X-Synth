@@ -1,0 +1,235 @@
+<template>
+  <div class="route-graph-surface" ref="surface" data-cy="route-graph">
+    <VueFlow
+      :id="id"
+      :nodes="flowNodes"
+      :edges="flowEdges"
+      :nodes-draggable="editable"
+      :nodes-connectable="editable"
+      :edges-updatable="false"
+      :delete-key-code="null"
+      :min-zoom="0.12"
+      :max-zoom="2"
+      @nodes-initialized="fit"
+      @node-click="({ node }) => $emit('select', node.id)"
+      @edge-click="({ edge }) => $emit('select-edge', edge.id)"
+      @pane-click="$emit('select', null)"
+      @node-drag-stop="onDrag"
+      @connect="onConnect"
+    >
+      <template #node-molecule="props"
+        ><MoleculeNode v-bind="props"
+      /></template>
+      <template #node-reaction="props"
+        ><ReactionNode v-bind="props"
+      /></template>
+      <div class="route-viewport-controls">
+        <v-tooltip v-for="tool in tools" :key="tool.label" :text="tool.label"
+          ><template #activator="{ props }"
+            ><v-btn
+              v-bind="props"
+              :icon="tool.icon"
+              size="small"
+              variant="text"
+              :aria-label="tool.label"
+              @click="tool.action" /></template
+        ></v-tooltip>
+      </div>
+      <div class="route-graph-counter">
+        {{ graph.nodes.length }} 节点 ·
+        {{ graph.nodes.filter((node) => node.type === "reaction").length }} 反应
+      </div>
+    </VueFlow>
+  </div>
+</template>
+<script setup>
+import { computed, onMounted, ref, watch, nextTick } from "vue";
+import { VueFlow, useVueFlow, MarkerType } from "@vue-flow/core";
+import "@vue-flow/core/dist/style.css";
+import MoleculeNode from "./MoleculeNode.vue";
+import ReactionNode from "./ReactionNode.vue";
+import { canConnect, layoutGraph } from "@/common/route-graph";
+const props = defineProps({
+  graph: { type: Object, required: true },
+  editable: Boolean,
+  scores: { type: Object, default: () => ({}) },
+  id: { type: String, default: () => `route-${crypto.randomUUID()}` },
+});
+const emit = defineEmits(["update:graph", "select", "select-edge", "error"]);
+const surface = ref(null);
+const { fitView, zoomIn, zoomOut } = useVueFlow({ id: props.id });
+const flowNodes = computed(() =>
+  props.graph.nodes.map((node) => ({
+    ...node,
+    data: {
+      ...node,
+      isTarget: node.id === props.graph.target_id,
+      isStarting: !props.graph.edges.some((edge) => edge.target === node.id),
+      score: props.scores[node.id],
+    },
+  })),
+);
+const flowEdges = computed(() =>
+  props.graph.edges.map((edge) => ({
+    ...edge,
+    type: "smoothstep",
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#969696" },
+    style: { stroke: "#969696", strokeWidth: 1.35, fill: "none" },
+  })),
+);
+function onDrag({ node }) {
+  emit("update:graph", {
+    ...props.graph,
+    nodes: props.graph.nodes.map((item) =>
+      item.id === node.id ? { ...item, position: node.position } : item,
+    ),
+  });
+}
+function onConnect({ source, target }) {
+  if (!canConnect(props.graph, source, target)) {
+    emit("error", "该连接无效或会形成循环。");
+    return;
+  }
+  emit("update:graph", {
+    ...props.graph,
+    edges: [
+      ...props.graph.edges,
+      { id: `e-${crypto.randomUUID()}`, source, target },
+    ],
+  });
+}
+async function fit() {
+  await nextTick();
+  fitView({ padding: 0.14, maxZoom: 1, duration: 0 });
+}
+function arrange() {
+  if (props.editable) emit("update:graph", layoutGraph(props.graph));
+  nextTick(fit);
+}
+const tools = [
+  { label: "放大", icon: "mdi-plus", action: () => zoomIn() },
+  { label: "缩小", icon: "mdi-minus", action: () => zoomOut() },
+  { label: "适应画布", icon: "mdi-fit-to-screen-outline", action: fit },
+];
+watch(() => props.graph.target_id, fit);
+onMounted(fit);
+defineExpose({ fit, arrange, element: surface });
+</script>
+<style>
+.route-graph-surface {
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+  background: var(--ws-bg);
+  position: relative;
+  overflow: hidden;
+}
+.route-graph-surface .vue-flow__node {
+  border: 0;
+  box-shadow: none;
+  background: none;
+  padding: 0;
+}
+.route-graph-surface .vue-flow__handle {
+  background: #969696;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--ws-bg);
+}
+.route-graph-surface .vue-flow__edge-path {
+  fill: none;
+}
+.molecule-graph-node {
+  width: 190px;
+  height: 156px;
+  border: 1px solid var(--ws-border);
+  border-radius: 7px;
+  background: var(--ws-surface);
+  padding: 8px 10px;
+  color: var(--ws-text);
+}
+.molecule-graph-node .smiles-image-container {
+  width: 168px;
+  height: 95px;
+  overflow: hidden;
+}
+.molecule-graph-node.selected,
+.reaction-graph-node.selected {
+  border-color: var(--ws-text);
+  box-shadow: 0 0 0 1px var(--ws-text);
+}
+.molecule-graph-node.target {
+  border-color: #427ab2;
+}
+.graph-node-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 20px;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--ws-muted);
+}
+.graph-node-heading strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100px;
+  font-weight: 500;
+  color: var(--ws-text);
+}
+.graph-node-smiles {
+  font-family: Consolas, monospace;
+  font-size: 9px;
+  color: var(--ws-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-top: 5px;
+}
+.reaction-graph-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 110px;
+  height: 66px;
+  border: 1px solid var(--ws-border);
+  border-radius: 7px;
+  background: var(--ws-surface);
+  color: var(--ws-text);
+}
+.reaction-graph-node strong {
+  font-size: 11px;
+  font-weight: 500;
+  max-width: 95px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.reaction-graph-node small {
+  font-size: 9px;
+  color: var(--ws-muted);
+}
+.route-viewport-controls {
+  position: absolute;
+  bottom: 15px;
+  left: 15px;
+  z-index: 5;
+  display: flex;
+  gap: 1px;
+  border: 1px solid var(--ws-border);
+  border-radius: 7px;
+  background: var(--ws-surface);
+  padding: 2px;
+}
+.route-graph-counter {
+  position: absolute;
+  bottom: 23px;
+  right: 18px;
+  color: var(--ws-muted);
+  font-size: 10px;
+  pointer-events: none;
+}
+</style>

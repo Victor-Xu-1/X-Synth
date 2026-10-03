@@ -1,5 +1,6 @@
 import { useFastapiStore } from "@/store/fastapi";
 import { recordRequest } from "./request-observability";
+import { hasWorkspaceAccess } from "./workspace-session";
 
 const API = {
   pollInterval: 1000,
@@ -67,7 +68,11 @@ const API = {
     try {
       json = await this.fetchHandler(response);
     } catch (error) {
-      if (response.status === 401 && endpoint !== "/api/admin/token") {
+      if (
+        response.status === 401 &&
+        endpoint !== "/api/admin/token" &&
+        !(await hasWorkspaceAccess())
+      ) {
         localStorage.removeItem("guestPassword");
         this.clearAuthState();
         this.redirectToLogin();
@@ -113,7 +118,10 @@ const API = {
     return this.pollCeleryResult(json.task_id || json, progress);
   },
 
-  toErrorObject(error, fallback = "请求失败，请检查输入、后端服务和模型服务状态。") {
+  toErrorObject(
+    error,
+    fallback = "请求失败，请检查输入、后端服务和模型服务状态。",
+  ) {
     const rawMessage = error?.message || "";
     try {
       const parsed = JSON.parse(rawMessage);
@@ -124,9 +132,7 @@ const API = {
         if (!parsed.string_error) {
           const detail = parsed.detail || parsed.message || parsed.error;
           parsed.string_error =
-            typeof detail === "string" && detail.trim()
-              ? detail
-              : fallback;
+            typeof detail === "string" && detail.trim() ? detail : fallback;
         }
         return parsed;
       }
@@ -138,7 +144,9 @@ const API = {
       return { string_error: "无法连接后端服务，请检查服务是否运行。" };
     }
     if (/Internal Server Error|HTTP 500|status.?500/i.test(rawMessage)) {
-      return { string_error: "后端服务返回内部错误，请检查对应 worker 或稍后重试。" };
+      return {
+        string_error: "后端服务返回内部错误，请检查对应 worker 或稍后重试。",
+      };
     }
     if (/Celery task failed|^Task failed!?$/i.test(rawMessage)) {
       return { string_error: fallback };
@@ -153,9 +161,15 @@ const API = {
           .then((json) => {
             if (json.complete) return resolve(json.output);
             if (json.failed) {
-              return reject(new Error(JSON.stringify(json.output || {
-                string_error: json.message || "后端异步任务执行失败。",
-              })));
+              return reject(
+                new Error(
+                  JSON.stringify(
+                    json.output || {
+                      string_error: json.message || "后端异步任务执行失败。",
+                    },
+                  ),
+                ),
+              );
             }
             if (progress) progress(json);
             setTimeout(check, this.pollInterval);
@@ -166,7 +180,7 @@ const API = {
               error.message === "Failed to fetch"
             ) {
               console.error(
-                "Unable to fetch celery results due to connection error. Will keep trying."
+                "Unable to fetch celery results due to connection error. Will keep trying.",
               );
               setTimeout(check, this.pollIntervalLong);
             } else {

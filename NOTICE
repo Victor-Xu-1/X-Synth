@@ -13,6 +13,30 @@ provided under the MIT License; it is installed as an external dependency.
 Bundled frontend resources, including Ketcher and JSME, retain their respective
 license notices. See the license files shipped beside those resources.
 
+The unified route viewer uses the following MIT-licensed dependencies:
+- Vue Flow: Copyright (c) 2019-2025 webkid GmbH;
+  Copyright (c) 2021-2025 Burak Cakmakoglu.
+- Dagre: Copyright (c) 2012-2014 Chris Pettitt.
+- html-to-image: Copyright (c) 2017-2025 W.Y.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 This source distribution does not include commercial chemical databases,
 supplier exports, trained model weights, database backups, private job results,
 credentials, or recovery archives. A source-code license does not grant rights

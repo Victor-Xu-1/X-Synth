@@ -3,19 +3,20 @@
 </template>
 
 <script setup>
-import { onBeforeMount, onMounted, ref, watch } from "vue";
+import { onBeforeMount, onMounted, ref } from "vue";
 import { useConfigStore } from "@/store/config";
 import { configure, addGtag } from "vue-gtag";
 import { useTheme } from "@/composables/useTheme";
-import { isDark } from "@/views/network/visualization.js";
 
-const { init: initTheme, isDark: themeIsDark } = useTheme();
+const { init: initTheme } = useTheme();
 const configStore = useConfigStore();
 const gtagId = ref(null);
 
 const initGtag = async (id) => {
   if (!id) {
-    console.warn("No Google Analytics ID provided. GA will not be initialized.");
+    console.warn(
+      "No Google Analytics ID provided. GA will not be initialized.",
+    );
     return;
   }
 
@@ -32,10 +33,5 @@ onBeforeMount(async () => {
 
 onMounted(() => {
   initTheme();
-  isDark.value = themeIsDark.value;
-});
-
-watch(themeIsDark, (newValue) => {
-  isDark.value = newValue;
 });
 </script>

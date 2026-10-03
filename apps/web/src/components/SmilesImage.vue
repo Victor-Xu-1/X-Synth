@@ -1,18 +1,53 @@
 <template>
-  <component :is="allowCopy ? 'copy-tooltip' : 'div'" v-bind="copyProps" class="smiles-image-container">
-    <v-skeleton-loader v-if="isLoading" class="structure-loading" type="image" aria-hidden="true"></v-skeleton-loader>
+  <component
+    :is="allowCopy ? 'copy-tooltip' : 'div'"
+    v-bind="copyProps"
+    class="smiles-image-container"
+  >
+    <v-skeleton-loader
+      v-if="isLoading"
+      class="structure-loading"
+      type="image"
+      aria-hidden="true"
+    ></v-skeleton-loader>
     <div v-if="renderFailed" class="structure-error-state">
-      <v-img v-if="showErrorImage" class="mx-auto" height="160" max-width="260" src="@/assets/wrongSmiles.png"></v-img>
+      <v-img
+        v-if="showErrorImage"
+        class="mx-auto"
+        height="160"
+        max-width="260"
+        src="@/assets/wrongSmiles.png"
+      ></v-img>
       <v-icon v-else icon="mdi-molecule-off" size="44"></v-icon>
       <strong>结构加载失败</strong>
       <span>{{ smiles || "空结构输入" }}</span>
-      <v-btn icon="mdi-refresh" size="x-small" variant="text" aria-label="重试结构加载" title="重试结构加载" @click="retryImage"></v-btn>
+      <v-btn
+        icon="mdi-refresh"
+        size="x-small"
+        variant="text"
+        aria-label="重试结构加载"
+        title="重试结构加载"
+        @click="retryImage"
+      ></v-btn>
     </div>
-    <component :is="lazy ? 'v-img-lazy' : 'v-img'" :key="`${url}:${renderAttempt}`" v-bind="imageProps"
-      v-else :class="'hide-invalid' + (isDark ? ' invert' : '')" @load="onImageLoad(true)" @error="onImageLoad(false)">
+    <component
+      :is="lazy ? 'v-img-lazy' : 'v-img'"
+      :key="`${url}:${renderAttempt}`"
+      v-bind="imageProps"
+      v-else
+      :class="'hide-invalid' + (isDark ? ' invert' : '')"
+      @load="onImageLoad(true)"
+      @error="onImageLoad(false)"
+    >
       <template v-slot:error>
         <div class="structure-error-state">
-          <v-img v-if="showErrorImage" class="mx-auto" height="160" max-width="260" src="@/assets/wrongSmiles.png"></v-img>
+          <v-img
+            v-if="showErrorImage"
+            class="mx-auto"
+            height="160"
+            max-width="260"
+            src="@/assets/wrongSmiles.png"
+          ></v-img>
           <v-icon v-else icon="mdi-molecule-off" size="44"></v-icon>
           <strong>结构加载失败</strong>
           <span>{{ smiles || "空结构输入" }}</span>
@@ -21,7 +56,6 @@
     </component>
   </component>
 </template>
-
 
 <script>
 import CopyTooltip from "@/components/CopyTooltip";
@@ -191,7 +225,7 @@ export default defineComponent({
 .smiles-image-container {
   position: relative;
   width: 100%;
-  height: 100%;
+  height: auto;
   min-height: 0;
 }
 
@@ -202,10 +236,6 @@ export default defineComponent({
   pointer-events: none;
   overflow: hidden;
 }
-.hide-invalid>.v-responsive__sizer {
-  padding-bottom: 150px !important;
-}
-
 .invert {
   filter: invert(1) brightness(2);
 }
@@ -231,7 +261,8 @@ export default defineComponent({
 .structure-error-state span {
   max-width: 420px;
   word-break: break-all;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
 }
 </style>

@@ -16,8 +16,10 @@ from packages.orchestrator.runtime_health import route_runtime_status
 from packages.platform.performance import PerformanceBudget, PerformanceTargets
 from packages.platform.resource_metrics import runtime_resources
 from packages.platform.version import product_version, source_build
+from packages.workspace.route_repository import RouteDocumentRepository
 
 from .data_routes import data_router
+from .document_routes import document_router
 from .job_routes import job_router
 from .job_views import route_result
 from .native_routes import native_router
@@ -25,6 +27,7 @@ from .request_limits import RequestLimitMiddleware
 from .result_routes import result_router
 from .security import authenticate
 from .stock_routes import stock_router
+from .structure_routes import structure_router
 from .web_assets import WorkbenchAssets
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -42,6 +45,7 @@ def create_app(
     state_root = Path(jobs_root) if jobs_root is not None else state_root
     budget = PerformanceBudget.from_environment()
     repository = JobRepository(state_root / "jobs.sqlite")
+    documents = RouteDocumentRepository(state_root / "workspace.sqlite")
     build = source_build(repo_root)
     transport = AskcosTransport(
         os.environ.get("X_SYNTH_ASKCOS_URL", "http://127.0.0.1:9100"), budget=budget
@@ -86,6 +90,7 @@ def create_app(
     )
     app.add_middleware(RequestLimitMiddleware, limit=budget.request_bytes)
     app.state.repository = repository
+    app.state.documents = documents
     app.state.pipeline = pipeline
 
     def readiness():
@@ -133,6 +138,7 @@ def create_app(
         return {
             "mode": os.environ.get("X_SYNTH_AUTH_MODE", "local"),
             "owner": principal.owner,
+            "administrator": principal.administrator,
             "workspace_access": True,
         }
 
@@ -155,6 +161,16 @@ def create_app(
         budget=budget,
     )
     app.include_router(router, prefix="/api/v1")
+    app.include_router(
+        document_router(
+            documents=documents,
+            repository=repository,
+            transport=transport,
+            artifacts=artifacts,
+            budget=budget,
+        ),
+        prefix="/api/v1",
+    )
     data = data_router(
         template_path=template_library_path
         or os.environ.get("X_SYNTH_TEMPLATE_LIBRARY_DB"),
@@ -162,6 +178,9 @@ def create_app(
     )
     app.include_router(data, prefix="/api/v1")
     app.include_router(stock_router(stock=stock, transport=transport), prefix="/api/v1")
+    app.include_router(
+        structure_router(transport=transport, budget=budget), prefix="/api/v1"
+    )
     app.include_router(
         result_router(repository=repository, transport=transport), prefix="/api"
     )
