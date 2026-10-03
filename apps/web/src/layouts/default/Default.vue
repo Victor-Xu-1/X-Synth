@@ -13,7 +13,12 @@
         aria-label="关闭导航"
         @click="mobileOpen = false"
       />
-      <Sidebar :compact="compact && !mobile" @navigate="mobileOpen = false" />
+      <Sidebar
+        :compact="compact && !mobile"
+        :inert="mobile && !mobileOpen ? true : undefined"
+        :aria-hidden="mobile && !mobileOpen ? 'true' : undefined"
+        @navigate="mobileOpen = false"
+      />
       <div class="workspace-main">
         <AppBar @toggle-navigation="toggleNavigation" />
         <div v-if="!online" class="workspace-connection-message" role="status">
