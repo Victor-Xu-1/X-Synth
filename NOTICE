@@ -6,6 +6,8 @@ Third-party components retain their own licenses and copyright notices.
 
 ASKCOS source under apps/askcos-v2 is derived from the Massachusetts Institute
 of Technology / MLPDS ASKCOS v2 projects. Their LICENSE files are retained.
+The Vue workbench under apps/web continues that ASKCOS frontend; its upstream
+MIT copyright notice is retained in apps/web/LICENSE.
 AiZynthFinder is maintained by the Molecular AI group at AstraZeneca and is
 provided under the MIT License; it is installed as an external dependency.
 Bundled frontend resources, including Ketcher and JSME, retain their respective

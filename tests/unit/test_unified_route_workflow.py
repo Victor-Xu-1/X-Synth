@@ -46,10 +46,10 @@ def test_builds_unified_route_pool_artifacts_from_real_engine_outputs(tmp_path):
     )
 
     assert 3 <= result.summary["selected_route_count"] <= 10
-    assert result.summary["closed_route_count"] == 18
+    assert result.summary["closed_route_count"] == 28
     assert result.summary["meets_min_routes"] is True
     assert result.summary["engine_counts"] == {
-        "askcos_retro_star": 10,
+        "askcos_retro_star": 20,
         "aizynthfinder": 8,
     }
     assert result.summary["selected_engine_counts"]["askcos_retro_star"] >= 1

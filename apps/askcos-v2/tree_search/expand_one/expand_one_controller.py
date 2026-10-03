@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from rdchiral.template_extractor import extract_from_reaction
 from rdchiral_util import apply_one_template_to_precursors, get_reacting_atoms
 from rdkit import Chem
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://0.0.0.0:9100")
 atom_mapper = AtomMapAPI(
@@ -85,7 +85,7 @@ class RetroBackendOption(BaseModel):
     threshold: float = 0.3
     top_k: int = 10
 
-    field_mapping = {
+    field_mapping: ClassVar[dict[str, set[str]]] = {
         "template_relevance": {
             'max_num_templates', 
             'max_cum_prob', 
@@ -218,7 +218,11 @@ class ExpandOneController:
         self.scscorer_batch = scscorer_batch
         self.retro_controller = retro_controller
         self.abs_group_handler = abs_group_api.abs_group_handler
-        self.p = Pool()
+        self.p = Pool(processes=int(os.environ.get("ASKCOS_MODEL_THREADS", "4")))
+
+    def close(self):
+        self.p.close()
+        self.p.join()
 
     def get_outcomes(
         self,
@@ -337,6 +341,8 @@ class ExpandOneController:
                 }
 
         results = list(results_dict.values())
+        if not results:
+            return []
         uses_higher_level = any(
             option.retro_model_name in HIGHER_LEVEL_MODEL_NAMES
             for option in retro_backend_options
@@ -373,9 +379,8 @@ class ExpandOneController:
         else:
             # hardcode to 1.0, since tree analysis still relies on these
             plausibilities = [1.0 for _ in reaction_smis]
-        # something weird happening for fast_filter
-        if not plausibilities:
-            plausibilities = [0.5 for _ in reaction_smis]
+        if len(plausibilities) != len(reaction_smis):
+            raise ValueError("Fast-filter output does not match candidate reactions")
 
         filtered_results = []
         for result, plausibility in zip(results, plausibilities):
@@ -383,6 +388,8 @@ class ExpandOneController:
                 continue
             result["plausibility"] = plausibility
             filtered_results.append(result)
+        if not filtered_results:
+            return []
         # </filtering>
 
         # <pricing>

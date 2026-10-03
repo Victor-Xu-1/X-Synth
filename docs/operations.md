@@ -1,302 +1,166 @@
-# Operations
+# X-Synth 运行与部署
 
-## Start ASKCOS stack
+## 支持边界
+产品 v0.1.0 支持 Linux / WSL、Python 3.12、Node.js 24。唯一产品入口是
+`scripts.operations.serve_platform`，同时提供工作台、API 和 ASKCOS 进程监督。
+引擎原有 Compose/deploy 工具是上游源码，不是产品启动入口。当前路线主链无需
+GPT Web、Codex token、AiZynthFinder、RabbitMQ 或 Redis。其他原生功能依赖其各自服务，
+未安装时不可用。源码发布不携带模型、商业数据、私人历史或个人配置。
 
-Run from WSL:
+## 目录与安装
+| 内容 | 建议位置 | 规则 |
+|---|---|---|
+| 稳定源码 | /srv/wsl/projects/x-synth | 不在目录名中编码版本 |
+| 环境、模型、模板、库存 | $HOME/.local/share/x-synth | 与 Git 分离；资产不可变 |
+| 私人任务、搜索图、日志 | $HOME/.local/state/x-synth | 不公开；升级不删除 |
+| 凭据 | $HOME/.config/x-synth/native.env | 普通文件；权限 0600；不输出内容 |
+| 下载、截图、审计证据 | 外部缓存/证据目录 | 不进入发布源码 |
 
-    cd /home/victor_1/synon-retrosynthesis-platform/apps/askcos-v2/askcos2_core
-    COMPOSE_PROJECT_NAME=synonrt docker compose -p synonrt --profile route-tree up -d
+产品和原生推理是两个独立 Python 进程边界，各自使用一个锁文件：
+```bash
+python3.12 -m venv "$HOME/.local/share/x-synth/product-env"
+"$HOME/.local/share/x-synth/product-env/bin/python" -m pip install --upgrade pip==26.2.0
+"$HOME/.local/share/x-synth/product-env/bin/python" -m pip install \
+  --require-hashes -r requirements/orchestrator-linux-py312.lock
+"$HOME/.local/share/x-synth/product-env/bin/python" -m pip install --no-deps .
+python3.12 -m venv "$HOME/.local/share/x-synth/native-env"
+"$HOME/.local/share/x-synth/native-env/bin/python" -m pip install --upgrade pip==26.2.0
+"$HOME/.local/share/x-synth/native-env/bin/python" -m pip install \
+  --require-hashes -r requirements/askcos-runtime-linux-py312.lock
+"$HOME/.local/share/x-synth/native-env/bin/python" -m pip check
+```
 
-When ASKCOS is launched from Windows automation, keep a persistent WSL session
-alive while long route-search jobs are running. Otherwise WSL can stop the
-Ubuntu VM after the command exits and interrupt MongoDB, RabbitMQ, Redis, and
-Celery tasks.
-
-## Check health
-
-Run from WSL:
-
-    /home/victor_1/synon-retrosynthesis-platform/scripts/diagnostics/check_askcos_stack.sh
-
-## Start Synon unified route orchestrator
-
-The Synon UI submits route-tree jobs to `/synon-api/unified-route/call-async`.
-Nginx proxies that path to the WSL host orchestrator on port `8790`.
-
-For the complete local workbench, use the managed startup command. It starts
-the existing ASKCOS compose project, waits for cold model loading, then starts
-the supervised orchestrator:
-
-    cd /home/victor_1/synon-retrosynthesis-platform
-    bash scripts/operations/start_synon_workbench.sh
-
-`SYNON_ORCHESTRATOR_START_TIMEOUT_SECONDS` controls only the startup health
-wait and defaults to 180 seconds. `SYNON_AUTO_RESUME_INTERRUPTED_JOBS=1` is
-enabled by the managed command. A job interrupted by a WSL or orchestrator
-restart resumes from its persisted checkpoint and receives only the unused
-portion of its original `total_timeout_sec`; the restart cannot extend the
-one-hour job budget.
-
-Run from WSL:
-
-    cd /home/victor_1/synon-retrosynthesis-platform
-    PYTHONPATH=. \
-    SYNON_TEMPLATE_LIBRARY_DB=data/compiled/template_library/template_library.sqlite \
-    SYNON_EXTERNAL_STOCK_PATHS=data/compiled/domestic_stock/synon_stock.json \
-    python3 -m uvicorn apps.synon_orchestrator.app:app --host 0.0.0.0 --port 8790
-
-For a detached local session:
-
-    cd /home/victor_1/synon-retrosynthesis-platform
-    mkdir -p /tmp/synon-orchestrator
-    nohup env PYTHONPATH=. \
-      SYNON_TEMPLATE_LIBRARY_DB=data/compiled/template_library/template_library.sqlite \
-      SYNON_EXTERNAL_STOCK_PATHS=data/compiled/domestic_stock/synon_stock.json \
-      python3 -m uvicorn apps.synon_orchestrator.app:app --host 0.0.0.0 --port 8790 \
-      > /tmp/synon-orchestrator/out.log 2> /tmp/synon-orchestrator/err.log &
-
-Check direct and nginx-proxied health:
-
-    curl http://127.0.0.1:8790/synon-api/health
-    curl http://127.0.0.1:8769/synon-api/health
-
-## Check AiZynthFinder
-
-AiZynthFinder is a secondary route generator. It runs through the local
-`deepretro` conda environment and the model files under
-`/home/victor_1/synon-retrosynthesis-platform/engines/aizynthfinder/models`.
-
-Run from WSL:
-
-    cd /home/victor_1/synon-retrosynthesis-platform
-    PYTHONPATH=. python3 scripts/diagnostics/run_aizynthfinder_case.py --smiles 'CCOC(=O)c1ccccc1' --id ethyl_benzoate --model USPTO --timeout-sec 1800
-
-Successful runs write `result.json`, `unified_routes.json`, and
-`selected_routes.json` under `tests/real-cases/runs/<timestamp>_aizynthfinder_<id>/`.
-`selected_routes.json` is the normalized 3-10 route contract that should be
-merged into the ASKCOS final selector in the next integration slice.
-
-`Pistachio_100+` is not enabled unless the licensed ONNX/template assets exist
-under `engines/aizynthfinder/models/Pistachio_100+/`. The adapter must fail
-when these files are missing; it must not silently fall back to USPTO.
-
-## Build unified route pool
-
-Use this when ASKCOS and AiZynthFinder have both produced route results for the
-same target:
-
-    cd /home/victor_1/synon-retrosynthesis-platform
-    PYTHONPATH=. python3 scripts/diagnostics/build_unified_route_pool.py \
-      --id askcos_aizynth_case \
-      --askcos-task-id <completed-askcos-task-id> \
-      --aizynth-result tests/real-cases/runs/<aizynth-run>/result.json \
-      --min-routes 3 \
-      --max-routes 10
-
-The script validates that all route sources describe the same target after RDKit
-canonicalization, ranks routes, preserves at least one closed route from each
-engine when possible, and writes `unified_routes.json`, `selected_routes.json`,
-and `summary.json`.
-
-To make the selected unified pool visible in ASKCOS/Synon history, write it
-back to an existing completed ASKCOS task:
-
-    cd /home/victor_1/synon-retrosynthesis-platform
-    PYTHONPATH=. python3 scripts/diagnostics/build_unified_route_pool.py \
-      --id askcos_aizynth_case_writeback \
-      --askcos-task-id <completed-askcos-task-id> \
-      --aizynth-result tests/real-cases/runs/<aizynth-run>/result.json \
-      --write-back-task-id <completed-askcos-task-id> \
-      --public \
-      --min-routes 3 \
-      --max-routes 10
-
-Use `--public` for local smoke results that should be visible to the current
-workbench user. Use `--share-with <username>` when a result should remain
-private but visible to a specific ASKCOS user. Do not bypass `/api/results/list`
-user filtering in the UI; visibility should be handled by `public` or
-`shared_with` in Mongo.
-
-If the browser shows an empty results page immediately after a container restart,
-the local JWT may be stale. The frontend now retries guest login once when it
-receives `401` and stored guest credentials are available; otherwise it clears
-the stale token and returns to the login page.
-
-## Run unified ASKCOS + AiZynthFinder task
-
-The normal UI route-tree submission path now uses this orchestration through
-`/synon-api/unified-route/call-async`. Use the command below for operator-level
-diagnostics or reruns without the browser:
-
-    cd /home/victor_1/synon-retrosynthesis-platform
-    printf '%s\n' 'OC(C(F)=CC=C1)=C1C2=CC3=C(NCC34CCNCC4)N=N2' > /tmp/target.smi
-    PYTHONPATH=. python3 scripts/diagnostics/run_unified_route_case.py \
-      --smiles-file /tmp/target.smi \
-      --id fused_pyridazine_case \
-      --backend retro_star \
-      --expansion-time 1800 \
-      --max-paths 200 \
-      --askcos-timeout-sec 7200 \
-      --poll-sec 60 \
-      --aizynth-model USPTO \
-      --aizynth-timeout-sec 3600 \
-      --min-routes 3 \
-      --max-routes 10 \
-      --public
-
-The runner starts ASKCOS and AiZynthFinder in parallel, normalizes both outputs
-into `RouteCandidate`, applies the unified route-pool selector, and writes the
-selected pool into the ASKCOS task history. Use `--smiles-file` for complex
-SMILES to avoid Windows/WSL shell quoting issues; the runner reads UTF-8 files
-with BOM-safe handling.
-
-If rebuilding a unified pool from an existing ASKCOS Mongo task, pass
-`--askcos-engine askcos_retro_star` when the persisted ASKCOS settings do not
-include the original tree-search backend:
-
-    PYTHONPATH=. python3 scripts/diagnostics/build_unified_route_pool.py \
-      --id fused_pyridazine_rebuild \
-      --askcos-task-id <completed-askcos-task-id> \
-      --askcos-engine askcos_retro_star \
-      --aizynth-result tests/real-cases/runs/<run>/aizynthfinder_result.json \
-      --write-back-task-id <completed-askcos-task-id> \
-      --public \
-      --min-routes 3 \
-      --max-routes 10
-
-The selector does not force exactly 10 routes. It returns 3-10 closed routes and
-removes redundant ASKCOS routes from the same first-step reaction cluster when
-other real route families are available.
-
-To submit through the same nginx path used by the UI:
-
-    curl -H "Content-Type: application/json" \
-      -X POST http://127.0.0.1:8769/synon-api/unified-route/call-async \
-      --data '{"smiles":"OC(C(F)=CC=C1)=C1C2=CC3=C(NCC34CCNCC4)N=N2","description":"ui_proxy_unified_route_real_target","backend":"all","expansion_time":1200,"max_paths":200,"askcos_timeout_sec":1500,"poll_sec":30,"aizynth_model":"USPTO","aizynth_timeout_sec":1080,"total_timeout_sec":3600,"min_routes":3,"max_routes":10,"public":true}'
-
-Poll the job:
-
-    curl http://127.0.0.1:8769/synon-api/unified-route/jobs/<job_id>
-
-## Build unified template library
-
-The canonical template database must include both the ASKCOS template directory
-and the standard local USPTO/ORD locations. Do not rebuild from the ASKCOS
-directory alone, because that excludes `USPTO_50k` and the AiZynthFinder USPTO
-template CSV files.
-
-Run from WSL:
-
-    cd /home/victor_1/synon-retrosynthesis-platform
-    PYTHONPATH=. python3 scripts/data_import/compile_template_library.py \
-      --source-dir apps/askcos-v2/askcos2_core/data/db/templates \
-      --include-standard-local-sources \
-      --project-root . \
-      --output-dir data/compiled/template_library \
-      --version 2026.07 \
-      --export-runtime-assets
-
-Current standard local sources:
-
-| Source | Status |
+## 数据与模型
+操作员应取得合法资产并核对许可、SHA256，不得用空文件或模拟内容冒充。路径相对 assets 根：
+| 路径 | 内容 |
 |---|---|
-| `uspto_higher_level` | included from ASKCOS core templates |
-| `uspto_50k` | included from ASKCOS template-enumeration data |
-| `uspto_aizynthfinder` | included from `engines/aizynthfinder/models/uspto_templates.csv.gz` |
-| `uspto_ringbreaker_aizynthfinder` | included from `engines/aizynthfinder/models/uspto_ringbreaker_templates.csv.gz` |
-| `ord` / `ord_extracted` | discovered when real extracted ORD template files exist under `data/sources/ord`, `data/raw/ord`, `data/external/ord`, or `data/compiled/ord_templates` |
+| models/template-relevance/pistachio | 权重、匹配的 templates.jsonl、asset.json |
+| models/template-relevance/pistachio_ringbreaker | 环断裂模型及匹配模板 |
+| models/fast_filter/1 | 原生 TensorFlow SavedModel |
+| models/pathway_ranker/treeLSTM512-fp2048.pt | 原生路线排序权重 |
+| models/value_network/epoch_99.pt | RetroStar 价值网络 |
+| models/scscore/model_1024bool.npz | 安全转换后的数组，运行时不执行 pickle |
+| stock/catalog.sqlite | 精确结构和供应商目录证据的不可变索引 |
 
-## Download and extract ORD templates
+安装工具：
+```bash
+python -m scripts.data_import.install_askcos_model --help
+python -m scripts.data_import.convert_scscore_model --help
+python -m scripts.data_import.compile_stock_index --help
+python -m scripts.data_import.compile_template_library --help
+```
+训练类别顺序与模型模板不可分离。统一知识索引可管理 ORD/USPTO 等合法语料，但不会
+自动让不兼容模板成为训练模型的输出。商业证据不能只凭 CID、CAS 或供应商名字。
 
-ORD is distributed as Protobuf `.pb.gz` records in the official
-`open-reaction-database/ord-data` repository. A plain Git clone only gives Git
-LFS pointer files unless `git-lfs` is installed, so the stable local path uses
-the official Hugging Face dataset mirror.
+Mongo 使用受支持版本、回环端口和独立数据卷；本机集成端口 27018。旧库恢复必须先
+逻辑备份、恢复新卷、验证集合数量/索引/完整性/查询，原恢复卷不改写。容器 running
+不代表端口可连接，须核对命名网络和实际连接。模型启动不得清空数据库。
 
-Run from WSL:
+## 配置与启动
+首次生成配置不会覆盖已有凭据；Mongo 初始化和原生应用使用同一私有文件中的配置：
+```bash
+python -m scripts.operations.bootstrap_runtime_config \
+  --output "$HOME/.config/x-synth/native.env"
+cd apps/web
+npm ci
+npm run build
+cd ../..
+python -m scripts.operations.serve_platform \
+  --credentials "$HOME/.config/x-synth/native.env" \
+  --native-python "$HOME/.local/share/x-synth/native-env/bin/python" \
+  --assets "$HOME/.local/share/x-synth" \
+  --state "$HOME/.local/state/x-synth" \
+  --stock-index "$HOME/.local/share/x-synth/stock/catalog.sqlite" \
+  --template-library "$HOME/.local/share/x-synth/knowledge/template_library.sqlite" \
+  --port 8769
+```
+启动前选空闲端口。监督器只管理自己创建的进程，故障服务最多重启三次，不使用全局
+pkill。每模型一个 worker、统一 CPU 线程预算。WSL 长任务应留在持久终端或管理服务中。
+工作台和历史分别在 http://127.0.0.1:8769/ 和 http://127.0.0.1:8769/results。
 
-    cd /home/victor_1/synon-retrosynthesis-platform
-    GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 \
-      https://github.com/open-reaction-database/ord-data.git \
-      data/external/ord-data
+```bash
+curl --fail http://127.0.0.1:8769/api/v1/health
+curl --fail http://127.0.0.1:8769/api/v1/runtime
+curl --fail http://127.0.0.1:8769/api/v1/stock-sources/summary
+```
+只有真实探针通过才显示 route_search_ready；端口或文档页存在不算就绪。默认本机
+单用户模式拒绝跨站访问。共享部署必须用经过服务端验证的身份，不能公开本机模式。
 
-Create a tool venv outside the project tree:
+## 持续运行
 
-    python3 -m venv /tmp/synon-ord-venv
-    /tmp/synon-ord-venv/bin/python -m pip install -U pip
-    /tmp/synon-ord-venv/bin/python -m pip install ord-schema rdchiral pebble huggingface_hub
+WSL 关闭后所有进程都会退出，持久终端不能替代服务管理。启用 WSL systemd 后，
+使用 `scripts/operations/systemd/x-synth@.service` 管理同一产品入口，不另开第二条链路。
+在 `$HOME/.config/x-synth/service.env` 设置下列绝对路径，权限保持 0600：
 
-Download the real ORD LFS objects from the official mirror:
+```dotenv
+X_SYNTH_CREDENTIALS=/home/USER/.config/x-synth/native.env
+X_SYNTH_NATIVE_PYTHON=/home/USER/.local/share/x-synth/native-env/bin/python
+X_SYNTH_ASSETS=/home/USER/.local/share/x-synth
+X_SYNTH_STATE_DIR=/home/USER/.local/state/x-synth
+X_SYNTH_STOCK_INDEX=/home/USER/.local/share/x-synth/stock/catalog.sqlite
+X_SYNTH_TEMPLATE_LIBRARY_DB=/home/USER/.local/share/x-synth/knowledge/template_library.sqlite
+```
 
-    /tmp/synon-ord-venv/bin/python - <<'PY'
-    from huggingface_hub import snapshot_download
-    snapshot_download(
-        repo_id="open-reaction-database/ord-data",
-        repo_type="dataset",
-        local_dir="data/external/ord-data",
-        allow_patterns=["data/**/*.pb.gz", "data/**/*.parquet", "README.md", "LICENSE", "CITATION.cff"],
-        max_workers=8,
-    )
-    PY
+将 USER 换为运行用户，资产路径必须指向实际验证的索引，不得复制空示例充当数据。
+服务模板的源码位置默认 `/srv/wsl/projects/x-synth`，其他位置需显式修改 WorkingDirectory。
 
-Extract ORD templates. The atom-map URL should point directly at the local
-ASKCOS `atom_map_rxnmapper` service. The extractor disables proxy use for
-localhost URLs because WSL proxy variables can otherwise route local calls
-through the HTTP proxy and produce 502s.
+```bash
+sudo install -m 0644 scripts/operations/systemd/x-synth@.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now "x-synth@$USER.service"
+systemctl status "x-synth@$USER.service"
+```
 
-    /tmp/synon-ord-venv/bin/python scripts/data_import/extract_ord_templates.py \
-      --ord-data-dir data/external/ord-data/data \
-      --output-dir data/compiled/ord_templates \
-      --limit-reactions 1000 \
-      --atom-map-url http://127.0.0.1:9671/ibm_rxnmapper \
-      --atom-map-batch-size 64
+独立 Mongo 容器应配置 `--restart unless-stopped --network x-synth-native`，
+创建并验证该命名网络。不要依赖可能被禁用的默认 bridge，也不要只在启动后附加网络。
+核验回环连接与命名网络；
+该产品服务不创建或改动其他数据库容器。人工停止任务仍由产品取消操作处理。
+产品日志写到外部状态目录 `logs/product.log`，每文件最多 5 MiB，保留三个轮转文件，
+不依赖终端持续读取。原生服务日志在 `logs/native`。数据库健康探针超时返回 503，
+不把失联库视为就绪。systemd 不能使已关闭的 WSL 自行启动；先启动 WSL，再检查服务。
 
-Remove `--limit-reactions` for a full ORD extraction run. Full extraction is a
-long atom-mapping job; partial extractions are still real ORD-derived templates
-and are audited through `data/compiled/ord_templates/ord_reactions.csv.gz`.
+## 任务、恢复、历史
+UI 和诊断 CLI 都通过 /api/v1/unified-route/call-async。事务创建记录后，两种原生
+策略独立执行，子任务 ID 提交前持久化。原始输出保留，搜索图在完整扩展边界定期保存
+为数据 JSON，不使用 pickle。只有 3-10 条合格、不同家族的路线才标为 completed；
+数量不足、未闭合、取消、依赖恢复分别有状态。只执行一次扩大搜索，不无限修复。
 
-## Import ASKCOS core data
+服务中断保留 checkpoint。恢复后接续同一子任务，不能重复提交已完成阶段：
+```bash
+curl --fail -X POST http://127.0.0.1:8769/api/v1/unified-route/jobs/JOB_ID/resume
+curl --fail http://127.0.0.1:8769/api/v1/unified-route/jobs/JOB_ID
+```
+旧历史由 scripts.data_import.import_askcos_history 显式导入指定 owner，幂等且不改写
+原库。legacy_completed/legacy_incomplete 不自动重跑，不代表新的商业闭合审查。
+私人结果默认不能分享。
 
-Route-tree search depends on ASKCOS Mongo collections. A fresh `synonrt`
-volume starts with empty `buyables`, `chemicals`, `reactions`,
-`retro_templates`, `forward_templates`, and `sites_refs` collections. If these
-collections are empty, ASKCOS can finish a task while returning zero closed
-routes because every precursor is treated as non-terminal.
+## 验收与性能
+```bash
+python -m pytest tests/unit/test_product_api_security.py tests/unit/test_performance_budget.py -q
+python -m scripts.diagnostics.benchmark_stock_index --index /absolute/catalog.sqlite
+python -m scripts.diagnostics.benchmark_platform --job-id JOB_ID
+cd apps/web
+npm test -- --runInBand src/common/runtime-status.test.js src/common/job-state.test.js
+npm run build
+npm audit --omit=dev --audit-level=high
+```
+平台 benchmark 必须在真实搜索中执行。记录样本数、P95、资产身份和进程资源。性能
+验证按改动及直接调用模块选择，完整回归需要明确授权。
+标准唯一来源是 current-architecture.md 及 PerformanceBudget/PerformanceTargets，
+脚本不另定门槛。真实 Chrome 验证桌面/移动端、结构输入、提交、历史刷新和路线查看。
+单测不能替代真实推理，模板重构也不等同于实验成功或独立正向产物模型。
 
-Run from WSL:
+## 故障与回滚
+- 模型未就绪：查 service_checks 和外部 logs/native，核对文件、模板数量及版本。
+- 库存不一致：搜索与审查必须用同一密封快照，不得退回弱证据旧 Mongo 终点。
+- 零路线：检查真实候选及第二次搜索状态，保存成功不等于化学成功。
+- 历史为空：核对产品 owner 与导入 owner。本机工作区不要求旧访客 token。
+- WSL/API 失联：核对持续运行和端口，不重启其他项目。
+- 内存预警：先检查模型实例数和搜索图，不关闭化学审查来满足速度指标。
 
-    COMPOSE_PROJECT_NAME=synonrt /home/victor_1/synon-retrosynthesis-platform/scripts/data_import/import_askcos_core_data.sh
+交付必须完成本任务所有 PR 的主线合并，并部署合并后的精确 main revision。
+PR 已提交、CI 通过或仅运行审查分支都不算完成。部署后核验版本、提交号、干净源码、
+API/浏览器连通、服务就绪和历史持久性；相关验收通过后才能结束交付。
 
-The script deliberately calls the original ASKCOS `deploy.sh set-db-defaults
-seed-db` path instead of reimplementing ASKCOS import logic. It refuses to run
-when old `deploy-*` ASKCOS containers are active, because mixed Compose project
-names can attach the route-search services to the wrong Mongo/Rabbit/Redis
-containers.
-
-After import, verify the core collection counts:
-
-    docker exec synonrt-mongo-1 mongosh --quiet -u askcos -p askcos --authenticationDatabase admin --eval "const dbx=db.getSiblingDB('askcos'); printjson({buyables:dbx.buyables.estimatedDocumentCount(), chemicals:dbx.chemicals.estimatedDocumentCount(), reactions:dbx.reactions.estimatedDocumentCount(), retro_templates:dbx.retro_templates.estimatedDocumentCount(), forward_templates:dbx.forward_templates.estimatedDocumentCount(), sites_refs:dbx.sites_refs.estimatedDocumentCount()})"
-
-## Required stable services
-
-| Service | Required |
-|---|---|
-| web | yes |
-| app | yes |
-| mongo | yes |
-| rabbitmq | yes |
-| redis | yes |
-| celery_workers | yes |
-| mcts | yes |
-| retro_star | yes |
-| expand_one | yes |
-| retro_template_relevance | yes |
-| retro_exact_match | yes |
-| retro_retrosim | yes |
-| fast_filter | yes |
-| scscore | yes |
-
-## Failure policy
-
-If any required service restarts during a real task, do not treat the route
-result as valid. Mark the task as failed or recoverable based on saved state.
+升级保留已验证 revision、匹配资产和私有库备份。回滚只切源码及不可变资产，不覆盖
+私人任务或数据库卷。资产或审查契约改变时，不把旧 checkpoint 冒充新版完整结果。

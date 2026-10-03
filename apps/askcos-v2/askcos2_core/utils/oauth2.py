@@ -2,17 +2,20 @@ import os
 from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
-from jose import jwt
-from passlib.context import CryptContext
+import jwt
+from utils.passwords import verify_password
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from typing import Annotated
 from utils.oauth2_cookie import OAuth2PasswordBearerWithCookie
 from utils.registry import get_util_registry
 
 SECRET_KEY = os.environ.get("OAUTH2_SECRET_KEY", "")
+if len(SECRET_KEY) < 32:
+    raise RuntimeError("OAUTH2_SECRET_KEY must be configured with at least 32 random characters")
 ALGORITHM = "HS256"
 # ACCESS_TOKEN_EXPIRE_MINUTES = 60
-ACCESS_TOKEN_EXPIRE_MINUTES = 43200
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 # The scheme itself returns a str (i.e., the token) when called
 # OAuth2PasswordBearer seems to have handled the conversion of token_dict -> token
@@ -23,8 +26,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 43200
 # )
 
 oauth2_scheme = OAuth2PasswordBearerWithCookie(tokenUrl="api/admin/token")
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 credentials_exception = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -58,16 +59,16 @@ async def login_for_access_token(
 ) -> dict[str, str]:
     user_controller = get_util_registry().get_util(module="user_controller")
     user = user_controller.get_user_by_name(username=form_data.username)
-    if not user:
+    if not user or user.disabled:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username",
+            detail="Incorrect credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if not pwd_context.verify(form_data.password, user.hashed_password):
+    if not await run_in_threadpool(verify_password, form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password",
+            detail="Incorrect credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -84,7 +85,8 @@ async def login_for_access_token(
 
     response.set_cookie(
         key="access_token",
-        value=f"Bearer {access_token}", httponly=True)
+        value=f"Bearer {access_token}", httponly=True, samesite="strict",
+        secure=os.environ.get("ASKCOS_COOKIE_SECURE", "1") == "1")
 
     token_dict = {
         "access_token": access_token,

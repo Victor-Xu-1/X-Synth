@@ -6,8 +6,9 @@ import sys
 import time
 import traceback
 import uvicorn
+from contextlib import asynccontextmanager
 from datetime import datetime
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from prometheus_client import CollectorRegistry, Histogram, multiprocess, make_asgi_app
 from pydantic import BaseModel
 from rdkit import RDLogger
@@ -30,9 +31,26 @@ import global_config as gc
 #
 #     return make_asgi_app(registry=registry)
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app):
+    global fast_filter
+    fast_filter = FastFilterScorer()
+    fast_filter.load(model_path=gc.FAST_FILTER_MODEL["model_path"])
+    yield
+    fast_filter = None
+
+
+app = FastAPI(lifespan=lifespan)
 metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
+
+
+@app.get("/health/ready")
+def ready():
+    scorer = globals().get("fast_filter")
+    if scorer is None or scorer.model is None:
+        raise HTTPException(503, "Fast-filter checkpoint is not loaded")
+    return {"status": "ready", "model": "askcos_fast_filter"}
 
 base_response = {
     "status": "FAIL",
@@ -165,10 +183,6 @@ if __name__ == "__main__":
     sh.setLevel(logging.INFO)
     logger.addHandler(fh)
     logger.addHandler(sh)
-
-    # set up apis
-    fast_filter = FastFilterScorer()
-    fast_filter.load(model_path=gc.FAST_FILTER_MODEL["model_path"])
 
     # start running
     uvicorn.run(app, host=args.server_ip, port=args.server_port)

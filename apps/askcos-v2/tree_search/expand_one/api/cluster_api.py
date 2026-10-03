@@ -1,4 +1,5 @@
 import requests
+from packages.adapters.askcos.native_http import NativeSession, post_json
 import traceback as tb
 from pydantic import BaseModel
 from typing import Dict, List, Optional, Tuple, Union
@@ -31,7 +32,7 @@ class ClusterAPI:
     """Cluster API to be used as a clusterer"""
     def __init__(self, default_url: str):
         self.default_url = default_url
-        self.session = requests.Session()
+        self.session = NativeSession()
 
     def __call__(
         self,
@@ -57,21 +58,7 @@ class ClusterAPI:
         }
 
         ClusterInput(**input)                   # merely validate the input
-        try:
-            response = self.session.post(url=url, json=input).json()
-            ClusterResponse(**response)         # merely validate the response
-        except requests.ConnectionError as e:
-            # Handle the connection error appropriately
-            print("Connection error for ClusterAPI:")
-            tb.print_exc()
-
-            return [], {}
-        except Exception as e:
-            # Handle any other exception that might occur
-            print("An error occurred for ClusterAPI:")
-            tb.print_exc()
-
-            return [], {}
+        response = post_json(self.session, url, payload=input, response_model=ClusterResponse)
 
         cluster_ids, name_dict = response["result"]
 

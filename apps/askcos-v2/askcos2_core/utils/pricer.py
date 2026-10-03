@@ -19,6 +19,7 @@ from utils.buyables_import import expand_buyables_source_aliases
 from utils.similarity_search_utils import sim_search_aggregate_buyables, sim_search_buyables
 from utils.pricer_utils import abs_smiles_to_smarts_query, ATOM_DICT
 from utils.rdkit import has_abs_groups
+from packages.adapters.askcos.catalog_pricer import CatalogPricer
 
 
 global util_config
@@ -58,6 +59,8 @@ class Pricer:
     # }
 
     def __init__(self, util_config: dict[str, Any]):
+        stock_path = os.environ.get("X_SYNTH_STOCK_INDEX")
+        self.catalog = CatalogPricer(stock_path) if stock_path else None
         engine = util_config["engine"]
         if engine == "db":
             self._pricer = MongoPricer(
@@ -121,6 +124,8 @@ class Pricer:
                 isomeric_smiles=isomeric_smiles
             ) or smiles
 
+        if self.catalog is not None:
+            return self.catalog.lookup_smiles(smiles=smiles, source=source)
         return self._pricer.lookup_smiles(smiles=smiles, source=source)
 
     def lookup_smiles_list(
@@ -153,6 +158,8 @@ class Pricer:
                 for smi in smiles_list
             ]
 
+        if self.catalog is not None:
+            return self.catalog.lookup_smiles_list(smiles_list=smiles_list, source=source)
         return self._pricer.lookup_smiles_list(smiles_list=smiles_list, source=source)
 
     def lookup_smarts(
@@ -194,6 +201,14 @@ class Pricer:
             list: full documents of all buyables matching the criteria
         """
 
+        if self.catalog is not None and search_str and not regex and sim_threshold == 1.0:
+            rows = self.catalog.index.lookup(search_str, limit=min(100, limit))
+            sources = [source] if isinstance(source, str) else source
+            if sources and "unified_commercial" not in sources:
+                rows = [row for row in rows if row["source"] in sources]
+            return [{"smiles": row["smiles"], "source": row["source"], "ppg": row["ppg"],
+                     "properties": [{"link": row["url"]}, {"catalog_id": row["catalog_id"]}],
+                     "catalog_snapshot": True} for row in rows]
         assert isinstance(self._pricer, MongoPricer), \
             f"search() is only implemented for MongoPricer"
 
@@ -304,6 +319,8 @@ class Pricer:
             list: list of source names
         """
 
+        if self.catalog is not None:
+            return sorted(self.catalog.index.summary["source_counts"])
         assert isinstance(self._pricer, MongoPricer), \
             f"list_sources() is only implemented for MongoPricer"
 

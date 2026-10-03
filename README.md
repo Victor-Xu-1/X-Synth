@@ -1,136 +1,102 @@
-# X-Synth
+# X-Synth v0.1.0
 
-X-Synth 合成研究平台，以 ASKCOS 为主程序和中文工作台，使用 ASKCOS 与
-AiZynthFinder 搜索路线，通过统一路线池完成结构规范化、商购闭合检查、
-去重、评分与历史回写。没有接入 LLM 推理或审查，不需要 Codex 登录凭据。
+X-Synth 是基于 ASKCOS V2 的中文合成研究工作台。X-Synth 负责前后端、
+任务生命周期、私有历史、统一商业库存和路线审查；ASKCOS 负责实际化学模型与搜索。
+当前只有 ASKCOS 是已集成的路线生成引擎，LLM 和其他引擎不参与主链。
 
-## 运行边界
+## 模块与文件
 
-当前为开发版本，不是已完成完整运行验收的生产发布。源码、模型、模板、
-商业库存和任务数据是不同的交付对象：安装 Python 包或打开页面，不代表
-模型和商业库存已经就绪。缺少搜索后端时，API 返回 503，不创建失败占位任务。
+- `VERSION` 是唯一产品版本来源，当前为 `0.1.0`。
+- `apps/web` 是原 ASKCOS Vue 工作台的延续，不是第二套 UI。
+- `apps/api` 是唯一产品 API，公开契约为 `/api/v1`。
+- `packages/orchestrator` 管理 SQLite 事务队列、恢复和路线工作流。
+- `packages/adapters/askcos` 隔离原生服务、HTTP、子任务和搜索图断点。
+- `packages/adapters/stock` 管理结构级采购证据和不可变 SQLite 索引。
+- `packages/route_schema`、`route_pool`、`validation` 管理统一结构和审查。
+- `packages/knowledge_base` 管理模板来源、索引与查询，不替换训练模型的输出排序。
+- `apps/askcos-v2` 保留完整原生源码，原生功能的可用性取决于实际安装的模型。
+- `scripts/operations`、`data_import`、`diagnostics` 分别承担运行、导入和验证。
 
-仓库不附带模型权重、化学数据库、供应商导出、数据库备份、私人任务或凭据。
-ASKCOS 原生模型、其模板索引、Mongo 库和 AiZynthFinder 库存需要单独配置。
-模型对应的模板索引必须保持一致，不能把任意合并模板库替换到已训练模型下。
-
-## 架构
-
-```mermaid
-flowchart TD
-  UI["ASKCOS 中文工作台 / X-Synth"] --> API["本地 FastAPI 编排器"]
-  API --> READY["依赖与模型就绪检查"]
-  READY --> JOB["持久化任务 / checkpoint"]
-  JOB --> ASK["ASKCOS: MCTS / RetroStar"]
-  JOB --> AIZ["AiZynthFinder: USPTO / Ringbreaker"]
-  ASK --> POOL["统一路线池"]
-  AIZ --> POOL
-  TEMPLATE["统一模板服务 / 引擎匹配索引"] --> ASK
-  TEMPLATE --> AIZ
-  STOCK["统一商业库存 / 结构级证据"] --> POOL
-  POOL --> REVIEW["闭合 / 循环 / 正向检查 / 去重 / 排序"]
-  REVIEW --> HISTORY["ASKCOS 历史与路线图"]
-```
+模型、供应商数据、数据库卷、任务、日志、截图与缓存都保存在源码目录之外。
+详细链路、边界和性能契约见 [架构](docs/current-architecture.md)。
 
 ## 安装
 
-编排器验证环境为 Linux / WSL、Python 3.12、Node.js 24，Docker Compose v2。
-建议在 WSL 的 Linux 文件系统内安装依赖，不在 Windows 挂载目录构建模型环境。
+支持 Linux / WSL、Python 3.12、Node.js 24。源码发布不包含模型或商业数据。
 
 ```bash
 git clone https://github.com/Victor-Xu-1/X-Synth.git
 cd X-Synth
 python3 -m venv .venv
 .venv/bin/python -m pip install --require-hashes -r requirements/orchestrator-linux-py312.lock
+.venv/bin/python -m pip install --upgrade pip==26.2.0
 .venv/bin/python -m pip install --no-deps .
-```
-
-AiZynthFinder 使用独立环境，因为它与主程序的 RDKit 版本要求不同：
-
-```bash
-python3 -m venv /srv/wsl/envs/x-synth-aizynthfinder
-/srv/wsl/envs/x-synth-aizynthfinder/bin/python -m pip install -r requirements/aizynthfinder-linux-py312.lock
-export SYNON_AIZYNTH_PYTHON=/srv/wsl/envs/x-synth-aizynthfinder/bin/python
-```
-
-模型与 stock 的配置见 `engines/aizynthfinder/models/`。配置中的资源路径相对
-于该 YAML 文件所在目录解析；合并后的运行配置使用绝对路径，不依赖旧账户
-目录或启动时的工作目录。供应商、模板数据的
-导入工具位于 `scripts/data_import/`。不得使用空文件或测试 stock 代替真实索引。
-
-Python 锁文件以 Linux / Python 3.12 为基准。主程序锁由 pip-tools 7.6.1
-生成并包含包哈希；AiZynthFinder 锁由已验证环境的 `python -m pip freeze`
-生成，固定完整依赖版本。更新时分别使用各自环境，不从全局 Python 导出。
-前端以 `package-lock.json` 和 `npm ci` 为依赖权威。主程序与 AiZynthFinder
-是两个独立的 Python 构建边界，禁止在同一个环境中混装它们的 RDKit。
-结构编辑使用项目内的 Ketcher/Indigo 资源；路线提交仍在后端执行结构校验、
-商业闭合和路线审查。
-
-## 启动与构建
-
-编排器默认只监听本机地址：
-
-```bash
-.venv/bin/python -m uvicorn apps.synon_orchestrator.app:app --host 127.0.0.1 --port 8790
-```
-
-前端沿用 ASKCOS 原 UI，不创建第二套界面：
-
-```bash
-cd apps/askcos-v2/askcos-vue-nginx/askcos_vue
+.venv/bin/python -m pip check
+cd apps/web
 npm ci
-npm run dev -- --host 127.0.0.1 --port 8769
+npm test -- --runInBand src/common/unified-route.test.js src/common/job-state.test.js
 npm run build
+cd ../..
 ```
 
-工作台地址为 `http://127.0.0.1:8769/`，API 为 `http://127.0.0.1:8790/`。
-前端默认代理到本机 ASKCOS 9100 和编排器 8790，不会使用外部演示服务器。
-完整 ASKCOS 容器部署的入口为 `apps/askcos-v2/askcos2_core/compose.yaml`；
-启动前需要私有 `.env`、nginx 运行配置、匹配的模型资源和已初始化的数据库。
-该 Compose 栈不能在缺少这些资产时被视为已经可用于路线任务。
+原生 ASKCOS 使用独立 Python 环境，避免把大型推理依赖装入产品 API。
+配置与模型安装流程见 [运行说明](docs/operations.md)。没有模型、真实数据库或有效库存时，
+API 不开始路线任务，不以模拟数据、空文件或人工路线代替。
+
+## 启动
+
+完成模型、数据库、库存配置和前端构建后，在 WSL 使用统一入口：
+
+```bash
+.venv/bin/python -m scripts.operations.serve_platform \
+  --credentials "$HOME/.config/x-synth/native.env" \
+  --native-python "$HOME/.local/share/x-synth/native-env/bin/python" \
+  --assets "$HOME/.local/share/x-synth" \
+  --state "$HOME/.local/state/x-synth" \
+  --stock-index "$HOME/.local/share/x-synth/stock/catalog.sqlite" \
+  --port 8769
+```
+
+工作台与产品 API 共用 [本机入口](http://127.0.0.1:8769/)。
+开发时可以分别启动 `apps.api.app:app` 和 `apps/web` 的 Vite 服务，
+但前端所有业务请求仍只进入产品 API。原生模型端口不作为浏览器业务入口。
+
+## 质量与性能
+
+MCTS 与 RetroStar 在任务内独立并行；最终使用同一库存快照审查外部原料。
+每条路线检查采购证据、循环、重复步骤、模板重构一致性和首步键变化家族。
+首轮不足时只进行一次扩大搜索。只有 3-10 条合格家族时任务才标为完成。
+未闭合、服务中断和取消有独立状态，原始候选与进度保留在私有任务目录。
+
+模板重构是结构一致性检查，不等同于独立正向模型验证或实验可行性证明。
+目录快照也不是实时库存、成交价格或供货承诺。实验执行和采购前仍需专业核验。
+不能保证任意复杂目标都会产生三个可行路线。
+
+性能由 `PerformanceBudget` 统一控制：一个活动任务、两种搜索并行、
+每个模型服务一次执行、四个 CPU 线程、索引批量查询和缓存就绪探针。
+具体 SLO 和真实测量要求见架构文档。不会以减少化学审查来满足速度指标。
 
 ## 验证
 
 ```bash
-.venv/bin/python -m pytest tests/unit
-cd apps/askcos-v2/askcos-vue-nginx/askcos_vue
-npm test -- --runInBand
+.venv/bin/python -m pytest tests/unit/test_product_api_security.py tests/unit/test_route_request.py -q
+.venv/bin/python -m scripts.diagnostics.benchmark_stock_index --index /absolute/catalog.sqlite
+cd apps/web
+npm test -- --runInBand src/common/unified-route.test.js src/common/job-state.test.js
 npm run build
+npm audit --omit=dev --audit-level=high
 ```
 
-`test_frontend_backend_contract.py` 使用实际 Node 前端函数和后端 Pydantic
-模型校验默认请求，而不是只断言两份常量。运行 Python 回归测试时，Node
-必须在 PATH 中，或设置 `SYNON_TEST_NODE` 为它的可执行文件。
+验证只覆盖当前改动及其调用链；完整回归需明确授权，不作为每次改动的默认动作。
+真实模型、数据库、API、Chrome、任务恢复和性能验收按受影响路径在配置好的环境执行。
+单元测试或页面可打开不能证明化学路线已经闭合。测试记录与截图不提交到源码仓库。
 
-部分历史集成测试依赖未包含在本仓库的真实引擎结果 fixture。缺少 fixture
-属于未完成验收，不能删除校验或填入模拟路线来宣称通过；必须补齐真实
-来源的结果后再进行完整路线验收。搜索结果也必须经过人工化学可行性检查。
-GitHub CI 保留完整单元测试门禁；这些缺失资源的失败不会被跳过或伪装通过。
+## 安全与许可
 
-当前依赖安全审计仍存在遗留漏洞，包括旧 CAS OIDC 客户端和前端工具链。
-兼容范围内的自动修复未能消除这些问题，不能通过强制降级登录库宣称已修好。
-在完成安全升级、真实登录回归及完整搜索验收前，只能作为本机开发版本使用。
+默认是只监听回环地址的单用户工作台，跨站请求被拒绝。共享部署必须配置
+`X_SYNTH_AUTH_MODE=askcos` 并验证身份，不能直接把本地模式暴露到公网。
+没有读取或复用 Codex 登录凭据。密钥与模型、供应数据的配置独立于源码。
 
-## 故障检查
-
-- 页面可打开但任务不能开始：检查 `/synon-api/health` 的
-  `route_search_ready`、`service_checks` 与 `dependency_errors`。
-- 422：前后端字段或参数范围不一致。默认请求契约回归应首先通过。
-- AiZynthFinder 找不到文件：检查模型配置、`SYNON_AIZYNTH_PYTHON`、
-  `SYNON_AIZYNTH_STOCK_CONFIG` 和相对路径的基准目录。
-- 路线存在但历史为空：检查最终 Mongo 回写，不应仅凭本地 summary 标成成功。
-- WSL 调用偶发连接超时：调用时显式指定 `wsl --cd <Linux 项目路径>`；
-  不要为此关闭整个 WSL 或停止无关项目。
-
-## 许可证与安全
-
-自研代码采用 Apache-2.0，见 `LICENSE`。第三方代码保留原协议，见 `NOTICE`
-及各组件的许可证。Reaxys 等模型许可不是源码许可，商业数据库与供应商
-数据的使用及再分发权需要分别确认。
-
-当前只用于本机工作台，未经独立鉴权与安全验收，不应暴露到公网。
-不得提交 `.env`、令牌、私有会话、数据库卷或恢复证据包。
-
-源码更新失败时可以切回之前的 Git revision 并重新安装、构建；数据目录和
-模型资源独立于源码，不随源码发布覆盖。没有通过完整验证的版本不应打生产
-发布标签，也不应执行不可逆数据库迁移。
+自研代码使用 Apache-2.0，第三方代码保留原协议，见 `LICENSE`、`NOTICE`。
+模型、训练数据、反应资料与供应商数据的许可独立确认，不能随源码一并公开。
+回滚时使用已验证的源码 revision 和不可变资产快照，不能覆盖私人任务或数据库卷。

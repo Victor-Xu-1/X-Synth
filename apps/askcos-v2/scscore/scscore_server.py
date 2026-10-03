@@ -5,14 +5,30 @@ import os
 import sys
 import traceback
 import uvicorn
+from contextlib import asynccontextmanager
 from datetime import datetime
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from scscore import SCScorePrecursorPrioritizer
 from pydantic import BaseModel
 from rdkit import RDLogger
 from typing import List
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app):
+    global scscorer
+    scscorer = SCScorePrecursorPrioritizer()
+    yield
+    scscorer = None
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+@app.get("/health/ready")
+def ready():
+    if globals().get("scscorer") is None:
+        raise HTTPException(503, "SCScore checkpoint is not loaded")
+    return {"status": "ready", "model": "scscore_1024bool"}
 
 base_response = {
     "status": "FAIL",
@@ -91,9 +107,6 @@ if __name__ == "__main__":
     sh.setLevel(logging.INFO)
     logger.addHandler(fh)
     logger.addHandler(sh)
-
-    # set up api *per query*
-    scscorer = SCScorePrecursorPrioritizer()
 
     # start running
     uvicorn.run(app, host=args.server_ip, port=args.server_port)

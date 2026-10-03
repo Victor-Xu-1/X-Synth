@@ -3,7 +3,9 @@ import re
 import uuid
 from configs import db_config
 from fastapi import Depends, HTTPException, Response, status
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError
+import logging
 from keycloak import KeycloakOpenID
 from keycloak import KeycloakAdmin
 from keycloak.exceptions import KeycloakGetError
@@ -16,14 +18,23 @@ from utils.oauth2 import (
     ALGORITHM,
     credentials_exception,
     oauth2_scheme,
-    pwd_context,
     SECRET_KEY
 )
+from utils.passwords import hash_password
 
 
 class User(BaseModel):
     username: str
     hashed_password: str
+    email: str | None = None
+    full_name: str | None = None
+    disabled: bool = False
+    is_superuser: bool = False
+    last_login: str | None = None
+
+
+class UserProfile(BaseModel):
+    username: str
     email: str | None = None
     full_name: str | None = None
     disabled: bool = False
@@ -69,14 +80,16 @@ class UserController:
             self.collection = self.client[database][collection]
             self.db = self.client[database]
 
-        # create default admin account if there's none
+        # Bootstrap only with an operator-provided credential, never a shared password.
         users = self.collection.find()
         users = [User(**u) for u in users]
         if not any(u.is_superuser for u in users):
-            self.register_superuser(
-                username="askcos_admin",
-                password="reallybadpassword"
-            )
+            admin_name = os.environ.get("ASKCOS_ADMIN_USERNAME")
+            admin_password = os.environ.get("ASKCOS_ADMIN_PASSWORD")
+            if bool(admin_name) != bool(admin_password):
+                raise ValueError("Both ASKCOS admin bootstrap settings are required")
+            if admin_name and admin_password:
+                self.register_superuser(username=admin_name, password=admin_password)
 
         server_url = os.environ.get("KEYCLOAK_SERVER_URL", "")
         realm_name = os.environ.get("KEYCLOAK_REALM_NAME", "")
@@ -110,26 +123,24 @@ class UserController:
         return user
 
     def get_current_user(self, token: Annotated[str, Depends(oauth2_scheme)]
-                         ) -> User:
+                         ) -> UserProfile:
         try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"require": ["exp", "sub"]})
             username: str = payload.get("sub")
             if username is None:
-                raise JWTError
+                raise InvalidTokenError("Missing subject")
             user = self.get_user_by_name(username=username)
 
-        except JWTError:
+        except InvalidTokenError:
             # second try for keycloak
             try:
-                options = {
-                    "verify_signature": True,
-                    "verify_aud": False,
-                    "verify_exp": False
-                }
-                token_info = self.keycloak_openid.decode_token(
-                    token=token,
-                    key=self.keycloak_public_key,
-                    options=options
+                token_info = jwt.decode(
+                    token,
+                    self.keycloak_public_key,
+                    algorithms=["RS256"],
+                    audience=os.environ.get("KEYCLOAK_TOKEN_AUDIENCE", self.keycloak_openid.client_id),
+                    issuer=f"{self.keycloak_openid.server_url.rstrip('/')}/realms/{self.keycloak_openid.realm_name}",
+                    options={"require": ["exp", "sub"]},
                 )
                 # Derive a safe username from token claims (sanitize BEFORE lookup/register)
                 raw_username = (
@@ -153,37 +164,8 @@ class UserController:
                         password=str(uuid.uuid4())
                     )
                     user = self.get_user_by_name(username=username)
-            except Exception as e:
-                # Log the specific Keycloak error for diagnostics
-                try:
-                    print(f"Keycloak token validation failed: {repr(e)}")
-                except Exception:
-                    pass
-                # Fallback: decode without signature verification (development only)
-                try:
-                    token_info = jwt.get_unverified_claims(token)
-                    raw_username = (
-                        token_info.get("preferred_username")
-                        or token_info.get("email")
-                        or token_info.get("sub")
-                        or "user"
-                    )
-                    safe_base = re.sub(r"[^A-Za-z0-9_]", "_", str(raw_username))
-                    safe_base = re.sub(r"_+", "_", safe_base).strip("_") or "user"
-                    username = f"{safe_base}_sso"
-                    user = self.get_user_by_name(username=username)
-                    if user is None:
-                        self.register(
-                            username=username,
-                            password=str(uuid.uuid4())
-                        )
-                        user = self.get_user_by_name(username=username)
-                except Exception as e2:
-                    try:
-                        print(f"Unverified token decode failed: {repr(e2)}")
-                    except Exception:
-                        pass
-                    # third try for custom auth
+            except (InvalidTokenError, KeycloakGetError, AttributeError, ValueError):
+                logging.getLogger(__name__).info("Configured identity verification did not accept this request")
                 # Optional custom auth provider support
                 custom_auth = getattr(self, "custom_auth_api", None)
                 if custom_auth is not None:
@@ -211,7 +193,7 @@ class UserController:
         if user.disabled:
             raise HTTPException(status_code=400, detail="Disabled user")
 
-        return user
+        return UserProfile(**user.model_dump())
 
     def am_i_superuser(self, token: Annotated[str, Depends(oauth2_scheme)]
                        ) -> bool:
@@ -242,7 +224,7 @@ class UserController:
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        hashed_password = pwd_context.hash(password)
+        hashed_password = hash_password(password)
         doc = {
             "username": username,
             "hashed_password": hashed_password,
@@ -261,7 +243,7 @@ class UserController:
         username: str,
         password: str,
     ) -> Response:
-        hashed_password = pwd_context.hash(password)
+        hashed_password = hash_password(password)
         doc = {
             "username": username,
             "hashed_password": hashed_password,
@@ -334,7 +316,7 @@ class UserController:
     ) -> Response:
         user = self.get_current_user(token)
         if user.username == username or user.is_superuser:
-            hashed_password = pwd_context.hash(password)
+            hashed_password = hash_password(password)
             self.collection.update_one(
                 {"username": username},
                 {"$set": {
@@ -485,7 +467,7 @@ class UserController:
         return Response(content=f"Successfully disable user: {username}!")
 
     def get_all_users(self, token: Annotated[str, Depends(oauth2_scheme)]
-                      ) -> list[User]:
+                      ) -> list[UserProfile]:
         user = self.get_current_user(token)
         if not user.is_superuser:
             raise HTTPException(
@@ -494,7 +476,7 @@ class UserController:
                 headers={"WWW-Authenticate": "Bearer"},
             )
         users = self.collection.find()
-        users = [User(**u) for u in users]
+        users = [UserProfile(**u) for u in users]
 
         return users
 

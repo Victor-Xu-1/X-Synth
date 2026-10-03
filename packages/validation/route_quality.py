@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 
 from packages.route_schema.route_schema import RouteCandidate
-
 
 MetricValue = int | float
 
@@ -63,9 +62,7 @@ class RouteQualityPolicy:
         dependencies: dict[str, set[str]] = {}
         for step in route.steps:
             precursor_keys = {
-                precursor.strip()
-                for precursor in step.precursors
-                if precursor.strip()
+                precursor.strip() for precursor in step.precursors if precursor.strip()
             }
             product = step.product.strip()
             if product:
@@ -80,14 +77,9 @@ class RouteQualityPolicy:
             if isinstance(step.confidence, int | float)
         ]
         ultra_low_count = sum(
-            value < self.ultra_low_confidence_threshold
-            for value in confidences
+            value < self.ultra_low_confidence_threshold for value in confidences
         )
-        ultra_low_fraction = (
-            ultra_low_count / len(confidences)
-            if confidences
-            else 0.0
-        )
+        ultra_low_fraction = ultra_low_count / len(confidences) if confidences else 0.0
         if (
             len(confidences) >= self.min_confidence_samples
             and ultra_low_fraction > self.max_ultra_low_fraction

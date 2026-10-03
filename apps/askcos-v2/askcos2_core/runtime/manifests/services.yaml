@@ -26,15 +26,6 @@ profiles:
     label: Full runtime
     description: All ASKCOS services.
 services:
-  web:
-    label: ASKCOS Web UI
-    kind: frontend
-    source: ../askcos-vue-nginx
-    profiles: [core, full]
-    ports:
-      - {host: 80, container: 80}
-      - {host: 8769, container: 8769}
-    health_endpoint: http://127.0.0.1:8769/
   app:
     label: ASKCOS FastAPI
     kind: api

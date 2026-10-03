@@ -16,6 +16,11 @@ from typing import List
 
 
 app = FastAPI()
+
+
+@app.get("/health/ready")
+def ready():
+    return {"status": "ready", "engine": "askcos_cluster"}
 metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
 

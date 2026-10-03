@@ -1,38 +1,19 @@
+schema_version: 1
 engines:
-  askcos:
-    role: primary
-    root_path: apps/askcos-v2
-    core_path: apps/askcos-v2/askcos2_core
-    ui_path: apps/askcos-v2/askcos-vue-nginx/askcos_vue
-    compose_path: apps/askcos-v2/askcos2_core/compose.yaml
-    search_modes:
-      - mcts
-      - retro_star
-      - expand_one
-      - retro_exact_match
-      - retro_retrosim
-  aizynthfinder:
-    role: secondary_route_generator
-    path: engines/aizynthfinder
-    config_path: engines/aizynthfinder/models/config.yml
-    default_stock: unified
-    stock_path: data/compiled/unified_stock/aizynthfinder_stock_inchikeys.txt
-    stock_config_path: data/compiled/unified_stock/aizynthfinder_stock_config.yml
-    executable_env: SYNON_AIZYNTH_PYTHON
-    python_args: []
-    available_models:
-      USPTO:
-        status: requires_local_assets
-        config_path: engines/aizynthfinder/models/USPTO/config.yml
-      Pistachio_100+:
-        status: missing_licensed_assets
-        config_path: engines/aizynthfinder/models/Pistachio_100+/config.yml
-        enable_rule: "Only enable when the licensed ONNX/template assets are present and validated."
-    template_paths:
-      - engines/aizynthfinder/models/uspto_templates.csv.gz
-      - engines/aizynthfinder/models/uspto_ringbreaker_templates.csv.gz
+  askcos_v2:
+    role: integrated_chemistry_engine
+    source_path: apps/askcos-v2
+    adapter_path: packages/adapters/askcos
+    strategies: [mcts, retro_star]
+    configured_models: [pistachio, pistachio_ringbreaker]
+product:
+  frontend_path: apps/web
+  api_path: apps/api
+  api_contract: /api/v1
+  version_source: VERSION
 policy:
-  askcos_remains_primary: true
-  llm_can_generate_routes: false
+  llm_enabled: false
   min_final_routes: 3
   max_final_routes: 10
+  repair_attempts: 1
+  commercial_stock: immutable_exact_catalog

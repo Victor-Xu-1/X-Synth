@@ -1,4 +1,5 @@
 import requests
+from packages.adapters.askcos.native_http import NativeSession, post_json
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
@@ -28,7 +29,7 @@ class PathwayRankerAPI:
     """PathwayRanker API to be used as a pathway ranker"""
     def __init__(self, url: str):
         self.default_url = url
-        self.session = requests.Session()
+        self.session = NativeSession()
 
     def __call__(
         self,
@@ -51,21 +52,7 @@ class PathwayRankerAPI:
         }
 
         PathwayRankerInput(**input)             # merely validate the input
-        http_response = self.session.post(url=url, json=input, timeout=120)
-        try:
-            response = http_response.json()
-        except ValueError as exc:
-            snippet = http_response.text[:500].replace("\n", " ")
-            raise RuntimeError(
-                "PathwayRanker returned non-JSON response "
-                f"status={http_response.status_code}: {snippet}"
-            ) from exc
-        if http_response.status_code != 200:
-            raise RuntimeError(
-                "PathwayRanker request failed "
-                f"status={http_response.status_code}: {response}"
-            )
-        PathwayRankerResponse(**response)       # merely validate the response
+        response = post_json(self.session, url, payload=input, response_model=PathwayRankerResponse, timeout=120)
 
         result = response["result"]
 
