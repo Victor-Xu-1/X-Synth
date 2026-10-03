@@ -14,6 +14,16 @@
     </div>
     <div v-else class="drawing-layout">
       <section class="drawing-editor">
+        <div class="drawing-file-actions">
+          <span class="field-label">化合物结构文件</span>
+          <MoleculeFileControls
+            :smiles="smiles || ''"
+            :disabled="busy"
+            :read-structure="readDrawing"
+            @import="smiles = $event.smiles"
+            @busy="fileBusy = $event"
+          />
+        </div>
         <v-form @submit.prevent="applyStructure">
           <v-text-field
             v-model="smiles"
@@ -21,18 +31,20 @@
             placeholder="分子 / 反应 SMILES"
             variant="outlined"
             density="comfortable"
-            :disabled="busy"
+            :disabled="busy || fileBusy"
             clearable
             data-cy="draw-enter-smiles"
           />
         </v-form>
-        <inline-ketcher-editor
-          ref="editor"
-          v-model:smiles="smiles"
-          :show-actions="false"
-          fill-height
-          @commit="commitStructure"
-        />
+        <div :inert="fileBusy || busy || undefined">
+          <inline-ketcher-editor
+            ref="editor"
+            v-model:smiles="smiles"
+            :show-actions="false"
+            fill-height
+            @commit="commitStructure"
+          />
+        </div>
         <div class="page-actions drawing-actions">
           <v-tooltip text="清空画板" location="top">
             <template #activator="{ props }">
@@ -41,7 +53,7 @@
                 icon="mdi-eraser"
                 aria-label="清空画板"
                 variant="text"
-                :disabled="busy"
+                :disabled="busy || fileBusy"
                 @click="clearEditor"
               />
             </template>
@@ -51,7 +63,7 @@
             variant="flat"
             prepend-icon="mdi-check"
             :loading="applying"
-            :disabled="canonicalizing"
+            :disabled="canonicalizing || fileBusy"
             data-cy="draw-apply-btn"
             @click="applyStructure"
             >应用结构</v-btn
@@ -60,7 +72,7 @@
             variant="outlined"
             prepend-icon="mdi-auto-fix"
             :loading="canonicalizing"
-            :disabled="applying || !smiles?.trim()"
+            :disabled="applying || fileBusy || !smiles?.trim()"
             data-cy="draw-canonicalize-btn"
             @click="canonicalize"
             >标准化</v-btn
@@ -103,11 +115,14 @@ import { API } from "@/common/api";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import InlineKetcherEditor from "@/components/InlineKetcherEditor.vue";
 import SmilesImage from "@/components/SmilesImage.vue";
+import MoleculeFileControls from "@/components/workspace/MoleculeFileControls.vue";
 import { useWorkspaceStore } from "@/store/workspace";
 
 const workspace = useWorkspaceStore();
 const route = useRoute();
 const editor = ref(null);
+const fileBusy = ref(false);
+const readDrawing = () => editor.value?.readSmilesFromEditor();
 const smiles = ref(
   typeof route.query.smiles === "string" ? route.query.smiles : "",
 );
@@ -189,6 +204,12 @@ onMounted(() => workspace.refresh());
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px;
   gap: 28px;
+}
+.drawing-file-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
 }
 .drawing-editor,
 .drawing-preview {

@@ -12,6 +12,7 @@ export function reactionForNode(graph, node) {
   const product = nodes.get(output?.target)?.smiles;
   return precursors.length && product
     ? {
+        precursors,
         reactants: precursors.join("."),
         product,
         smiles: precursors.join(".") + ">>" + product,

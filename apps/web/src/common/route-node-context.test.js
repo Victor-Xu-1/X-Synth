@@ -40,6 +40,7 @@ test("node reaction context follows actual graph edges and never source index al
     graph.nodes.find((node) => node.id === "r-1"),
   );
   expect(reaction).toEqual({
+    precursors: route.steps[0].precursors,
     reactants: route.steps[0].precursors.join("."),
     product: route.target_smiles,
     smiles: route.steps[0].precursors.join(".") + ">>" + route.target_smiles,

@@ -77,10 +77,19 @@ test("inline Ketcher editor scales the fixed-width Ketcher app to the available 
   );
   expect(text).toContain("window.setTimeout(syncKetcherLayout, 900);");
   expect(text).toContain('@load="patchKetcherDocument"');
-  expect(text).toContain("synon-ketcher-responsive-style");
-  expect(text).toContain("overflow: hidden !important;");
-  expect(text).toContain('body > div[role="application"]');
-  expect(text).toContain('body main[role="application"]');
+  expect(text).toContain("prepareKetcherDocument(doc)");
+  expect(text).toContain(
+    "fitKetcherCanvas(ketcherIframe.value?.contentWindow?.ketcher?.editor)",
+  );
+  const layout = fs.readFileSync(
+    path.resolve(__dirname, "../common/ketcher-layout.js"),
+    "utf8",
+  );
+  expect(layout).toContain("x-synth-ketcher-responsive-style");
+  expect(layout).toContain("overflow: hidden !important;");
+  expect(layout).toContain(".Ketcher-root");
+  expect(layout).toContain('body > div[role="application"]');
+  expect(layout).toContain('body main[role="application"]');
   expect(text).toContain('window.addEventListener("resize", syncKetcherLayout');
   expect(text).toContain(
     'window.removeEventListener("resize", syncKetcherLayout',
@@ -89,7 +98,7 @@ test("inline Ketcher editor scales the fixed-width Ketcher app to the available 
   expect(text).toContain("--ketcher-viewport-width");
   expect(text).toContain("--ketcher-viewport-height");
   expect(text).toContain("height: auto;");
-  expect(text).toContain("height: 100% !important;");
+  expect(layout).toContain("height: 100% !important;");
   expect(text).toContain(".inline-ketcher-editor.fill-height-mode");
   expect(text).toContain("@media (max-width: 1120px)");
   statement(

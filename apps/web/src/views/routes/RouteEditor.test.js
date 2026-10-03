@@ -8,6 +8,9 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { API } from "@/common/api";
 import { useWorkspaceStore } from "@/store/workspace";
 import RouteEditor from "./RouteEditor.vue";
+import { randomUUID } from "node:crypto";
+import { deserialize, serialize } from "node:v8";
+import { reactive } from "vue";
 
 jest.mock("vue-router", () => ({
   useRoute: jest.fn(),
@@ -19,6 +22,20 @@ jest.mock("@/common/api", () => ({
   API: { get: jest.fn(), post: jest.fn(), put: jest.fn() },
 }));
 jest.mock("@/store/workspace", () => ({ useWorkspaceStore: jest.fn() }));
+jest.mock("@/components/workspace/StructureInput.vue", () => ({
+  name: "StructureInput",
+  props: ["modelValue", "label", "disabled"],
+  emits: ["update:modelValue"],
+  template:
+    '<label>{{ label }}<textarea :aria-label="label" :disabled="disabled" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" /></label>',
+}));
+jest.mock("@/components/SmilesImage.vue", () => ({
+  name: "SmilesImage",
+  props: ["smiles"],
+  template: "<div />",
+}));
+Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID });
+globalThis.structuredClone = (value) => deserialize(serialize(value));
 jest.mock("@/components/routes/RouteGraph.vue", () => ({
   name: "RouteGraph",
   props: ["graph", "editable"],
@@ -63,12 +80,20 @@ const stubs = {
   VList: { template: "<div><slot /></div>" },
   VListItem: true,
   VIcon: true,
-  VDialog: true,
+  VDialog: {
+    props: ["modelValue"],
+    template: '<div v-if="modelValue" class="dialog"><slot /></div>',
+  },
   VProgressCircular: true,
-  VCard: true,
+  VCard: { template: "<div><slot /></div>" },
   VCardTitle: true,
-  VCardText: true,
-  VCardActions: true,
+  VCardText: { template: "<div><slot /></div>" },
+  VCardActions: { template: "<div><slot /></div>" },
+  VSelect: {
+    props: ["modelValue", "items", "disabled"],
+    template:
+      '<select :value="modelValue" :disabled="disabled"><option v-for="item in items" :key="item.value" :value="item.value">{{ item.title }}</option></select>',
+  },
   VSpacer: true,
   RouterLink: {
     name: "RouterLink",
@@ -79,7 +104,8 @@ const stubs = {
 const wrappers = [];
 async function setup(state = "source_copy", identifier = documentId) {
   const router = { replace: jest.fn().mockResolvedValue(undefined) };
-  useRoute.mockReturnValue({ params: { id: identifier } });
+  const route = reactive({ params: { id: identifier } });
+  useRoute.mockReturnValue(route);
   useRouter.mockReturnValue(router);
   useWorkspaceStore.mockReturnValue({ can: () => false });
   API.get.mockResolvedValue({
@@ -96,7 +122,7 @@ async function setup(state = "source_copy", identifier = documentId) {
   const wrapper = mount(RouteEditor, { global: { stubs } });
   wrappers.push(wrapper);
   await flushPromises();
-  return { wrapper, router };
+  return { wrapper, router, route };
 }
 async function selectFile(wrapper, value = {}) {
   const file = {
@@ -208,4 +234,121 @@ test("new-document input is protected before any document or model request exist
   const unload = new Event("beforeunload", { cancelable: true });
   window.dispatchEvent(unload);
   expect(unload.defaultPrevented).toBe(true);
+});
+
+test("new routes use the shared target structure input and keep route-document file actions distinct", async () => {
+  const { wrapper, router } = await setup("draft", null);
+  const input = wrapper.getComponent({ name: "StructureInput" });
+  expect(input.props("label")).toBe("目标化合物结构");
+  expect(wrapper.text()).toContain("打开路线文档");
+  expect(wrapper.get('input[type="file"]').attributes("accept")).toBe(
+    ".json,application/json",
+  );
+  await wrapper.get('textarea[aria-label="目标化合物结构"]').setValue("CCO");
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({
+    id: documentId,
+    title: "未命名路线",
+    graph,
+    revision: 1,
+    state: "draft",
+  });
+  await wrapper.get(".editor-create-form").trigger("submit");
+  await flushPromises();
+  expect(API.post.mock.calls[0]).toEqual([
+    "/api/v1/structure/validate",
+    { smiles: "CCO" },
+  ]);
+  expect(API.post.mock.calls[1][0]).toBe("/api/v1/route-documents");
+  expect(router.replace).toHaveBeenCalledWith("/editor/" + documentId);
+});
+
+test("manual reaction insertion is a connected, undoable draft edit rather than an isolated reaction", async () => {
+  const { wrapper } = await setup();
+  const canvas = wrapper.getComponent({ name: "RouteGraph" });
+  canvas.vm.$emit("select", "target");
+  await flushPromises();
+  await wrapper.get('button[aria-label="手动补充反应步骤"]').trigger("click");
+  await wrapper.get('textarea[aria-label="反应物 1"]').setValue("CC=O");
+  await wrapper.get('textarea[aria-label="反应物 2"]').setValue("[H][H]");
+  API.post.mockImplementation(async (_, { smiles }) => ({ smiles }));
+  await wrapper.get(".manual-reaction-form").trigger("submit");
+  await flushPromises();
+  const edited = canvas.props("graph");
+  expect(edited.nodes).toHaveLength(4);
+  expect(edited.edges).toHaveLength(3);
+  expect(wrapper.text()).toContain("草稿");
+  expect(wrapper.text()).toContain("未保存");
+  expect(API.post).toHaveBeenCalledTimes(2);
+  await wrapper.get('button[aria-label="撤销"]').trigger("click");
+  expect(canvas.props("graph").nodes).toHaveLength(1);
+  await wrapper.get('button[aria-label="重做"]').trigger("click");
+  expect(canvas.props("graph").nodes).toHaveLength(4);
+});
+
+test("cancelled manual step entries do not change the route or start validation", async () => {
+  const { wrapper } = await setup();
+  const canvas = wrapper.getComponent({ name: "RouteGraph" });
+  await wrapper.get('button[aria-label="手动补充反应步骤"]').trigger("click");
+  await wrapper.get('textarea[aria-label="反应物 1"]').setValue("CC=O");
+  await wrapper.get('button[aria-label="关闭手动反应步骤"]').trigger("click");
+  expect(canvas.props("graph")).toEqual(graph);
+  expect(wrapper.text()).toContain("已保存");
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test("manual validation cannot write a reaction into a new document with the same molecule ID", async () => {
+  const { wrapper, route } = await setup();
+  const canvas = wrapper.getComponent({ name: "RouteGraph" });
+  canvas.vm.$emit("select", "target");
+  await flushPromises();
+  await wrapper.get('button[aria-label="手动补充反应步骤"]').trigger("click");
+  await wrapper.get('textarea[aria-label="反应物 1"]').setValue("CC=O");
+  await wrapper.get('textarea[aria-label="反应物 2"]').setValue("[H][H]");
+  let resolve;
+  API.post.mockReturnValue(
+    new Promise((yes) => {
+      resolve = yes;
+    }),
+  );
+  await wrapper.get(".manual-reaction-form").trigger("submit");
+  API.get.mockResolvedValue({
+    id: importedId,
+    title: "New document",
+    graph,
+    revision: 1,
+    state: "draft",
+  });
+  route.params.id = importedId;
+  await flushPromises();
+  resolve({ smiles: "O" });
+  await flushPromises();
+  expect(canvas.props("graph")).toEqual(graph);
+  expect(wrapper.text()).toContain("已保存");
+  expect(wrapper.find(".manual-reaction-form").exists()).toBe(false);
+});
+
+test("closing the add-material dialog invalidates its pending structure check", async () => {
+  const { wrapper } = await setup();
+  await wrapper.get('button[aria-label="添加中间体或原料"]').trigger("click");
+  await wrapper.get('textarea[aria-label="中间体或原料结构"]').setValue("O");
+  let resolve;
+  API.post.mockReturnValue(
+    new Promise((yes) => {
+      resolve = yes;
+    }),
+  );
+  await wrapper
+    .findAll("button")
+    .find((button) => button.text() === "添加")
+    .trigger("click");
+  await wrapper
+    .findAll("button")
+    .find((button) => button.text() === "取消")
+    .trigger("click");
+  resolve({ smiles: "O" });
+  await flushPromises();
+  expect(wrapper.getComponent({ name: "RouteGraph" }).props("graph")).toEqual(
+    graph,
+  );
+  expect(wrapper.text()).toContain("已保存");
 });

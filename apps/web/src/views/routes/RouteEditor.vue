@@ -24,7 +24,7 @@
               :icon="action.icon"
               size="small"
               variant="text"
-              :disabled="action.disabled || saving || importing"
+              :disabled="action.disabled || editingLocked"
               :aria-label="action.label"
               @click="action.run" /></template
         ></v-tooltip>
@@ -35,18 +35,18 @@
               prepend-icon="mdi-download"
               variant="text"
               :disabled="!document || importing"
-              >导出</v-btn
+              >导出路线</v-btn
             ></template
           ><v-list density="compact"
             ><v-list-item
-              title="路线 JSON"
+              title="路线文档（X-Synth JSON）"
               @click="exportDocument" /><v-list-item
-              title="画布 PNG"
+              title="路线图（PNG）"
               @click="exportImage" /></v-list
         ></v-menu>
         <v-btn
           variant="outlined"
-          :disabled="!document || saving || importing"
+          :disabled="!document || editingLocked"
           @click="saveDocument(true)"
           >另存副本</v-btn
         >
@@ -54,7 +54,7 @@
           color="primary"
           variant="flat"
           prepend-icon="mdi-content-save-outline"
-          :disabled="!document || !dirty || importing"
+          :disabled="!document || !dirty || editingLocked"
           :loading="saving"
           @click="saveDocument(false)"
           >保存</v-btn
@@ -89,22 +89,21 @@
           ><input
             class="workspace-input"
             v-model="newTitle"
-            maxlength="160" /></label
-        ><label
-          ><span class="field-label">目标分子</span
-          ><textarea
-            class="workspace-input workspace-code"
-            rows="3"
-            v-model="newSmiles"
-            placeholder="SMILES"
-          />
-        </label>
+            :disabled="saving || importing"
+            maxlength="160"
+        /></label>
+        <StructureInput
+          ref="newStructure"
+          v-model="newSmiles"
+          label="目标化合物结构"
+          :disabled="saving || importing"
+        />
         <div class="page-actions">
           <v-btn
             color="primary"
             variant="flat"
             type="submit"
-            :disabled="!newSmiles.trim() || importing"
+            :disabled="!newSmiles.trim() || importing || newStructure?.pending"
             :loading="saving"
             >创建路线</v-btn
           ><v-btn
@@ -112,7 +111,7 @@
             prepend-icon="mdi-folder-open-outline"
             :disabled="saving || importing"
             @click="fileInput.click()"
-            >打开文件</v-btn
+            >打开路线文档</v-btn
           >
         </div>
       </form>
@@ -124,7 +123,7 @@
       <RouteGraph
         ref="canvas"
         :graph="graph"
-        :editable="!saving && !importing"
+        :editable="!editingLocked"
         :scores="scores"
         @update:graph="replaceGraph"
         @select="selected = $event"
@@ -133,9 +132,10 @@
       />
       <RouteInspector
         v-if="selectedNode"
+        :context-id="document.id"
         :node="selectedNode"
         :graph="graph"
-        :editable="!saving && !importing"
+        :editable="!editingLocked"
         :target="selected === graph.target_id"
         :score="scores[selected]"
         @close="selected = null"
@@ -156,23 +156,38 @@
       :node="selectedNode"
       @choose="insertExpansion"
     />
-    <v-dialog v-model="moleculeDialog" max-width="460"
+    <ManualReactionDialog
+      v-if="document"
+      v-model="reactionDialog"
+      :graph="graph"
+      :document-id="document.id"
+      :selected-id="selected"
+      :disabled="loading || saving || importing"
+      @add="insertManualReaction"
+    />
+    <v-dialog v-model="moleculeDialog" max-width="560"
       ><v-card
-        ><v-card-title>添加分子</v-card-title
+        ><v-card-title>添加中间体或原料</v-card-title
         ><v-card-text>
-          <textarea
-            class="workspace-input workspace-code"
-            rows="4"
+          <StructureInput
+            ref="moleculeStructure"
             v-model="moleculeSmiles"
-            placeholder="SMILES"
-          /></v-card-text
+            label="中间体或原料结构"
+            :disabled="validating"
+          />
+          <div v-if="error" class="tool-error" role="alert">
+            {{ error }}
+          </div> </v-card-text
         ><v-card-actions
           ><v-spacer /><v-btn variant="text" @click="moleculeDialog = false"
             >取消</v-btn
           ><v-btn
             color="primary"
             @click="insertMolecule"
-            :disabled="!moleculeSmiles.trim()"
+            :disabled="
+              !moleculeSmiles.trim() || validating || moleculeStructure?.pending
+            "
+            :loading="validating"
             >添加</v-btn
           ></v-card-actions
         ></v-card
@@ -193,6 +208,8 @@ import { useRouteDocument } from "@/composables/useRouteDocument";
 import RouteGraph from "@/components/routes/RouteGraph.vue";
 import RouteInspector from "@/components/routes/RouteInspector.vue";
 import ExpandMolecule from "@/components/routes/ExpandMolecule.vue";
+import ManualReactionDialog from "@/components/routes/ManualReactionDialog.vue";
+import StructureInput from "@/components/workspace/StructureInput.vue";
 import { useWorkspaceStore } from "@/store/workspace";
 import { API } from "@/common/api";
 import { importRouteDocument } from "@/common/route-document-file";
@@ -208,8 +225,14 @@ import {
   attachPrecursors,
 } from "@/common/route-graph";
 import { errorMessage } from "@/common/workspace-errors";
+import {
+  manualReactionProducts,
+  manualReactionSnapshot,
+} from "@/common/manual-reaction";
 const route = useRoute(),
   router = useRouter();
+const newStructure = ref(null),
+  moleculeStructure = ref(null);
 const workspace = useWorkspaceStore(),
   expandDialog = ref(false);
 const {
@@ -218,6 +241,7 @@ const {
   title,
   loading,
   saving,
+  validating,
   error,
   dirty,
   undoStack,
@@ -233,7 +257,7 @@ const {
   redo,
   save,
   addMolecule,
-  addReaction,
+  cancelValidation,
   removeSelected,
 } = useRouteDocument();
 const canvas = ref(null),
@@ -242,7 +266,19 @@ const canvas = ref(null),
   newTitle = ref("未命名路线"),
   newSmiles = ref(""),
   moleculeDialog = ref(false),
+  reactionDialog = ref(false),
   moleculeSmiles = ref("");
+const editingLocked = computed(
+  () =>
+    loading.value ||
+    saving.value ||
+    importing.value ||
+    validating.value ||
+    moleculeDialog.value ||
+    reactionDialog.value ||
+    expandDialog.value,
+);
+let expansionContext = null;
 const hasUnsavedChanges = computed(
   () =>
     dirty.value ||
@@ -279,7 +315,7 @@ const sourceStateLabel = computed(() =>
 const origin = computed(() => documentOrigin(document.value));
 const editActions = computed(() => [
   {
-    label: "打开文件",
+    label: "打开路线文档",
     icon: "mdi-folder-open-outline",
     run: () => fileInput.value.click(),
     disabled: loading.value || saving.value,
@@ -297,16 +333,16 @@ const editActions = computed(() => [
     disabled: !redoStack.value.length,
   },
   {
-    label: "添加分子",
+    label: "添加中间体或原料",
     icon: "mdi-flask-plus-outline",
     run: () => (moleculeDialog.value = true),
     disabled: !document.value,
   },
   {
-    label: "添加反应",
+    label: "手动补充反应步骤",
     icon: "mdi-arrow-right-bold-outline",
-    run: addReaction,
-    disabled: !document.value,
+    run: () => (reactionDialog.value = true),
+    disabled: !document.value || !manualReactionProducts(graph.value).length,
   },
   {
     label: "继续逆合成",
@@ -318,7 +354,7 @@ const editActions = computed(() => [
       graph.value.edges.some((edge) => edge.target === selected.value),
   },
   {
-    label: "删除选中",
+    label: "删除所选结构或反应步骤",
     icon: "mdi-trash-can-outline",
     run: removeSelected,
     disabled: !selected.value || selected.value === graph.value.target_id,
@@ -334,12 +370,46 @@ watch(
   () => route.params.id,
   (identifier) => {
     documentNavigation.invalidate();
+    moleculeDialog.value = false;
+    reactionDialog.value = false;
+    expandDialog.value = false;
     if (identifier) load(identifier);
     else clear();
   },
-  { immediate: true },
+  { immediate: true, flush: "sync" },
+);
+watch(
+  moleculeDialog,
+  (open) => {
+    if (!open) {
+      cancelValidation();
+      moleculeSmiles.value = "";
+    } else error.value = "";
+  },
+  { flush: "sync" },
+);
+watch(
+  expandDialog,
+  (open) => {
+    expansionContext = open
+      ? {
+          documentId: document.value?.id,
+          productId: selected.value,
+          snapshot: manualReactionSnapshot(graph.value),
+        }
+      : null;
+  },
+  { flush: "sync" },
+);
+watch(
+  selected,
+  () => {
+    if (expandDialog.value) expandDialog.value = false;
+  },
+  { flush: "sync" },
 );
 async function createDocument() {
+  if (newStructure.value?.pending) return;
   const value = await create(newSmiles.value, newTitle.value);
   if (value) router.replace(`/editor/${value.id}`);
 }
@@ -348,6 +418,7 @@ async function saveDocument(asCopy) {
   if (value && asCopy) router.replace(`/editor/${value.id}`);
 }
 async function insertMolecule() {
+  if (moleculeStructure.value?.pending) return;
   if (await addMolecule(moleculeSmiles.value)) {
     moleculeDialog.value = false;
     moleculeSmiles.value = "";
@@ -362,11 +433,33 @@ function updateNode(value) {
   });
 }
 function insertExpansion({ productId, precursors }) {
+  if (
+    !expansionContext ||
+    expansionContext.documentId !== document.value?.id ||
+    expansionContext.productId !== productId ||
+    selected.value !== productId ||
+    expansionContext.snapshot !== manualReactionSnapshot(graph.value) ||
+    saving.value ||
+    importing.value
+  )
+    return;
   try {
     replaceGraph(attachPrecursors(graph.value, productId, precursors));
   } catch (e) {
     error.value = errorMessage(e, "候选反应无法加入路线。");
   }
+}
+function insertManualReaction(value) {
+  if (
+    !reactionDialog.value ||
+    value.documentId !== document.value?.id ||
+    value.selectedId !== selected.value ||
+    value.snapshot !== manualReactionSnapshot(graph.value) ||
+    saving.value ||
+    importing.value
+  )
+    return;
+  replaceGraph(value.graph);
 }
 function download(blob, name) {
   const url = URL.createObjectURL(blob);

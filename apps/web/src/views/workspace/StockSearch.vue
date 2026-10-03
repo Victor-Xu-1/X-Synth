@@ -1,13 +1,20 @@
 <template>
   <ModuleWorkbench title="商业原料检索">
     <div class="tool-layout">
-      <form class="tool-input-panel tool-fields" @submit.prevent="search">
-        <StructureInput v-model="smiles" label="分子结构" /><v-btn
+      <form
+        class="tool-input-panel tool-fields"
+        @submit.prevent="!structure?.pending && search()"
+      >
+        <StructureInput
+          ref="structure"
+          v-model="smiles"
+          label="化合物结构"
+        /><v-btn
           color="primary"
           variant="flat"
           prepend-icon="mdi-magnify"
           type="submit"
-          :disabled="!smiles.trim() || loading"
+          :disabled="!smiles.trim() || loading || structure?.pending"
           :loading="loading"
           >精确检索</v-btn
         >
@@ -18,12 +25,6 @@
           }}
           个目录结构
         </p>
-        <SmilesImage
-          v-if="matchedResult"
-          :smiles="matchedResult.smiles"
-          :height="180"
-          :show-error-image="false"
-        />
       </form>
       <section class="tool-result-panel">
         <div v-if="prefillError" class="tool-error" role="alert">
@@ -35,24 +36,36 @@
             >正在检索目录记录</span
           >
         </div>
-        <dl v-if="matchedResult" class="stock-result-identity">
-          <dt>匹配结构</dt>
-          <dd class="workspace-code">{{ matchedResult.smiles }}</dd>
-          <dt>响应快照 SHA256</dt>
-          <dd class="workspace-code">{{ matchedResult.snapshot }}</dd>
-          <template v-if="matchedResult.expectedSnapshot">
-            <dt>任务快照 SHA256</dt>
-            <dd class="workspace-code">{{ matchedResult.expectedSnapshot }}</dd>
-            <dt>快照比较</dt>
-            <dd :class="{ 'tool-error': snapshotMatches === false }">
-              {{
-                snapshotMatches
-                  ? "与任务快照一致"
-                  : "快照不同：当前目录记录不属于原任务快照"
-              }}
-            </dd>
-          </template>
-        </dl>
+        <template v-if="matchedResult"
+          ><SmilesImage
+            :smiles="matchedResult.smiles"
+            :height="180"
+            :show-error-image="false"
+          />
+          <details class="stock-technical">
+            <summary>结构与目录版本</summary>
+            <dl class="stock-result-identity">
+              <dt>匹配结构</dt>
+              <dd class="workspace-code">{{ matchedResult.smiles }}</dd>
+              <dt>响应快照 SHA256</dt>
+              <dd class="workspace-code">{{ matchedResult.snapshot }}</dd>
+              <template v-if="matchedResult.expectedSnapshot">
+                <dt>任务快照 SHA256</dt>
+                <dd class="workspace-code">
+                  {{ matchedResult.expectedSnapshot }}
+                </dd>
+                <dt>快照比较</dt>
+                <dd :class="{ 'tool-error': snapshotMatches === false }">
+                  {{
+                    snapshotMatches
+                      ? "与任务快照一致"
+                      : "快照不同：当前目录记录不属于原任务快照"
+                  }}
+                </dd>
+              </template>
+            </dl>
+          </details></template
+        >
         <div v-if="!matchedResult && !loading" class="workspace-empty">
           <v-icon icon="mdi-flask-outline" size="30" />
           <h2>商业原料</h2>
@@ -67,10 +80,10 @@
         <table v-else-if="matchedResult" class="data-table">
           <thead>
             <tr>
-              <th>供应源</th>
+              <th>供应商</th>
               <th>目录号</th>
               <th>CAS</th>
-              <th>目录价 /g</th>
+              <th>目录单价 /g</th>
               <th>目录证据</th>
             </tr>
           </thead>
@@ -116,6 +129,7 @@ const route = useRoute(),
 const smiles = ref(""),
   expectedSnapshot = ref(null),
   prefillError = ref("");
+const structure = ref(null);
 const { matchedResult, snapshotMatches, loading, error, search, reset } =
   useStockSearch({ smiles, expectedSnapshot });
 watch(
@@ -137,6 +151,15 @@ watch(
   gap: 8px 12px;
   margin: 0 0 20px;
   font-size: 12px;
+}
+.stock-technical {
+  font-size: 12px;
+  margin: 12px 0 20px;
+}
+.stock-technical summary {
+  cursor: pointer;
+  color: var(--ws-muted);
+  margin-bottom: 12px;
 }
 .stock-result-identity dt {
   color: var(--ws-muted);

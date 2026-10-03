@@ -1,5 +1,6 @@
 import dagre from "@dagrejs/dagre";
 import { graphFromCandidate } from "./route-graph.js";
+import { syntheticStepOrder } from "./synthetic-step-order";
 const list = (value) => (Array.isArray(value) ? value : []);
 const strings = (value) =>
   list(value).filter((item) => typeof item === "string" && item.trim());
@@ -145,7 +146,12 @@ export function longestLinearSteps(candidate) {
 export function stepDetails(candidate, graph) {
   const nodes = list(graph?.nodes),
     edges = list(graph?.edges);
-  return list(candidate?.steps).map((step, index) => {
+  const sourceSteps = list(candidate?.steps);
+  const order = syntheticStepOrder(sourceSteps);
+  if (order === null)
+    throw new Error("路线含有循环或重复产物，无法确定合成步骤顺序。");
+  return order.map((index, displayIndex) => {
+    const step = sourceSteps[index];
     const nodeId =
       nodes.find(
         (node) => node.id === `r-${index + 1}` && node.type === "reaction",
@@ -159,7 +165,8 @@ export function stepDetails(candidate, graph) {
     const method = candidate.metadata?.forward_validation_method;
     return {
       record: step,
-      number: index + 1,
+      number: displayIndex + 1,
+      sourceIndex: index,
       nodeId,
       product: { smiles: step.product, nodeId: productId },
       precursors: strings(step.precursors).map((smiles) => ({

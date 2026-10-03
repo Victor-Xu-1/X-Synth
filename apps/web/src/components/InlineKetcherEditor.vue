@@ -55,6 +55,10 @@ import {
   createKetcherWriter,
   waitForKetcher as waitForEditor,
 } from "@/common/ketcher";
+import {
+  fitKetcherCanvas,
+  prepareKetcherDocument,
+} from "@/common/ketcher-layout";
 
 const smiles = defineModel("smiles", { required: true, default: "" });
 const emit = defineEmits(["commit"]);
@@ -89,7 +93,15 @@ const ketcherVisualHeight = ref(560);
 const ketcherViewportWidth = ref(KETCHER_BASE_WIDTH);
 const ketcherViewportHeight = ref(KETCHER_BASE_HEIGHT);
 let resizeObserver = null;
+let fitRevision = 0;
 const editorLifetime = new AbortController();
+const fitDrawing = async () => {
+  const current = ++fitRevision;
+  await nextTick();
+  await new Promise((resolve) => window.requestAnimationFrame(resolve));
+  if (editorLifetime.signal.aborted || current !== fitRevision) return;
+  fitKetcherCanvas(ketcherIframe.value?.contentWindow?.ketcher?.editor);
+};
 
 const clampNumber = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -143,10 +155,17 @@ const syncKetcherLayout = () => {
   );
 
   if (props.fillHeight) {
+    const resized =
+      availableWidth !== ketcherViewportWidth.value ||
+      visualHeightLimit !== ketcherViewportHeight.value;
     ketcherScale.value = 1;
     ketcherViewportWidth.value = availableWidth;
     ketcherViewportHeight.value = visualHeightLimit;
     ketcherVisualHeight.value = visualHeightLimit;
+    if (resized)
+      fitDrawing().catch(() => {
+        editorStatus.value = "结构视图调整失败，请重新打开画板。";
+      });
     return;
   }
 
@@ -167,28 +186,7 @@ const syncKetcherLayout = () => {
 
 const patchKetcherDocument = () => {
   const doc = ketcherIframe.value?.contentDocument;
-  if (!doc || doc.getElementById("synon-ketcher-responsive-style")) return;
-
-  const style = doc.createElement("style");
-  style.id = "synon-ketcher-responsive-style";
-  style.textContent = `
-    html,
-    body {
-      width: 100% !important;
-      height: 100% !important;
-      margin: 0 !important;
-      overflow: hidden !important;
-    }
-
-    body > div[role="application"],
-    body main[role="application"] {
-      width: 100% !important;
-      height: 100% !important;
-      min-width: 0 !important;
-      min-height: 0 !important;
-    }
-  `;
-  doc.head.appendChild(style);
+  prepareKetcherDocument(doc);
   scheduleKetcherLayoutSync();
 };
 
@@ -213,6 +211,7 @@ const writeMolecule = createKetcherWriter(waitForKetcher, {
 
 const setSmilesToEditor = async (value = smiles.value, options = {}) => {
   const applied = await writeMolecule(value);
+  if (applied) await fitDrawing();
   if (applied && options.statusMessage) {
     editorStatus.value = options.statusMessage;
   }

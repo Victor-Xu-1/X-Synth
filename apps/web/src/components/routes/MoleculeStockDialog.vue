@@ -11,7 +11,16 @@
           @click="open = false"
         />
       </header>
-      <code class="stock-query">{{ smiles }}</code>
+      <SmilesImage
+        :smiles="smiles"
+        :width="400"
+        :height="180"
+        :show-error-image="false"
+      />
+      <details>
+        <summary>结构 SMILES</summary>
+        <code class="stock-query">{{ smiles }}</code>
+      </details>
       <div v-if="loading" class="workspace-loading">正在匹配目录结构</div>
       <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
       <div v-if="snapshot" class="stock-snapshot">
@@ -21,7 +30,10 @@
             ? "目录与原任务快照一致"
             : "目录已变化，不能替代原任务采购证据"
         }}</span>
-        <code>{{ snapshot }}</code>
+        <details>
+          <summary>目录版本标识</summary>
+          <code>{{ snapshot }}</code>
+        </details>
       </div>
       <div
         v-if="searched && !loading && !rows.length && !error"
@@ -85,6 +97,7 @@ import { safeExternalUrl } from "@/common/external-url";
 import { moleculeLocations } from "@/common/route-node-context";
 import { lookupStock } from "@/common/stock-lookup";
 import { errorMessage } from "@/common/workspace-errors";
+import SmilesImage from "@/components/SmilesImage.vue";
 const open = defineModel({ type: Boolean, default: false });
 const props = defineProps({ smiles: String, expectedSnapshot: String });
 defineEmits(["navigate"]);

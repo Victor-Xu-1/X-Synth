@@ -1,8 +1,14 @@
 <template>
-  <aside class="route-inspector" aria-label="节点详情">
+  <aside class="route-inspector" aria-label="结构与反应详情">
     <header>
       <strong>{{
-        node ? (node.type === "molecule" ? "分子节点" : "反应节点") : "节点详情"
+        node
+          ? node.type === "molecule"
+            ? target
+              ? "目标化合物"
+              : "中间体或原料"
+            : "反应步骤"
+          : "结构与反应详情"
       }}</strong
       ><v-btn
         icon="mdi-close"
@@ -17,51 +23,48 @@
     </div>
     <div v-else class="tool-fields">
       <SmilesImage
-        v-if="node.type === 'molecule'"
+        v-if="node.type === 'molecule' && !editable"
         :smiles="node.smiles"
         :width="260"
         :height="150"
         :show-error-image="false"
       />
-      <label
-        ><span class="field-label">名称</span
+      <label v-if="editable || node.label"
+        ><span class="field-label">{{
+          node.type === "molecule" ? "化合物名称" : "反应名称"
+        }}</span
         ><input
+          v-if="editable"
           class="workspace-input"
           v-model="label"
           maxlength="120"
-          :readonly="!editable"
           :disabled="busy"
-      /></label>
-      <label v-if="node.type === 'molecule'"
-        ><span class="field-label">SMILES</span
-        ><textarea
-          class="workspace-input workspace-code"
-          v-model="smiles"
-          rows="4"
-          :readonly="!editable"
-          :disabled="busy"
-        />
+        /><span v-else class="inspector-readonly">{{ node.label }}</span>
       </label>
-      <v-btn
+      <StructureInput
+        ref="structureInput"
         v-if="editable && node.type === 'molecule'"
-        prepend-icon="mdi-draw"
-        variant="outlined"
+        :key="`${contextId || ''}/${node.id}`"
+        v-model="smiles"
+        :label="target ? '目标化合物结构' : '中间体或原料结构'"
         :disabled="busy"
-        @click="drawing = true"
-        >绘制结构</v-btn
-      >
-      <label
+      />
+      <details v-else-if="node.type === 'molecule'" class="inspector-smiles">
+        <summary>SMILES</summary>
+        <code class="workspace-code">{{ node.smiles }}</code>
+      </details>
+      <label v-if="editable || node.note"
         ><span class="field-label">备注</span
         ><textarea
+          v-if="editable"
           class="workspace-input"
           v-model="note"
           rows="5"
           maxlength="4096"
-          :readonly="!editable"
           :disabled="busy"
-        />
+        /><span v-else class="inspector-readonly">{{ node.note }}</span>
       </label>
-      <div v-if="typeof score === 'number'" class="workspace-muted">
+      <div v-if="Number.isFinite(score)" class="workspace-muted">
         模型分数 {{ score.toFixed(3) }}
       </div>
       <RouteNodeContext
@@ -77,6 +80,7 @@
         variant="flat"
         color="primary"
         :loading="busy"
+        :disabled="busy || structureInput?.pending"
         @click="apply"
         >应用修改</v-btn
       >
@@ -87,20 +91,17 @@
         color="error"
         :disabled="busy"
         @click="$emit('remove')"
-        >删除节点</v-btn
+        >{{
+          node.type === "molecule" ? "删除中间体或原料" : "删除反应步骤"
+        }}</v-btn
       >
     </div>
-    <KetcherModal
-      v-model:smiles="smiles"
-      :value="drawing"
-      @input="drawing = $event"
-    />
   </aside>
 </template>
 <script setup>
 import { onBeforeUnmount, ref, watch } from "vue";
 import SmilesImage from "@/components/SmilesImage.vue";
-import KetcherModal from "@/components/KetcherModal.vue";
+import StructureInput from "@/components/workspace/StructureInput.vue";
 import RouteNodeContext from "./RouteNodeContext.vue";
 import { API } from "@/common/api";
 import { errorMessage } from "@/common/workspace-errors";
@@ -112,14 +113,15 @@ const props = defineProps({
   graph: Object,
   step: Object,
   snapshot: String,
+  contextId: String,
 });
 const emit = defineEmits(["update", "close", "remove", "navigate"]);
+const structureInput = ref(null);
 const label = ref(""),
   smiles = ref(""),
   note = ref(""),
   busy = ref(false),
-  message = ref(""),
-  drawing = ref(false);
+  message = ref("");
 let generation = 0,
   disposed = false;
 watch(
@@ -128,20 +130,35 @@ watch(
     props.node?.smiles,
     props.node?.label,
     props.node?.note,
+    props.contextId,
   ],
   () => {
     generation++;
     busy.value = false;
-    drawing.value = false;
     label.value = props.node?.label || "";
     smiles.value = props.node?.smiles || "";
     note.value = props.node?.note || "";
     message.value = "";
   },
-  { immediate: true },
+  { immediate: true, flush: "sync" },
+);
+watch(
+  () => props.editable,
+  () => {
+    generation++;
+    busy.value = false;
+    message.value = "";
+  },
+  { flush: "sync" },
 );
 async function apply() {
-  if (!props.node || !props.editable || busy.value) return;
+  if (
+    !props.node ||
+    !props.editable ||
+    busy.value ||
+    structureInput.value?.pending
+  )
+    return;
   const current = ++generation;
   const node = { ...props.node };
   const draft = { label: label.value, smiles: smiles.value, note: note.value };
@@ -149,10 +166,14 @@ async function apply() {
   message.value = "";
   try {
     let canonical = "";
-    if (node.type === "molecule")
-      canonical = (
-        await API.post("/api/v1/structure/validate", { smiles: draft.smiles })
-      ).smiles;
+    if (node.type === "molecule") {
+      const value = await API.post("/api/v1/structure/validate", {
+        smiles: draft.smiles,
+      });
+      if (typeof value?.smiles !== "string" || !value.smiles.trim())
+        throw new Error(JSON.stringify({ detail: "结构校验未返回有效结构。" }));
+      canonical = value.smiles;
+    }
     if (
       disposed ||
       current !== generation ||
@@ -160,6 +181,14 @@ async function apply() {
       !props.editable
     )
       return;
+    if (
+      draft.smiles !== smiles.value ||
+      draft.label !== label.value ||
+      draft.note !== note.value
+    ) {
+      message.value = "输入内容已变化，请重新应用修改。";
+      return;
+    }
     emit("update", {
       ...node,
       label: draft.label,
@@ -168,7 +197,7 @@ async function apply() {
     });
   } catch (e) {
     if (!disposed && current === generation)
-      message.value = errorMessage(e, "节点修改无效。");
+      message.value = errorMessage(e, "结构或反应信息修改无效。");
   } finally {
     if (!disposed && current === generation) busy.value = false;
   }
@@ -180,11 +209,28 @@ onBeforeUnmount(() => {
 </script>
 <style scoped>
 .route-inspector {
-  width: 300px;
+  width: 340px;
+  flex-shrink: 0;
+  max-width: 100%;
   border-left: 1px solid var(--ws-border);
   background: var(--ws-surface);
   padding: 18px;
   overflow-y: auto;
+}
+.inspector-smiles summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ws-muted);
+}
+.inspector-smiles code,
+.inspector-readonly {
+  display: block;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.inspector-smiles code {
+  margin-top: 8px;
+  font-size: 12px;
 }
 .route-inspector header {
   display: flex;
@@ -207,7 +253,7 @@ onBeforeUnmount(() => {
     bottom: 0;
     z-index: 15;
     box-shadow: -8px 0 30px #0001;
-    width: min(300px, 100%);
+    width: min(340px, 100%);
   }
 }
 </style>
