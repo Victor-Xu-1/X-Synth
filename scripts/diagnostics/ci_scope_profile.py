@@ -64,6 +64,11 @@ TEMPLATE_FILES = {
     "packages/knowledge_base/template_library.py",
 }
 HISTORY_FILES = {"apps/api/job_views.py", "packages/workspace/history_projection.py"}
+CHEMICAL_FILE_FILES = {
+    "apps/api/structure_routes.py",
+    "packages/workspace/chemical_files.py",
+    "packages/workspace/chemical_reactions.py",
+}
 WEB_BUILD_FILES = {WEB + name for name in ("index.html", "vite.config.js")}
 WEB_TEST_TOOLING = {WEB + "jest.config.js"}
 FRONTEND_API_TESTS = {SOURCE + "composables/useTemplateSearch.test.js"}
@@ -186,6 +191,8 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
                 "tests/unit/test_product_api_security.py",
             }
         )
+    if roots & CHEMICAL_FILE_FILES:
+        selected.add("tests/unit/test_chemical_files.py")
     if roots & CI_FILES:
         selected.update(CI_SAFETY_TESTS)
     if any(path.startswith("packages/workspace/") for path in roots) or roots & (

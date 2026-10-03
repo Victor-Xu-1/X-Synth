@@ -53,6 +53,10 @@ import {
   createKetcherWriter,
   waitForKetcher,
 } from "@/common/ketcher";
+import {
+  prepareKetcherDocument,
+  fitKetcherCanvas,
+} from "@/common/ketcher-layout";
 
 export default {
   name: "KetcherModal",
@@ -92,10 +96,13 @@ export default {
       },
     });
 
-    const getEditor = () =>
-      waitForKetcher(() => ketcherIframe.value, {
+    const getEditor = async () => {
+      const editor = await waitForKetcher(() => ketcherIframe.value, {
         signal: editorLifetime.signal,
       });
+      prepareKetcherDocument(ketcherIframe.value?.contentDocument);
+      return editor;
+    };
     const writeMolecule = createKetcherWriter(getEditor, {
       signal: editorLifetime.signal,
     });
@@ -113,6 +120,12 @@ export default {
           await nextTick();
           if (current !== generation || editorLifetime.signal.aborted) return;
           await writeMolecule(smiles);
+          await nextTick();
+          await new Promise((resolve) => window.requestAnimationFrame(resolve));
+          if (current === generation && !editorLifetime.signal.aborted)
+            fitKetcherCanvas(
+              ketcherIframe.value?.contentWindow?.ketcher?.editor,
+            );
         } catch {
           if (current === generation && !editorLifetime.signal.aborted)
             editorError.value = "结构绘制器加载失败，请重新打开。";

@@ -187,17 +187,19 @@ test("invalid result records are rejected instead of becoming partial source gra
   ])
     expect(() => readSelectedRoutes(result([value]))).toThrow("记录格式无效");
 });
-test("step anchors follow the actual target-first molecule and reaction projection", () => {
+test("synthetic ordering retains original reaction anchors and evidence indices", () => {
   const steps = stepDetails(branch, graph);
   expect(graph.target_id).toBe("m-1");
-  expect(steps.map((step) => step.nodeId)).toEqual(["r-1", "r-2"]);
-  expect(steps[0].product.nodeId).toBe("m-1");
-  expect(steps[0].precursors.map((value) => value.nodeId)).toEqual([
+  expect(steps.map((step) => step.nodeId)).toEqual(["r-2", "r-1"]);
+  expect(steps.map((step) => step.sourceIndex)).toEqual([1, 0]);
+  expect(steps.map((step) => step.number)).toEqual([1, 2]);
+  expect(steps[1].product.nodeId).toBe("m-1");
+  expect(steps[1].precursors.map((value) => value.nodeId)).toEqual([
     "m-2",
     "m-3",
   ]);
-  expect(steps[1].product.nodeId).toBe("m-3");
-  expect(steps[1].precursors.map((value) => value.nodeId)).toEqual([
+  expect(steps[0].product.nodeId).toBe("m-3");
+  expect(steps[0].precursors.map((value) => value.nodeId)).toEqual([
     "m-4",
     "m-5",
   ]);
@@ -231,7 +233,7 @@ test("confidence is displayed as its own field and unknown closure stays unknown
   ).toBe("历史未复核");
   expect(engineLabel(candidate.engine)).toBe("启发式搜索 · RetroStar");
   expect(engineLabel("unrecognized")).toBe("unrecognized");
-  expect(stepDetails(branch, graph)[1].confidence).toBe("0.000");
+  expect(stepDetails(branch, graph)[0].confidence).toBe("0.000");
 });
 
 test("neutral engine labels preserve raw backend and template provenance", () => {
@@ -274,7 +276,7 @@ test("template reconstruction does not imply independent forward prediction", ()
     expect.arrayContaining([{ label: "独立正向预测", value: "已验证" }]),
   );
 });
-test("step-level reconstruction flags stay aligned with raw step order", () => {
+test("step-level reconstruction flags retain their source indices after synthetic ordering", () => {
   const checked = {
     ...branch,
     metadata: {
@@ -283,8 +285,8 @@ test("step-level reconstruction flags stay aligned with raw step order", () => {
     },
   };
   expect(stepDetails(checked, graph).map((step) => step.validation)).toEqual([
-    "模板重构 通过",
     "模板重构 未通过",
+    "模板重构 通过",
   ]);
   expect(
     stepDetails({ ...branch, metadata: {} }, graph).map(

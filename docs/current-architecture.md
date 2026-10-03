@@ -103,6 +103,14 @@ task history, result detail, route documents and graph editing are separate page
 The structure-first composer has three explicit modes: route search, one-step
 analysis, and X-Synth JSON import. `/retro` redirects to `/?mode=manual`; the
 replaced standalone one-step page is removed. There is one route handler per page.
+The shared molecule inputs use the same authenticated RDKit chemical-file boundary
+for MOL/SDF/SMILES, explicit multi-record selection and round-trip identity-checked
+export. RXN input is a single reaction, with agents separated from model inputs.
+Route JSON remains a distinct graph-document interchange format. Chemical files
+neither create jobs nor certify routes. Conventional synthetic step order is derived
+from precursor dependencies while source reaction IDs and validation indices remain
+unchanged. The complete domain workflow and unsupported format boundaries are defined
+in Workspace Workflows, rather than separate ad hoc input rules per page.
 Legacy `/network` URLs redirect to their new
 destination; retired Launchpad, vis-network graph views and their global result
 store are removed. Business workspace labels do not use third-party branding;

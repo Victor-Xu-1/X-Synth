@@ -2,21 +2,45 @@
   <ModuleWorkbench :title="reactionMode ? '反应可行性' : '结构复杂度'">
     <div class="tool-layout">
       <form class="tool-input-panel tool-fields" @submit.prevent="calculate">
+        <ReactionFileImport
+          ref="reactionInput"
+          v-if="reactionMode"
+          :disabled="loading"
+          :context="JSON.stringify([first, second])"
+          @import="applyReaction"
+        />
         <StructureInput
+          ref="firstInput"
           v-model="first"
           :label="reactionMode ? '反应物' : '分子结构'"
           :disabled="loading"
         /><StructureInput
+          ref="secondInput"
           v-if="reactionMode"
           v-model="second"
           label="产物"
           :disabled="loading"
-        /><v-btn
+        />
+        <section
+          v-if="reactionMode && importedAgents.length"
+          class="rxn-agents"
+        >
+          <span class="field-label">RXN 试剂 / 溶剂记录</span>
+          <SmilesImage
+            :smiles="importedAgents.map((record) => record.smiles).join('.')"
+            :width="240"
+            :height="100"
+            :show-error-image="false"
+          />
+        </section>
+        <v-btn
           color="primary"
           variant="flat"
           type="submit"
           :loading="loading"
-          :disabled="!first.trim() || (reactionMode && !second.trim())"
+          :disabled="
+            inputPending || !first.trim() || (reactionMode && !second.trim())
+          "
           >计算</v-btn
         ><span class="workspace-muted">{{
           reactionMode ? "反应可行性模型" : "SCScore"
@@ -51,7 +75,9 @@
             />
           </div>
           <div class="calculation-score">
-            <span>{{ reactionMode ? "FF 模型分数" : "SCScore" }}</span
+            <span>{{
+              reactionMode ? "反应模型评分（FF）" : "合成复杂度（SCScore）"
+            }}</span
             ><strong>{{ score.toFixed(3) }}</strong>
           </div>
         </div>
@@ -65,11 +91,22 @@ import { useRoute } from "vue-router";
 import { API } from "@/common/api";
 import { errorMessage } from "@/common/workspace-errors";
 import StructureInput from "@/components/workspace/StructureInput.vue";
+import ReactionFileImport from "@/components/workspace/ReactionFileImport.vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import { nativeResult } from "@/common/native-response";
 const route = useRoute(),
   reactionMode = computed(() => route.path === "/feasibility");
+const importedAgents = ref([]);
+const firstInput = ref(null),
+  secondInput = ref(null),
+  reactionInput = ref(null);
+const inputPending = computed(
+  () =>
+    firstInput.value?.pending ||
+    (reactionMode.value &&
+      (secondInput.value?.pending || reactionInput.value?.pending)),
+);
 const first = ref(""),
   second = ref(""),
   canonicalFirst = ref(""),
@@ -79,6 +116,7 @@ const first = ref(""),
   loading = ref(false);
 let generation = 0,
   disposed = false;
+let importedContext = "";
 watch(
   () => [
     route.path,
@@ -87,6 +125,7 @@ watch(
     route.query.product,
   ],
   () => {
+    importedAgents.value = [];
     generation++;
     loading.value = false;
     score.value = null;
@@ -106,8 +145,27 @@ watch(
   },
   { immediate: true },
 );
+function applyReaction(value) {
+  generation++;
+  first.value = value.reactants;
+  second.value = value.product;
+  importedAgents.value = value.agents;
+  importedContext = JSON.stringify([first.value, second.value]);
+  score.value = null;
+  canonicalFirst.value = "";
+  canonicalSecond.value = "";
+  error.value = "";
+}
+watch([first, second], () => {
+  generation++;
+  score.value = null;
+  canonicalFirst.value = "";
+  canonicalSecond.value = "";
+  if (importedContext !== JSON.stringify([first.value, second.value]))
+    importedAgents.value = [];
+});
 async function calculate() {
-  if (loading.value) return;
+  if (loading.value || inputPending.value) return;
   const current = ++generation,
     reactants = first.value,
     product = second.value,

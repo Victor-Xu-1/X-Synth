@@ -116,6 +116,17 @@ def test_python_workspace_maps_document_contracts_not_native_engine_suite(tmp_pa
     ) == sorted(profile.WORKSPACE_TESTS)
 
 
+@pytest.mark.parametrize("path", sorted(profile.CHEMICAL_FILE_FILES))
+def test_chemical_file_changes_select_file_and_workspace_contracts(tmp_path, path):
+    files = {
+        name: "pass"
+        for name in profile.WORKSPACE_TESTS | {"tests/unit/test_chemical_files.py"}
+    }
+    before = snapshot(tmp_path, files)
+    after = snapshot(tmp_path, {**files, path: "pass"})
+    assert profile.python_tests(before, after, {path}) == sorted(files)
+
+
 def test_environment_changes_select_only_environment_contracts(tmp_path):
     files = {
         "tests/unit/test_environment_api.py": "pass",

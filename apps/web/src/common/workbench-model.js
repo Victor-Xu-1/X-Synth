@@ -1,24 +1,48 @@
 import { buildUnifiedRouteRequestBody } from "./unified-route";
 
 export const workbenchModes = [
-  { value: "auto", title: "路线搜索", icon: "mdi-source-branch" },
-  { value: "manual", title: "一步分析", icon: "mdi-molecule" },
-  { value: "import", title: "导入路线", icon: "mdi-file-import-outline" },
+  { value: "auto", title: "完整路线搜索", icon: "mdi-source-branch" },
+  { value: "manual", title: "单步逆合成", icon: "mdi-molecule" },
+  { value: "import", title: "打开路线文档", icon: "mdi-file-import-outline" },
 ];
 export const searchSettings = [
-  { key: "max_depth", label: "最大深度", min: 3, max: 50 },
-  { key: "max_branching", label: "扩展分支", min: 1, max: 200 },
-  { key: "template_count", label: "候选模板", min: 10, max: 5000 },
+  {
+    key: "max_depth",
+    label: "逆合成层数上限",
+    description:
+      "单条分支逐级追溯前体的搜索深度（max_depth），不是路线总反应数。",
+    min: 3,
+    max: 50,
+  },
+  {
+    key: "max_branching",
+    label: "每步候选反应数上限",
+    description: "每个中间体允许继续扩展的候选反应分支数（max_branching）。",
+    min: 1,
+    max: 200,
+  },
+  {
+    key: "template_count",
+    label: "每步模板数上限",
+    description:
+      "每次预测参与匹配的反应模板数上限（template_count），不等于返回路线数。",
+    min: 10,
+    max: 5000,
+  },
   {
     key: "cumulative_probability",
-    label: "累计模板概率",
+    label: "模板概率覆盖阈值",
+    description:
+      "按模型排序累计的模板选择概率（cumulative_probability），不是实验成功率。",
     min: Number.MIN_VALUE,
     max: 1,
     step: "any",
   },
   {
     key: "minimum_plausibility",
-    label: "FF 筛选阈值",
+    label: "反应筛选分数下限",
+    description:
+      "Fast Filter 模型的反应评分阈值（minimum_plausibility），不是实测收率或实验成功率。",
     min: 0,
     max: 1,
     step: "any",
@@ -46,7 +70,7 @@ export function buildWorkbenchRequest({ smiles, name, settings }) {
     typeof settings.minutes !== "number" ||
     !Number.isFinite(settings.minutes)
   )
-    throw new Error("搜索预算必须为有效数字。");
+    throw new Error("每轮搜索时长必须为有效数字。");
   return buildUnifiedRouteRequestBody(
     {
       smiles,

@@ -1,6 +1,7 @@
 <template>
   <section class="route-node-context" aria-label="节点分析">
     <div v-if="node.type === 'molecule'" class="node-actions">
+      <MoleculeFileControls :smiles="node.smiles" :allow-import="false" />
       <v-btn
         v-if="workspace.can('stock')"
         size="small"
@@ -30,8 +31,26 @@
     </div>
     <template v-else-if="reaction">
       <span class="field-label">反应结构</span
-      ><code>{{ reaction.smiles }}</code>
+      ><SmilesImage
+        :smiles="reaction.smiles"
+        input-type="reaction"
+        :width="260"
+        :height="160"
+        :show-error-image="false"
+      />
+      <details>
+        <summary>反应 SMILES</summary>
+        <code>{{ reaction.smiles }}</code>
+      </details>
       <div class="node-actions">
+        <v-btn
+          size="small"
+          variant="text"
+          prepend-icon="mdi-file-export-outline"
+          :loading="exporting"
+          @click="exportRxn"
+          >导出 RXN</v-btn
+        >
         <v-btn
           v-if="workspace.can('fast_filter')"
           size="small"
@@ -75,6 +94,7 @@
         >{{ link.label }} · {{ link.value }}</a
       >
     </template>
+    <p v-if="exportError" class="tool-error" role="alert">{{ exportError }}</p>
     <MoleculeStockDialog
       v-model="stockOpen"
       :smiles="node.smiles"
@@ -84,7 +104,10 @@
   </section>
 </template>
 <script setup>
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { API } from "@/common/api";
+import { downloadChemicalFile } from "@/common/chemical-files";
+import { errorMessage } from "@/common/workspace-errors";
 import { useWorkspaceStore } from "@/store/workspace";
 import {
   reactionForNode,
@@ -98,6 +121,8 @@ import {
 } from "@/common/reaction-evidence";
 import { safeExternalUrl } from "@/common/external-url";
 import MoleculeStockDialog from "./MoleculeStockDialog.vue";
+import MoleculeFileControls from "@/components/workspace/MoleculeFileControls.vue";
+import SmilesImage from "@/components/SmilesImage.vue";
 const props = defineProps({
   node: { type: Object, required: true },
   graph: Object,
@@ -107,6 +132,10 @@ const props = defineProps({
 defineEmits(["navigate"]);
 const workspace = useWorkspaceStore(),
   stockOpen = ref(false);
+const exporting = ref(false),
+  exportError = ref("");
+let exportGeneration = 0,
+  disposed = false;
 const locations = computed(() =>
   moleculeLocations(props.node.smiles, props.snapshot),
 );
@@ -124,9 +153,38 @@ const links = computed(() =>
   evidence.value.links.filter((link) => safeExternalUrl(link.href)),
 );
 watch(
-  () => [props.node.id, props.node.smiles],
-  () => (stockOpen.value = false),
+  () => [props.node.id, props.node.smiles, reaction.value?.smiles],
+  () => {
+    stockOpen.value = false;
+    exportGeneration++;
+    exporting.value = false;
+    exportError.value = "";
+  },
 );
+async function exportRxn() {
+  if (exporting.value || !reaction.value) return;
+  const current = ++exportGeneration,
+    value = reaction.value;
+  exporting.value = true;
+  exportError.value = "";
+  try {
+    const output = await API.post("/api/v1/structure/reaction-export", {
+      reactants: value.precursors,
+      product: value.product,
+    });
+    if (!disposed && current === exportGeneration)
+      downloadChemicalFile(output, "reaction");
+  } catch (error) {
+    if (!disposed && current === exportGeneration)
+      exportError.value = errorMessage(error, "RXN 导出失败。");
+  } finally {
+    if (!disposed && current === exportGeneration) exporting.value = false;
+  }
+}
+onBeforeUnmount(() => {
+  disposed = true;
+  exportGeneration++;
+});
 </script>
 <style scoped>
 .route-node-context {

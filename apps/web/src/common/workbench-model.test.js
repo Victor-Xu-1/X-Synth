@@ -5,6 +5,7 @@ import {
   oneStepCandidate,
   buildWorkbenchRequest,
   searchSettings,
+  workbenchModes,
 } from "./workbench-model";
 import { buildTaskSearchLocation } from "./task-history-view";
 
@@ -35,6 +36,41 @@ test("one workbench uses explicit supported modes", () => {
   expect(normalizeMode("manual")).toBe("manual");
   expect(normalizeMode("import")).toBe("import");
   expect(normalizeMode("unsupported")).toBe("auto");
+  expect(workbenchModes.map(({ value, title }) => ({ value, title }))).toEqual([
+    { value: "auto", title: "完整路线搜索" },
+    { value: "manual", title: "单步逆合成" },
+    { value: "import", title: "打开路线文档" },
+  ]);
+});
+
+test("chemical parameter labels keep native keys and numeric bounds", () => {
+  expect(
+    searchSettings.map(({ key, min, max, step }) => ({ key, min, max, step })),
+  ).toEqual([
+    { key: "max_depth", min: 3, max: 50, step: undefined },
+    { key: "max_branching", min: 1, max: 200, step: undefined },
+    { key: "template_count", min: 10, max: 5000, step: undefined },
+    {
+      key: "cumulative_probability",
+      min: Number.MIN_VALUE,
+      max: 1,
+      step: "any",
+    },
+    { key: "minimum_plausibility", min: 0, max: 1, step: "any" },
+  ]);
+  expect(searchSettings.map(({ label }) => label)).toEqual([
+    "逆合成层数上限",
+    "每步候选反应数上限",
+    "每步模板数上限",
+    "模板概率覆盖阈值",
+    "反应筛选分数下限",
+  ]);
+  for (const field of searchSettings)
+    expect(field.description).toContain(field.key);
+  expect(
+    searchSettings.find(({ key }) => key === "minimum_plausibility")
+      .description,
+  ).toContain("不是实测收率或实验成功率");
 });
 test("default route settings retain authoritative quality policy and convert seconds to minutes", () => {
   expect(defaultSearchSettings()).toEqual({

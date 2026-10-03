@@ -9,11 +9,13 @@ export function useRouteDocument() {
     title = ref("未命名路线");
   const loading = ref(false),
     saving = ref(false),
+    validating = ref(false),
     error = ref(""),
     dirty = ref(false);
   const undoStack = ref([]),
     redoStack = ref([]);
-  let generation = 0;
+  let generation = 0,
+    validationGeneration = 0;
   const copy = (value) => JSON.parse(JSON.stringify(value));
   const selected = ref(null);
   function accept(value) {
@@ -33,10 +35,12 @@ export function useRouteDocument() {
   }
   function clear() {
     generation++;
+    cancelValidation();
     document.value = null;
     graph.value = { nodes: [], edges: [], target_id: "" };
     title.value = "未命名路线";
     loading.value = false;
+    saving.value = false;
     error.value = "";
     dirty.value = false;
     undoStack.value = [];
@@ -62,12 +66,17 @@ export function useRouteDocument() {
     }
   }
   async function create(smiles, name) {
+    if (document.value || loading.value || saving.value) return null;
+    const current = ++generation;
     saving.value = true;
     error.value = "";
     try {
       const structure = await API.post("/api/v1/structure/validate", {
         smiles,
       });
+      if (current !== generation) return null;
+      if (typeof structure?.smiles !== "string" || !structure.smiles.trim())
+        throw new Error("结构校验未返回有效结构。");
       const value = await API.post("/api/v1/route-documents", {
         title: name || "未命名路线",
         graph: {
@@ -83,13 +92,15 @@ export function useRouteDocument() {
           edges: [],
         },
       });
+      if (current !== generation) return null;
       accept(value);
       return value;
     } catch (e) {
-      error.value = errorMessage(e, "无法创建路线文档。");
+      if (current === generation)
+        error.value = errorMessage(e, "无法创建路线文档。");
       return null;
     } finally {
-      saving.value = false;
+      if (current === generation) saving.value = false;
     }
   }
   function replaceGraph(value) {
@@ -138,16 +149,34 @@ export function useRouteDocument() {
       }
       return value;
     } catch (e) {
-      error.value = errorMessage(e, "保存失败，修改仍保留在画布。");
+      if (current === generation)
+        error.value = errorMessage(e, "保存失败，修改仍保留在画布。");
       return null;
     } finally {
-      saving.value = false;
+      if (current === generation) saving.value = false;
     }
   }
+  function cancelValidation() {
+    validationGeneration++;
+    validating.value = false;
+  }
   async function addMolecule(smiles) {
+    if (!document.value || loading.value || saving.value || validating.value)
+      return false;
+    const current = generation,
+      validation = ++validationGeneration,
+      identifier = document.value.id;
+    const isCurrent = () =>
+      current === generation &&
+      validation === validationGeneration &&
+      document.value?.id === identifier;
+    validating.value = true;
     error.value = "";
     try {
       const value = await API.post("/api/v1/structure/validate", { smiles });
+      if (!isCurrent()) return false;
+      if (typeof value?.smiles !== "string" || !value.smiles.trim())
+        throw new Error("结构校验未返回有效结构。");
       replaceGraph({
         ...graph.value,
         nodes: [
@@ -164,25 +193,11 @@ export function useRouteDocument() {
       });
       return true;
     } catch (e) {
-      error.value = errorMessage(e, "分子结构无效。");
+      if (isCurrent()) error.value = errorMessage(e, "化合物结构无效。");
       return false;
+    } finally {
+      if (isCurrent()) validating.value = false;
     }
-  }
-  function addReaction() {
-    replaceGraph({
-      ...graph.value,
-      nodes: [
-        ...graph.value.nodes,
-        {
-          id: `r-${crypto.randomUUID()}`,
-          type: "reaction",
-          smiles: "",
-          label: "反应",
-          note: "",
-          position: { x: 300, y: 100 },
-        },
-      ],
-    });
   }
   function removeSelected() {
     if (!selected.value || selected.value === graph.value.target_id) return;
@@ -205,13 +220,17 @@ export function useRouteDocument() {
   const scores = computed(() =>
     dirty.value ? {} : document.value?.prediction_scores || {},
   );
-  onBeforeUnmount(() => generation++);
+  onBeforeUnmount(() => {
+    generation++;
+    cancelValidation();
+  });
   return {
     document,
     graph,
     title,
     loading,
     saving,
+    validating,
     error,
     dirty,
     undoStack,
@@ -227,7 +246,7 @@ export function useRouteDocument() {
     redo,
     save,
     addMolecule,
-    addReaction,
+    cancelValidation,
     removeSelected,
   };
 }

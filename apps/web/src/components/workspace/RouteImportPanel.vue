@@ -1,5 +1,5 @@
 <template>
-  <section class="route-import-panel" aria-label="导入路线文档">
+  <section class="route-import-panel" aria-label="打开路线文档">
     <input
       ref="input"
       type="file"
@@ -15,15 +15,17 @@
       @drop.prevent="drop"
     >
       <v-icon icon="mdi-file-document-outline" size="40" />
-      <h2>X-Synth 路线文档</h2>
-      <span>JSON · 最大 10 MB</span
+      <h2>打开路线文档</h2>
+      <span
+        title="仅限 X-Synth 路线 JSON；MOL/SDF 是分子结构文件，不是路线文档。不支持 CDX。"
+        >X-Synth 路线 JSON · 最大 10 MB</span
       ><v-btn
         color="primary"
         variant="flat"
         prepend-icon="mdi-folder-open-outline"
         :loading="busy"
         @click="input.click()"
-        >选择文件</v-btn
+        >打开路线文件</v-btn
       >
     </div>
     <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
@@ -49,7 +51,7 @@ async function run(file) {
     const document = await importRouteDocument(API, file);
     if (alive) await router.push(`/editor/${document.id}`);
   } catch (e) {
-    if (alive) error.value = errorMessage(e, "路线文件导入失败。");
+    if (alive) error.value = errorMessage(e, "路线文档无法打开。");
   } finally {
     if (alive) busy.value = false;
   }
@@ -90,6 +92,8 @@ onBeforeUnmount(() => (alive = false));
 }
 .route-file-area span {
   font-size: 12px;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 .file-dragging {
   background: var(--ws-hover);

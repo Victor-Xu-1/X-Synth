@@ -1,14 +1,25 @@
 <template>
   <section class="structure-workspace" aria-label="目标结构">
     <div class="structure-input-row">
-      <label for="target-smiles" class="field-label">目标 SMILES</label>
+      <div class="structure-heading">
+        <strong>目标化合物</strong>
+        <MoleculeFileControls
+          ref="files"
+          :smiles="smiles"
+          :disabled="disabled"
+          :read-structure="readBoard"
+          @import="smiles = $event.smiles"
+          @busy="fileBusy = $event"
+        />
+      </div>
+      <label for="target-smiles" class="field-label">SMILES</label>
       <div class="structure-input-actions">
         <input
           id="target-smiles"
           v-model="smiles"
           class="workspace-input"
           placeholder="SMILES"
-          :disabled="disabled"
+          :disabled="disabled || fileBusy"
           autocomplete="off"
           spellcheck="false"
         />
@@ -19,15 +30,15 @@
               icon="mdi-eraser"
               variant="text"
               aria-label="清空结构"
-              :disabled="disabled"
+              :disabled="disabled || fileBusy"
               @click="clear" /></template
         ></v-tooltip>
       </div>
     </div>
     <div
       class="structure-board"
-      :class="{ 'board-busy': disabled }"
-      :inert="disabled || undefined"
+      :class="{ 'board-busy': disabled || fileBusy }"
+      :inert="disabled || fileBusy || undefined"
     >
       <InlineKetcherEditor
         ref="editor"
@@ -41,11 +52,19 @@
 <script setup>
 import { ref } from "vue";
 import InlineKetcherEditor from "@/components/InlineKetcherEditor.vue";
+import MoleculeFileControls from "./MoleculeFileControls.vue";
 const smiles = defineModel({ type: String, default: "" });
 defineProps({ disabled: Boolean });
 const editor = ref(null);
-async function read() {
+const files = ref(null),
+  fileBusy = ref(false);
+async function readBoard() {
   return editor.value?.readSmilesFromEditor();
+}
+async function read() {
+  if (files.value?.hasPending)
+    throw new Error("请先完成结构文件的选择或处理。");
+  return readBoard();
 }
 async function clear() {
   await editor.value?.clearEditor();
@@ -62,6 +81,14 @@ defineExpose({ read, clear, capture });
 }
 .structure-input-row {
   margin-bottom: 12px;
+}
+.structure-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
 }
 .structure-input-actions {
   display: flex;

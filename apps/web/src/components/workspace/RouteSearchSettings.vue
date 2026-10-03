@@ -4,6 +4,7 @@
       ><span class="field-label">任务名称</span
       ><input
         v-model="name"
+        name="task_name"
         class="workspace-input"
         maxlength="160"
         placeholder="未命名任务"
@@ -14,6 +15,7 @@
         ><span class="field-label">路线数量上限</span
         ><input
           v-model.number="settings.maxRoutes"
+          name="max_routes"
           class="workspace-input"
           type="number"
           min="3"
@@ -21,14 +23,18 @@
           :disabled="disabled"
       /></label>
       <label
-        ><span class="field-label">搜索预算（分钟）</span
+        ><span
+          class="field-label"
+          title="每轮各搜索策略的时长上限；追加搜索与路线审查另计。"
+          >每轮搜索时长（分钟）</span
         ><input
           v-model.number="settings.minutes"
+          name="expansion_time_minutes"
           class="workspace-input"
           type="number"
           min="1"
           max="120"
-          step="1"
+          step="any"
           :disabled="disabled"
       /></label>
     </div>
@@ -36,9 +42,13 @@
       <summary>高级参数</summary>
       <div class="search-advanced-fields">
         <label v-for="item in searchSettings" :key="item.key"
-          ><span class="field-label">{{ item.label }}</span
+          ><span class="field-label" :title="item.description">{{
+            item.label
+          }}</span
           ><input
             v-model.number="settings.tuning[item.key]"
+            :name="item.key"
+            :title="item.description"
             class="workspace-input"
             type="number"
             :min="item.min"
@@ -48,16 +58,6 @@
         /></label>
       </div>
     </details>
-    <dl class="search-engine-facts">
-      <div>
-        <dt>搜索策略</dt>
-        <dd>多策略搜索</dd>
-      </div>
-      <div>
-        <dt>终点判定</dt>
-        <dd>商业库存快照</dd>
-      </div>
-    </dl>
   </div>
 </template>
 <script setup>
@@ -73,7 +73,7 @@ defineProps({ disabled: Boolean });
 }
 .search-primary-settings {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
 }
 .search-advanced {
@@ -87,26 +87,14 @@ defineProps({ disabled: Boolean });
 }
 .search-advanced-fields {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   padding-top: 16px;
 }
-.search-engine-facts {
-  display: grid;
-  gap: 12px;
-  font-size: 11px;
+.search-setting-fields label {
+  min-width: 0;
 }
-.search-engine-facts div {
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
-}
-.search-engine-facts dt {
-  color: var(--ws-muted);
-  flex-shrink: 0;
-}
-.search-engine-facts dd {
-  text-align: right;
+.search-setting-fields .field-label {
   overflow-wrap: anywhere;
 }
 </style>

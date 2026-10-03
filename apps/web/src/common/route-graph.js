@@ -1,6 +1,12 @@
 import dagre from "@dagrejs/dagre";
+import { syntheticStepOrder } from "./synthetic-step-order";
 
 export function graphFromCandidate(route) {
+  const sourceSteps = route.steps || [];
+  const order = syntheticStepOrder(sourceSteps);
+  const stepNumbers = new Map(
+    (order || []).map((index, rank) => [index, rank + 1]),
+  );
   const nodes = [],
     edges = [],
     molecules = new Map();
@@ -19,12 +25,12 @@ export function graphFromCandidate(route) {
     return id;
   };
   const target_id = molecule(route.target_smiles);
-  for (const [index, step] of (route.steps || []).entries()) {
+  for (const [index, step] of sourceSteps.entries()) {
     const id = `r-${index + 1}`;
     nodes.push({
       id,
       type: "reaction",
-      label: `反应 ${index + 1}`,
+      label: stepNumbers.has(index) ? `步骤 ${stepNumbers.get(index)}` : "反应",
       note: "",
       smiles: "",
       position: { x: 0, y: 0 },
