@@ -1,9 +1,16 @@
 <template>
   <aside class="workspace-sidebar" :class="{ compact }" aria-label="工作区导航">
-    <router-link to="/" class="workspace-brand"
-      ><span>X-Synth</span
-      ><small v-if="!compact">v{{ version }}</small></router-link
+    <router-link
+      to="/"
+      class="workspace-brand"
+      :aria-label="`X-Synth v${version}`"
+      title="X-Synth"
     >
+      <BrandMark />
+      <span v-if="!compact" class="workspace-brand-copy"
+        ><span>X-Synth</span><small>v{{ version }}</small></span
+      >
+    </router-link>
     <nav class="workspace-nav">
       <section v-for="group in navigation" :key="group.label" class="nav-group">
         <p v-if="!compact">{{ group.label }}</p>
@@ -75,6 +82,7 @@
   </aside>
 </template>
 <script setup>
+import BrandMark from "@/components/workspace/BrandMark.vue";
 import { useRoute } from "vue-router";
 import {
   navigation,

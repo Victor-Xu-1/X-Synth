@@ -87,12 +87,18 @@ textarea:focus-visible {
 }
 .workspace-brand {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
   padding: 0 10px 25px;
   font-size: 19px;
   font-weight: 650;
   white-space: nowrap;
+}
+.workspace-brand-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
 }
 .workspace-brand small {
   font-size: 11px;
@@ -100,15 +106,8 @@ textarea:focus-visible {
   color: var(--ws-muted);
 }
 .workspace-sidebar.compact .workspace-brand {
-  font-size: 0;
   padding: 0 0 24px;
-  text-align: center;
-  display: block;
-}
-.workspace-sidebar.compact .workspace-brand::before {
-  content: "X";
-  font-size: 21px;
-  font-weight: 700;
+  justify-content: center;
 }
 .workspace-nav {
   flex: 1;
@@ -199,6 +198,15 @@ textarea:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.workspace-mobile-brand {
+  display: none;
+  flex-shrink: 0;
+}
+@media (max-width: 899px) {
+  .workspace-mobile-brand {
+    display: block;
+  }
 }
 .service-indicator {
   font-size: 11px;

@@ -8,6 +8,12 @@
         aria-label="切换导航"
         @click="$emit('toggle-navigation')"
       />
+      <router-link
+        to="/"
+        class="workspace-mobile-brand"
+        aria-label="X-Synth 首页"
+        ><BrandMark :size="24"
+      /></router-link>
       <span class="workspace-page-title">{{
         route.meta.title || "工作区"
       }}</span>
@@ -38,6 +44,7 @@
 <script setup>
 import { useRoute } from "vue-router";
 import { useWorkspaceStore } from "@/store/workspace";
+import BrandMark from "@/components/workspace/BrandMark.vue";
 defineEmits(["toggle-navigation"]);
 const route = useRoute();
 const workspace = useWorkspaceStore();
