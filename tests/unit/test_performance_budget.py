@@ -19,3 +19,9 @@ def test_resource_budgets_are_positive_and_consistent():
 def test_budget_environment_is_one_authority(monkeypatch):
     monkeypatch.setenv("X_SYNTH_MODEL_THREADS", "2")
     assert PerformanceBudget.from_environment().model_threads == 2
+
+
+@pytest.mark.parametrize("seconds", [0, -1, float("nan"), float("inf")])
+def test_history_execution_budget_is_finite_and_positive(seconds):
+    with pytest.raises(ValueError):
+        PerformanceBudget(history_query_seconds=seconds)

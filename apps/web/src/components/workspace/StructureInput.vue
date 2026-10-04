@@ -89,6 +89,9 @@ function applyFile(record) {
   font-weight: 500;
 }
 .structure-field textarea {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   resize: vertical;
   min-height: 75px;
   line-height: 1.7;

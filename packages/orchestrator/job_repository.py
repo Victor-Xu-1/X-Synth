@@ -7,16 +7,28 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-ACTIVE_STATES = frozenset({"preparing", "searching", "evaluating"})
-TERMINAL_STATES = frozenset(
-    {
-        "completed",
-        "failed_unclosed",
-        "failed",
-        "cancelled",
-        "completed_not_enough_routes",
-    }
+from .job_history import (
+    TERMINAL_STATES,
+    JobConflict,
+    JobHistory,
+    history_casefold,
 )
+from .job_history_schema import initialize_schema, progress_projection
+
+__all__ = [
+    "ACTIVE_STATES",
+    "TERMINAL_STATES",
+    "TRANSITIONS",
+    "JobConflict",
+    "JobHistory",
+    "JobRepository",
+    "history_casefold",
+    "initialize_schema",
+    "now_utc",
+    "progress_projection",
+]
+
+ACTIVE_STATES = frozenset({"preparing", "searching", "evaluating"})
 TRANSITIONS = {
     "queued": {"preparing", "cancelled"},
     "preparing": {"searching", "waiting_for_engine", "failed", "cancelled"},
@@ -34,10 +46,6 @@ TRANSITIONS = {
 }
 
 
-class JobConflict(RuntimeError):
-    pass
-
-
 def now_utc() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -49,45 +57,17 @@ class JobRepository:
         self.path = Path(path).resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
-            existing = connection.execute(
-                "SELECT name FROM sqlite_master WHERE name='schema_version'"
-            ).fetchone()
-            if existing and [
-                row[0]
-                for row in connection.execute("SELECT version FROM schema_version")
-            ] != [1]:
-                raise RuntimeError("Unsupported product job database schema")
-            connection.executescript("""
-                PRAGMA journal_mode=WAL;
-                CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY);
-                INSERT OR IGNORE INTO schema_version VALUES (1);
-                CREATE TABLE IF NOT EXISTS jobs (
-                    id TEXT PRIMARY KEY, owner TEXT NOT NULL, status TEXT NOT NULL,
-                    request TEXT NOT NULL, request_key TEXT, revision INTEGER NOT NULL DEFAULT 0,
-                    created TEXT NOT NULL, modified TEXT NOT NULL, summary TEXT,
-                    checkpoint TEXT NOT NULL DEFAULT '{}', error_code TEXT,
-                    UNIQUE(owner, request_key)
-                );
-                CREATE INDEX IF NOT EXISTS jobs_owner_modified ON jobs(owner, modified DESC);
-                CREATE INDEX IF NOT EXISTS jobs_status_created ON jobs(status, created);
-                CREATE TABLE IF NOT EXISTS events (
-                    job_id TEXT NOT NULL REFERENCES jobs(id), revision INTEGER NOT NULL,
-                    at TEXT NOT NULL, status TEXT NOT NULL, PRIMARY KEY(job_id,revision)
-                );
-            """)
-            versions = [
-                row[0]
-                for row in connection.execute("SELECT version FROM schema_version")
-            ]
-            if versions != [1]:
-                raise RuntimeError("Unsupported product job database schema")
-            connection.commit()
+            initialize_schema(connection)
+        self.history = JobHistory(self)
 
     def connect(self):
         connection = sqlite3.connect(self.path, timeout=5)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA synchronous=FULL")
+        connection.create_function(
+            "history_casefold", 1, history_casefold, deterministic=True
+        )
         return closing(connection)
 
     @staticmethod
@@ -97,6 +77,9 @@ class JobRepository:
         result = dict(row)
         for key in ("request", "summary", "checkpoint"):
             result[key] = json.loads(result[key]) if result[key] is not None else None
+        if "history_progress" in result:
+            result["history_progress"] = json.loads(result["history_progress"])
+        result["archived"] = bool(result.get("archived", False))
         return result
 
     def create(
@@ -156,14 +139,51 @@ class JobRepository:
             return self._decode(connection.execute(query, values).fetchone())
 
     def list(self, owner: str, *, limit: int = 100, offset: int = 0):
-        if not 1 <= limit <= 100 or offset < 0:
-            raise ValueError("Invalid job pagination")
-        with self.connect() as connection:
-            rows = connection.execute(
-                "SELECT id,owner,status,request,request_key,revision,created,modified,summary,checkpoint,error_code FROM jobs WHERE owner=? AND status!='archived' ORDER BY modified DESC LIMIT ? OFFSET ?",
-                (owner, limit, offset),
-            )
-            return [self._decode(row) for row in rows]
+        return self.history_page(owner, limit=limit, offset=offset)["results"]
+
+    def history_page(
+        self,
+        owner: str,
+        *,
+        limit: int = 24,
+        offset: int = 0,
+        query: str = "",
+        status: str = "all",
+        group: str = "all",
+        archived: bool = False,
+    ):
+        return self.history.page(
+            owner,
+            limit=limit,
+            offset=offset,
+            query=query,
+            status=status,
+            group=group,
+            archived=archived,
+        )
+
+    def list_groups(self, owner: str):
+        return self.history.groups(owner)
+
+    def create_group(self, owner: str, name: str):
+        return self.history.create_group(owner, name)
+
+    def update_group(
+        self, owner: str, group_id: str, *, name: str, expected_revision: int
+    ):
+        return self.history.update_group(
+            owner, group_id, name=name, expected_revision=expected_revision
+        )
+
+    def delete_group(self, owner: str, group_id: str, *, expected_revision: int):
+        return self.history.delete_group(
+            owner, group_id, expected_revision=expected_revision
+        )
+
+    def batch_history(
+        self, owner: str, *, action: str, items: list[dict], group_id: str | None = None
+    ):
+        return self.history.batch(owner, action=action, items=items, group_id=group_id)
 
     def edit_history(
         self,
@@ -171,46 +191,18 @@ class JobRepository:
         *,
         owner: str,
         expected_revision: int | None = None,
+        expected_history_revision: int | None = None,
         description: str | None = None,
         archive: bool = False,
     ):
-        with self.connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            row = connection.execute(
-                "SELECT * FROM jobs WHERE id=? AND owner=?", (job_id, owner)
-            ).fetchone()
-            if row is None:
-                raise KeyError("Task does not exist")
-            if row["status"] == "archived" and archive:
-                return self._decode(row)
-            if row["status"] not in TERMINAL_STATES | {
-                "legacy_completed",
-                "legacy_incomplete",
-            }:
-                raise JobConflict("Only finished tasks can be edited or archived")
-            if expected_revision is not None and expected_revision != row["revision"]:
-                raise JobConflict("The job changed before this operation")
-            request = json.loads(row["request"])
-            if description is not None:
-                request["description"] = description
-            status = "archived" if archive else row["status"]
-            revision, timestamp = row["revision"] + 1, now_utc()
-            connection.execute(
-                "UPDATE jobs SET status=?,request=?,revision=?,modified=? WHERE id=?",
-                (
-                    status,
-                    json.dumps(request, ensure_ascii=False),
-                    revision,
-                    timestamp,
-                    job_id,
-                ),
-            )
-            connection.execute(
-                "INSERT INTO events VALUES (?,?,?,?)",
-                (job_id, revision, timestamp, status),
-            )
-            connection.commit()
-        return self.get(job_id, owner=owner)
+        return self.history.edit(
+            job_id,
+            owner=owner,
+            expected_revision=expected_revision,
+            expected_history_revision=expected_history_revision,
+            description=description,
+            archive=archive,
+        )
 
     def transition(
         self,
@@ -235,7 +227,7 @@ class JobRepository:
                 raise JobConflict("Invalid job state transition")
             revision, timestamp = row["revision"] + 1, now_utc()
             connection.execute(
-                "UPDATE jobs SET status=?,revision=?,modified=?,summary=?,checkpoint=?,error_code=? WHERE id=?",
+                "UPDATE jobs SET status=?,revision=?,modified=?,summary=?,checkpoint=?,history_progress=?,error_code=? WHERE id=?",
                 (
                     status,
                     revision,
@@ -246,6 +238,9 @@ class JobRepository:
                     json.dumps(checkpoint, ensure_ascii=False)
                     if checkpoint is not None
                     else row["checkpoint"],
+                    json.dumps(progress_projection(checkpoint), ensure_ascii=False)
+                    if checkpoint is not None
+                    else row["history_progress"],
                     error_code,
                     job_id,
                 ),
@@ -353,6 +348,6 @@ class JobRepository:
     def count(self, owner: str) -> int:
         with self.connect() as connection:
             return connection.execute(
-                "SELECT COUNT(*) FROM jobs WHERE owner=? AND status!='archived'",
+                "SELECT COUNT(*) FROM jobs WHERE owner=? AND archived=0",
                 (owner,),
             ).fetchone()[0]

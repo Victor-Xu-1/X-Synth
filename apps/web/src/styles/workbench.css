@@ -378,6 +378,7 @@ textarea:focus-visible {
   margin-bottom: 7px;
 }
 .workspace-input {
+  box-sizing: border-box;
   width: 100%;
   padding: 11px 12px;
   border: 1px solid var(--ws-border);

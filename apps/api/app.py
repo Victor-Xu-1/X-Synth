@@ -34,6 +34,7 @@ from .job_views import route_result
 from .native_routes import native_router
 from .optimization_routes import optimization_router
 from .reaction_routes import reaction_router
+from .reference_routes import reference_router
 from .request_limits import RequestLimitMiddleware
 from .result_routes import result_router
 from .security import authenticate
@@ -222,6 +223,9 @@ def create_app(
     )
     app.include_router(data, prefix="/api/v1")
     app.include_router(stock_router(stock=stock, transport=transport), prefix="/api/v1")
+    app.include_router(
+        reference_router(transport=transport, budget=budget), prefix="/api/v1"
+    )
     app.include_router(
         condition_router(
             transport=transport,

@@ -88,6 +88,10 @@ another product version.
 - Browser requests terminate at the product API, never a second direct gateway.
 - Product job IDs and ownership are authoritative in the transactional job store.
   Native engine execution is a child operation, not another product task owner.
+- Task grouping, display titles and recoverable archives use schema-2 metadata in
+  that same store. Metadata revisions are independent of worker revisions; they
+  never rewrite scientific requests, execution states or checkpoints. Owner-filtered
+  pages and counts use one SQLite read transaction without decoding large checkpoints.
 - Search and final closure must use the same immutable stock snapshot. Snapshot
   identity is retained in the checkpoint and delivered result.
 - A CID, CAS, supplier name or Mongo internal ID alone is not commercial evidence.
@@ -245,6 +249,7 @@ chemical validation or mark unfinished searches complete.
 | Molecular input             | 1024 atoms     | Reject unsupported inputs before expensive normalization               |
 | Readiness cache             | 10 seconds     | UI polling does not repeatedly import models or probe every dependency |
 | Dependency probe timeout    | 2 seconds      | Independent parallel probes; a dead engine does not stall other checks |
+| History query deadline      | 1 second       | Abort oversized indexed history reads with 503; never return a false empty page |
 | Request budget              | 10 MiB         | Bounded untrusted input                                                |
 | Native response budget      | 32 MiB         | Explicit oversized-response handling, no silent truncation             |
 
@@ -265,7 +270,7 @@ directories are apps, packages, configs, requirements, scripts, tests, docs and
 
 The product API contract is /api/v1; the existing /api native capability and
 result projections serve the ASKCOS-derived UI through that same host. There is
-no separate legacy orchestrator or /synon-api job owner. Job schema 1 and native
+no separate legacy orchestrator or /synon-api job owner. Job schema 2 and native
 UDS schema 2 are independent of product 0.1.0. First-party dependency authorities
 are one lock per documented process boundary: product, native ASKCOS, TF-Keras
 condition inference, RXNMapper impurity analysis and BayBE optimization, plus apps/web/package-lock.json; upstream

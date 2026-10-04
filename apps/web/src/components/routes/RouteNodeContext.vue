@@ -60,6 +60,15 @@
           @click="$emit('navigate')"
           >反应可行性</v-btn
         >
+        <v-btn
+          v-if="workspace.can('conditions')"
+          size="small"
+          variant="text"
+          prepend-icon="mdi-beaker-outline"
+          :to="createConditionRecommendationUrl(reaction.smiles)"
+          @click="$emit('navigate')"
+          >条件预测</v-btn
+        >
       </div>
       <dl v-if="evidence.conditions.length" class="node-evidence">
         <div v-for="item in evidence.conditions" :key="item.label">
@@ -93,6 +102,11 @@
         rel="noopener noreferrer"
         >{{ link.label }} · {{ link.value }}</a
       >
+      <ReactionReferences
+        :key="node.id"
+        :product="reaction.product"
+        :reactants="reaction.precursors"
+      />
     </template>
     <p v-if="exportError" class="tool-error" role="alert">{{ exportError }}</p>
     <MoleculeStockDialog
@@ -118,11 +132,13 @@ import {
 import {
   buildReactionEvidence,
   createReactionEvidenceInput,
+  createConditionRecommendationUrl,
 } from "@/common/reaction-evidence";
 import { safeExternalUrl } from "@/common/external-url";
 import MoleculeStockDialog from "./MoleculeStockDialog.vue";
 import MoleculeFileControls from "@/components/workspace/MoleculeFileControls.vue";
 import SmilesImage from "@/components/SmilesImage.vue";
+import ReactionReferences from "@/components/references/ReactionReferences.vue";
 const props = defineProps({
   node: { type: Object, required: true },
   graph: Object,

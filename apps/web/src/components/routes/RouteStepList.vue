@@ -7,7 +7,7 @@
       :class="{ active: selectedRoute === choice.route.route_id }"
     >
       <header>
-        <strong>R{{ choice.originalIndex + 1 }}</strong
+        <strong>{{ routeLabel(choice.originalIndex) }}</strong
         ><span>{{ engineLabel(choice.route.engine) }}</span>
         <span
           class="state-badge"
@@ -26,7 +26,7 @@
                 @click="$emit('choose', choice.route.route_id)"
               /> </template
           ></v-tooltip>
-          <v-tooltip text="编辑副本"
+          <v-tooltip v-if="canEdit" text="编辑副本"
             ><template #activator="{ props }">
               <v-btn
                 v-bind="props"
@@ -58,7 +58,24 @@
           <dd>{{ scoreText(choice.route.route_score) }}</dd>
         </div>
       </dl>
-      <div class="overview-structures">
+      <v-lazy
+        :min-height="300"
+        :options="{ rootMargin: '250px' }"
+        transition="fade-transition"
+      >
+        <div
+          class="overview-route-graph"
+          :aria-label="`${routeLabel(choice.originalIndex)} 完整路线缩略图`"
+        >
+          <RouteGraph
+            :graph="graphFromCandidate(choice.route)"
+            :scores="predictionScores(choice.route)"
+            :overview="true"
+            @select="$emit('choose', choice.route.route_id)"
+          />
+        </div>
+      </v-lazy>
+      <div class="overview-structures" v-if="!choice.route.steps.length">
         <div class="overview-materials">
           <figure v-for="smiles in choice.materials.slice(0, 3)" :key="smiles">
             <SmilesImage
@@ -185,6 +202,9 @@
 import { computed } from "vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import RouteEvidencePanel from "./RouteEvidencePanel.vue";
+import RouteGraph from "./RouteGraph.vue";
+import { graphFromCandidate, predictionScores } from "@/common/route-graph";
+import { routeLabel } from "@/common/route-reading";
 import {
   closureLabel,
   engineLabel,
@@ -199,6 +219,7 @@ const props = defineProps({
   choices: { type: Array, default: () => [] },
   selectedRoute: String,
   busy: Boolean,
+  canEdit: { type: Boolean, default: true },
 });
 defineEmits(["select", "locate", "choose", "edit"]);
 const orderedSteps = computed(() => {
@@ -368,6 +389,13 @@ summary:focus-visible {
   grid-template-columns: minmax(0, 1fr) 24px 180px;
   align-items: center;
   gap: 12px;
+}
+.overview-route-graph {
+  height: 300px;
+  min-width: 0;
+  border: 1px solid var(--ws-border);
+  border-radius: 6px;
+  overflow: hidden;
 }
 .overview-materials {
   display: flex;

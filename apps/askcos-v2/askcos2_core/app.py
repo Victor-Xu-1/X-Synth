@@ -4,11 +4,17 @@ import uvicorn
 from adapters.registry import get_adapter_registry
 from configs.mcp_config import INCLUDE_OPERATIONS, OPERATION_IDS
 from fastapi import APIRouter as FastAPIRouter
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from packages.adapters.askcos.native_http import NativeProtocolError
+from packages.adapters.askcos.references import (
+    ReferenceError,
+    ReferenceSearchInput,
+    ReferenceSearchResponse,
+    ReferenceStatus,
+)
 from requests.exceptions import RequestException
 from pymongo import timeout as mongo_timeout
 from pymongo.errors import PyMongoError
@@ -227,6 +233,31 @@ for util in util_registry:
                 operation_id=operation_id
             )
         app.include_router(router)
+
+uspto_router = APIRouter(prefix="/api/reactions")
+
+
+@uspto_router.post("/uspto-exact-references", response_model=ReferenceSearchResponse)
+def uspto_exact_references(data: ReferenceSearchInput):
+    try:
+        return util_registry.get_util("reactions").uspto_exact_references(data)
+    except ReferenceError as exc:
+        raise HTTPException(exc.status, {"code": exc.code}) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            422, {"code": "invalid_reference_structure", "message": str(exc)}
+        ) from exc
+
+
+@uspto_router.get("/uspto-reference-status", response_model=ReferenceStatus)
+def uspto_reference_status():
+    snapshot = util_registry.get_util("reactions").uspto_reference_status()
+    if not snapshot.ready:
+        return JSONResponse(status_code=503, content=snapshot.model_dump(mode="json"))
+    return snapshot
+
+
+app.include_router(uspto_router)
 
 tooltip_router = APIRouter(prefix="/api/tooltip")
 

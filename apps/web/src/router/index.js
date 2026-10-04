@@ -92,6 +92,12 @@ const workspacePages = [
     meta: { title: "反应可行性", feature: "fast_filter" },
   },
   {
+    path: "references",
+    name: "ReactionReferences",
+    component: () => import("@/views/references/ReferenceSearch.vue"),
+    meta: { title: "专利参考反应", feature: "references" },
+  },
+  {
     path: "buyables",
     name: "商业原料检索",
     component: () => import("@/views/workspace/StockSearch.vue"),

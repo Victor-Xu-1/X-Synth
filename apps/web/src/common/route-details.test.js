@@ -366,6 +366,11 @@ test.each([
   "views/workspace/TaskDetail.vue",
   "components/routes/RouteStepList.vue",
   "components/routes/RouteEvidencePanel.vue",
+  "components/routes/RouteReader.vue",
+  "components/routes/RouteFilters.vue",
+  "components/routes/RouteMaterials.vue",
+  "components/routes/RouteConditions.vue",
+  "components/routes/RoutePreview.vue",
 ])("%s compiles with the real Vue compiler", (filename) => {
   const { descriptor, errors } = parse(source(filename), { filename });
   expect(errors).toEqual([]);
@@ -390,11 +395,13 @@ test.each([
 });
 test("viewer stays read-only and both single and overview edit actions share original-index from-task", () => {
   const detail = compactSource("views/workspace/TaskDetail.vue"),
+    reader = compactSource("components/routes/RouteReader.vue"),
     steps = compactSource("components/routes/RouteStepList.vue");
-  expect(detail.match(/<RouteGraph\b/g)).toHaveLength(1);
-  expect(detail).toContain(':editable="false"');
+  expect(detail.match(/<RouteReader\b/g)).toHaveLength(1);
+  expect(reader.match(/<RouteGraph\b/g)).toHaveLength(1);
+  expect(reader).toContain(':editable="false"');
   expect(detail).toContain("originalRouteIndex(candidates.value, routeId)");
-  expect(detail).toContain("route_index: originalIndex");
+  expect(detail).toContain("route_index: index");
   expect(detail).toContain("/api/v1/route-documents/from-task");
   expect(detail).toContain('@edit="edit"');
   expect(steps).toContain("$emit('edit', choice.route.route_id)");
@@ -403,14 +410,15 @@ test("viewer stays read-only and both single and overview edit actions share ori
   expect(detail).not.toContain("@update:graph");
 });
 test("generation guard, URL reset, timer cleanup and nonoverlapping inspector remain wired", () => {
-  const detail = compactSource("views/workspace/TaskDetail.vue");
-  expect(detail).toContain("current !== generation || disposed");
+  const detail = compactSource("views/workspace/TaskDetail.vue"),
+    reader = compactSource("components/routes/RouteReader.vue");
+  expect(detail).toContain("disposed || current !== generation");
   expect(detail).toContain("disposed || id !== identifier.value");
   expect(detail).toMatch(/watch\(\s*\(\) => route\.params\.id/);
   expect(detail).toContain("job.value = null; candidates.value = []");
-  expect(detail).toContain("clearInterval(timer); generation++");
-  expect(detail).toContain("retainedRouteId(values, selectedId.value)");
-  expect(detail).toContain(
-    ".task-detail-body > :deep(.route-inspector) { position: static;",
+  expect(detail).toContain("generation++; window.clearInterval(timer)");
+  expect(reader).toContain("retainedRouteId(values, selectedId.value)");
+  expect(reader).toContain(
+    ".reader-detail-body > :deep(.route-inspector) { position: static;",
   );
 });

@@ -69,7 +69,12 @@ test("prominent workspace templates stay backend-neutral while environment cards
   expect(source("components/workspace/TaskCard.vue")).toContain(
     "taskSourceLabel(task)",
   );
-  expect(source("components/routes/RoutePreview.vue")).toContain("engineLabel");
+  expect(source("components/routes/RoutePreview.vue")).toContain(
+    "<RouteReader",
+  );
+  expect(source("components/routes/RouteStepList.vue")).toContain(
+    "engineLabel",
+  );
 });
 
 test("legacy status redirects without a competing page and shell links enter the environment module", () => {

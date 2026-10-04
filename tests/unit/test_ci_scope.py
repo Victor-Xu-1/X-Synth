@@ -154,6 +154,9 @@ def test_native_template_and_history_changes_use_explicit_related_contracts(tmp_
             "tests/unit/test_template_library_api.py",
             "tests/unit/test_history_projection.py",
             "tests/unit/test_route_document_api.py",
+            "tests/unit/test_job_history.py",
+            "tests/unit/test_job_repository.py",
+            "tests/unit/test_route_lifecycle.py",
         )
     }
     item = snapshot(tmp_path, files)
