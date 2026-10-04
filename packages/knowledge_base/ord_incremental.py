@@ -9,9 +9,11 @@ import sqlite3
 import stat
 from collections.abc import Iterator
 from contextlib import closing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from itertools import chain, groupby
 from pathlib import Path
 
+from .ord_identifiers import CURRENT_IDENTIFIER_POLICY, requires_source_recheck
 from .ord_reader import (
     ORD_LICENSE,
     VerifiedOrdSource,
@@ -21,6 +23,8 @@ from .ord_reader import (
 )
 from .reaction_library import SCHEMA_VERSION
 from .reaction_models import ReactionEvidence
+
+_GROUP_BUFFER_RECORDS = 16
 
 
 class OrdBaselineError(ValueError):
@@ -34,6 +38,7 @@ class OrdBaselineIdentity:
     snapshot: str
     sha256: str
     sources: tuple[VerifiedOrdSource, ...]
+    recheck_reaction_ids: frozenset[str] = frozenset()
 
     def check_unchanged(self) -> None:
         if file_fingerprint(self.path) != self.fingerprint:
@@ -125,6 +130,10 @@ def _validate_summary(
             or entry["path"] in seen
             or any(entry.get(key) != value for key, value in expected.items())
             or entry.get("rejection_policy", "fail") not in ("allow", "fail")
+            or (
+                "identity_policy" in entry
+                and entry["identity_policy"] != CURRENT_IDENTIFIER_POLICY
+            )
         ):
             raise OrdBaselineError(
                 "ORD baseline sources disagree with the verified manifest"
@@ -169,6 +178,16 @@ def _validate_record(
         raise OrdBaselineError("ORD baseline record dataset or revision is inconsistent")
 
 
+def _record_requires_source_recheck(record: ReactionEvidence) -> bool:
+    structures = chain(
+        record.reactants, record.products, record.agents,
+        (
+            item.smiles for item in record.conditions.inputs if item.smiles is not None
+        ) if record.conditions else (),
+    )
+    return any(requires_source_recheck(value) for value in structures)
+
+
 class OrdBaselineLookup:
     """One process-local read-only connection; no payload or million-ID cache."""
 
@@ -195,6 +214,8 @@ class OrdBaselineLookup:
     def has_single_record(
         self, reaction_id: str, source_path: str, source_sha256: str
     ) -> bool:
+        if reaction_id in self.identity.recheck_reaction_ids:
+            return False
         row = self.connection.execute(
             "SELECT 1 FROM reactions WHERE id=? "
             "AND json_extract(payload, '$.provenance.source_path')=? "
@@ -204,6 +225,16 @@ class OrdBaselineLookup:
             (reaction_id, source_path, source_sha256, reaction_id),
         ).fetchone()
         return row is not None
+
+    def has_original_record_source(
+        self, reaction_id: str, source_path: str, source_sha256: str
+    ) -> bool:
+        return self.connection.execute(
+            "SELECT 1 FROM reactions WHERE id>=? AND id<? "
+            "AND json_extract(payload, '$.provenance.source_path')=? "
+            "AND json_extract(payload, '$.provenance.source_sha256')=? LIMIT 1",
+            (reaction_id, reaction_id + ";", source_path, source_sha256),
+        ).fetchone() is not None
 
     def matches_existing(self, record: ReactionEvidence) -> bool:
         row = self.connection.execute(
@@ -252,36 +283,88 @@ class VerifiedOrdBaseline:
             path, fingerprint, summary["snapshot"], sha256, tuple(sources)
         )
         self.summary = summary
+        self.records_verified = 0
         self.records_reused = 0
+        self.records_withheld = 0
+        self._conditions_count = self._yields_count = 0
+        self._legacy_sources = frozenset(
+            entry["path"] for entry in summary["sources"]
+            if "identity_policy" not in entry
+        )
+        self._recheck_reaction_ids: set[str] = set()
+        self._rechecked_record_ids: set[str] = set()
         self._verified = False
         self._started = False
+
+    def _validated_records(
+        self, connection: sqlite3.Connection
+    ) -> Iterator[ReactionEvidence]:
+        known = {source.path: source for source in self.identity.sources}
+        for record_id, payload, has_conditions, has_yield in connection.execute(
+            "SELECT id, payload, has_conditions, has_yield FROM reactions ORDER BY id"
+        ):
+            record = ReactionEvidence.model_validate_json(payload)
+            _validate_record(record, record_id, known)
+            conditions = int(bool(
+                record.conditions and any(record.conditions.model_dump().values())
+            ))
+            yields = int(bool(record.reported_yields))
+            if has_conditions != conditions or has_yield != yields:
+                raise OrdBaselineError(
+                    "ORD baseline coverage flags disagree with the payload"
+                )
+            self._conditions_count += conditions
+            self._yields_count += yields
+            self.records_verified += 1
+            yield record
+
+    def _reuse_groups(
+        self, connection: sqlite3.Connection, records: Iterator[ReactionEvidence]
+    ) -> Iterator[ReactionEvidence]:
+        for original, group in groupby(
+            records, key=lambda record: record.provenance.original_reaction_id
+        ):
+            buffered, count, recheck = [], 0, False
+            for record in group:
+                count += 1
+                if count <= _GROUP_BUFFER_RECORDS:
+                    buffered.append(record)
+                else:
+                    buffered.clear()
+                if record.provenance.source_path in self._legacy_sources:
+                    recheck |= _record_requires_source_recheck(record)
+            if recheck:
+                self._recheck_reaction_ids.add(original)
+                self.records_withheld += count
+                continue
+            if count <= _GROUP_BUFFER_RECORDS:
+                for record in buffered:
+                    self.records_reused += 1
+                    yield record
+            else:
+                # Validated fixed-length original IDs keep each group contiguous.
+                # Re-read unusually large groups instead of buffering their payloads.
+                for (payload,) in connection.execute(
+                    "SELECT payload FROM reactions WHERE id>=? AND id<? ORDER BY id",
+                    (original, original + ";"),
+                ):
+                    self.records_reused += 1
+                    yield ReactionEvidence.model_validate_json(payload)
 
     def iter_records(self) -> Iterator[ReactionEvidence]:
         if self._started:
             raise OrdBaselineError("ORD baseline records must be streamed exactly once")
         self._started = True
-        known = {source.path: source for source in self.identity.sources}
-        conditions_count = yields_count = 0
         try:
             with closing(_connect(self.identity)) as connection:
-                for record_id, payload, has_conditions, has_yield in connection.execute(
-                    "SELECT id, payload, has_conditions, has_yield FROM reactions ORDER BY id"
-                ):
-                    record = ReactionEvidence.model_validate_json(payload)
-                    _validate_record(record, record_id, known)
-                    conditions = int(bool(
-                        record.conditions and any(record.conditions.model_dump().values())
-                    ))
-                    yields = int(bool(record.reported_yields))
-                    if has_conditions != conditions or has_yield != yields:
-                        raise OrdBaselineError(
-                            "ORD baseline coverage flags disagree with the payload"
-                        )
-                    conditions_count += conditions
-                    yields_count += yields
-                    self.records_reused += 1
-                    yield record
-            if (self.records_reused, conditions_count, yields_count) != (
+                records = self._validated_records(connection)
+                if self._legacy_sources:
+                    yield from self._reuse_groups(connection, records)
+                else:
+                    for record in records:
+                        self.records_reused += 1
+                        yield record
+            if (self.records_verified, self._conditions_count, self._yields_count) != (
                 self.summary["record_count"],
                 self.summary["conditions_count"],
                 self.summary["yields_count"],
@@ -292,6 +375,9 @@ class VerifiedOrdBaseline:
         finally:
             self.identity.check_unchanged()
         self._verified = True
+        self.identity = replace(
+            self.identity, recheck_reaction_ids=frozenset(self._recheck_reaction_ids)
+        )
 
     def freeze(self) -> OrdBaselineIdentity:
         if not self._verified:
@@ -299,23 +385,54 @@ class VerifiedOrdBaseline:
         self.identity.check_unchanged()
         return self.identity
 
+    def note_rechecked_record(
+        self, record: ReactionEvidence, lookup: OrdBaselineLookup
+    ) -> None:
+        if (
+            record.provenance.original_reaction_id in self.identity.recheck_reaction_ids
+            and lookup.matches_existing(record)
+        ):
+            # Only the withheld subset needs uniqueness tracking, never all base IDs.
+            self._rechecked_record_ids.add(record.id)
+
+    def check_raw_rechecks_seen(self, reports: list[dict]) -> None:
+        seen = {
+            identity for report in reports
+            for identity in report["rechecked_reaction_ids_seen"]
+        }
+        missing = self.identity.recheck_reaction_ids - seen
+        if missing:
+            raise OrdBaselineError(
+                f"{len(missing)} ORD baseline recheck reaction IDs were not found "
+                f"in their original raw sources: {sorted(missing)[:20]}"
+            )
+
     def audit(self, *, totals: dict, library: dict | None) -> dict:
+        preserved = len(self._rechecked_record_ids)
         return {
             "base_library": str(self.identity.path),
             "base_snapshot": self.identity.snapshot,
             "base_sha256": self.identity.sha256,
             "base_record_count": self.summary["record_count"],
+            "identity_policy": CURRENT_IDENTIFIER_POLICY,
+            "legacy_sources_requiring_policy_scan": sorted(self._legacy_sources),
+            "records_verified": self.records_verified,
             "records_reused": self.records_reused,
+            "records_withheld": self.records_withheld,
+            "reactions_recheck_required": len(self._recheck_reaction_ids),
+            "reactions_recheck_seen": totals.get("reactions_recheck_seen", 0),
+            "records_rechecked_existing": totals.get("records_rechecked_existing", 0),
+            "records_rechecked_preserved": preserved,
+            "records_removed_on_recheck": (
+                self.records_withheld - preserved if library is not None else None
+            ),
             "base_records_verified": self._verified,
             "source_selection": "complete_verified_manifest",
             "rows_skipped_verified": totals.get("rows_skipped_verified", 0),
             "records_skipped_existing": totals.get("records_skipped_existing", 0),
-            "new_records_emitted": (
-                totals.get("records_emitted", 0)
-                - totals.get("records_skipped_existing", 0)
-            ),
+            "new_records_emitted": totals.get("records_new_emitted", 0),
             "new_records_indexed": (
-                library["record_count"] - self.summary["record_count"]
+                library["record_count"] - self.records_reused - preserved
                 if library is not None else None
             ),
             "rows_seen": totals.get("rows_seen", 0),

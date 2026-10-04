@@ -11,16 +11,29 @@ from contextlib import closing
 from pathlib import Path
 
 import pytest
+from ord_schema.proto import reaction_pb2 as pb
+from rdkit import Chem
+from rdkit.Chem import inchi
 
 from packages.knowledge_base.ord_import import iter_import_records
+from packages.knowledge_base.ord_identifiers import (
+    CURRENT_IDENTIFIER_POLICY,
+    requires_source_recheck,
+)
 from packages.knowledge_base.ord_incremental import (
     OrdBaselineError,
     OrdBaselineLookup,
     VerifiedOrdBaseline,
+    _GROUP_BUFFER_RECORDS,
+    _record_requires_source_recheck,
 )
 from packages.knowledge_base.ord_reader import file_fingerprint, verify_ord_sources
 from packages.knowledge_base.reaction_library import compile_reaction_library
-from packages.knowledge_base.reaction_models import ReactionEvidence
+from packages.knowledge_base.reaction_models import (
+    ReactionEvidence,
+    RecordedConditions,
+    RecordedInput,
+)
 from scripts.data_import.compile_reaction_library import main
 from test_ord_extraction import (
     AZ_PATH,
@@ -36,6 +49,13 @@ from test_ord_extraction import (
 )
 
 
+def _current_sources(sources):
+    return [
+        {**item.as_source(), "identity_policy": CURRENT_IDENTIFIER_POLICY}
+        for item in sources
+    ]
+
+
 @pytest.fixture
 def public_import(public_files, tmp_path):
     root = tmp_path / "sources"
@@ -47,7 +67,7 @@ def public_import(public_files, tmp_path):
     records, _ = _extract(path, PUBLIC_PATH, PUBLIC_SHA256)
     base = tmp_path / "base.sqlite"
     compile_reaction_library(
-        records[:20], base, sources=[item.as_source() for item in sources]
+        records[:20], base, sources=_current_sources(sources)
     )
     return root, manifest, sources, records, base
 
@@ -143,7 +163,7 @@ def test_real_complete_baseline_has_no_newly_extracted_records(
     _, manifest, sources, records, _ = public_import
     base = tmp_path / "complete.sqlite"
     compile_reaction_library(
-        records, base, sources=[item.as_source() for item in sources]
+        records, base, sources=_current_sources(sources)
     )
     assert main(_arguments(manifest, tmp_path / "resumed.sqlite", base)) == 0
     audit = json.loads(capsys.readouterr().out)
@@ -170,7 +190,7 @@ def test_real_az_resume_still_audits_four_invalid_rows(
     records, _ = _extract(path, AZ_PATH, AZ_SHA256)
     base = tmp_path / "az-base.sqlite"
     compile_reaction_library(
-        records, base, sources=[item.as_source() for item in sources]
+        records, base, sources=_current_sources(sources)
     )
     output = tmp_path / "az-resumed.sqlite"
     arguments = _arguments(manifest, output, base)
@@ -314,7 +334,7 @@ def test_multi_outcome_reactions_are_reparsed_and_deduplicated(
     records, _ = _extract(path, entry["path"], entry["sha256"])
     base = tmp_path / "base.sqlite"
     compile_reaction_library(
-        records[:1], base, sources=[item.as_source() for item in sources]
+        records[:1], base, sources=_current_sources(sources)
     )
     baseline = VerifiedOrdBaseline(base, sources)
     reports = []
@@ -347,7 +367,7 @@ def test_multi_outcome_payload_conflict_is_fatal_even_with_allow_rejected(
     records, _ = _extract(path, entry["path"], entry["sha256"])
     base = tmp_path / "original.sqlite"
     compile_reaction_library(
-        records, base, sources=[item.as_source() for item in sources]
+        records, base, sources=_current_sources(sources)
     )
     invalid = _mutated_base(
         base, tmp_path / "conflicting.sqlite",
@@ -480,3 +500,303 @@ def test_incremental_worker_bound_is_enforced_before_reuse(public_import, tmp_pa
             allow_rejected=False, base_library=baseline,
         ))
     assert baseline.records_reused == 0
+
+
+@pytest.mark.parametrize("source_path,sha256,valid,rows,withheld", [
+    (PUBLIC_PATH, PUBLIC_SHA256, 39, 39, 0),
+    (AZ_PATH, AZ_SHA256, 746, 750, 7),
+])
+def test_real_legacy_policy_upgrade_preserves_verified_public_records(
+    public_files, tmp_path, capsys, source_path, sha256, valid, rows, withheld
+):
+    root = tmp_path / "sources"
+    root.mkdir()
+    path = root / Path(source_path).name
+    shutil.copyfile(public_files[source_path], path)
+    manifest = _write_manifest(root, [_entry(path, source_path)])
+    sources = verify_ord_sources(manifest, root)
+    records, _ = _extract(path, source_path, sha256)
+    base = tmp_path / "legacy.sqlite"
+    compile_reaction_library(
+        records, base, sources=[source.as_source() for source in sources]
+    )
+    report = tmp_path / "audit/upgrade.json"
+    output = tmp_path / "upgraded.sqlite"
+    assert main([
+        *_arguments(manifest, output, base, report), "--workers", "2",
+        "--allow-rejected",
+    ]) == 0
+    capsys.readouterr()
+    audit = json.loads(report.read_text())
+    incremental = audit["incremental"]
+    assert incremental["records_verified"] == valid
+    assert incremental["records_reused"] == valid - withheld
+    assert incremental["records_withheld"] == withheld
+    assert incremental["records_rechecked_preserved"] == withheld
+    assert incremental["records_rechecked_existing"] == withheld
+    assert incremental["reactions_recheck_seen"] == withheld
+    assert incremental["records_removed_on_recheck"] == 0
+    assert incremental["new_records_emitted"] == incremental["new_records_indexed"] == 0
+    assert incremental["rows_seen"] == rows and incremental["unread_rows"] == 0
+    assert audit["library"]["record_count"] == valid
+    assert all(
+        source["identity_policy"] == CURRENT_IDENTIFIER_POLICY
+        for source in audit["library"]["sources"]
+    )
+    with closing(sqlite3.connect(output)) as connection:
+        restored = [
+            ReactionEvidence.model_validate_json(row[0])
+            for row in connection.execute("SELECT payload FROM reactions ORDER BY id")
+        ]
+    assert restored == sorted(records, key=lambda record: record.id)
+
+
+@pytest.mark.parametrize("policy", [None, "", "unknown", "explicit-standard-inchi-v1"])
+def test_unknown_explicit_baseline_policy_aborts_publication(
+    public_import, tmp_path, capsys, policy
+):
+    _, manifest, _, _, base = public_import
+    invalid = _mutated_base(
+        base, tmp_path / "unknown-policy.sqlite",
+        summary_change=lambda summary: summary["sources"][0].update(
+            identity_policy=policy
+        ),
+    )
+    output = tmp_path / "not-published.sqlite"
+    assert main(_arguments(manifest, output, invalid)) == 1
+    assert not output.exists()
+    assert "sources disagree" in json.loads(capsys.readouterr().out)["error"]["message"]
+
+
+def _legacy_charge_import(tmp_path, *, rejected: bool):
+    root = tmp_path / "sources"
+    charged = _reaction(identifier="1" * 32, product="CC(=O)[O-].[NH4+]")
+    reactions = [
+        _reaction(identifier="2" * 32), charged,
+        _reaction(identifier="3" * 32, product="CCN"),
+    ]
+    path, entry = _write_dataset(root, reactions)
+    legacy, _ = _extract(path, entry["path"], entry["sha256"])
+    assert len(legacy) == 3
+    if rejected:
+        charged.outcomes[0].products[0].identifiers.add(
+            type=pb.CompoundIdentifier.INCHI,
+            value=inchi.MolToInchi(Chem.MolFromSmiles("CC(=O)[O-].[NH4+]")),
+        )
+        path, entry = _write_dataset(root, reactions)
+    manifest = _write_manifest(root, [entry])
+    sources = verify_ord_sources(manifest, root)
+    # The legacy parser retained these explicit structures despite the redundant
+    # normalized InChI. Pin those historical payloads to the final raw file.
+    legacy = [record.model_copy(update={
+        "provenance": record.provenance.model_copy(update={
+            "source_sha256": entry["sha256"],
+        }),
+    }) for record in legacy[:2]]
+    base = tmp_path / "legacy.sqlite"
+    compile_reaction_library(
+        legacy, base, sources=[source.as_source() for source in sources]
+    )
+    return manifest, sources, legacy, base
+
+
+@pytest.mark.parametrize("workers", [1, 2])
+@pytest.mark.parametrize("rejected", [False, True])
+def test_normalization_recheck_reemits_or_removes_existing_without_hiding_new(
+    tmp_path, capsys, workers, rejected
+):
+    manifest, sources, _, base = _legacy_charge_import(tmp_path, rejected=rejected)
+    baseline = VerifiedOrdBaseline(base, sources)
+    reused = list(baseline.iter_records())
+    assert [record.id for record in reused] == ["ord-" + "2" * 32]
+    identity = baseline.freeze()
+    assert identity.recheck_reaction_ids == frozenset({"ord-" + "1" * 32})
+    with OrdBaselineLookup(identity) as lookup:
+        assert not lookup.has_single_record(
+            "ord-" + "1" * 32, sources[0].path, sources[0].sha256
+        )
+    output = tmp_path / "upgraded.sqlite"
+    report = tmp_path / "audit/upgrade.json"
+    assert main([
+        *_arguments(manifest, output, base, report), "--workers", str(workers),
+        "--allow-rejected",
+    ]) == 0
+    capsys.readouterr()
+    audit = json.loads(report.read_text())
+    incremental = audit["incremental"]
+    assert incremental["records_verified"] == 2
+    assert incremental["records_reused"] == incremental["records_withheld"] == 1
+    assert incremental["records_rechecked_existing"] == int(not rejected)
+    assert incremental["records_rechecked_preserved"] == int(not rejected)
+    assert incremental["records_removed_on_recheck"] == int(rejected)
+    assert incremental["new_records_emitted"] == incremental["new_records_indexed"] == 1
+    assert incremental["reactions_recheck_required"] == incremental["reactions_recheck_seen"] == 1
+    assert incremental["rows_seen"] == 3 and incremental["unread_rows"] == 0
+    assert incremental["rows_skipped_verified"] == 1
+    assert audit["library"]["record_count"] == (2 if rejected else 3)
+    assert audit["extraction"]["totals"]["records_skipped_existing"] == 0
+
+
+@pytest.mark.parametrize("workers", [1, 2])
+def test_marked_reaction_absent_from_original_raw_source_aborts_publication(
+    tmp_path, capsys, workers
+):
+    manifest, _, _, base = _legacy_charge_import(tmp_path, rejected=False)
+    absent = "ord-" + "f" * 32
+
+    def change_original_id(connection):
+        original, raw = connection.execute(
+            "SELECT id, payload FROM reactions ORDER BY id LIMIT 1"
+        ).fetchone()
+        record = json.loads(raw)
+        record["id"] = record["provenance"]["record_id"] = absent
+        record["provenance"]["original_reaction_id"] = absent
+        connection.execute(
+            "UPDATE reactions SET id=?,payload=? WHERE id=?",
+            (absent, json.dumps(record), original),
+        )
+
+    invalid = _mutated_base(
+        base, tmp_path / "absent.sqlite", database_change=change_original_id
+    )
+    output = tmp_path / "not-published.sqlite"
+    assert main([
+        *_arguments(manifest, output, invalid), "--workers", str(workers),
+        "--allow-rejected",
+    ]) == 1
+    audit = json.loads(capsys.readouterr().out)
+    assert "not found in their original raw sources" in audit["error"]["message"]
+    assert audit["incremental"]["records_removed_on_recheck"] is None
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("workers", [1, 2])
+def test_rechecked_existing_payload_conflict_is_fatal(tmp_path, capsys, workers):
+    manifest, _, _, base = _legacy_charge_import(tmp_path, rejected=False)
+    conflicting = _mutated_base(
+        base, tmp_path / "conflicting.sqlite",
+        record_change=lambda record: record.update(procedure="Changed legacy payload"),
+    )
+    output = tmp_path / "not-published.sqlite"
+    assert main([
+        *_arguments(manifest, output, conflicting), "--workers", str(workers),
+        "--allow-rejected",
+    ]) == 1
+    audit = json.loads(capsys.readouterr().out)
+    assert "Conflicting ORD baseline payload" in (
+        audit["error"]["message"] + str(audit["extraction"]["files"])
+    )
+    assert not output.exists()
+
+
+def test_current_policy_baseline_does_not_withhold_valid_explicit_charge(tmp_path):
+    _, sources, legacy, _ = _legacy_charge_import(tmp_path, rejected=False)
+    base = tmp_path / "current.sqlite"
+    compile_reaction_library(legacy, base, sources=_current_sources(sources))
+    assert requires_source_recheck(legacy[1].products[0])
+    baseline = VerifiedOrdBaseline(base, sources)
+    assert len(list(baseline.iter_records())) == 2
+    assert baseline.records_verified == baseline.records_reused == 2
+    assert baseline.records_withheld == 0
+    assert baseline.freeze().recheck_reaction_ids == frozenset()
+
+
+@pytest.mark.parametrize("field", ["reactants", "products", "agents", "condition_inputs"])
+def test_normalization_walk_includes_each_typed_structure_field(tmp_path, field):
+    path, entry = _write_dataset(tmp_path / "sources", [_reaction()])
+    records, _ = _extract(path, entry["path"], entry["sha256"])
+    charged = "CC(=O)[O-].[NH4+]"
+    record = records[0]
+    assert not _record_requires_source_recheck(record)
+    if field == "condition_inputs":
+        record = record.model_copy(update={"conditions": RecordedConditions(inputs=[
+            RecordedInput(role="REAGENT", smiles=charged, source_field="inputs.salt")
+        ])})
+    else:
+        record = record.model_copy(update={field: [charged]})
+    assert _record_requires_source_recheck(record)
+
+
+@pytest.mark.parametrize("workers", [1, 2])
+def test_one_sensitive_outcome_withholds_the_entire_original_reaction(
+    tmp_path, workers
+):
+    root = tmp_path / "sources"
+    reaction = _reaction(identifier="1" * 32, product="CC(=O)[O-].[NH4+]")
+    reaction.outcomes.add().CopyFrom(_reaction(product="CC=O").outcomes[0])
+    path, entry = _write_dataset(root, [reaction, _reaction(identifier="2" * 32)])
+    sources = verify_ord_sources(_write_manifest(root, [entry]), root)
+    records, _ = _extract(path, entry["path"], entry["sha256"])
+    affected = [
+        record for record in records
+        if record.provenance.original_reaction_id == reaction.reaction_id
+    ]
+    assert len(affected) == 2
+    assert sum(_record_requires_source_recheck(record) for record in affected) == 1
+    base = tmp_path / "legacy.sqlite"
+    compile_reaction_library(
+        records, base, sources=[source.as_source() for source in sources]
+    )
+    checked = VerifiedOrdBaseline(base, sources)
+    seed = list(checked.iter_records())
+    assert [record.id for record in seed] == ["ord-" + "2" * 32]
+    assert checked.records_verified == 3 and checked.records_withheld == 2
+    reports = []
+    baseline = VerifiedOrdBaseline(base, sources)
+    output = tmp_path / "upgraded.sqlite"
+    library = compile_reaction_library(iter_import_records(
+        sources, reports=reports, workers=workers, staging_root=tmp_path,
+        allow_rejected=False, base_library=baseline,
+    ), output, sources=_current_sources(sources))
+    assert library["record_count"] == 3
+    assert reports[0]["records_rechecked_existing"] == 2
+    assert reports[0]["records_skipped_existing"] == 0
+    assert reports[0]["rechecked_reaction_ids_seen"] == [reaction.reaction_id]
+    audit = baseline.audit(totals=reports[0], library=library)
+    assert audit["records_rechecked_preserved"] == 2
+    assert audit["records_removed_on_recheck"] == audit["new_records_indexed"] == 0
+
+
+@pytest.mark.parametrize("workers", [1, 2])
+def test_large_contiguous_group_reuses_without_unbounded_payload_buffer(
+    tmp_path, workers
+):
+    root = tmp_path / "sources"
+    reaction = _reaction(product="CO")
+    for length in range(2, _GROUP_BUFFER_RECORDS + 2):
+        reaction.outcomes.add().CopyFrom(
+            _reaction(product="C" * length + "O").outcomes[0]
+        )
+    path, entry = _write_dataset(root, [reaction])
+    sources = verify_ord_sources(_write_manifest(root, [entry]), root)
+    records, _ = _extract(path, entry["path"], entry["sha256"])
+    assert len(records) > _GROUP_BUFFER_RECORDS
+    base = tmp_path / "legacy.sqlite"
+    compile_reaction_library(
+        records, base, sources=[source.as_source() for source in sources]
+    )
+    checked = VerifiedOrdBaseline(base, sources)
+    assert list(checked.iter_records()) == sorted(records, key=lambda record: record.id)
+    assert checked.records_verified == checked.records_reused == len(records)
+    assert checked.records_withheld == 0
+    reports = []
+    baseline = VerifiedOrdBaseline(base, sources)
+    library = compile_reaction_library(iter_import_records(
+        sources, reports=reports, workers=workers, staging_root=tmp_path,
+        allow_rejected=False, base_library=baseline,
+    ), tmp_path / "upgraded.sqlite", sources=_current_sources(sources))
+    assert library["record_count"] == len(records)
+    assert reports[0]["records_skipped_existing"] == len(records)
+    assert reports[0]["records_rechecked_existing"] == 0
+
+
+def test_rechecked_preserved_count_is_unique_for_the_withheld_subset(tmp_path):
+    _, sources, records, base = _legacy_charge_import(tmp_path, rejected=False)
+    baseline = VerifiedOrdBaseline(base, sources)
+    list(baseline.iter_records())
+    with OrdBaselineLookup(baseline.freeze()) as lookup:
+        for _ in range(2):
+            baseline.note_rechecked_record(records[1], lookup)
+    audit = baseline.audit(totals={}, library=None)
+    assert audit["records_rechecked_preserved"] == 1
+    assert audit["records_removed_on_recheck"] is None

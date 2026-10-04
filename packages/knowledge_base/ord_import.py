@@ -6,7 +6,7 @@ import multiprocessing
 import tempfile
 from collections.abc import Iterator
 from concurrent.futures import ProcessPoolExecutor
-from contextlib import nullcontext
+from contextlib import closing, nullcontext
 from multiprocessing.util import Finalize
 from pathlib import Path
 
@@ -51,8 +51,16 @@ def _evidence(
         baseline=baseline,
     ):
         if baseline is not None and baseline.matches_existing(record):
-            stats.records_skipped_existing += 1
-            continue
+            if (
+                record.provenance.original_reaction_id
+                in baseline.identity.recheck_reaction_ids
+            ):
+                stats.records_rechecked_existing += 1
+            else:
+                stats.records_skipped_existing += 1
+                continue
+        else:
+            stats.records_new_emitted += 1
         yield record
     source.check_unchanged()
     if baseline is not None:
@@ -167,6 +175,10 @@ def _merge_shard(report: dict, shard: dict) -> None:
         for key, value in shard[field].items():
             report[field][key] = report[field].get(key, 0) + value
     report["issue_samples"] = (report["issue_samples"] + shard["issue_samples"])[:20]
+    report["rechecked_reaction_ids_seen"] = sorted(
+        set(report["rechecked_reaction_ids_seen"])
+        | set(shard["rechecked_reaction_ids_seen"])
+    )
     report["unread_rows"] = report["source_rows"] - report["rows_seen"]
     if shard["error"]:
         report["error"] = shard["error"]
@@ -198,24 +210,33 @@ def iter_import_records(
     try:
         with (
             OrdBaselineLookup(identity)
-            if identity is not None and workers == 1
+            if identity is not None and (
+                workers == 1 or identity.recheck_reaction_ids
+            )
             else nullcontext()
         ) as baseline:
             if workers == 1:
-                yield from _serial(sources, reports, baseline)
+                extracted = _serial(sources, reports, baseline)
             else:
-                yield from _parallel(
+                extracted = _parallel(
                     sources,
                     reports,
                     workers=workers,
                     staging_root=staging_root,
                     baseline=identity,
                 )
+            with closing(extracted):
+                for record in extracted:
+                    if base_library is not None and baseline is not None:
+                        base_library.note_rechecked_record(record, baseline)
+                    yield record
     finally:
         if identity is not None:
             identity.check_unchanged()
     for source in sources:
         source.check_unchanged()
+    if base_library is not None:
+        base_library.check_raw_rechecks_seen(reports)
     if not allow_rejected and any(
         item["rejected_reactions"] or item["rejected_outcomes"] for item in reports
     ):
@@ -226,7 +247,9 @@ def iter_import_records(
 
 def extraction_totals(reports: list[dict]) -> dict:
     totals, reasons, gaps = {}, {}, {}
+    rechecks_seen = set()
     for report in reports:
+        rechecks_seen.update(report["rechecked_reaction_ids_seen"])
         for key, value in report.items():
             if type(value) is int:
                 totals[key] = totals.get(key, 0) + value
@@ -237,6 +260,7 @@ def extraction_totals(reports: list[dict]) -> dict:
     return {
         **totals,
         "files_processed": sum(item["complete"] for item in reports),
+        "reactions_recheck_seen": len(rechecks_seen),
         "rejection_reasons": reasons,
         "representation_gaps": gaps,
     }
