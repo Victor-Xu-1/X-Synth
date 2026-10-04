@@ -88,6 +88,7 @@ def mock_frontend(monkeypatch, before, after, old_records, new_records):
         "packages/adapters/optimization/runtime.py",
         "apps/api/condition_routes.py",
         "tests/integration/forward_browser.mjs",
+        "tests/integration/workbench_shell_browser.mjs",
     ],
 )
 def test_workspace_profile_accepts_explicitly_scoped_paths(path):

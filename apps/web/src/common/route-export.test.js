@@ -1,5 +1,23 @@
-import { settledRouteImages } from "./route-export";
+/** @jest-environment node */
+import { settledRouteImages, exportBounds } from "./route-export";
+import { ROUTE_NODE_SIZE, graphFromCandidate } from "./route-graph";
 jest.mock("html-to-image", () => ({ toPng: jest.fn() }));
+test("full export encloses the same chemical card geometry used by the live diagram", () => {
+  const graph = graphFromCandidate({
+    target_smiles: "CCO",
+    steps: [{ product: "CCO", precursors: ["CC=O", "[H][H]"] }],
+  });
+  const bounds = exportBounds(graph);
+  for (const node of graph.nodes) {
+    const size = ROUTE_NODE_SIZE[node.type];
+    expect(node.position.x + size.width - bounds.x + 32).toBeLessThanOrEqual(
+      bounds.width,
+    );
+    expect(node.position.y + size.height - bounds.y + 32).toBeLessThanOrEqual(
+      bounds.height,
+    );
+  }
+});
 let frame, style;
 beforeEach(() => {
   frame = global.requestAnimationFrame;

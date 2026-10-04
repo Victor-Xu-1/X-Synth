@@ -1,5 +1,11 @@
 <template>
-  <div class="route-graph-surface" ref="surface" data-cy="route-graph">
+  <div
+    class="route-graph-surface"
+    :class="{ overview, reading }"
+    :style="nodeDimensions"
+    ref="surface"
+    data-cy="route-graph"
+  >
     <VueFlow
       :id="id"
       :nodes="flowNodes"
@@ -53,11 +59,17 @@ import { VueFlow, useVueFlow, MarkerType } from "@vue-flow/core";
 import "@vue-flow/core/dist/style.css";
 import MoleculeNode from "./MoleculeNode.vue";
 import ReactionNode from "./ReactionNode.vue";
-import { canConnect, layoutGraph } from "@/common/route-graph";
+import {
+  canConnect,
+  layoutGraph,
+  ROUTE_NODE_SIZE,
+  READING_NODE_SIZE,
+} from "@/common/route-graph";
 const props = defineProps({
   graph: { type: Object, required: true },
   editable: Boolean,
   overview: Boolean,
+  reading: Boolean,
   scores: { type: Object, default: () => ({}) },
   id: { type: String, default: () => `route-${crypto.randomUUID()}` },
 });
@@ -71,10 +83,26 @@ const flowNodes = computed(() =>
       ...node,
       isTarget: node.id === props.graph.target_id,
       isStarting: !props.graph.edges.some((edge) => edge.target === node.id),
+      overview: props.overview,
+      reading: props.reading,
+      imageWidth: props.reading ? 200 : 168,
+      imageHeight: props.reading ? 144 : 95,
       score: props.scores[node.id],
     },
   })),
 );
+const nodeDimensions = computed(() => {
+  const size = props.reading ? READING_NODE_SIZE : ROUTE_NODE_SIZE;
+  return {
+    "--route-molecule-width": `${size.molecule.width}px`,
+    "--route-molecule-height": `${size.molecule.height}px`,
+    "--route-reaction-width": `${size.reaction.width}px`,
+    "--route-reaction-height": `${size.reaction.height}px`,
+    "--route-image-width": `${props.reading ? 200 : 168}px`,
+    "--route-image-height": `${props.reading ? 144 : 95}px`,
+    "--route-heading-height": `${props.reading ? 24 : 20}px`,
+  };
+});
 const flowEdges = computed(() =>
   props.graph.edges.map((edge) => ({
     ...edge,
@@ -106,10 +134,17 @@ function onConnect({ source, target }) {
 }
 async function fit() {
   await nextTick();
-  fitView({ padding: 0.14, maxZoom: 1, duration: 0 });
+  fitView({ padding: 0.12, maxZoom: props.overview ? 1 : 1.25, duration: 0 });
 }
 function arrange() {
-  if (props.editable) emit("update:graph", layoutGraph(props.graph));
+  if (props.editable)
+    emit(
+      "update:graph",
+      layoutGraph(
+        props.graph,
+        props.reading ? READING_NODE_SIZE : ROUTE_NODE_SIZE,
+      ),
+    );
   nextTick(fit);
 }
 const tools = [
@@ -126,7 +161,7 @@ defineExpose({ fit, arrange, element: surface });
   width: 100%;
   height: 100%;
   min-height: 260px;
-  background: var(--ws-bg);
+  background: var(--ws-canvas, #f3f5f6);
   position: relative;
   overflow: hidden;
 }
@@ -146,34 +181,34 @@ defineExpose({ fit, arrange, element: surface });
   fill: none;
 }
 .molecule-graph-node {
-  width: 190px;
-  height: 156px;
+  width: var(--route-molecule-width);
+  height: var(--route-molecule-height);
   border: 1px solid var(--ws-border);
-  border-radius: 7px;
+  border-radius: 8px;
   background: var(--ws-surface);
   padding: 8px 10px;
   color: var(--ws-text);
 }
 .molecule-graph-node .smiles-image-container {
-  width: 168px;
-  height: 95px;
+  width: var(--route-image-width);
+  height: var(--route-image-height);
   overflow: hidden;
 }
-.molecule-graph-node.selected,
-.reaction-graph-node.selected {
-  border-color: var(--ws-text);
-  box-shadow: 0 0 0 1px var(--ws-text);
+.molecule-graph-node.selected {
+  border-color: var(--ws-accent, #16876f);
+  box-shadow: 0 0 0 1px var(--ws-accent, #16876f);
 }
 .molecule-graph-node.target {
-  border-color: #427ab2;
+  border-color: var(--ws-accent, #16876f);
+  border-top-width: 3px;
 }
 .graph-node-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 20px;
+  height: var(--route-heading-height);
   gap: 6px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--ws-muted);
 }
 .graph-node-heading strong {
@@ -191,7 +226,20 @@ defineExpose({ fit, arrange, element: surface });
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-top: 5px;
+  flex: 1;
+  min-width: 0;
+}
+.graph-node-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+}
+.graph-node-action {
+  flex: 0 0 auto;
+}
+.reading .molecule-graph-node {
+  padding: 10px 11px;
 }
 .reaction-graph-node {
   display: flex;
@@ -199,15 +247,26 @@ defineExpose({ fit, arrange, element: surface });
   align-items: center;
   justify-content: center;
   gap: 2px;
-  width: 110px;
-  height: 66px;
-  border: 1px solid var(--ws-border);
-  border-radius: 7px;
-  background: var(--ws-surface);
+  width: var(--route-reaction-width);
+  height: var(--route-reaction-height);
   color: var(--ws-text);
 }
+.reaction-disc {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--ws-border);
+  border-radius: 50%;
+  color: var(--ws-accent, #16876f);
+  background: var(--ws-surface);
+}
+.reaction-graph-node.selected .reaction-disc {
+  border-color: var(--ws-accent, #16876f);
+  box-shadow: 0 0 0 2px var(--ws-accent-soft, #e9f5ef);
+}
 .reaction-graph-node strong {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   max-width: 95px;
   white-space: nowrap;
@@ -215,20 +274,24 @@ defineExpose({ fit, arrange, element: surface });
   text-overflow: ellipsis;
 }
 .reaction-graph-node small {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--ws-muted);
 }
 .route-viewport-controls {
   position: absolute;
-  bottom: 15px;
-  left: 15px;
+  top: 16px;
+  right: 16px;
   z-index: 5;
   display: flex;
+  flex-direction: column;
   gap: 1px;
   border: 1px solid var(--ws-border);
   border-radius: 7px;
   background: var(--ws-surface);
   padding: 2px;
+}
+.route-graph-surface.overview {
+  background: var(--ws-bg);
 }
 .route-graph-counter {
   position: absolute;

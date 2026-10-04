@@ -11,12 +11,7 @@
           prepend-icon="mdi-beaker-outline"
           size="small"
           variant="text"
-          :to="
-            createConditionRecommendationUrl(
-              step.reactants.join('.') + '>>' + step.product,
-            )
-          "
-          @click="$emit('navigate')"
+          @click="activeStep = step"
           >条件预测</v-btn
         >
       </header>
@@ -46,20 +41,30 @@
       >
       <ReactionReferences :product="step.product" :reactants="step.reactants" />
     </article>
+    <RouteConditionDialog
+      v-if="activeStep"
+      :key="activeStep.nodeId"
+      :reaction="{
+        precursors: activeStep.reactants,
+        product: activeStep.product,
+      }"
+      @close="activeStep = null"
+    />
     <p v-if="error" class="tool-error" role="alert">{{ error }}</p>
   </section>
 </template>
 <script setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { conditionRows } from "@/common/route-reading";
-import { createConditionRecommendationUrl } from "@/common/reaction-evidence";
 import { safeExternalUrl } from "@/common/external-url";
 import { useWorkspaceStore } from "@/store/workspace";
 import SmilesImage from "@/components/SmilesImage.vue";
 import ReactionReferences from "@/components/references/ReactionReferences.vue";
+import RouteConditionDialog from "./RouteConditionDialog.vue";
 const props = defineProps({ candidate: Object, graph: Object });
 defineEmits(["select", "navigate"]);
 const workspace = useWorkspaceStore();
+const activeStep = ref(null);
 const ordered = computed(() => {
   try {
     return { steps: conditionRows(props.candidate, props.graph), error: "" };

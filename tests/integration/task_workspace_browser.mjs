@@ -50,7 +50,7 @@ async function images(page, region) {
   await expect
     .poll(
       () =>
-        region.locator("img").evaluateAll((items) => {
+        region.locator(".smiles-image-container").evaluateAll((items) => {
           const visible = items.filter((item) => {
             const r = item.getBoundingClientRect();
             return (
@@ -59,12 +59,14 @@ async function images(page, region) {
           });
           return (
             visible.length > 0 &&
-            visible.every(
-              (item) =>
-                item.complete &&
-                item.naturalWidth > 0 &&
-                Number(getComputedStyle(item).opacity) === 1,
-            )
+            visible.every((item) => {
+              const image = item.querySelector("img");
+              return (
+                image?.complete &&
+                image.naturalWidth > 0 &&
+                Number(getComputedStyle(image).opacity) === 1
+              );
+            })
           );
         }),
       { timeout: 30000 },
@@ -104,7 +106,7 @@ async function exportedStructures(page, graph, document, bytes) {
         const element = surface.querySelector(`[data-id="${node.id}"]`);
         const box = element.getBoundingClientRect();
         const image = element.querySelector("img").getBoundingClientRect();
-        const scale = box.width / 190;
+        const scale = box.width / element.offsetWidth;
         return {
           id: node.id,
           x: Math.round(
@@ -279,7 +281,8 @@ test(
           original.result.unified_route_pool.selected_routes,
         );
         await page
-          .getByRole("textbox", { name: "搜索名称、SMILES 或 ID", exact: true })
+          .locator(".task-history")
+          .getByRole("textbox", { name: "名称、SMILES 或 ID", exact: true })
           .fill(jobId);
         await expect(page.locator(".task-card")).toHaveCount(1);
         await page
@@ -290,8 +293,8 @@ test(
           .getByRole("link", { name: "返回任务列表", exact: true })
           .click();
         await expect(
-          page.getByRole("textbox", {
-            name: "搜索名称、SMILES 或 ID",
+          page.locator(".task-history").getByRole("textbox", {
+            name: "名称、SMILES 或 ID",
             exact: true,
           }),
         ).toHaveValue(jobId);
@@ -335,7 +338,7 @@ test(
   },
 );
 
-for (const width of [1440, 390]) {
+for (const width of [1440, 1024, 390]) {
   test(
     `actual route list, multi-route preview, materials and exports at ${width}px`,
     { timeout: 180000 },
@@ -455,6 +458,20 @@ for (const width of [1440, 390]) {
           if (evidence)
             await writeFile(path.join(evidence, "complete-route.png"), bytes);
         }
+        await graph
+          .locator(".vue-flow__node-molecule")
+          .first()
+          .getByRole("button", { name: "查看化合物详情", exact: true })
+          .click();
+        await expect(
+          reader
+            .locator(".route-inspector")
+            .getByRole("button", { name: "采购记录", exact: true }),
+        ).toBeVisible();
+        await reader
+          .locator(".route-inspector")
+          .getByRole("button", { name: "关闭详情", exact: true })
+          .click();
         await graph.locator('[data-id="r-1"]').click();
         await expect(reader.locator(".route-inspector")).toBeVisible();
         const rxn = `${routes[1].steps[0].precursors.join(".")}>>${routes[1].steps[0].product}`;
@@ -465,18 +482,52 @@ for (const width of [1440, 390]) {
         });
         await reader
           .locator(".route-inspector")
-          .getByRole("link", { name: "条件预测", exact: true })
+          .getByRole("button", { name: "条件预测", exact: true })
           .click();
-        await expect(page).toHaveURL(/\/forward\?/);
-        assert.equal(new URL(page.url()).searchParams.get("rxnsmiles"), rxn);
+        await expect(page).toHaveURL(new RegExp(`/results/${jobId}$`));
         await expect(
           page.getByRole("heading", { name: "反应条件预测", exact: true }),
         ).toBeVisible();
         assert.equal(
           calls.length,
           0,
-          "a node navigation never submits a prediction",
+          "opening a route condition dialog never submits a prediction",
         );
+        if (width === 1440) {
+          const response = page.waitForResponse(
+            (value) =>
+              new URL(value.url()).pathname === "/api/v1/conditions/predict" &&
+              value.request().method() === "POST",
+          );
+          await page
+            .getByRole("button", { name: "预测条件", exact: true })
+            .click();
+          const prediction = await json(await response);
+          assert.equal(prediction.model, "nn_v1");
+          assert.equal(prediction.evidence_type, "model_prediction");
+          assert.ok(
+            prediction.conditions.length > 0 &&
+              prediction.conditions.length <= 3,
+          );
+          const payload = JSON.parse((await response).request().postData());
+          assert.equal(`${payload.reactants}>>${payload.product}`, rxn);
+          await expect(
+            page.locator(".route-condition-dialog .condition-table tbody tr"),
+          ).toHaveCount(prediction.conditions.length);
+          await expect(
+            page.getByRole("button", { name: "预测条件", exact: true }),
+          ).toBeEnabled();
+          await images(page, page.locator(".route-condition-dialog"));
+          await capture(page, `route-condition-dialog-${width}`);
+          const record = await json(
+            await page.request.get(`/api/v1/analyses/${prediction.record_id}`),
+          );
+          assert.equal(record.status, "completed");
+        }
+        await page
+          .getByRole("button", { name: "关闭条件预测", exact: true })
+          .click();
+        await expect(reader.locator(".route-inspector")).toBeVisible();
         await noOverflow(page);
         if (width === 1440) {
           await page.goto(`/results/${jobId}`);

@@ -65,8 +65,7 @@
           size="small"
           variant="text"
           prepend-icon="mdi-beaker-outline"
-          :to="createConditionRecommendationUrl(reaction.smiles)"
-          @click="$emit('navigate')"
+          @click="conditionOpen = true"
           >条件预测</v-btn
         >
       </div>
@@ -115,6 +114,12 @@
       :expected-snapshot="snapshot"
       @navigate="$emit('navigate')"
     />
+    <RouteConditionDialog
+      v-if="conditionOpen && reaction"
+      :key="reaction.smiles"
+      :reaction="reaction"
+      @close="conditionOpen = false"
+    />
   </section>
 </template>
 <script setup>
@@ -132,10 +137,10 @@ import {
 import {
   buildReactionEvidence,
   createReactionEvidenceInput,
-  createConditionRecommendationUrl,
 } from "@/common/reaction-evidence";
 import { safeExternalUrl } from "@/common/external-url";
 import MoleculeStockDialog from "./MoleculeStockDialog.vue";
+import RouteConditionDialog from "./RouteConditionDialog.vue";
 import MoleculeFileControls from "@/components/workspace/MoleculeFileControls.vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import ReactionReferences from "@/components/references/ReactionReferences.vue";
@@ -147,7 +152,8 @@ const props = defineProps({
 });
 defineEmits(["navigate"]);
 const workspace = useWorkspaceStore(),
-  stockOpen = ref(false);
+  stockOpen = ref(false),
+  conditionOpen = ref(false);
 const exporting = ref(false),
   exportError = ref("");
 let exportGeneration = 0,
@@ -172,6 +178,7 @@ watch(
   () => [props.node.id, props.node.smiles, reaction.value?.smiles],
   () => {
     stockOpen.value = false;
+    conditionOpen.value = false;
     exportGeneration++;
     exporting.value = false;
     exportError.value = "";

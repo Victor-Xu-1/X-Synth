@@ -11,6 +11,7 @@ const source = (filename) => readFileSync(resolve(__dirname, filename), "utf8");
 
 test.each([
   "RouteNodeContext.vue",
+  "RouteConditionDialog.vue",
   "MoleculeStockDialog.vue",
   "RouteInspector.vue",
   "RoutePreview.vue",
@@ -36,6 +37,17 @@ test.each([
         scoped: style.scoped,
       }).errors,
     ).toEqual([]);
+});
+
+test("route conditions use the shared predictor and an explicit action without leaving the route", () => {
+  const context = source("RouteNodeContext.vue"),
+    dialog = source("RouteConditionDialog.vue");
+  expect(context).toContain("conditionOpen = true");
+  expect(context).toContain("conditionOpen.value = false");
+  expect(dialog).toContain("useConditionPrediction");
+  expect(dialog).toContain('@click="predict"');
+  expect(dialog).not.toMatch(/onMounted\s*\(\s*predict/);
+  expect(dialog).toContain(':allow-evaluation="false"');
 });
 
 test("inspector validation captures a node/draft and refuses late writes after selection or lifetime changes", () => {

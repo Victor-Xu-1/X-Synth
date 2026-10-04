@@ -212,6 +212,7 @@ def guard_paths(paths: set[str]) -> None:
             "tests/integration/forward_browser.mjs",
             "tests/integration/analysis_browser.mjs",
             "tests/integration/task_workspace_browser.mjs",
+            "tests/integration/workbench_shell_browser.mjs",
             "tests/integration/test_impurity_native.py",
             "tests/integration/test_impurity_mapper.py",
             "tests/integration/test_impurity_assets.py",

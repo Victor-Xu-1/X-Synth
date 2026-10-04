@@ -1,9 +1,137 @@
-const fs = require("fs");
-const path = require("path");
+import { mount } from "@vue/test-utils";
+import { nextTick, ref } from "vue";
+import DefaultLayout from "./Default.vue";
 
-test("closed mobile navigation is excluded from focus and accessibility trees", () => {
-  const source = fs.readFileSync(path.resolve(__dirname, "Default.vue"), "utf8");
-  expect(source).toContain(':inert="mobile && !mobileOpen ? true : undefined"');
-  expect(source).toContain(':aria-hidden="mobile && !mobileOpen ? \'true\' : undefined"');
-  expect(source).toContain('@navigate="mobileOpen = false"');
+jest.mock("@vueuse/core", () => ({
+  useWindowSize: () => ({ width: mockWidth }),
+  useOnline: () => mockOnline,
+}));
+jest.mock("@/store/workspace", () => ({ useWorkspaceStore: () => mockWorkspace }));
+jest.mock("@/composables/useTheme", () => ({ useTheme: () => ({ isDark: false, toggleTheme: jest.fn() }) }));
+jest.mock("vue-router", () => ({ useRoute: () => ({ path: "/", query: {}, meta: {} }) }));
+jest.mock("@/components/workspace/BrandMark.vue", () => ({ template: '<img alt="" />' }));
+const mockWidth = ref(1440);
+const mockOnline = ref(true);
+const mockWorkspace = { refresh: jest.fn(), features: {} };
+let wrapper;
+const stubs = {
+  VApp: { template: '<div><slot /></div>' },
+  AppBar: {
+    props: ["navigationOpen", "mobile", "online"],
+    emits: ["toggle-navigation", "navigate"],
+    template: '<header class="workspace-header"><button class="workspace-navigation-toggle" :aria-expanded="navigationOpen" @click="$emit(\'toggle-navigation\')" /><a href="/" @click="$emit(\'navigate\')">X-Synth</a></header>',
+  },
+  Sidebar: {
+    props: ["compact"],
+    emits: ["navigate"],
+    template: '<aside class="workspace-sidebar"><a href="/">首页</a><button @click="$emit(\'navigate\')">关闭导航</button></aside>',
+  },
+  WorkspaceSectionNav: { template: '<nav />' },
+  RouterView: { template: '<button class="page-action">Page</button>' },
+};
+beforeEach(() => {
+  jest.useFakeTimers();
+  mockWorkspace.refresh.mockClear();
+  mockWidth.value = 1440;
+  mockOnline.value = true;
+});
+afterEach(() => {
+  wrapper?.unmount();
+  wrapper = undefined;
+  jest.useRealTimers();
+});
+function setup(width = 1440) {
+  mockWidth.value = width;
+  wrapper = mount(DefaultLayout, { attachTo: document.body, global: { stubs } });
+  return wrapper;
+}
+
+test("header spans the shell rather than living inside the page column", () => {
+  setup();
+  expect(wrapper.get(".workspace-header").element.parentElement).toBe(wrapper.get(".workspace-shell").element);
+  expect(wrapper.get(".workspace-main").find("header").exists()).toBe(false);
+  expect(wrapper.findAll("main")).toHaveLength(1);
+});
+
+test("medium desktop keeps Chinese module labels until the user explicitly compacts navigation", async () => {
+  setup(1024);
+  expect(wrapper.findComponent(stubs.Sidebar).props("compact")).toBe(false);
+  await wrapper.get(".workspace-navigation-toggle").trigger("click");
+  expect(wrapper.findComponent(stubs.Sidebar).props("compact")).toBe(true);
+});
+
+test("closed mobile drawer is excluded from focus and accessibility trees", () => {
+  setup(390);
+  const aside = wrapper.get("aside");
+  expect(aside.attributes("inert")).toBeDefined();
+  expect(aside.attributes("aria-hidden")).toBe("true");
+  expect(wrapper.find(".navigation-scrim").exists()).toBe(false);
+});
+
+test("mobile drawer traps focus, closes on Escape and returns focus to its toggle", async () => {
+  setup(390);
+  const toggle = wrapper.get(".workspace-navigation-toggle");
+  await toggle.trigger("click");
+  await nextTick();
+  const aside = wrapper.get("aside");
+  expect(aside.attributes("inert")).toBeUndefined();
+  expect(aside.attributes("role")).toBe("dialog");
+  expect(aside.attributes("aria-modal")).toBe("true");
+  expect(wrapper.get(".workspace-main").attributes("inert")).toBeDefined();
+  const first = aside.get("a").element;
+  const last = aside.get("button").element;
+  expect(document.activeElement).toBe(first);
+  await aside.trigger("keydown", { key: "Tab", shiftKey: true });
+  expect(document.activeElement).toBe(last);
+  await aside.trigger("keydown", { key: "Tab" });
+  expect(document.activeElement).toBe(first);
+  await aside.trigger("keydown", { key: "Escape" });
+  await nextTick();
+  expect(aside.attributes("aria-hidden")).toBe("true");
+  expect(toggle.attributes("aria-expanded")).toBe("false");
+  expect(document.activeElement).toBe(toggle.element);
+});
+
+test.each([".navigation-scrim", "aside button"])("%s closes the drawer without losing focus", async (selector) => {
+  setup(390);
+  await wrapper.get(".workspace-navigation-toggle").trigger("click");
+  await wrapper.get(selector).trigger("click");
+  await nextTick();
+  expect(wrapper.get("aside").attributes("aria-hidden")).toBe("true");
+  expect(document.activeElement).toBe(wrapper.get(".workspace-navigation-toggle").element);
+});
+
+test("header navigation closes the modal drawer rather than leaving the destination inert", async () => {
+  setup(390);
+  await wrapper.get(".workspace-navigation-toggle").trigger("click");
+  await wrapper.get("header a").trigger("click");
+  expect(wrapper.get("aside").attributes("aria-hidden")).toBe("true");
+  expect(wrapper.get(".workspace-main").attributes("inert")).toBeUndefined();
+});
+
+test("crossing the breakpoint closes the drawer and keeps subsequent mobile navigation inert", async () => {
+  setup(390);
+  await wrapper.get(".workspace-navigation-toggle").trigger("click");
+  mockWidth.value = 1024;
+  await nextTick();
+  expect(wrapper.find(".navigation-scrim").exists()).toBe(false);
+  expect(wrapper.get("aside").attributes("inert")).toBeUndefined();
+  mockWidth.value = 390;
+  await nextTick();
+  expect(wrapper.get("aside").attributes("inert")).toBeDefined();
+});
+
+test("offline message and readiness polling are preserved and the interval is cleaned up", async () => {
+  setup();
+  expect(mockWorkspace.refresh).toHaveBeenCalledWith(true);
+  jest.advanceTimersByTime(15000);
+  expect(mockWorkspace.refresh).toHaveBeenCalledTimes(2);
+  mockOnline.value = false;
+  await nextTick();
+  expect(wrapper.get('[role="status"]').text()).toBe("网络已断开");
+  expect(wrapper.findComponent(stubs.AppBar).props("online")).toBe(false);
+  wrapper.unmount();
+  wrapper = undefined;
+  jest.advanceTimersByTime(15000);
+  expect(mockWorkspace.refresh).toHaveBeenCalledTimes(2);
 });

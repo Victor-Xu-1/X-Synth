@@ -59,7 +59,7 @@
         </div>
       </dl>
       <v-lazy
-        :min-height="300"
+        :min-height="360"
         :options="{ rootMargin: '250px' }"
         transition="fade-transition"
       >
@@ -68,9 +68,10 @@
           :aria-label="`${routeLabel(choice.originalIndex)} 完整路线缩略图`"
         >
           <RouteGraph
-            :graph="graphFromCandidate(choice.route)"
+            :graph="graphFromCandidate(choice.route, READING_NODE_SIZE)"
             :scores="predictionScores(choice.route)"
             :overview="true"
+            reading
             @select="$emit('choose', choice.route.route_id)"
           />
         </div>
@@ -203,7 +204,11 @@ import { computed } from "vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import RouteEvidencePanel from "./RouteEvidencePanel.vue";
 import RouteGraph from "./RouteGraph.vue";
-import { graphFromCandidate, predictionScores } from "@/common/route-graph";
+import {
+  graphFromCandidate,
+  predictionScores,
+  READING_NODE_SIZE,
+} from "@/common/route-graph";
 import { routeLabel } from "@/common/route-reading";
 import {
   closureLabel,
@@ -259,10 +264,16 @@ const hasMetadata = (step) =>
   border-bottom: 1px solid var(--ws-border);
   min-width: 0;
 }
-.route-step.active,
-.route-overview.active {
+.route-step.active {
   border-left: 3px solid var(--ws-text);
   padding-left: 12px;
+}
+.route-overview.active {
+  border-left: 0;
+}
+.route-overview header > strong {
+  font-size: 14px;
+  color: var(--ws-accent, #16876f);
 }
 .step-heading,
 .route-overview header {
@@ -391,10 +402,10 @@ summary:focus-visible {
   gap: 12px;
 }
 .overview-route-graph {
-  height: 300px;
+  height: 360px;
   min-width: 0;
-  border: 1px solid var(--ws-border);
-  border-radius: 6px;
+  border-top: 1px solid var(--ws-border);
+  border-bottom: 1px solid var(--ws-border);
   overflow: hidden;
 }
 .overview-materials {

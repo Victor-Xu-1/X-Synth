@@ -12,20 +12,18 @@
         :aria-label="`选择任务：${taskTitle(task)}`"
         @update:model-value="$emit('check', Boolean($event))"
       />
-      <span :title="taskTitle(task)">{{ taskTitle(task) }}</span>
-      <v-tooltip v-if="!archived" text="重命名任务">
-        <template #activator="{ props }">
-          <v-btn
-            v-bind="props"
-            icon="mdi-pencil-outline"
-            variant="text"
-            size="small"
-            aria-label="重命名任务"
-            :disabled="disabled || Boolean(pending)"
-            @click="$emit('rename')"
-          />
-        </template>
-      </v-tooltip>
+      <router-link
+        class="task-card-title"
+        :to="taskDetailLocation(task, historyContext)"
+        :title="taskTitle(task)"
+        >{{ taskTitle(task) }}</router-link
+      >
+      <span
+        class="state-badge"
+        :class="[taskStateClass(task.result_state), { active }]"
+      >
+        {{ taskStateLabel(task.result_state) }}
+      </span>
     </header>
     <router-link
       :to="taskDetailLocation(task, historyContext)"
@@ -33,15 +31,6 @@
       @click.capture="preserveStructureControl"
       :aria-label="`打开路线结果：${taskTitle(task)}`"
     >
-      <header class="task-card-heading">
-        <span class="task-card-source">{{ taskSourceLabel(task) }}</span>
-        <span
-          class="state-badge"
-          :class="[taskStateClass(task.result_state), { active }]"
-        >
-          {{ taskStateLabel(task.result_state) }}
-        </span>
-      </header>
       <div class="task-card-structure">
         <SmilesImage
           class="task-card-image"
@@ -51,17 +40,39 @@
           :show-error-image="false"
         />
       </div>
+      <div class="task-card-heading">
+        <span class="task-card-source" :title="taskSourceLabel(task)">{{
+          taskSourceLabel(task)
+        }}</span>
+        <span class="task-card-group" :title="groupName">{{ groupName }}</span>
+      </div>
       <div class="task-card-meta">
         <span class="task-route-count">{{
           count === null ? "路线数未记录" : `${count} 条路线`
         }}</span>
-        <time :datetime="task.modified" :title="task.modified">{{
-          task.modified ? displayTime(task.modified) : "时间未记录"
-        }}</time>
+        <time
+          :datetime="task.modified"
+          :title="`更新时间：${taskTimestampLabel(task.modified)}`"
+          >{{
+            task.modified ? displayTime(task.modified) : "时间未记录"
+          }}</time
+        >
       </div>
     </router-link>
     <footer class="task-card-footer">
-      <span class="task-card-group" :title="groupName">{{ groupName }}</span>
+      <v-tooltip v-if="!archived" text="重命名任务">
+        <template #activator="{ props }">
+          <v-btn
+            v-bind="props"
+            icon="mdi-pencil-outline"
+            variant="text"
+            size="small"
+            aria-label="重命名任务"
+            :disabled="disabled || Boolean(pending) || infoLoading"
+            @click="$emit('rename')"
+          />
+        </template>
+      </v-tooltip>
       <TaskActions
         :task="task"
         :pending="pending"
@@ -98,6 +109,7 @@ import {
   taskRouteCount,
   taskTitle,
   taskSourceLabel,
+  taskTimestampLabel,
 } from "@/common/task-history-view";
 const props = defineProps({
   task: { type: Object, required: true },
@@ -130,62 +142,73 @@ const active = computed(() =>
 
 <style scoped>
 .task-card {
+  display: grid;
+  grid-template-rows: 64px minmax(0, 1fr) 44px;
+  height: 368px;
   min-width: 0;
   border: 1px solid var(--ws-border);
   border-radius: 6px;
   background: var(--ws-surface);
   overflow: hidden;
+  transition: border-color 120ms ease;
 }
-.task-card:hover,
-.task-card.selected {
+.task-card:hover {
   border-color: var(--ws-muted);
 }
 .task-card.selected {
-  outline: 1px solid var(--ws-muted);
+  border-color: var(--ws-accent, #16876f);
+  outline: 1px solid var(--ws-accent, #16876f);
 }
 .task-card-link {
-  display: block;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 18px 24px;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
   color: var(--ws-text);
   text-decoration: none;
-  padding: 8px 12px 12px;
+  padding: 0 14px 12px;
 }
-.task-card-link:focus-visible {
-  outline: 2px solid var(--ws-text);
+.task-card-link:focus-visible,
+.task-card-title:focus-visible {
+  outline: 2px solid var(--ws-accent, #16876f);
   outline-offset: -3px;
 }
 .task-card-heading {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  min-height: 40px;
+  gap: 12px;
+  min-width: 0;
 }
 .task-card-controls {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 8px 8px 0;
+  gap: 6px;
+  padding: 10px 14px 6px 8px;
   min-width: 0;
-  height: 44px;
 }
-.task-card-controls > span {
+.task-card-title {
   flex: 1;
   min-width: 0;
+  max-height: 40px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  color: var(--ws-text);
+  text-decoration: none;
   font-size: 13px;
-  font-weight: 500;
-}
-.task-card-controls :deep(.v-btn) {
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
+  font-weight: 600;
+  line-height: 20px;
 }
 .task-card-controls :deep(.v-selection-control) {
-  flex: 0 0 28px;
+  flex: 0 0 32px;
+  color: var(--ws-accent, #16876f);
 }
-.task-card-group {
+.task-card-group,
+.task-card-source {
   color: var(--ws-muted);
   font-size: 11px;
   min-width: 0;
@@ -193,7 +216,10 @@ const active = computed(() =>
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.task-card-heading .state-badge {
+.task-card-group {
+  max-width: 48%;
+}
+.task-card-controls .state-badge {
   flex-shrink: 0;
 }
 .state-badge.active {
@@ -201,10 +227,9 @@ const active = computed(() =>
   background: #a56b1212;
 }
 .task-card-structure {
-  aspect-ratio: 8 / 5;
-  margin: 12px 0;
-  min-height: 170px;
-  max-height: 240px;
+  min-width: 0;
+  min-height: 0;
+  padding: 6px 0;
   overflow: hidden;
 }
 .task-card-image {
@@ -217,19 +242,28 @@ const active = computed(() =>
   -webkit-line-clamp: 2;
   overflow: hidden;
 }
+.task-card-image :deep(.structure-error-state strong) {
+  font-size: 13px;
+  line-height: 18px;
+}
 .task-card-meta {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
-  flex-wrap: wrap;
+  min-width: 0;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 .task-route-count {
-  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
 }
-.task-card-meta time,
-.task-card-source {
+.task-card-meta time {
+  flex-shrink: 0;
   color: var(--ws-muted);
   font-size: 11px;
 }
@@ -237,12 +271,29 @@ const active = computed(() =>
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 2px;
   padding: 6px 8px;
   border-top: 1px solid var(--ws-border);
 }
-.task-card-source {
+.task-card-footer :deep(.task-actions) {
+  flex: 1;
   min-width: 0;
-  overflow-wrap: anywhere;
+  flex-shrink: 1;
+  justify-content: space-between;
+}
+.task-card-footer :deep(.v-btn) {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  color: var(--ws-muted);
+  letter-spacing: 0;
+}
+.task-card-footer :deep(.v-btn:hover) {
+  color: var(--ws-accent, #16876f);
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-card {
+    transition: none;
+  }
 }
 </style>
