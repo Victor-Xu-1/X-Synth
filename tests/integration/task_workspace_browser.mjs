@@ -281,7 +281,8 @@ test(
           original.result.unified_route_pool.selected_routes,
         );
         await page
-          .getByRole("textbox", { name: "搜索名称、SMILES 或 ID", exact: true })
+          .locator(".task-history")
+          .getByRole("textbox", { name: "名称、SMILES 或 ID", exact: true })
           .fill(jobId);
         await expect(page.locator(".task-card")).toHaveCount(1);
         await page
@@ -292,8 +293,8 @@ test(
           .getByRole("link", { name: "返回任务列表", exact: true })
           .click();
         await expect(
-          page.getByRole("textbox", {
-            name: "搜索名称、SMILES 或 ID",
+          page.locator(".task-history").getByRole("textbox", {
+            name: "名称、SMILES 或 ID",
             exact: true,
           }),
         ).toHaveValue(jobId);
@@ -457,6 +458,20 @@ for (const width of [1440, 1024, 390]) {
           if (evidence)
             await writeFile(path.join(evidence, "complete-route.png"), bytes);
         }
+        await graph
+          .locator(".vue-flow__node-molecule")
+          .first()
+          .getByRole("button", { name: "查看化合物详情", exact: true })
+          .click();
+        await expect(
+          reader
+            .locator(".route-inspector")
+            .getByRole("button", { name: "采购记录", exact: true }),
+        ).toBeVisible();
+        await reader
+          .locator(".route-inspector")
+          .getByRole("button", { name: "关闭详情", exact: true })
+          .click();
         await graph.locator('[data-id="r-1"]').click();
         await expect(reader.locator(".route-inspector")).toBeVisible();
         const rxn = `${routes[1].steps[0].precursors.join(".")}>>${routes[1].steps[0].product}`;
