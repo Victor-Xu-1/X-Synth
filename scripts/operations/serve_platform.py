@@ -32,6 +32,9 @@ def main():
     )
     if args.template_library:
         os.environ["X_SYNTH_TEMPLATE_LIBRARY_DB"] = str(args.template_library.resolve())
+    os.environ.setdefault(
+        "X_SYNTH_OPTIMIZATION_PYTHON", str(args.assets.resolve() / "optimization-env/bin/python")
+    )
     command = [
         sys.executable,
         "-m",

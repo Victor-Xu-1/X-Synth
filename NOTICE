@@ -13,6 +13,18 @@ provided under the MIT License; it is installed as an external dependency.
 Bundled frontend resources, including Ketcher and JSME, retain their respective
 license notices. See the license files shipped beside those resources.
 
+Scientific calculation dependencies remain external packages:
+- RDKit (BSD-3-Clause) provides molecule parsing, descriptors, SPS and Bertz CT.
+  Its maintained SA_Score implementation retains the Novartis BSD-3-Clause notice.
+- BayBE, maintained by Merck (emdgroup), and BoTorch retain their Apache-2.0
+  and MIT licenses respectively. Published experimental datasets are not bundled.
+- Graph2SMILES network architecture source restored from the publisher's model
+  archive retains the existing MIT license in its ASKCOS source directory.
+  The matching model weights and vocabulary remain external immutable assets.
+- RXNMapper, maintained by IBM RXN / rxn4chemistry, retains its MIT license.
+  Its official ALBERT checkpoint remains an external, verified asset. Atom-map
+  confidence is not an experimental impurity identification or abundance.
+
 The unified route viewer uses the following MIT-licensed dependencies:
 - Vue Flow: Copyright (c) 2019-2025 webkid GmbH;
   Copyright (c) 2021-2025 Burak Cakmakoglu.

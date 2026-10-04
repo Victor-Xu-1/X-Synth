@@ -84,7 +84,7 @@ def test_runtime_routes_project_configured_models_without_forwarding_legacy_mani
     assert response.status_code == 200
     payload = response.json()
     assert payload["scope"] == "configured_native"
-    assert payload["service_count"] == 10
+    assert payload["service_count"] == 13
     assert {model["id"] for model in payload["retrosynthesis_models"]} == {
         "pistachio",
         "pistachio_ringbreaker",
@@ -108,6 +108,9 @@ def test_runtime_routes_project_configured_models_without_forwarding_legacy_mani
             "pathway_ranker",
             "value_network",
             "cluster",
+            "condition_recommender",
+            "forward_predictor",
+            "impurity",
         }
         assert not {
             "mongo",
@@ -140,6 +143,18 @@ def test_unmanaged_async_is_rejected_before_probing_or_forwarding(boundary, path
     }
     assert forwarded == []
     assert reads == []
+
+
+@pytest.mark.parametrize("prefix,endpoint", native_routes.SCIENTIFIC_ENTRYPOINTS.items())
+@pytest.mark.parametrize("suffix", ["call-sync", "call-async", "get-config"])
+def test_scientific_models_cannot_bypass_the_typed_recorded_product_path(boundary, prefix, endpoint, suffix):
+    client, _, forwarded, reads = boundary
+    response = client.post(f"/api/{prefix}/{suffix}", json={})
+    assert response.status_code == 410
+    assert response.json()["detail"] == {
+        "code": "retired_native_scientific_entrypoint", "managed_endpoint": endpoint,
+    }
+    assert forwarded == [] and reads == []
 
 
 @pytest.mark.parametrize("group", ["fastsolv", "count-analogs"])

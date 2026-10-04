@@ -10,6 +10,7 @@ from packages.adapters.askcos.transport import NoRedirect
 from packages.orchestrator.runtime_health import route_runtime_status
 from packages.platform.native_capabilities import (
     REPO_ROOT,
+    SCIENTIFIC_ENTRYPOINTS,
     native_runtime_payload,
     optional_proxy_module,
 )
@@ -99,6 +100,12 @@ def native_router(*, transport, budget, read_health=None):
             raise HTTPException(404, "Native capability is not supported")
         if parts[0] == "tree-search" and not path.startswith("tree-search/expand-one/"):
             raise HTTPException(409, "路线任务必须通过 X-Synth 任务入口提交。")
+        if parts[0] in SCIENTIFIC_ENTRYPOINTS:
+            raise HTTPException(
+                410,
+                {"code": "retired_native_scientific_entrypoint",
+                 "managed_endpoint": SCIENTIFIC_ENTRYPOINTS[parts[0]]},
+            )
         if parts[-1].replace("_", "-") == "call-async":
             raise HTTPException(
                 501,

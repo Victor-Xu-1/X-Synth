@@ -5,10 +5,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from rdkit import rdBase
 
 from packages.adapters.askcos.engine import AskcosEngine
 from packages.adapters.askcos.transport import AskcosTransport
+from packages.adapters.optimization.runtime import OptimizationRuntime
 from packages.adapters.stock.stock_index import StockIndex, StockIndexError
+from packages.chemistry.assessment import AssessmentUnavailable, assess_molecule
 from packages.orchestrator.job_repository import JobRepository
 from packages.orchestrator.pipeline import RoutePipeline
 from packages.orchestrator.route_request import RouteJobRequest
@@ -16,14 +19,21 @@ from packages.orchestrator.runtime_health import route_runtime_status
 from packages.platform.performance import PerformanceBudget, PerformanceTargets
 from packages.platform.resource_metrics import runtime_resources
 from packages.platform.version import product_version, source_build
+from packages.workspace.analysis_repository import AnalysisRepository
 from packages.workspace.route_repository import RouteDocumentRepository
 
+from .analysis_routes import analysis_router, analysis_runner
+from .assessment_routes import assessment_router, process_router
+from .condition_routes import condition_router
 from .data_routes import data_router
 from .document_routes import document_router
 from .environment_routes import environment_router
+from .impurity_routes import impurity_router
 from .job_routes import job_router
 from .job_views import route_result
 from .native_routes import native_router
+from .optimization_routes import optimization_router
+from .reaction_routes import reaction_router
 from .request_limits import RequestLimitMiddleware
 from .result_routes import result_router
 from .security import authenticate
@@ -47,6 +57,14 @@ def create_app(
     budget = PerformanceBudget.from_environment()
     repository = JobRepository(state_root / "jobs.sqlite")
     documents = RouteDocumentRepository(state_root / "workspace.sqlite")
+    analyses = AnalysisRepository(state_root / "analyses.sqlite")
+    run_analysis = analysis_runner(analyses)
+    optimizer = OptimizationRuntime()
+    try:
+        assess_molecule("CCO")
+        assessment_ready = True
+    except (ValueError, AssessmentUnavailable):
+        assessment_ready = False
     build = source_build(repo_root)
     transport = AskcosTransport(
         os.environ.get("X_SYNTH_ASKCOS_URL", "http://127.0.0.1:9100"), budget=budget
@@ -75,6 +93,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app):
+        optimizer.health()
         if pipeline is not None:
             pipeline.start()
         yield
@@ -121,6 +140,20 @@ def create_app(
             "version": product_version(),
             "build": build,
             "auth_mode": os.environ.get("X_SYNTH_AUTH_MODE", "local"),
+            "scientific_tools": {"assessment": assessment_ready, "process": True},
+            "scientific_engines": {
+                "optimization": optimizer.health_snapshot().model_dump(mode="json"),
+                "assessment": {
+                    "ready": assessment_ready,
+                    "engine": "RDKit",
+                    "versions": {"rdkit": rdBase.rdkitVersion},
+                },
+                "process": {
+                    "ready": True,
+                    "engine": "RDKit / deterministic mass accounting",
+                    "versions": {"rdkit": rdBase.rdkitVersion},
+                },
+            },
             **ready,
             "worker_ready": worker_ready,
             "route_search_ready": ready["route_search_ready"] and worker_ready,
@@ -189,6 +222,53 @@ def create_app(
     )
     app.include_router(data, prefix="/api/v1")
     app.include_router(stock_router(stock=stock, transport=transport), prefix="/api/v1")
+    app.include_router(
+        condition_router(
+            transport=transport,
+            budget=budget,
+            read_health=health,
+            run_analysis=run_analysis,
+        ),
+        prefix="/api/v1",
+    )
+    app.include_router(
+        reaction_router(
+            transport=transport,
+            budget=budget,
+            read_health=health,
+            run_analysis=run_analysis,
+        ),
+        prefix="/api/v1",
+    )
+    app.include_router(
+        analysis_router(repository=analyses, transport=transport),
+        prefix="/api/v1",
+    )
+    app.include_router(
+        assessment_router(
+            transport=transport, budget=budget, run_analysis=run_analysis
+        ),
+        prefix="/api/v1",
+    )
+    app.include_router(
+        process_router(transport=transport, budget=budget, run_analysis=run_analysis),
+        prefix="/api/v1",
+    )
+    app.include_router(
+        optimization_router(
+            transport=transport, runtime=optimizer, run_analysis=run_analysis
+        ),
+        prefix="/api/v1",
+    )
+    app.include_router(
+        impurity_router(
+            transport=transport,
+            budget=budget,
+            read_health=health,
+            run_analysis=run_analysis,
+        ),
+        prefix="/api/v1",
+    )
     app.include_router(
         structure_router(transport=transport, budget=budget), prefix="/api/v1"
     )

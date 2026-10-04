@@ -40,6 +40,38 @@
       <div v-if="!snapshot.environments.engines.length" class="workspace-empty">
         暂无已接入引擎
       </div>
+      <section class="scientific-engine-list" aria-label="研究计算环境">
+        <h2>研究计算环境</h2>
+        <div class="scientific-engine-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>执行软件</th>
+                <th>用途</th>
+                <th>就绪状态</th>
+                <th>软件版本</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="engine in snapshot.environments.scientific_engines || []"
+                :key="engine.id"
+              >
+                <td>{{ engine.name }}</td>
+                <td>{{ engine.purpose }}</td>
+                <td>{{ engine.ready ? "已就绪" : "未就绪" }}</td>
+                <td>
+                  {{
+                    Object.entries(engine.versions || {})
+                      .map(([name, value]) => `${name} ${value}`)
+                      .join(" · ") || "随产品运行环境"
+                  }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
       <BackendInventory :inventory="snapshot.environments" />
     </div>
     <section
@@ -172,6 +204,25 @@ async function refresh() {
 onMounted(refresh);
 onBeforeUnmount(() => (alive = false));
 </script>
+<style scoped>
+.scientific-engine-list {
+  margin-top: 24px;
+}
+.scientific-engine-list h2 {
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+.scientific-engine-scroll {
+  overflow-x: auto;
+}
+.scientific-engine-scroll table {
+  min-width: 620px;
+}
+.scientific-engine-scroll td:last-child {
+  max-width: 360px;
+  overflow-wrap: anywhere;
+}
+</style>
 <style scoped>
 .environment-deployment {
   max-width: 1200px;

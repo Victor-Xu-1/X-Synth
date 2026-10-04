@@ -28,3 +28,5 @@ svgutils==0.3.4
 pulp==3.3.0
 PyYAML==6.0.1
 tqdm==4.67.1
+OpenNMT-py==1.2.0
+torchtext==0.4.0

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { hasWorkspaceAccess } from "@/common/workspace-session";
+import { reactionWorkspaceRedirect } from "@/common/workspace-navigation";
 
 const account = (path, name, component) => ({
   path,
@@ -29,6 +30,36 @@ const workspacePages = [
     name: "我的结果",
     component: () => import("@/views/workspace/TaskList.vue"),
     meta: { title: "任务记录" },
+  },
+  {
+    path: "analyses",
+    name: "ResearchRecords",
+    component: () => import("@/views/analyses/AnalysisList.vue"),
+    meta: { title: "研究记录" },
+  },
+  {
+    path: "analyses/:id",
+    name: "ResearchRecordDetail",
+    component: () => import("@/views/analyses/AnalysisDetail.vue"),
+    meta: { title: "研究记录详情" },
+  },
+  {
+    path: "assessment",
+    name: "StructureAssessment",
+    component: () => import("@/views/assessment/Assessment.vue"),
+    meta: { title: "结构评估", feature: "assessment" },
+  },
+  {
+    path: "process",
+    name: "ProcessMetrics",
+    component: () => import("@/views/process/Process.vue"),
+    meta: { title: "工艺核算", feature: "process" },
+  },
+  {
+    path: "optimization",
+    name: "ReactionOptimization",
+    component: () => import("@/views/optimization/Optimization.vue"),
+    meta: { title: "实验优化", feature: "optimization" },
   },
   {
     path: "results/:id",
@@ -96,6 +127,12 @@ const workspacePages = [
       path: "/environments",
       query: { ...to.query, tab: "monitor" },
     }),
+  },
+  {
+    path: "impurity",
+    name: "ImpurityAnalysis",
+    component: () => import("@/views/impurity/Impurity.vue"),
+    meta: { title: "杂质分析", feature: "impurity" },
   },
   {
     path: "forward",
@@ -186,8 +223,9 @@ router.beforeEach(async (to) => {
   ) {
     return { name: "登录", query: { redirect: to.fullPath } };
   }
+  const reactionRedirect = reactionWorkspaceRedirect(to);
+  if (reactionRedirect) return reactionRedirect;
   const tabSets = {
-    "/forward": ["context", "forward", "impurity", "selectivity", "sites"],
     "/solprop": ["solpred", "solscreen"],
   };
   const tabs = tabSets[to.path];

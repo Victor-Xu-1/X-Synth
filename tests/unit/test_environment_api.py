@@ -125,15 +125,17 @@ def test_inventory_separates_source_modules_and_inactive_integrations():
     native = result["native"]
     assert native["catalog_status"] == "available"
     assert native["module_count"] == 34
-    assert native["configured_module_count"] == 9
+    assert native["configured_module_count"] == 12
     modules = {module["id"]: module for module in native["modules"]}
     assert modules["retro_template_relevance"]["ready"] is True
-    assert modules["forward_graph2smiles"]["status"] == "preserved_disabled"
+    assert modules["forward_graph2smiles"]["status"] == "unavailable"
+    assert modules["context_recommender"]["status"] == "unavailable"
+    assert modules["impurity_predictor"]["status"] == "unavailable"
     assert modules["fastsolv"]["wrapper_present"] is True
     assert modules["count_analogs"]["wrapper_present"] is True
     assert (
         sum(module["status"] == "preserved_disabled" for module in modules.values())
-        == 25
+        == 22
     )
     assert all(module["source_present"] for module in modules.values())
     integrations = {item["id"]: item for item in result["integrations"]}
@@ -332,4 +334,6 @@ def test_parent_inventory_fields_remain_backward_compatible():
         "native_models",
         "template_library",
     } == result["dependencies"].keys()
-    assert {"call_async", "unified_route", "expand_one"} == result["operations"].keys()
+    assert {"call_async", "unified_route", "expand_one", "scientific_tools"} == result["operations"].keys()
+    assert result["operations"]["scientific_tools"]["managed"] is True
+    assert result["operations"]["scientific_tools"]["endpoints"]["forward"] == "/api/v1/reactions/predict"

@@ -24,6 +24,9 @@ apps/askcos-v2/**/logs/
 apps/askcos-v2/**/data/
 apps/askcos-v2/**/checkpoints/
 apps/askcos-v2/**/models/
+!apps/askcos-v2/forward_predictor/graph2smiles/models/
+apps/askcos-v2/forward_predictor/graph2smiles/models/*
+!apps/askcos-v2/forward_predictor/graph2smiles/models/*.py
 apps/askcos-v2/**/trained_models/
 apps/askcos-v2/**/.venv/
 tests/real-cases/runs/

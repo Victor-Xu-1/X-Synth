@@ -4,6 +4,7 @@ export const useWorkspaceStore = defineStore("workspace", {
     health: null,
     session: null,
     templates: null,
+    optimization: null,
     loading: false,
     error: "",
     refreshed: 0,
@@ -23,13 +24,16 @@ export const useWorkspaceStore = defineStore("workspace", {
         stock: checks.commercial_stock,
         templates: state.templates?.status === "ready",
         scscore: checks.scscore,
+        assessment: state.health?.scientific_tools?.assessment === true,
+        process: state.health?.scientific_tools?.process === true,
+        optimization: state.optimization?.ready === true,
         fast_filter: checks.fast_filter,
         native_account: state.session?.mode === "askcos",
         administrator:
           state.session?.mode === "askcos" &&
           state.session?.administrator === true,
         conditions: checks.condition_recommender === true,
-        forward: checks.forward === true,
+        forward: checks.forward_predictor === true && checks.fast_filter === true,
         impurity: checks.impurity === true,
         selectivity: checks.selectivity === true,
         sites: checks.sites === true,
@@ -62,6 +66,7 @@ export const useWorkspaceStore = defineStore("workspace", {
           read("/api/v1/health"),
           read("/api/v1/session"),
           read("/api/v1/template-library/health"),
+          read("/api/v1/optimization/health"),
         ]);
         if (values[0].status === "fulfilled") {
           this.health = values[0].value;
@@ -69,6 +74,8 @@ export const useWorkspaceStore = defineStore("workspace", {
         } else this.error = "无法连接工作区服务";
         if (values[1].status === "fulfilled") this.session = values[1].value;
         if (values[2].status === "fulfilled") this.templates = values[2].value;
+        if (values[3].status === "fulfilled") this.optimization = values[3].value;
+        else this.optimization = null;
         this.refreshed = Date.now();
       } finally {
         clearTimeout(timer);

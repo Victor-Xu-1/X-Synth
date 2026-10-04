@@ -74,9 +74,10 @@
 </template>
 <script setup>
 import BrandMark from "@/components/workspace/BrandMark.vue";
+import { computed } from "vue";
 import { useRoute } from "vue-router";
 import {
-  navigation,
+  visibleNavigation,
   navigationLocation,
   activeNavigation,
 } from "@/common/workspace-navigation";
@@ -87,9 +88,14 @@ defineEmits(["navigate"]);
 const version = __X_SYNTH_VERSION__;
 const route = useRoute();
 const workspace = useWorkspaceStore();
-const mainGroups = navigation.filter((group) => group.placement !== "footer");
-const footerItems = navigation
-  .filter((group) => group.placement === "footer")
-  .flatMap((group) => group.items);
+const groups = computed(() => visibleNavigation(workspace.features));
+const mainGroups = computed(() =>
+  groups.value.filter((group) => group.placement !== "footer"),
+);
+const footerItems = computed(() =>
+  groups.value
+    .filter((group) => group.placement === "footer")
+    .flatMap((group) => group.items),
+);
 const { isDark, toggleTheme } = useTheme();
 </script>
