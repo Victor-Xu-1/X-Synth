@@ -1,7 +1,7 @@
 <template>
   <section class="standard-page">
     <header class="page-heading">
-      <h1>路线文档</h1>
+      <h1>保存的路线</h1>
       <div class="page-actions">
         <v-btn
           icon="mdi-refresh"
@@ -34,7 +34,7 @@
     <v-progress-linear v-if="loading" indeterminate />
     <div v-if="!rows.length && !loading && !error" class="workspace-empty">
       <v-icon icon="mdi-file-document-outline" size="30" />
-      <h2>暂无路线文档</h2>
+      <h2>暂无保存的路线</h2>
       <v-btn variant="outlined" to="/editor">新建路线</v-btn>
     </div>
     <div v-else class="document-table-scroll">

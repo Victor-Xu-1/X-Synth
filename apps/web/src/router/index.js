@@ -22,13 +22,13 @@ const workspacePages = [
     path: "",
     name: "Home",
     component: () => import("@/views/workspace/RouteComposer.vue"),
-    meta: { title: "新建任务" },
+    meta: { title: "路线设计" },
   },
   {
     path: "results",
     name: "我的结果",
     component: () => import("@/views/workspace/TaskList.vue"),
-    meta: { title: "任务历史" },
+    meta: { title: "任务记录" },
   },
   {
     path: "results/:id",
@@ -46,7 +46,7 @@ const workspacePages = [
     path: "documents",
     name: "RouteDocuments",
     component: () => import("@/views/routes/RouteDocuments.vue"),
-    meta: { title: "路线文档" },
+    meta: { title: "保存的路线" },
   },
   {
     path: "retro",
@@ -92,7 +92,10 @@ const workspacePages = [
   },
   {
     path: "status",
-    redirect: (to) => ({ path: "/environments", query: { ...to.query, tab: "monitor" } }),
+    redirect: (to) => ({
+      path: "/environments",
+      query: { ...to.query, tab: "monitor" },
+    }),
   },
   {
     path: "forward",

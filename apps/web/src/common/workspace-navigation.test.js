@@ -1,7 +1,7 @@
 import {
   activeNavigation,
   navigation,
-  optionalTools,
+  researchTools,
   pageFeature,
 } from "./workspace-navigation";
 test("task details and editor documents retain a single selected navigation item", () => {
@@ -17,7 +17,7 @@ test("task details and editor documents retain a single selected navigation item
   }
 });
 test("optional native subpages are keyed by actual capabilities", () => {
-  for (const item of optionalTools.filter((item) =>
+  for (const item of researchTools.filter((item) =>
     item.to.startsWith("/forward"),
   )) {
     const tab = new URLSearchParams(item.to.split("?")[1]).get("tab");
@@ -32,7 +32,7 @@ test("automatic and manual workbench modes select exactly one navigation entry",
       .flatMap((group) => group.items)
       .filter((item) => activeNavigation(item, { path: "/", query: { mode } }));
     expect(selected).toHaveLength(1);
-    expect(selected[0].title).toBe(mode === "auto" ? "新建任务" : "一步逆合成");
+    expect(selected[0].title).toBe("路线设计");
   }
   expect(pageFeature({ path: "/", query: { mode: "manual" }, meta: {} })).toBe(
     "retro",

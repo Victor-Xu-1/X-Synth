@@ -3,7 +3,7 @@
     <header class="workbench-heading">
       <h1>路线设计</h1>
       <v-btn variant="text" prepend-icon="mdi-history" to="/results"
-        >任务历史</v-btn
+        >任务记录</v-btn
       >
     </header>
     <div class="workbench-mode-bar">

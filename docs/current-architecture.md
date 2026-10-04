@@ -100,6 +100,11 @@ another product version.
 
 The layout shell owns navigation, theme and live readiness only. Task composition,
 task history, result detail, route documents and graph editing are separate pages.
+The sidebar exposes three workflow groups (design, tasks/routes, research tools),
+with environment deployment in the footer. One contextual navigation reuses the
+existing pages and capability snapshot. There is no additional portal, result
+repository or model execution path. Editing and step-wise design remain actions
+inside the route workflow; task detail and editor retain their immersive canvas.
 The structure-first composer has three explicit modes: route search, one-step
 analysis, and X-Synth JSON import. `/retro` redirects to `/?mode=manual`; the
 replaced standalone one-step page is removed. There is one route handler per page.
