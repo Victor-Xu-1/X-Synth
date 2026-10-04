@@ -4,6 +4,7 @@ import { useRoute } from "vue-router";
 import { API } from "@/common/api";
 import { useWorkspaceStore } from "@/store/workspace";
 import StockSearch from "./StockSearch.vue";
+import { priceContractRecord } from "@/common/route-price-test-data";
 
 jest.mock("vue-router", () => ({ useRoute: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
@@ -69,8 +70,19 @@ test("response and task snapshots are labelled separately and missing prices rem
   expect(wrapper.text()).toContain(snapshot);
   expect(wrapper.text()).toContain(otherSnapshot);
   expect(wrapper.text()).toContain("快照不同");
-  expect(wrapper.text()).toContain("待询");
+  expect(wrapper.text()).toContain("价格未记录");
   expect(wrapper.text()).not.toMatch(/包装|纯度|交期/);
+});
+test("catalog prices use the shared baseline and never present an inferred ISO currency", async () => {
+  const { wrapper } = setup();
+  const record = priceContractRecord();
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({ snapshot, results: { CCO: [record] } });
+  await wrapper.get("form").trigger("submit");
+  await flushPromises();
+  expect(wrapper.text()).toContain("2.08 $/g");
+  expect(wrapper.text()).toContain("非实时报价");
+  expect(wrapper.text()).toContain("报价日期未记录");
+  expect(wrapper.text()).not.toMatch(/USD|CNY|人民币/);
 });
 test("query changes immediately hide old records and do not automatically fetch replacement evidence", async () => {
   const { route, wrapper } = setup();

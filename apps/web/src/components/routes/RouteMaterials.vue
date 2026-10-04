@@ -71,6 +71,11 @@
                   <strong>{{ record.source }}</strong
                   ><span>{{ record.catalog_id || "目录号未记录" }}</span>
                   <span v-if="record.cas">CAS {{ record.cas }}</span>
+                  <SupplierPrice
+                    :record="record"
+                    :snapshot="snapshot"
+                    :smiles="canonicalSmiles[row.smiles]"
+                  />
                   <a
                     v-if="safeExternalUrl(record.url)"
                     :href="safeExternalUrl(record.url)"
@@ -116,12 +121,15 @@ import {
 } from "@/common/route-reading";
 import { safeExternalUrl } from "@/common/external-url";
 import { errorMessage } from "@/common/workspace-errors";
+import { catalogRecordsForInputs } from "@/common/route-price";
 import SmilesImage from "@/components/SmilesImage.vue";
 import MoleculeStockDialog from "./MoleculeStockDialog.vue";
+import SupplierPrice from "./SupplierPrice.vue";
 const props = defineProps({ graph: Object, expectedSnapshot: String });
 defineEmits(["select", "navigate"]);
 const rows = computed(() => materialRows(props.graph));
 const records = ref({}),
+  canonicalSmiles = ref({}),
   snapshot = ref(""),
   error = ref(""),
   loading = ref(false),
@@ -130,10 +138,11 @@ const records = ref({}),
 let generation = 0,
   disposed = false;
 watch(
-  () => rows.value.map((row) => row.smiles).join("\n"),
+  () => [rows.value.map((row) => row.smiles).join("\n"), props.expectedSnapshot],
   () => {
     generation++;
     records.value = {};
+    canonicalSmiles.value = {};
     snapshot.value = "";
     error.value = "";
     loading.value = false;
@@ -144,24 +153,18 @@ async function lookup() {
   if (loading.value || !rows.value.length) return;
   const current = ++generation,
     smiles = rows.value.map((row) => row.smiles);
+  records.value = {};
+  canonicalSmiles.value = {};
+  snapshot.value = "";
   loading.value = true;
   error.value = "";
   try {
     const value = await API.post("/api/v1/stock/lookup", { smiles });
     if (disposed || current !== generation) return;
-    if (
-      !/^[a-f0-9]{64}$/i.test(value?.snapshot || "") ||
-      smiles.some(
-        (structure) =>
-          !Array.isArray(value.results?.[structure]) ||
-          value.results[structure].some(
-            (record) => record?.smiles !== structure,
-          ),
-      )
-    )
-      throw new Error("采购目录的结构或快照响应无效。");
-    records.value = value.results;
-    snapshot.value = value.snapshot;
+    const parsed = catalogRecordsForInputs(value, smiles);
+    records.value = parsed.records;
+    canonicalSmiles.value = parsed.canonicalSmiles;
+    snapshot.value = parsed.snapshot;
   } catch (cause) {
     if (!disposed && current === generation)
       error.value = errorMessage(cause, "采购目录核对失败。");

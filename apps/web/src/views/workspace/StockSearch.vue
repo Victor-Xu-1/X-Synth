@@ -77,38 +77,40 @@
           <h2>未找到精确目录记录</h2>
           <span class="workspace-muted">当前快照没有匹配此结构</span>
         </div>
-        <table v-else-if="matchedResult" class="data-table">
-          <thead>
-            <tr>
-              <th>供应商</th>
-              <th>目录号</th>
-              <th>CAS</th>
-              <th>目录单价 /g</th>
-              <th>目录证据</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="row in matchedResult.records"
-              :key="`${row.source}-${row.catalog_id}-${row.url}`"
-            >
-              <td>{{ row.source }}</td>
-              <td class="workspace-code">{{ row.catalog_id || "—" }}</td>
-              <td>{{ row.cas || "—" }}</td>
-              <td>{{ knownPrice(row) ?? "待询" }}</td>
-              <td>
-                <a
-                  v-if="safeExternalUrl(row.url)"
-                  :href="safeExternalUrl(row.url)"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="catalog-link"
-                  >目录页 <v-icon icon="mdi-open-in-new" size="12" /></a
-                ><span v-else>—</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div v-else-if="matchedResult" class="stock-records-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>供应商</th>
+                <th>目录号</th>
+                <th>CAS</th>
+                <th>目录价格基准</th>
+                <th>目录证据</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in matchedResult.records"
+                :key="`${row.source}-${row.catalog_id}-${row.url}`"
+              >
+                <td>{{ row.source }}</td>
+                <td class="workspace-code">{{ row.catalog_id || "—" }}</td>
+                <td>{{ row.cas || "—" }}</td>
+                <td class="stock-price-cell"><SupplierPrice :record="row" :snapshot="matchedResult.snapshot" :smiles="matchedResult.smiles" /></td>
+                <td>
+                  <a
+                    v-if="safeExternalUrl(row.url)"
+                    :href="safeExternalUrl(row.url)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="catalog-link"
+                    >目录页 <v-icon icon="mdi-open-in-new" size="12" /></a
+                  ><span v-else>—</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   </ModuleWorkbench>
@@ -118,12 +120,12 @@ import { ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useStockSearch } from "@/composables/useStockSearch";
 import { stockQueryPrefill } from "@/common/stock-lookup";
-import { knownPrice } from "@/common/route-price";
 import { safeExternalUrl } from "@/common/external-url";
 import { useWorkspaceStore } from "@/store/workspace";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
+import SupplierPrice from "@/components/routes/SupplierPrice.vue";
 const route = useRoute(),
   workspace = useWorkspaceStore();
 const smiles = ref(""),
@@ -172,10 +174,16 @@ watch(
   font-size: 12px;
   text-decoration: underline;
 }
-.tool-result-panel {
+.stock-records-scroll {
   overflow-x: auto;
+  width: 100%;
 }
 .data-table {
   min-width: 560px;
+}
+.data-table td:nth-child(2) { min-width: 130px; }
+.stock-price-cell {
+  min-width: 220px;
+  max-width: 360px;
 }
 </style>

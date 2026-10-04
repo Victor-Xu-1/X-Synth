@@ -11,70 +11,73 @@
           @click="open = false"
         />
       </header>
-      <SmilesImage
-        :smiles="smiles"
-        :width="400"
-        :height="180"
-        :show-error-image="false"
-      />
-      <details>
-        <summary>结构 SMILES</summary>
-        <code class="stock-query">{{ smiles }}</code>
-      </details>
-      <div v-if="loading" class="workspace-loading">正在匹配目录结构</div>
-      <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
-      <div v-if="snapshot" class="stock-snapshot">
-        <span>证据基础：供应商目录快照</span>
-        <span v-if="expectedSnapshot">{{
-          snapshot === expectedSnapshot
-            ? "目录与原任务快照一致"
-            : "目录已变化，不能替代原任务采购证据"
-        }}</span>
+      <div class="stock-node-body">
+        <SmilesImage
+          class="stock-molecule-preview"
+          :smiles="smiles"
+          :width="400"
+          :height="180"
+          :show-error-image="false"
+        />
         <details>
-          <summary>目录版本标识</summary>
-          <code>{{ snapshot }}</code>
+          <summary>结构 SMILES</summary>
+          <code class="stock-query">{{ smiles }}</code>
         </details>
+        <div v-if="loading" class="workspace-loading">正在匹配目录结构</div>
+        <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
+        <div v-if="snapshot" class="stock-snapshot">
+          <span>证据基础：供应商目录快照</span>
+          <span v-if="expectedSnapshot">{{
+            snapshot === expectedSnapshot
+              ? "目录与原任务快照一致"
+              : "目录已变化，不能替代原任务采购证据"
+          }}</span>
+          <details>
+            <summary>目录版本标识</summary>
+            <code>{{ snapshot }}</code>
+          </details>
+        </div>
+        <div
+          v-if="searched && !loading && !rows.length && !error"
+          class="workspace-empty"
+        >
+          当前目录没有精确结构匹配
+        </div>
+        <section
+          v-for="row in rows"
+          :key="row.source + ':' + row.catalog_id"
+          class="stock-node-record"
+        >
+          <header>
+            <strong>{{ row.source }}</strong
+            ><a
+              v-if="safeExternalUrl(row.url)"
+              :href="safeExternalUrl(row.url)"
+              target="_blank"
+              rel="noopener noreferrer"
+              >供应商目录<v-icon icon="mdi-open-in-new" size="14"
+            /></a>
+          </header>
+          <dl>
+            <div>
+              <dt>目录号</dt>
+              <dd>{{ row.catalog_id || "未记录" }}</dd>
+            </div>
+            <div>
+              <dt>CAS</dt>
+              <dd>{{ row.cas || "未记录" }}</dd>
+            </div>
+            <div>
+              <dt>目录价格基准</dt>
+              <dd><SupplierPrice :record="row" :snapshot="snapshot" :smiles="canonicalSmiles" /></dd>
+            </div>
+            <div>
+              <dt>目录货期</dt>
+              <dd>{{ row.lead_time || "未记录" }}</dd>
+            </div>
+          </dl>
+        </section>
       </div>
-      <div
-        v-if="searched && !loading && !rows.length && !error"
-        class="workspace-empty"
-      >
-        当前目录没有精确结构匹配
-      </div>
-      <section
-        v-for="row in rows"
-        :key="row.source + ':' + row.catalog_id"
-        class="stock-node-record"
-      >
-        <header>
-          <strong>{{ row.source }}</strong
-          ><a
-            v-if="safeExternalUrl(row.url)"
-            :href="safeExternalUrl(row.url)"
-            target="_blank"
-            rel="noopener noreferrer"
-            >供应商目录<v-icon icon="mdi-open-in-new" size="14"
-          /></a>
-        </header>
-        <dl>
-          <div>
-            <dt>目录号</dt>
-            <dd>{{ row.catalog_id || "未记录" }}</dd>
-          </div>
-          <div>
-            <dt>CAS</dt>
-            <dd>{{ row.cas || "未记录" }}</dd>
-          </div>
-          <div>
-            <dt>目录单价/克</dt>
-            <dd>{{ Number.isFinite(row.ppg) ? row.ppg : "未记录" }}</dd>
-          </div>
-          <div>
-            <dt>目录货期</dt>
-            <dd>{{ row.lead_time || "未记录" }}</dd>
-          </div>
-        </dl>
-      </section>
       <footer>
         <v-btn
           variant="text"
@@ -95,13 +98,15 @@ import { onBeforeUnmount, ref, watch } from "vue";
 import { API } from "@/common/api";
 import { safeExternalUrl } from "@/common/external-url";
 import { moleculeLocations } from "@/common/route-node-context";
-import { lookupStock } from "@/common/stock-lookup";
+import { catalogRecordsForInputs } from "@/common/route-price";
 import { errorMessage } from "@/common/workspace-errors";
 import SmilesImage from "@/components/SmilesImage.vue";
+import SupplierPrice from "./SupplierPrice.vue";
 const open = defineModel({ type: Boolean, default: false });
 const props = defineProps({ smiles: String, expectedSnapshot: String });
 defineEmits(["navigate"]);
 const rows = ref([]),
+  canonicalSmiles = ref(""),
   snapshot = ref(""),
   loading = ref(false),
   error = ref(""),
@@ -109,10 +114,11 @@ const rows = ref([]),
 let generation = 0,
   disposed = false;
 watch(
-  () => [open.value, props.smiles],
+  () => [open.value, props.smiles, props.expectedSnapshot],
   async ([visible, smiles]) => {
     const current = ++generation;
     rows.value = [];
+    canonicalSmiles.value = "";
     snapshot.value = "";
     error.value = "";
     searched.value = false;
@@ -120,9 +126,11 @@ watch(
     if (!visible || !smiles) return;
     loading.value = true;
     try {
-      const response = await lookupStock(API, smiles);
+      const value = await API.post("/api/v1/stock/lookup", { smiles: [smiles] });
       if (disposed || current !== generation) return;
-      rows.value = response.records;
+      const response = catalogRecordsForInputs(value, [smiles]);
+      rows.value = response.records[smiles];
+      canonicalSmiles.value = response.canonicalSmiles[smiles];
       snapshot.value = response.snapshot;
       searched.value = true;
     } catch (cause) {
@@ -144,6 +152,17 @@ onBeforeUnmount(() => {
   padding: 20px;
   color: var(--ws-text);
   background: var(--ws-surface);
+}
+.stock-node-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+.stock-node-dialog > header,
+.stock-node-dialog > footer {
+  flex-shrink: 0;
+}
+.stock-molecule-preview {
+  max-width: 100%;
 }
 header {
   display: flex;
