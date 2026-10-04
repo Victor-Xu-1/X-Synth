@@ -284,7 +284,8 @@ result projections serve the ASKCOS-derived UI through that same host. There is
 no separate legacy orchestrator or /synon-api job owner. Job schema 2 and native
 UDS schema 2 are independent of product 0.1.0. First-party dependency authorities
 are one lock per documented process boundary: product, native ASKCOS, TF-Keras
-condition inference, RXNMapper impurity analysis and BayBE optimization, plus apps/web/package-lock.json; upstream
+condition inference, RXNMapper impurity analysis, BayBE optimization and offline
+ORD import, plus apps/web/package-lock.json; upstream
 requirements and deployment samples do not define the product installation.
 
 Task worktrees use refactor/ or fix/ branches and contain no private assets.
