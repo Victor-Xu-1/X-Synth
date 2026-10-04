@@ -59,7 +59,12 @@ async function images(page, region) {
           });
           return (
             visible.length > 0 &&
-            visible.every((item) => item.complete && item.naturalWidth > 0)
+            visible.every(
+              (item) =>
+                item.complete &&
+                item.naturalWidth > 0 &&
+                Number(getComputedStyle(item).opacity) === 1,
+            )
           );
         }),
       { timeout: 30000 },
@@ -88,6 +93,75 @@ async function images(page, region) {
     pixels > 20,
     "the chemical structure must contain real rendered bonds, not a blank image",
   );
+}
+async function exportedStructures(page, graph, document, bytes) {
+  const regions = await graph.evaluate((surface, nodes) => {
+    const minX = Math.min(...nodes.map((node) => node.position.x));
+    const minY = Math.min(...nodes.map((node) => node.position.y));
+    return nodes
+      .filter((node) => node.type === "molecule")
+      .map((node) => {
+        const element = surface.querySelector(`[data-id="${node.id}"]`);
+        const box = element.getBoundingClientRect();
+        const image = element.querySelector("img").getBoundingClientRect();
+        const scale = box.width / 190;
+        return {
+          id: node.id,
+          x: Math.round(
+            node.position.x - minX + 32 + (image.left - box.left) / scale + 2,
+          ),
+          y: Math.round(
+            node.position.y - minY + 32 + (image.top - box.top) / scale + 2,
+          ),
+          width: Math.floor(image.width / scale - 4),
+          height: Math.floor(image.height / scale - 4),
+        };
+      });
+  }, document.graph.nodes);
+  const counts = await page.evaluate(
+    async ({ source, regions }) => {
+      const image = new Image();
+      image.src = source;
+      await image.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d");
+      context.drawImage(image, 0, 0);
+      return regions.map((region) => {
+        if (
+          region.x < 0 ||
+          region.y < 0 ||
+          region.x + region.width > canvas.width ||
+          region.y + region.height > canvas.height
+        )
+          throw new Error(
+            `Exported chemical structure is clipped: ${region.id}`,
+          );
+        const data = context.getImageData(
+          region.x,
+          region.y,
+          region.width,
+          region.height,
+        ).data;
+        let ink = 0;
+        for (let index = 0; index < data.length; index += 4)
+          if (
+            data[index + 3] > 30 &&
+            Math.min(data[index], data[index + 1], data[index + 2]) < 110
+          )
+            ink++;
+        return { id: region.id, ink };
+      });
+    },
+    { source: `data:image/png;base64,${bytes.toString("base64")}`, regions },
+  );
+  assert.ok(counts.length > 0);
+  for (const { id, ink } of counts)
+    assert.ok(
+      ink > 20,
+      `Exported structure ${id} must retain legible chemical bonds, not just node labels (${ink} pixels)`,
+    );
 }
 async function withPage(width, name, action) {
   const browser = await chromium.launch({ channel: "chrome", headless: true });
@@ -363,12 +437,21 @@ for (const width of [1440, 390]) {
           await reader
             .getByRole("button", { name: "导出", exact: true })
             .click();
+          // Reproduce an immediate export during a real browser image fade.
+          await graph.locator("img").evaluateAll((items) => {
+            for (const image of items)
+              image.animate([{ opacity: 0 }, { opacity: 1 }], {
+                duration: 1800,
+                fill: "forwards",
+              });
+          });
           const png = page.waitForEvent("download");
           await page.getByText("完整路线图 PNG", { exact: true }).click();
           const image = await png;
           const bytes = await readFile(await image.path());
           assert.ok(bytes.length > 10000);
           assert.equal(bytes.subarray(1, 4).toString(), "PNG");
+          await exportedStructures(page, graph, document, bytes);
           if (evidence)
             await writeFile(path.join(evidence, "complete-route.png"), bytes);
         }

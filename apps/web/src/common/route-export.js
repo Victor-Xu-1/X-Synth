@@ -27,12 +27,60 @@ export function exportBounds(graph) {
   return { x, y, width, height };
 }
 
+export async function settledRouteImages(viewport, timeoutMs = 3000) {
+  if (
+    [...viewport.querySelectorAll(".molecule-graph-node")].some(
+      (node) => !node.querySelector("img"),
+    )
+  )
+    throw new Error("结构图尚未完整显示，请加载完成后重新导出。");
+  const images = [...viewport.querySelectorAll("img")];
+  const sources = images.map((image) => image.currentSrc || image.src);
+  let timer;
+  try {
+    await Promise.race([
+      Promise.all(
+        images.map(async (image) => {
+          await image.decode();
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          await Promise.all(
+            (image.getAnimations?.() || []).map(
+              (animation) => animation.finished,
+            ),
+          );
+          if (
+            !image.isConnected ||
+            !image.naturalWidth ||
+            Number(getComputedStyle(image).opacity) !== 1
+          )
+            throw new Error("结构图尚未完整显示，请加载完成后重新导出。");
+        }),
+      ),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("结构图加载超时，未导出不完整图像。")),
+          timeoutMs,
+        );
+      }),
+    ]);
+    if (
+      viewport.querySelectorAll("img").length !== images.length ||
+      images.some(
+        (image, index) =>
+          !viewport.contains(image) ||
+          (image.currentSrc || image.src) !== sources[index],
+      )
+    )
+      throw new Error("路线结构已变化，请重新导出。");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function routeImage(surface, graph) {
   const viewport = surface.querySelector(".vue-flow__transformationpane");
   const bounds = exportBounds(graph);
-  await Promise.all(
-    Array.from(viewport.querySelectorAll("img")).map((image) => image.decode()),
-  );
+  await settledRouteImages(viewport);
   await document.fonts.ready;
   const background = getComputedStyle(surface)
     .getPropertyValue("--ws-bg")
