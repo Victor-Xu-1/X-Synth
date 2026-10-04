@@ -170,11 +170,14 @@ REFERENCE_FILES = {
 }
 REACTION_FIXTURES = {
     "tests/fixtures/reactions/ord-astra-zeneca.json",
+    "tests/fixtures/reactions/ord-inchi-tautomer.json",
     "tests/fixtures/reactions/README.md",
 }
 ORD_FILES = {
     "packages/knowledge_base/ord_reader.py",
     "packages/knowledge_base/ord_structures.py",
+    "packages/knowledge_base/ord_identifiers.py",
+    "packages/knowledge_base/ord_incremental.py",
     "packages/knowledge_base/ord_extract.py",
     "packages/knowledge_base/ord_measurements.py",
     "packages/knowledge_base/ord_import.py",
@@ -182,7 +185,11 @@ ORD_FILES = {
     "requirements/reaction-data.in",
     "requirements/reaction-data-linux-py312.lock",
 }
-ORD_TESTS = {"tests/unit/test_ord_extraction.py"}
+ORD_TESTS = {
+    "tests/unit/test_ord_extraction.py",
+    "tests/unit/test_ord_identifiers.py",
+    "tests/unit/test_ord_incremental.py",
+}
 PRICING_FILES = {
     "apps/api/stock_routes.py",
     "packages/adapters/stock/catalog_pricing.py",

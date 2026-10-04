@@ -16,3 +16,11 @@ exclusion of administrative contact details. Raw yield fields, stated precision,
 procedure and source identity remain. This fixture retains its data license;
 the surrounding X-Synth code is Apache-2.0. Tests cannot claim this experimental
 record validates an unrelated target or a newly predicted route.
+
+`ord-inchi-tautomer.json` retains the scientific fields of deposited record
+`ord-e8642ae0ecb248809067cd131fde0eed` from the ORD USPTO grants dataset
+`ord_dataset-1158e351757f315b93cbcbe7bc55f38e`; administrative contact metadata
+is omitted. It has the same **CC-BY-SA-4.0** data license and attribution above.
+Pinned source: https://huggingface.co/datasets/open-reaction-database/ord-data/blob/93475c46949f9218e1dfb6624096025135db2add/data/11/ord_dataset-1158e351757f315b93cbcbe7bc55f38e.parquet
+Original SHA256: `d0fa5e21c621d16714bae1b9157022b5a3ea02db909a2af8d7b5b976f7c950b5`.
+The source SMILES are not converted to the tautomer reconstructed from InChI.
