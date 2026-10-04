@@ -12,6 +12,7 @@ from rdkit.Chem.Draw import rdMolDraw2D
 from rdkit.Geometry import rdGeometry
 
 from utils.draw_abbreviations import CARBON_ABS_LABELS, CUSTOM_ABBREVIATIONS, KETCHER_ABS_LABELS
+from utils.reaction_drawing import reaction_drawing_molecules
 
 ABBREVIATIONS = rdAbbreviations.ParseAbbreviations(
     CUSTOM_ABBREVIATIONS
@@ -838,9 +839,7 @@ def reaction_smiles_to_image(
         PIL.Image instance if svg=False and return_png=False
         bytes if svg=False and return_png=True
     """
-    reactants, agents, products = smiles.split(">")
-    r_mols = [Chem.MolFromSmiles(r) for r in reactants.split(".")] if reactants else []
-    p_mols = [Chem.MolFromSmiles(p) for p in products.split(".")] if products else []
+    r_mols, p_mols = reaction_drawing_molecules(smiles)
 
     if highlight:
         atom_frag_map = {}
@@ -852,7 +851,7 @@ def reaction_smiles_to_image(
         if highlight:
             kwargs.update(determine_highlight_colors(mol, atom_frag_map))
         if align:
-            kwargs["reference"] = products.split(".")[0]
+            kwargs["reference"] = Chem.MolToSmiles(p_mols[0], isomericSmiles=True) if p_mols else None
         if plus and i > 0:
             images.append(draw_plus(svg=svg, transparent=transparent))
         images.append(

@@ -7,6 +7,7 @@ import {
   referencePrefill,
   referenceQuery,
   referenceReactionFileBody,
+  referenceReactionDrawing,
   referenceReady,
   referenceReason,
   referenceResponse,
@@ -24,6 +25,24 @@ const ready = {
   reason: null,
 };
 const request = { product: "CC=O", reactants: ["CCO"], limit: 20 };
+
+test("reference drawing uses verified molecular identities while preserving the source notation", () => {
+  const raw = "CCN.Cl>O>CC[NH3+].[Cl-] |f:0.1|";
+  const row = {
+    reaction_smiles: raw,
+    reactants: ["CCN", "Cl"],
+    agents: ["O"],
+    products: ["CC[NH3+].[Cl-]"],
+  };
+  expect(referenceReactionDrawing(row)).toBe("CCN.Cl>O>(CC[NH3+].[Cl-])");
+  expect(row.reaction_smiles).toBe(raw);
+  expect(
+    referenceReactionDrawing({ ...row, products: ["[13CH3][C@H](O)C.[Na+]"] }),
+  ).toContain("([13CH3][C@H](O)C.[Na+])");
+  expect(() => referenceReactionDrawing({ ...row, products: [] })).toThrow(
+    ReferenceContractError,
+  );
+});
 function packet() {
   return {
     requested: { product: "CC=O", reactants: ["CCO"] },
