@@ -77,7 +77,8 @@ test("read-only preview selection is inspected and reset across route/document c
 
 test("stock records are explicit reads with identity comparison, stale guards and no model calls", () => {
   const stock = source("MoleculeStockDialog.vue");
-  expect(stock).toContain("lookupStock(API, smiles)");
+  expect(stock).toContain('API.post("/api/v1/stock/lookup"');
+  expect(stock).toContain("catalogRecordsForInputs(value, [smiles])");
   expect(stock).toContain("snapshot === expectedSnapshot");
   expect(stock).toContain("current !== generation");
   expect(stock).toContain("rows.value = []");

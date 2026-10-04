@@ -14,6 +14,8 @@ flowchart TD
   API --> JOB["Transactional Job Repository / Queue / Checkpoint"]
   API --> NATIVE["ASKCOS Native Capability Adapter"]
   API --> TOOLS["Typed Scientific Tool Adapters"]
+  API --> EVIDENCE["Exact Reaction Evidence / Native USPTO + Immutable ORD Index"]
+  EVIDENCE --> ORD["Public ORD Parquet / Measured Yields / Conditions / Provenance"]
   TOOLS --> NN["ASKCOS NNv1 Conditions / Isolated TF-Keras"]
   TOOLS --> FORWARD["Graph2SMILES + Atom Inventory + Fast Filter"]
   TOOLS --> IMPURITY["ASKCOS Five Impurity Modes / RXNMapper Atom Mapping"]
@@ -96,6 +98,15 @@ another product version.
   identity is retained in the checkpoint and delivered result.
 - A CID, CAS, supplier name or Mongo internal ID alone is not commercial evidence.
   Unknown prices remain unknown; no synthetic price is allowed.
+- Literature search combines independently validated native USPTO records with a
+  separate immutable ORD reaction index. It does not change retrosynthesis model
+  output ordering, commercial terminal decisions or neural condition predictions.
+  Exact product identity and full reactant matching remain distinct; a product-only
+  match cannot establish the conditions or yield of the predicted step.
+- Catalog price projection is bound to the exact compound, supplier catalog key
+  and immutable stock snapshot. Legacy `ppg` uses the documented `$/g` convention;
+  ISO currency, quotation date, package and purity remain unknown when absent.
+  Live quotes and full-route cost are not inferred from those catalog values.
 - Native trained models retain their exact template index and fingerprint
   parameters. A shared template query database cannot replace a trained output
   ordering. Imported ORD/USPTO templates are knowledge assets until a compatible

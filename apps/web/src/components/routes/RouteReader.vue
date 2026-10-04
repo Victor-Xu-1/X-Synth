@@ -149,6 +149,13 @@
         </v-tooltip>
       </nav>
       <main class="reader-main">
+        <p
+          v-if="view === 'graph' && catalogError"
+          class="reader-catalog-status tool-error"
+          role="status"
+        >
+          {{ catalogError }}
+        </p>
         <div v-show="view === 'graph'" class="reader-graph">
           <RouteGraph
             ref="graphView"
@@ -156,6 +163,7 @@
             :id="graphId"
             :graph="graph"
             :scores="scores"
+            :catalog-prices="catalogPrices"
             :editable="false"
             reading
             @select="selectNode"
@@ -249,6 +257,7 @@ import RouteStepList from "./RouteStepList.vue";
 import RouteConditions from "./RouteConditions.vue";
 import RouteMaterials from "./RouteMaterials.vue";
 import RouteEvidencePanel from "./RouteEvidencePanel.vue";
+import { useRouteCatalogPrices } from "@/composables/useRouteCatalogPrices";
 const readerTools = [
   { value: "graph", label: "路线图", icon: "mdi-graph-outline" },
   { value: "steps", label: "步骤", icon: "mdi-format-list-numbered" },
@@ -301,6 +310,11 @@ const graph = computed(() => ({
   })),
 }));
 const scores = computed(() => predictionScores(candidate.value || {}));
+const { prices: catalogPrices, error: catalogError } = useRouteCatalogPrices({
+  graph: sourceGraph,
+  expectedSnapshot: computed(() => props.stockSnapshot),
+  enabled: computed(() => view.value === "graph" && !!candidate.value),
+});
 const node = computed(() =>
   sourceGraph.value.nodes.find((value) => value.id === selectedNode.value),
 );
@@ -530,6 +544,12 @@ onBeforeUnmount(() => {
 }
 .reader-main {
   min-width: 0;
+}
+.reader-catalog-status {
+  margin: 0;
+  padding: 8px 16px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 .reader-graph {
   height: max(520px, calc(100dvh - 240px));

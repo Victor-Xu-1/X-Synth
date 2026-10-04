@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
+from packages.adapters.stock.catalog_pricing import priced_lookup
 from packages.adapters.stock.commercial_stock import canonicalize_smiles
 
 from .security import authenticate
@@ -27,9 +28,11 @@ def stock_router(*, stock, transport):
         authenticate(request, transport)
         if stock is None:
             raise HTTPException(503, "Commercial inventory snapshot is not configured")
-        return {
-            "snapshot": stock.summary["source_sha256"],
-            "results": stock.lookup_many(body.smiles),
-        }
+        response = priced_lookup(stock.lookup_many(body.smiles), stock.summary)
+        response["requested"] = [
+            {"smiles": smiles, "canonical_smiles": canonicalize_smiles(smiles)}
+            for smiles in body.smiles
+        ]
+        return response
 
     return router

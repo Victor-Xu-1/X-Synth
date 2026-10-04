@@ -89,6 +89,12 @@ def mock_frontend(monkeypatch, before, after, old_records, new_records):
         "apps/api/condition_routes.py",
         "tests/integration/forward_browser.mjs",
         "tests/integration/workbench_shell_browser.mjs",
+        "packages/knowledge_base/reaction_library.py",
+        "packages/knowledge_base/ord_reader.py",
+        "scripts/data_import/compile_reaction_library.py",
+        "requirements/reaction-data-linux-py312.lock",
+        "tests/fixtures/reactions/ord-astra-zeneca.json",
+        "packages/adapters/stock/catalog_pricing.py",
     ],
 )
 def test_workspace_profile_accepts_explicitly_scoped_paths(path):
@@ -110,6 +116,23 @@ def test_workspace_profile_accepts_explicitly_scoped_paths(path):
 def test_unknown_changes_fail_instead_of_skip_or_global_fallback(path):
     with pytest.raises(dependencies.ScopeError, match="Unmapped changes"):
         profile.guard_paths({path})
+
+
+def test_ord_import_checks_are_isolated_and_diff_selected():
+    assert profile.reaction_data_tests(
+        {"packages/knowledge_base/ord_extract.py"}
+    ) == sorted(profile.ORD_TESTS)
+    assert profile.reaction_data_tests(
+        {"requirements/reaction-data-linux-py312.lock"}
+    ) == sorted(profile.ORD_TESTS)
+    assert (
+        profile.reaction_data_tests({"apps/web/src/components/routes/MoleculeNode.vue"})
+        == []
+    )
+    assert (
+        scope.test_command("reaction-data", sorted(profile.ORD_TESTS))[-1]
+        == "tests/unit/test_ord_extraction.py"
+    )
 
 
 def test_python_workspace_maps_document_contracts_not_native_engine_suite(tmp_path):

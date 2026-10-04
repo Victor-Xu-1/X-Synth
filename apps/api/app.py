@@ -224,7 +224,12 @@ def create_app(
     app.include_router(data, prefix="/api/v1")
     app.include_router(stock_router(stock=stock, transport=transport), prefix="/api/v1")
     app.include_router(
-        reference_router(transport=transport, budget=budget), prefix="/api/v1"
+        reference_router(
+            transport=transport,
+            budget=budget,
+            library_path=os.environ.get("X_SYNTH_REACTION_LIBRARY_DB"),
+        ),
+        prefix="/api/v1",
     )
     app.include_router(
         condition_router(

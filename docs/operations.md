@@ -235,13 +235,57 @@ CSV、模型、暂存数据与截图都不进入 Git。优化建议的实验响�
 旧 schema-1 程序会拒绝 schema 2，不能修改版本号绕过。若回滚旧代码，使用升级前备份的独立状态目录，
 保留升级库与后续任务，不覆盖私有数据。读库工具按 `jobs.archived` 过滤回收箱，不按执行 status 过滤。
 
-专利参考反应需要 Mongo `USPTO_FULL` 的真实反应记录、product_smiles 与记录 ID 索引。
-产品 `/api/v1/references/status` 检查索引及原始记录关联，缓存最多 60 秒；缺失或失联返回 503。
-没有 source-leading 索引时总记录数为 null，不扫描全库制造统计。查询只允许该公开来源，
-3 秒数据库期限、300 条召回和 30 条结果上限，不开放未知集合或相似反应全库扫描。
-当前抽取字段没有温度、溶剂及催化剂，因此展示为空，不混入 NN 条件预测。
-数据许可独立于产品源码，公开原始 USPTO 来源见
-[Daniel Lowe 数据发布](https://figshare.com/articles/dataset/Chemical_reactions_from_US_patents_1976-Sep2016_/5104873)。
+### 公开反应证据
+
+`/api/v1/references/status` 与 `/search` 合并原生 `USPTO_FULL` 和本地 ORD 索引。
+原生来源仍需 Mongo product_smiles/记录 ID 索引，状态缓存最多 60 秒；没有 source-leading
+索引时总数为 null，不扫描全库制造统计。3 秒数据库期限、300 条召回保持不变。
+ORD 是单独的原始实验记录索引，不替换模板模型的训练序号；精确查询为只读 SQLite，4 秒期限。
+任何单源不可用或损坏都保留明确来源状态；只有所有已配置来源均不可用才返回整体 503。
+数据许可独立于源码。USPTO 原始来源见
+[Daniel Lowe 数据发布](https://figshare.com/articles/dataset/Chemical_reactions_from_US_patents_1976-Sep2016_/5104873)，
+ORD 数据见 [官方数据仓库](https://github.com/open-reaction-database/ord-data) 与其
+[官方 Hugging Face 镜像](https://huggingface.co/datasets/open-reaction-database/ord-data)。
+ORD 数据为 CC-BY-SA-4.0，不得随 Apache-2.0 源码当作同一许可发布。
+
+ORD 当前发布格式是 Parquet。使用独立环境，避免将 protobuf/Arrow 依赖安装进模型或产品环境：
+
+```bash
+python3.12 -m venv "$HOME/.local/share/x-synth/reaction-data-env"
+"$HOME/.local/share/x-synth/reaction-data-env/bin/python" -m pip install \
+  --require-hashes -r requirements/reaction-data-linux-py312.lock
+"$HOME/.local/share/x-synth/reaction-data-env/bin/python" -m pip check
+"$HOME/.local/share/x-synth/reaction-data-env/bin/python" \
+  -m scripts.data_import.compile_reaction_library \
+  --manifest /absolute/ord-data/source-manifest.json \
+  --source-dir /absolute/ord-data \
+  --output /absolute/assets/knowledge/reaction-evidence/reactions.sqlite \
+  --report /absolute/evidence/ord-import.json \
+  --workers 4 --allow-rejected
+```
+
+manifest 包含官方 repository/mirror、固定 revision、CC-BY-SA-4.0，以及每个源文件的
+`path/size/sha256/url`。所有文件先验证 SHA256，逐条流式解析；不能读回的文件、冲突 ID、
+源文件变化或写库失败都会终止发布。`--allow-rejected` 仅允许计数并保留不可表示的结构/记录缺口，
+不把它们转换成假结构。未使用此选项时任何记录拒绝都不发布。完整提取统计是运行验收数据，
+保存在外部证据目录，不进入源码；全量文件、拒绝原因与未读取行数必须核验。
+并行进程只提取记录，只有一个数据库编译与原子发布入口；既有索引绝不覆盖。
+
+运行时可设置 `X_SYNTH_REACTION_LIBRARY_DB` 或传 `serve_platform --reaction-library PATH`。
+未设置时仅当 assets 下 `knowledge/reaction-evidence/reactions.sqlite` 实际存在才自动启用。
+可见收率、条件覆盖来自实际索引计数；条件计数包含原始输入/投料字段，并不表示温度、时间、
+催化剂等全部记录齐全，也不代表每个新目标都有文献。更新使用新不可变路径，
+验证后切换配置并重启产品服务；回滚到旧路径即可，任务/文档数据库无需迁移。
+
+### 目录价格
+
+已有统一库存的 `ppg` 按原生公开单位 `$/g` 投影为目录参考，不改库存证据身份或叶子终止集合。
+API 返回价格来源、目录键、源快照与目录文件 SHA256；没有 ISO 币种/报价日期时不能填 USD、CNY
+或用索引生成时间充当报价时间。全路线成本需要独立的包装、用量、真实收率与同币种报价，当前不推算。
+供应商当前页面仍由目录链接打开；没有授权接口时不得读取账号 token、批量绕过限制或冒称实时价格。
+公开免费的 [Chemspace API](https://chem-space.com/purchasing-saas/chemspace-api?alias=chemspace-api)
+和 [Molport 数据服务](https://www.molport.com/blog/tutorials/knime-workflows-for-downloading-of-molport-data-for-offline-usage/)
+仍要求合法账户凭据，不因免费而自动启用。供应商 SDF 含结构不等于含当前报价。
 
 ## 验收与性能
 

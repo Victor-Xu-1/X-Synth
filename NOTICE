@@ -24,6 +24,10 @@ Scientific calculation dependencies remain external packages:
 - RXNMapper, maintained by IBM RXN / rxn4chemistry, retains its MIT license.
   Its official ALBERT checkpoint remains an external, verified asset. Atom-map
   confidence is not an experimental impurity identification or abundance.
+- Open Reaction Database schema code (ord-schema) is Apache-2.0, while its
+  deposited reaction datasets are CC-BY-SA-4.0. Full datasets remain external.
+  The attributed public reaction projection in tests/fixtures/reactions retains
+  CC-BY-SA-4.0; its README identifies the original dataset, authors and changes.
 
 The unified route viewer uses the following MIT-licensed dependencies:
 - Vue Flow: Copyright (c) 2019-2025 webkid GmbH;

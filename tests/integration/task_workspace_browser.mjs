@@ -585,16 +585,19 @@ for (const width of [1440, 390]) {
         const response = await done;
         const result = await json(response);
         assert.ok(result.count > 0);
-        assert.ok(
-          result.results.every(
-            (row) =>
-              row.provenance.source === "USPTO_FULL" && row.conditions === null,
-          ),
+        const patents = result.results.filter(
+          (row) => row.provenance.source === "USPTO_FULL",
         );
+        assert.ok(patents.length > 0);
+        assert.ok(patents.every((row) => row.conditions === null));
         await expect(page.locator('[data-cy="reference-row"]')).toHaveCount(
           result.count,
         );
-        const row = page.locator('[data-cy="reference-row"]').first();
+        const row = page
+          .locator(
+            '[data-cy="reference-row"][data-reference-source="USPTO_FULL"]',
+          )
+          .first();
         await images(page, row);
         await row.getByText("引用与原始记录", { exact: true }).click();
         await expect(row.getByRole("link")).toHaveAttribute(
