@@ -91,4 +91,3 @@ export function analysisResultError(kind, result, accepts) {
   }
   return "";
 }
-
