@@ -39,7 +39,9 @@ def validate_source_identity(source_path: str, sha256: str, revision: str) -> st
     if match is None or match[1] != match[2][:2]:
         raise ValueError("ORD source_path must identify an official Parquet dataset")
     if not _SHA256.fullmatch(sha256) or not _REVISION.fullmatch(revision):
-        raise ValueError("ORD source identity requires SHA256 and a pinned Git revision")
+        raise ValueError(
+            "ORD source identity requires SHA256 and a pinned Git revision"
+        )
     return match[2]
 
 
@@ -53,12 +55,19 @@ def public_publication_url(value: str) -> str | None:
     try:
         parsed = urlsplit(value)
         host = parsed.hostname or ""
-        if parsed.scheme not in ("https", "http") or parsed.username or parsed.password or not host:
+        if (
+            parsed.scheme not in ("https", "http")
+            or parsed.username
+            or parsed.password
+            or not host
+        ):
             raise ValueError("unsafe URL")
         try:
             address = ipaddress.ip_address(host)
         except ValueError:
-            if "." not in host or host.endswith((".local", ".localhost", ".internal", ".test", ".example", ".lan")):
+            if "." not in host or host.endswith(
+                (".local", ".localhost", ".internal", ".test", ".example", ".lan")
+            ):
                 raise ValueError("nonpublic host")
         else:
             if not address.is_global:
@@ -106,7 +115,10 @@ class VerifiedOrdSource:
 
 
 def _local_path(root: Path, source_path: str) -> Path:
-    candidates = [root / PurePosixPath(source_path), root / PurePosixPath(source_path).name]
+    candidates = [
+        root / PurePosixPath(source_path),
+        root / PurePosixPath(source_path).name,
+    ]
     existing = []
     for path in candidates:
         if path.exists():
@@ -146,10 +158,14 @@ def _verify_file(root: Path, entry: dict, revision: str) -> VerifiedOrdSource:
         raise ValueError("source_changed")
     if digest != sha256:
         raise ValueError("source_sha256_mismatch")
-    return VerifiedOrdSource(local, path, size, sha256, revision, entry["url"], fingerprint)
+    return VerifiedOrdSource(
+        local, path, size, sha256, revision, entry["url"], fingerprint
+    )
 
 
-def verify_ord_sources(manifest_path: Path, source_dir: Path) -> list[VerifiedOrdSource]:
+def verify_ord_sources(
+    manifest_path: Path, source_dir: Path
+) -> list[VerifiedOrdSource]:
     """Verify every declared file before allowing any record to reach the compiler."""
     root = source_dir.resolve(strict=True)
     if not root.is_dir():
@@ -163,7 +179,9 @@ def verify_ord_sources(manifest_path: Path, source_dir: Path) -> list[VerifiedOr
         or not isinstance(manifest.get("revision"), str)
         or not _REVISION.fullmatch(manifest["revision"])
     ):
-        raise OrdSourceError([{"path": "manifest", "reason": "invalid_manifest_identity"}])
+        raise OrdSourceError(
+            [{"path": "manifest", "reason": "invalid_manifest_identity"}]
+        )
     entries = manifest.get("files")
     if not isinstance(entries, list) or not entries:
         raise OrdSourceError([{"path": "manifest", "reason": "empty_manifest"}])
@@ -180,7 +198,11 @@ def verify_ord_sources(manifest_path: Path, source_dir: Path) -> list[VerifiedOr
             seen.add(path)
             verified.append(_verify_file(root, entry, manifest["revision"]))
         except (OSError, ValueError, TypeError) as exc:
-            reason = "missing_source_file" if isinstance(exc, FileNotFoundError) else str(exc)
+            reason = (
+                "missing_source_file"
+                if isinstance(exc, FileNotFoundError)
+                else str(exc)
+            )
             issues.append({"path": path, "reason": reason})
     if issues:
         raise OrdSourceError(issues)

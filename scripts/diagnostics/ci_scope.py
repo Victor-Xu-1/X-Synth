@@ -92,7 +92,7 @@ class Snapshot:
 def test_command(suite: str, tests: list[str]) -> list[str]:
     if not tests:
         return []
-    if suite == "python":
+    if suite in ("python", "reaction-data"):
         return [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *tests]
     return [
         "npm",
@@ -111,7 +111,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base")
     parser.add_argument("--head", default="HEAD")
     parser.add_argument("--worktree", action="store_true")
-    parser.add_argument("--suite", choices=("python", "frontend"), required=True)
+    parser.add_argument(
+        "--suite", choices=("python", "frontend", "reaction-data"), required=True
+    )
     parser.add_argument("--run", action="store_true")
     args = parser.parse_args(argv)
     try:
@@ -142,6 +144,8 @@ def main(argv: list[str] | None = None) -> int:
         profile.npm_dependency_changes(before, after, paths)
         if args.suite == "python":
             tests, importers = profile.python_tests(before, after, paths), {}
+        elif args.suite == "reaction-data":
+            tests, importers = profile.reaction_data_tests(paths), {}
         else:
             tests, importers = profile.frontend_tests(before, after, paths)
         invocation = test_command(args.suite, tests)

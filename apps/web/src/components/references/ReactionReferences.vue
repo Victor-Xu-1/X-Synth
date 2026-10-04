@@ -1,7 +1,11 @@
 <template>
   <section class="reaction-references" aria-label="反应参考检索">
     <div class="reaction-reference-controls">
-      <span>{{ ready ? "USPTO_FULL · 来源已就绪" : unavailableReason }}</span>
+      <span>{{
+        ready
+          ? `${evidenceSourceLabel(sourceStatus)} · 来源已就绪`
+          : unavailableReason
+      }}</span>
       <div class="reaction-reference-actions">
         <v-tooltip text="刷新参考来源状态" location="top">
           <template #activator="{ props: activator }">
@@ -40,6 +44,7 @@
 
 <script setup>
 import { toRef } from "vue";
+import { evidenceSourceLabel } from "@/common/reference-evidence";
 import { useReactionReferences } from "@/composables/useReactionReferences";
 import ReferenceResults from "./ReferenceResults.vue";
 // Parent keys this component by node identity, including nodes with identical chemistry.

@@ -6,7 +6,9 @@
   >
     <header class="reference-results-heading">
       <h3>参考反应</h3>
-      <span v-if="checked">{{ checked.source }} · {{ checked.count }} 条</span>
+      <span v-if="checked"
+        >{{ evidenceSourceLabel(checked) }} · {{ checked.count }} 条</span
+      >
     </header>
     <details
       v-if="actualInput"
@@ -43,14 +45,29 @@
     </p>
     <p v-else-if="!checked && !searched" class="reference-state">尚未查询。</p>
     <template v-if="checked && !pending && !visibleError">
+      <p
+        v-for="source in checked.sources?.filter((item) => !item.ready) || []"
+        :key="source.source"
+        class="reference-state"
+        role="status"
+      >
+        {{ source.source }} · {{ referenceReason(source) }}
+      </p>
       <article
         v-for="row in checked.results"
         :key="row.id"
         class="reference-row"
         data-cy="reference-row"
+        :data-reference-id="row.id"
+        :data-reference-source="row.provenance.source"
       >
         <header class="reference-row-heading">
-          <strong>{{ recordedValue(row.patent_number) }}</strong>
+          <strong>{{
+            row.doi ||
+            row.patent_number ||
+            row.provenance.dataset_name ||
+            row.id
+          }}</strong>
           <span
             :class="[
               'reference-scope',
@@ -82,16 +99,31 @@
             <dt>报道收率</dt>
             <dd v-if="row.reported_yields.length">
               <div
-                v-for="yieldValue in row.reported_yields"
-                :key="yieldValue.method"
+                v-for="(yieldValue, index) in row.reported_yields"
+                :key="index"
                 class="reference-yield"
               >
-                <span v-if="yieldValue.unit"
-                  >{{ recordedValue(yieldValue.value) }}
-                  {{ yieldValue.unit }}</span
+                <span v-if="yieldValue.unit || Number.isFinite(yieldValue.value)"
+                  >{{
+                    yieldValue.method === "ord_product_measurement"
+                      ? recordedNumber(yieldValue.value)
+                      : recordedValue(yieldValue.value)
+                  }}
+                  {{ yieldValue.unit || '单位未记录' }}</span
                 >
                 <small>{{ reportedYieldMethod(yieldValue.method) }}</small>
-                <code>{{ yieldValue.text }}</code>
+                <small v-if="yieldValue.method === 'ord_product_measurement'">{{
+                  yieldAnalysisLabel(yieldValue)
+                }}</small>
+                <details v-if="yieldValue.method === 'ord_product_measurement'">
+                  <summary>收率原始字段</summary>
+                  <code>{{ yieldValue.text }}</code>
+                </details>
+                <code v-else>{{ yieldValue.text }}</code>
+                <code
+                  v-if="yieldValue.product_smiles && row.products.length > 1"
+                  >{{ yieldValue.product_smiles }}</code
+                >
               </div>
             </dd>
             <dd v-else>未记录</dd>
@@ -101,33 +133,48 @@
             <dd>{{ recordedValue(row.year) }}</dd>
           </dl>
         </div>
+        <RecordedReactionConditions :conditions="row.conditions" />
         <details class="reference-citation">
           <summary>引用与原始记录</summary>
           <dl>
             <dt>来源</dt>
-            <dd>{{ checked.source }}</dd>
+            <dd>{{ row.provenance.source }}</dd>
             <dt>记录 ID</dt>
             <dd>{{ row.id }}</dd>
-            <dt>专利</dt>
+            <dt>文献与数据</dt>
             <dd>
               <a
-                v-if="safeExternalUrl(row.patent_url)"
-                :href="safeExternalUrl(row.patent_url)"
+                v-if="evidenceCitation(row)"
+                :href="evidenceCitation(row).url"
                 target="_blank"
                 rel="noopener noreferrer"
-                >{{ row.patent_number || "查看专利" }}</a
+                >{{ evidenceCitation(row).label }}</a
               >
-              <span v-else
-                >{{ recordedValue(row.patent_number) }} · 链接未记录</span
-              >
+              <span v-else>链接未记录</span>
             </dd>
-            <dt>温度</dt>
-            <dd>未记录</dd>
-            <dt>溶剂</dt>
-            <dd>未记录</dd>
-            <dt>催化剂</dt>
-            <dd>未记录</dd>
+            <template v-if="row.provenance.dataset_id">
+              <dt>数据集</dt>
+              <dd>
+                {{ row.provenance.dataset_name || row.provenance.dataset_id }}
+              </dd>
+              <dt>许可</dt>
+              <dd>{{ row.provenance.license }}</dd>
+              <dt>原始文件</dt>
+              <dd>{{ row.provenance.source_path }}</dd>
+              <dt v-if="row.provenance.original_reaction_id">原始反应 ID</dt>
+              <dd v-if="row.provenance.original_reaction_id">
+                {{ row.provenance.original_reaction_id }}
+              </dd>
+              <dt>源文件 SHA256</dt>
+              <dd>
+                <code>{{ row.provenance.source_sha256 }}</code>
+              </dd>
+            </template>
           </dl>
+          <div v-if="row.procedure" class="reference-procedure">
+            <strong>实验记录</strong>
+            <p>{{ row.procedure }}</p>
+          </div>
           <div class="reference-raw-heading">
             <span>原始反应 SMILES</span>
             <div class="reference-record-actions">
@@ -181,16 +228,23 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { API } from "@/common/api";
 import { downloadChemicalFile } from "@/common/chemical-files";
-import { safeExternalUrl } from "@/common/external-url";
+import {
+  evidenceCitation,
+  evidenceSourceLabel,
+  recordedNumber,
+  yieldAnalysisLabel,
+} from "@/common/reference-evidence";
 import {
   recordedValue,
   referenceFailure,
   referenceReactionFileBody,
   referenceResponse,
+  referenceReason,
   ReferenceContractError,
   reportedYieldMethod,
 } from "@/common/reaction-references";
 import SmilesImage from "@/components/SmilesImage.vue";
+import RecordedReactionConditions from "./RecordedReactionConditions.vue";
 
 const props = defineProps({
   response: { type: Object, default: null },
@@ -374,12 +428,23 @@ dd {
   display: flex;
   align-items: center;
   min-height: 36px;
+  gap: 4px;
+  padding: 4px;
 }
 .reference-raw {
   display: block;
   padding: 8px 0;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+.reference-procedure {
+  padding: 12px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.reference-procedure p {
+  margin-top: 8px;
 }
 .reference-raw-heading {
   font-size: 12px;

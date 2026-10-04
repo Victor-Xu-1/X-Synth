@@ -28,6 +28,7 @@ EvidenceReason = Literal[
 
 class RecordedParameter(ReferenceModel):
     value: float = Field(allow_inf_nan=False)
+    precision: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     unit: str = Field(min_length=1, max_length=80)
     source_field: str = Field(min_length=1, max_length=256)
     details: str | None = Field(default=None, max_length=4096)
@@ -49,6 +50,7 @@ class RecordedConditions(ReferenceModel):
 
 
 class EvidenceYield(ReportedYield):
+    value: float | None = Field(default=None, allow_inf_nan=False)
     method: Literal["text_mined_yield", "calculated_yield", "ord_product_measurement"]
     product_smiles: Smiles | None = None
     analysis: str | None = Field(default=None, max_length=4096)
@@ -66,6 +68,8 @@ class EvidenceProvenance(ReferenceProvenance):
     dataset_name: str | None = Field(default=None, max_length=4096)
     source_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     source_path: str | None = Field(default=None, max_length=1024)
+    original_reaction_id: str | None = Field(default=None, max_length=160)
+    outcome_indices: list[int] = Field(default_factory=list, max_length=256)
     license: Literal["CC-BY-SA-4.0"] | None = None
 
 
@@ -75,11 +79,14 @@ class ReactionEvidence(ReactionReference):
     provenance: EvidenceProvenance
     doi: str | None = Field(default=None, max_length=512)
     source_url: str | None = Field(default=None, max_length=2048)
+    publication_url: str | None = Field(default=None, max_length=2048)
     procedure: str | None = Field(default=None, max_length=32768)
 
     @model_validator(mode="after")
     def source_identity(self):
         provenance = self.provenance
+        if any(index < 0 for index in provenance.outcome_indices):
+            raise ValueError("Recorded outcome indices cannot be negative")
         if provenance.record_id != self.id:
             raise ValueError("Reaction evidence ID does not match provenance")
         if provenance.source == "ORD":
@@ -94,7 +101,10 @@ class ReactionEvidence(ReactionReference):
         elif (
             provenance.evidence_type != "patent_reaction_extraction"
             or self.conditions is not None
-            or any(item.method == "ord_product_measurement" for item in self.reported_yields)
+            or any(
+                item.method == "ord_product_measurement"
+                for item in self.reported_yields
+            )
         ):
             raise ValueError("Native USPTO evidence must remain source-only")
         return self
@@ -113,7 +123,9 @@ class EvidenceSourceStatus(ReferenceModel):
 
     @model_validator(mode="after")
     def consistent_status(self):
-        if self.ready and (not self.product_index_available or self.record_count == 0 or self.reason):
+        if self.ready and (
+            not self.product_index_available or self.record_count == 0 or self.reason
+        ):
             raise ValueError("Evidence readiness requires an indexed, nonempty source")
         if not self.ready and not self.reason:
             raise ValueError("Unavailable evidence requires an explicit reason")

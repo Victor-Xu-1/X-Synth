@@ -162,6 +162,28 @@ REFERENCE_FILES = {
     "packages/adapters/askcos/reference_identity.py",
     "apps/askcos-v2/askcos2_core/utils/reactions.py",
     "apps/askcos-v2/askcos2_core/app.py",
+    "packages/knowledge_base/reaction_models.py",
+    "packages/knowledge_base/reaction_library.py",
+    "packages/knowledge_base/reaction_evidence.py",
+}
+REACTION_FIXTURES = {
+    "tests/fixtures/reactions/ord-astra-zeneca.json",
+    "tests/fixtures/reactions/README.md",
+}
+ORD_FILES = {
+    "packages/knowledge_base/ord_reader.py",
+    "packages/knowledge_base/ord_structures.py",
+    "packages/knowledge_base/ord_extract.py",
+    "packages/knowledge_base/ord_measurements.py",
+    "packages/knowledge_base/ord_import.py",
+    "scripts/data_import/compile_reaction_library.py",
+    "requirements/reaction-data.in",
+    "requirements/reaction-data-linux-py312.lock",
+}
+ORD_TESTS = {"tests/unit/test_ord_extraction.py"}
+PRICING_FILES = {
+    "apps/api/stock_routes.py",
+    "packages/adapters/stock/catalog_pricing.py",
 }
 CHEMICAL_FILE_FILES = {
     "apps/api/structure_routes.py",
@@ -198,6 +220,9 @@ def guard_paths(paths: set[str]) -> None:
             | TEMPLATE_FILES
             | HISTORY_FILES
             | REFERENCE_FILES
+            | REACTION_FIXTURES
+            | ORD_FILES
+            | PRICING_FILES
             | PERFORMANCE_FILES
             | {
                 PYTHON_LOCK,
@@ -212,6 +237,7 @@ def guard_paths(paths: set[str]) -> None:
             "tests/integration/forward_browser.mjs",
             "tests/integration/analysis_browser.mjs",
             "tests/integration/task_workspace_browser.mjs",
+            "tests/integration/reaction_evidence_browser.mjs",
             "tests/integration/workbench_shell_browser.mjs",
             "tests/integration/test_impurity_native.py",
             "tests/integration/test_impurity_mapper.py",
@@ -336,6 +362,15 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
                 "tests/unit/test_product_api_security.py",
             }
         )
+    if roots & (REFERENCE_FILES | REACTION_FIXTURES):
+        selected.add("tests/unit/test_reaction_library.py")
+    if roots & PRICING_FILES:
+        selected.update(
+            {
+                "tests/unit/test_catalog_pricing.py",
+                "tests/unit/test_product_api_security.py",
+            }
+        )
     if roots & PERFORMANCE_FILES:
         selected.update(
             {
@@ -379,7 +414,16 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
             "Mapped tests are missing; repair scope rather than skip: "
             + ", ".join(sorted(missing))
         )
-    return sorted(selected)
+    return sorted(selected - ORD_TESTS)
+
+
+def reaction_data_tests(paths: set[str]) -> list[str]:
+    return (
+        sorted(ORD_TESTS)
+        if paths
+        & (ORD_FILES | ORD_TESTS | REACTION_FIXTURES | REFERENCE_FILES | CI_FILES)
+        else []
+    )
 
 
 def npm_dependency_changes(before, after, paths: set[str]) -> set[str]:

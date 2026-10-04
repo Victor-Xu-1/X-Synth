@@ -11,7 +11,10 @@ from fastapi.testclient import TestClient
 
 from apps.api.stock_routes import stock_router
 from packages.adapters.stock.catalog_pricing import (
-    UNIT_EVIDENCE, price_basis, price_value, priced_lookup,
+    UNIT_EVIDENCE,
+    price_basis,
+    price_value,
+    priced_lookup,
 )
 from packages.adapters.stock.stock_index import StockIndex
 from packages.adapters.stock.commercial_stock import canonicalize_smiles
@@ -22,8 +25,10 @@ def test_missing_price_stays_null(value):
     assert price_value(value) == (None, "missing")
 
 
-@pytest.mark.parametrize("value", [0, -1, True, False, "3.5", "", [], {},
-                                       float("nan"), float("inf"), 10**1000])
+@pytest.mark.parametrize(
+    "value",
+    [0, -1, True, False, "3.5", "", [], {}, float("nan"), float("inf"), 10**1000],
+)
 def test_invalid_values_are_not_prices(value):
     assert price_value(value) == (None, "invalid")
 
@@ -35,10 +40,17 @@ def test_recorded_values_are_not_rounded_or_converted(value):
 
 def test_additive_contract_never_changes_input_or_snapshot_authority():
     # Contract-only data, not acceptance evidence or a supplier-data replacement.
-    summary = {"source_id": "contract", "source_sha256": "a" * 64,
-               "catalog_sha256": "b" * 64}
-    record = {"smiles": "contract-structure", "source": "contract-source",
-              "catalog_id": "contract-record", "ppg": float("inf")}
+    summary = {
+        "source_id": "contract",
+        "source_sha256": "a" * 64,
+        "catalog_sha256": "b" * 64,
+    }
+    record = {
+        "smiles": "contract-structure",
+        "source": "contract-source",
+        "catalog_id": "contract-record",
+        "ppg": float("inf"),
+    }
     result = priced_lookup({record["smiles"]: [record]}, summary)
     emitted = result["results"][record["smiles"]][0]
     assert emitted["ppg"] is None
@@ -65,12 +77,19 @@ def real_index():
 
 def real_lookup(index):
     with index.connect() as connection:
-        sources = [row[0] for row in connection.execute(
-            "SELECT DISTINCT source FROM evidence ORDER BY source"
-        )]
-        smiles = [connection.execute(
-            "SELECT smiles FROM evidence WHERE source=? AND ppg>0 LIMIT 1", (source,)
-        ).fetchone()[0] for source in sources]
+        sources = [
+            row[0]
+            for row in connection.execute(
+                "SELECT DISTINCT source FROM evidence ORDER BY source"
+            )
+        ]
+        smiles = [
+            connection.execute(
+                "SELECT smiles FROM evidence WHERE source=? AND ppg>0 LIMIT 1",
+                (source,),
+            ).fetchone()[0]
+            for source in sources
+        ]
         stereo = connection.execute(
             "SELECT smiles FROM evidence WHERE smiles LIKE '%@%' AND ppg>0 LIMIT 1"
         ).fetchone()
@@ -78,13 +97,17 @@ def real_lookup(index):
             smiles.append(stereo[0])
     app = FastAPI()
     app.include_router(stock_router(stock=index, transport=None), prefix="/api/v1")
-    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
+    with TestClient(
+        app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000)
+    ) as client:
         response = client.post("/api/v1/stock/lookup", json={"smiles": smiles})
         response.raise_for_status()
         return response.json()
 
 
-def test_real_api_matches_sql_values_and_keeps_the_catalog_read_only(real_index, monkeypatch):
+def test_real_api_matches_sql_values_and_keeps_the_catalog_read_only(
+    real_index, monkeypatch
+):
     monkeypatch.setenv("X_SYNTH_AUTH_MODE", "local")
     before = dict(real_index.summary)
     payload = real_lookup(real_index)
@@ -109,27 +132,56 @@ def test_real_api_matches_sql_values_and_keeps_the_catalog_read_only(real_index,
         ).fetchone()
     assert count == before["accepted_records"] == priced
     with real_index.path.open("rb") as handle:
-        assert hashlib.file_digest(handle, "sha256").hexdigest() == before["catalog_sha256"]
+        assert (
+            hashlib.file_digest(handle, "sha256").hexdigest()
+            == before["catalog_sha256"]
+        )
     assert real_index.summary == before
 
 
-def test_real_api_rejects_invalid_structures_and_cross_site_clients(real_index, monkeypatch):
+def test_real_api_rejects_invalid_structures_and_cross_site_clients(
+    real_index, monkeypatch
+):
     monkeypatch.setenv("X_SYNTH_AUTH_MODE", "local")
     app = FastAPI()
     app.include_router(stock_router(stock=real_index, transport=None), prefix="/api/v1")
-    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
-        assert client.post("/api/v1/stock/lookup", json={"smiles": ["not-smiles"]}).status_code == 422
-        assert client.post("/api/v1/stock/lookup", json={"smiles": ["CCO"]},
-                           headers={"origin": "https://untrusted.example"}).status_code == 403
+    with TestClient(
+        app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000)
+    ) as client:
+        assert (
+            client.post(
+                "/api/v1/stock/lookup", json={"smiles": ["not-smiles"]}
+            ).status_code
+            == 422
+        )
+        assert (
+            client.post(
+                "/api/v1/stock/lookup",
+                json={"smiles": ["CCO"]},
+                headers={"origin": "https://untrusted.example"},
+            ).status_code
+            == 403
+        )
 
 
-def test_real_api_echoes_each_original_input_with_canonical_identity(real_index, monkeypatch):
+def test_real_api_echoes_each_original_input_with_canonical_identity(
+    real_index, monkeypatch
+):
     monkeypatch.setenv("X_SYNTH_AUTH_MODE", "local")
-    inputs = ["OCC", "CCO", "OCC", "[13CH3]CO", "C[C@H](N)C(=O)O",
-              "C[C@@H](N)C(=O)O", "[Na+].CC(=O)[O-]"]
+    inputs = [
+        "OCC",
+        "CCO",
+        "OCC",
+        "[13CH3]CO",
+        "C[C@H](N)C(=O)O",
+        "C[C@@H](N)C(=O)O",
+        "[Na+].CC(=O)[O-]",
+    ]
     app = FastAPI()
     app.include_router(stock_router(stock=real_index, transport=None), prefix="/api/v1")
-    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
+    with TestClient(
+        app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000)
+    ) as client:
         response = client.post("/api/v1/stock/lookup", json={"smiles": inputs})
         response.raise_for_status()
         payload = response.json()
@@ -149,7 +201,10 @@ def test_real_api_echoes_each_original_input_with_canonical_identity(real_index,
         for record in records:
             assert record["smiles"] == record["price"]["record_key"]["smiles"] == key
             assert record["price"]["snapshot"] == payload["snapshot"]
-            assert record["price"]["catalog_sha256"] == real_index.summary["catalog_sha256"]
+            assert (
+                record["price"]["catalog_sha256"]
+                == real_index.summary["catalog_sha256"]
+            )
 
 
 if __name__ == "__main__":

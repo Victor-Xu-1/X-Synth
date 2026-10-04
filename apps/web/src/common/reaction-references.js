@@ -1,3 +1,5 @@
+import { validLibrarySource, validOrdEvidence } from "./reference-evidence";
+
 export const REFERENCE_SOURCE = "USPTO_FULL";
 export const REFERENCE_STATUS_PATH = "/api/v1/references/status";
 export const REFERENCE_SEARCH_PATH = "/api/v1/references/search";
@@ -14,10 +16,15 @@ const reasons = {
   reference_endpoint_unavailable: "参考反应接口未启用。",
   reference_native_unavailable: "参考反应查库服务暂不可用。",
   reference_native_protocol_error: "参考反应查库响应无效。",
+  reaction_library_not_configured: "公开反应库未配置。",
+  reaction_library_unavailable: "公开反应库暂不可用。",
+  reaction_library_invalid: "公开反应库未通过资产校验。",
+  reaction_library_query_failed: "公开反应库检索失败。",
 };
 const yieldMethods = {
   text_mined_yield: "原文提取收率",
   calculated_yield: "计算收率字段",
+  ord_product_measurement: "ORD 原始收率字段",
 };
 const object = (value) =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -80,7 +87,7 @@ export function referenceStatus(value) {
   if (
     !object(value) ||
     typeof value.ready !== "boolean" ||
-    value.source !== REFERENCE_SOURCE ||
+    !validLibrarySource(value) ||
     typeof value.product_index_available !== "boolean" ||
     !(
       value.record_count === null ||
@@ -100,13 +107,15 @@ export function referenceStatus(value) {
   )
     invalid("参考来源状态不一致，检索未启用。");
   if (!value.ready && !value.reason) invalid("参考来源未返回不可用原因。");
+  if (value.sources && value.ready !== value.sources.some((item) => item.ready))
+    invalid("参考来源汇总状态不一致。");
   return value;
 }
 
 export function referenceReady(status) {
   return (
     status?.ready === true &&
-    status.source === REFERENCE_SOURCE &&
+    validLibrarySource(status) &&
     status.product_index_available === true &&
     status.record_count !== 0 &&
     !status.reason
@@ -198,22 +207,27 @@ function validRecord(row, query) {
       (Number.isInteger(row.year) && row.year >= 1700 && row.year <= 2100)
     ) ||
     !Array.isArray(row.reported_yields) ||
-    row.reported_yields.length > 2 ||
-    !row.reported_yields.every(validYield) ||
-    row.conditions !== null
+    row.reported_yields.length > (row.provenance?.source === "ORD" ? 256 : 2) ||
+    !row.reported_yields.every(validYield)
   )
     return false;
   const methods = row.reported_yields.map((value) => value.method),
     provenance = row.provenance;
+  const ord = provenance?.source === "ORD";
   if (
-    new Set(methods).size !== methods.length ||
+    (!ord &&
+      (new Set(methods).size !== methods.length ||
+        row.conditions !== null ||
+        methods.includes("ord_product_measurement"))) ||
     !object(provenance) ||
-    provenance.source !== REFERENCE_SOURCE ||
+    (ord
+      ? !validOrdEvidence(row, structures)
+      : provenance.source !== REFERENCE_SOURCE) ||
     provenance.record_id !== row.id ||
-    provenance.evidence_type !== "patent_reaction_extraction" ||
+    (!ord && provenance.evidence_type !== "patent_reaction_extraction") ||
     !Array.isArray(provenance.yield_extraction_fields) ||
     JSON.stringify([...provenance.yield_extraction_fields].sort()) !==
-      JSON.stringify([...methods].sort()) ||
+      JSON.stringify([...new Set(methods)].sort()) ||
     !(
       provenance.patent_url_basis === null ||
       provenance.patent_url_basis === "record_patent_number"
@@ -233,7 +247,7 @@ export function referenceResponse(value, requested) {
   const input = referenceQuery(requested);
   if (
     !object(value) ||
-    value.source !== REFERENCE_SOURCE ||
+    !validLibrarySource(value) ||
     !object(value.requested) ||
     value.requested.product !== input.product ||
     !structures(value.requested.reactants) ||
@@ -258,6 +272,13 @@ export function referenceResponse(value, requested) {
     invalid();
   if (
     value.results.some((row) => !validRecord(row, value.query)) ||
+    value.results.some((row) =>
+      value.sources
+        ? !value.sources.some(
+            (source) => source.ready && source.source === row.provenance.source,
+          )
+        : row.provenance.source !== REFERENCE_SOURCE,
+    ) ||
     new Set(value.results.map((row) => row.id)).size !== value.count
   )
     invalid();

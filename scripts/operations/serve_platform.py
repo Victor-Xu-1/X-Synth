@@ -21,6 +21,7 @@ def main():
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--stock-index", type=Path, required=True)
     parser.add_argument("--template-library", type=Path)
+    parser.add_argument("--reaction-library", type=Path)
     parser.add_argument("--port", type=int, default=8769)
     args = parser.parse_args()
     source = Path(__file__).resolve().parents[2]
@@ -32,8 +33,19 @@ def main():
     )
     if args.template_library:
         os.environ["X_SYNTH_TEMPLATE_LIBRARY_DB"] = str(args.template_library.resolve())
+    reaction_library = (
+        args.reaction_library
+        or args.assets / "knowledge/reaction-evidence/reactions.sqlite"
+    )
+    if args.reaction_library:
+        os.environ["X_SYNTH_REACTION_LIBRARY_DB"] = str(reaction_library.resolve())
+    elif reaction_library.exists():
+        os.environ.setdefault(
+            "X_SYNTH_REACTION_LIBRARY_DB", str(reaction_library.resolve())
+        )
     os.environ.setdefault(
-        "X_SYNTH_OPTIMIZATION_PYTHON", str(args.assets.resolve() / "optimization-env/bin/python")
+        "X_SYNTH_OPTIMIZATION_PYTHON",
+        str(args.assets.resolve() / "optimization-env/bin/python"),
     )
     command = [
         sys.executable,

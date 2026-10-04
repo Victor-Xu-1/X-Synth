@@ -14,7 +14,11 @@ from pydantic import ValidationError
 
 from .ord_measurements import recorded_conditions, recorded_yields, representation_gaps
 from .ord_reader import (
-    ORD_LICENSE, OrdRecordError, file_fingerprint, official_source_url, public_publication_url,
+    ORD_LICENSE,
+    OrdRecordError,
+    file_fingerprint,
+    official_source_url,
+    public_publication_url,
     validate_source_identity,
 )
 from .ord_structures import audit_ord_structures, evidence_reaction_smiles
@@ -42,19 +46,33 @@ class OrdExtractionStats:
     representation_gaps: Counter = field(default_factory=Counter)
     issue_samples: list[dict] = field(default_factory=list)
 
-    def note(self, reaction_id: str, reason: str, *, source_field: str | None = None,
-             detail: str | None = None) -> None:
+    def note(
+        self,
+        reaction_id: str,
+        reason: str,
+        *,
+        source_field: str | None = None,
+        detail: str | None = None,
+    ) -> None:
         if len(self.issue_samples) < 20:
-            self.issue_samples.append({"reaction_id": reaction_id, "reason": reason,
-                                       "source_field": source_field, "detail": detail})
+            self.issue_samples.append(
+                {
+                    "reaction_id": reaction_id,
+                    "reason": reason,
+                    "source_field": source_field,
+                    "detail": detail,
+                }
+            )
 
     def as_dict(self) -> dict:
         result = {
-            key: value for key, value in vars(self).items()
+            key: value
+            for key, value in vars(self).items()
             if key not in ("rejection_reasons", "representation_gaps", "issue_samples")
         }
         return {
-            **result, "unread_rows": self.source_rows - self.rows_seen,
+            **result,
+            "unread_rows": self.source_rows - self.rows_seen,
             "rejection_reasons": dict(sorted(self.rejection_reasons.items())),
             "representation_gaps": dict(sorted(self.representation_gaps.items())),
             "issue_samples": list(self.issue_samples),
@@ -68,14 +86,19 @@ class OrdExtractionStats:
             self.yield_measurements += 1
             self.zero_yield_measurements += int(measurement.value == 0.0)
             self.text_only_yield_measurements += int(measurement.value is None)
-            if measurement.analysis and not json.loads(measurement.analysis)["analysis_record_present"]:
+            if (
+                measurement.analysis
+                and not json.loads(measurement.analysis)["analysis_record_present"]
+            ):
                 self.missing_yield_analyses += 1
 
 
 class OrdReadError(RuntimeError):
     def __init__(self, source_path: str, stats: OrdExtractionStats):
         self.source_path, self.stats = source_path, stats
-        super().__init__(f"ORD Parquet read failed after {stats.rows_seen} rows: {source_path}")
+        super().__init__(
+            f"ORD Parquet read failed after {stats.rows_seen} rows: {source_path}"
+        )
 
 
 def _publication_fields(reaction) -> dict:
@@ -85,14 +108,24 @@ def _publication_fields(reaction) -> dict:
     if patent and re.fullmatch(r"[A-Z]{2}[0-9]{5,14}(?:[A-Z][0-9]?)?", patent):
         patent_url = "https://patents.google.com/patent/" + patent
     return {
-        "doi": provenance.doi or None, "patent_number": patent, "patent_url": patent_url,
+        "doi": provenance.doi or None,
+        "patent_number": patent,
+        "patent_url": patent_url,
         "publication_url": public_publication_url(provenance.publication_url),
         "procedure": reaction.notes.procedure_details or None,
     }
 
 
-def _reaction_records(reaction, *, dataset_id: str, dataset_name: str, source_path: str,
-                      source_sha256: str, source_revision: str, stats: OrdExtractionStats):
+def _reaction_records(
+    reaction,
+    *,
+    dataset_id: str,
+    dataset_name: str,
+    source_path: str,
+    source_sha256: str,
+    source_revision: str,
+    stats: OrdExtractionStats,
+):
     identity = reaction.reaction_id
     if not re.fullmatch(r"ord-[a-f0-9]{32}", identity):
         raise OrdRecordError("invalid_reaction_id")
@@ -112,30 +145,62 @@ def _reaction_records(reaction, *, dataset_id: str, dataset_name: str, source_pa
         try:
             record_id = identity
             if len(groups) > 1:
-                signature = hashlib.sha256(json.dumps(products, separators=(",", ":")).encode()).hexdigest()[:24]
+                signature = hashlib.sha256(
+                    json.dumps(products, separators=(",", ":")).encode()
+                ).hexdigest()[:24]
                 record_id += ":products:" + signature
-            smiles, reactants, product_list, agents = evidence_reaction_smiles(structures, products)
+            smiles, reactants, product_list, agents = evidence_reaction_smiles(
+                structures, products
+            )
             yields = recorded_yields(reaction, outcomes)
             record = ReactionEvidence(
-                id=record_id, reaction_smiles=smiles, reactants=reactants,
-                products=product_list, agents=agents, match_scope="product_identity",
+                id=record_id,
+                reaction_smiles=smiles,
+                reactants=reactants,
+                products=product_list,
+                agents=agents,
+                match_scope="product_identity",
                 reported_yields=yields,
-                conditions=recorded_conditions(reaction, structures, [item.index for item in outcomes]),
-                provenance=EvidenceProvenance(
-                    source="ORD", record_id=record_id, evidence_type="structured_reaction_record",
-                    yield_extraction_fields=["ord_product_measurement"] if yields else [],
-                    dataset_id=dataset_id, dataset_name=dataset_name or None,
-                    source_sha256=source_sha256, source_path=source_path, license=ORD_LICENSE,
-                    original_reaction_id=identity, outcome_indices=[item.index for item in outcomes],
+                conditions=recorded_conditions(
+                    reaction, structures, [item.index for item in outcomes]
                 ),
-                source_url=official_source_url(source_path, source_revision), **_publication_fields(reaction),
+                provenance=EvidenceProvenance(
+                    source="ORD",
+                    record_id=record_id,
+                    evidence_type="structured_reaction_record",
+                    yield_extraction_fields=["ord_product_measurement"]
+                    if yields
+                    else [],
+                    dataset_id=dataset_id,
+                    dataset_name=dataset_name or None,
+                    source_sha256=source_sha256,
+                    source_path=source_path,
+                    license=ORD_LICENSE,
+                    original_reaction_id=identity,
+                    outcome_indices=[item.index for item in outcomes],
+                ),
+                source_url=official_source_url(source_path, source_revision),
+                **_publication_fields(reaction),
             )
         except (OrdRecordError, ValidationError, ValueError, RuntimeError) as exc:
-            reason = exc.code if isinstance(exc, OrdRecordError) else "evidence_contract_violation"
+            reason = (
+                exc.code
+                if isinstance(exc, OrdRecordError)
+                else "evidence_contract_violation"
+            )
             stats.rejected_outcomes += len(outcomes)
             stats.rejection_reasons[reason] += len(outcomes)
-            detail = json.dumps(exc.errors(include_input=False, include_context=False)) if isinstance(exc, ValidationError) else str(exc)
-            stats.note(identity, reason, source_field=",".join(f"outcomes[{item.index}]" for item in outcomes), detail=detail[:1024])
+            detail = (
+                json.dumps(exc.errors(include_input=False, include_context=False))
+                if isinstance(exc, ValidationError)
+                else str(exc)
+            )
+            stats.note(
+                identity,
+                reason,
+                source_field=",".join(f"outcomes[{item.index}]" for item in outcomes),
+                detail=detail[:1024],
+            )
             continue
         stats.emitted(record)
         if emitted == 0:
@@ -146,9 +211,15 @@ def _reaction_records(reaction, *, dataset_id: str, dataset_name: str, source_pa
         stats.rejected_reactions += 1
 
 
-def iter_ord_evidence(path: Path, *, source_path: str, source_sha256: str,
-                      source_revision: str, stats: OrdExtractionStats | None = None,
-                      row_group: int | None = None) -> Iterator[ReactionEvidence]:
+def iter_ord_evidence(
+    path: Path,
+    *,
+    source_path: str,
+    source_sha256: str,
+    source_revision: str,
+    stats: OrdExtractionStats | None = None,
+    row_group: int | None = None,
+) -> Iterator[ReactionEvidence]:
     """Read only current ORD Parquet; caller verifies the source hash beforehand.
 
     All structural rejections are counted even when some records remain usable.
@@ -157,7 +228,9 @@ def iter_ord_evidence(path: Path, *, source_path: str, source_sha256: str,
     from ord_schema import parquet
 
     path = Path(path)
-    expected_id = "ord_dataset-" + validate_source_identity(source_path, source_sha256, source_revision)
+    expected_id = "ord_dataset-" + validate_source_identity(
+        source_path, source_sha256, source_revision
+    )
     if path.suffix != ".parquet":
         raise ValueError("ORD evidence import accepts only official Parquet files")
     stats = stats if stats is not None else OrdExtractionStats()
@@ -165,7 +238,9 @@ def iter_ord_evidence(path: Path, *, source_path: str, source_sha256: str,
     try:
         view = parquet.DatasetView(path)
         if view.dataset_id != expected_id:
-            raise ValueError("ORD footer dataset identity disagrees with the manifest path")
+            raise ValueError(
+                "ORD footer dataset identity disagrees with the manifest path"
+            )
         if row_group is None:
             stats.source_rows += len(view.reactions)
         else:
@@ -192,9 +267,13 @@ def iter_ord_evidence(path: Path, *, source_path: str, source_sha256: str,
                 if row_id != reaction.reaction_id:
                     raise OrdRecordError("row_reaction_id_mismatch")
                 yield from _reaction_records(
-                    reaction, dataset_id=view.dataset_id, dataset_name=view.name,
-                    source_path=source_path, source_sha256=source_sha256,
-                    source_revision=source_revision, stats=stats,
+                    reaction,
+                    dataset_id=view.dataset_id,
+                    dataset_name=view.name,
+                    source_path=source_path,
+                    source_sha256=source_sha256,
+                    source_revision=source_revision,
+                    stats=stats,
                 )
             except OrdRecordError as exc:
                 stats.rejected_reactions += 1

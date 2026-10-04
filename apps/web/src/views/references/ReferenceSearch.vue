@@ -75,12 +75,29 @@
         </h2>
         <dl class="reference-source">
           <dt>来源</dt>
-          <dd>USPTO_FULL</dd>
+          <dd>{{ evidenceSourceLabel(sourceStatus) }}</dd>
           <dt>匹配方式</dt>
           <dd>产物结构精确匹配</dd>
           <dt>参考记录</dt>
           <dd>{{ recordedValue(sourceStatus?.record_count) }}</dd>
         </dl>
+        <details v-if="sourceStatus?.sources?.length" class="reference-source">
+          <summary>来源与数据覆盖</summary>
+          <dl v-for="source in sourceStatus.sources" :key="source.source">
+            <dt>{{ source.source }}</dt>
+            <dd>{{ source.ready ? "已就绪" : referenceReason(source) }}</dd>
+            <dt>参考记录</dt>
+            <dd>{{ recordedValue(source.record_count) }}</dd>
+            <template v-if="source.source === 'ORD'">
+              <dt>含收率记录</dt>
+              <dd>{{ recordedValue(source.yields_count) }}</dd>
+              <dt>含条件/投料记录</dt>
+              <dd>{{ recordedValue(source.conditions_count) }}</dd>
+              <dt>数据许可</dt>
+              <dd>{{ source.license || "未记录" }}</dd>
+            </template>
+          </dl>
+        </details>
         <v-text-field
           v-model="limit"
           label="结果数量"
@@ -138,10 +155,12 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
+import { evidenceSourceLabel } from "@/common/reference-evidence";
 import {
   recordedValue,
   referenceFailure,
   referencePrefill,
+  referenceReason,
 } from "@/common/reaction-references";
 import { useReactionReferences } from "@/composables/useReactionReferences";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";

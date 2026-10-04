@@ -6,7 +6,12 @@ import json
 import math
 
 from .ord_reader import OrdRecordError
-from .reaction_models import EvidenceYield, RecordedConditions, RecordedInput, RecordedParameter
+from .reaction_models import (
+    EvidenceYield,
+    RecordedConditions,
+    RecordedInput,
+    RecordedParameter,
+)
 
 
 def enum_name(message, field: str) -> str:
@@ -28,23 +33,31 @@ def _json(value: dict) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
-def _parameter(quantity, field: str, *, context: dict | None = None) -> RecordedParameter | None:
+def _parameter(
+    quantity, field: str, *, context: dict | None = None
+) -> RecordedParameter | None:
     if not quantity.HasField("value"):
         return None
     if not math.isfinite(quantity.value):
         raise OrdRecordError("nonfinite_recorded_parameter", field)
     details = dict(context or {})
     return RecordedParameter(
-        value=float(quantity.value), unit=enum_name(quantity, "units"),
+        value=float(quantity.value),
+        unit=enum_name(quantity, "units"),
         precision=float(quantity.precision) if quantity.HasField("precision") else None,
-        source_field=field, details=_json(details) if details else None,
+        source_field=field,
+        details=_json(details) if details else None,
     )
 
 
-def _conditions_parameters(block, field: str, quantity_name: str) -> list[RecordedParameter]:
+def _conditions_parameters(
+    block, field: str, quantity_name: str
+) -> list[RecordedParameter]:
     values = []
     setpoint = _parameter(
-        block.setpoint, f"{field}.setpoint", context={"control": _message_dict(block.control)},
+        block.setpoint,
+        f"{field}.setpoint",
+        context={"control": _message_dict(block.control)},
     )
     if setpoint is not None:
         values.append(setpoint)
@@ -56,26 +69,37 @@ def _conditions_parameters(block, field: str, quantity_name: str) -> list[Record
         }
         parameter = _parameter(
             getattr(measurement, quantity_name),
-            f"{field}.measurements[{index}].{quantity_name}", context=context,
+            f"{field}.measurements[{index}].{quantity_name}",
+            context=context,
         )
         if parameter is not None:
             values.append(parameter)
     return values
 
 
-def recorded_conditions(reaction, structures, outcome_indices: list[int]) -> RecordedConditions | None:
+def recorded_conditions(
+    reaction, structures, outcome_indices: list[int]
+) -> RecordedConditions | None:
     conditions = RecordedConditions(
-        temperature=_conditions_parameters(reaction.conditions.temperature, "conditions.temperature", "temperature"),
-        pressure=_conditions_parameters(reaction.conditions.pressure, "conditions.pressure", "pressure"),
+        temperature=_conditions_parameters(
+            reaction.conditions.temperature, "conditions.temperature", "temperature"
+        ),
+        pressure=_conditions_parameters(
+            reaction.conditions.pressure, "conditions.pressure", "pressure"
+        ),
     )
     for key in sorted(reaction.inputs):
         reaction_input = reaction.inputs[key]
         prefix = f"inputs[{json.dumps(key, ensure_ascii=True)}]"
         for time_field in ("addition_time", "addition_duration"):
-            value = _parameter(getattr(reaction_input, time_field), f"{prefix}.{time_field}")
+            value = _parameter(
+                getattr(reaction_input, time_field), f"{prefix}.{time_field}"
+            )
             if value is not None:
                 conditions.time.append(value)
-        temperature = _parameter(reaction_input.addition_temperature, f"{prefix}.addition_temperature")
+        temperature = _parameter(
+            reaction_input.addition_temperature, f"{prefix}.addition_temperature"
+        )
         if temperature is not None:
             conditions.temperature.append(temperature)
         for index, compound in enumerate(reaction_input.components):
@@ -84,27 +108,44 @@ def recorded_conditions(reaction, structures, outcome_indices: list[int]) -> Rec
             amounts = []
             if amount_kind in ("mass", "moles", "volume"):
                 amount = _parameter(
-                    getattr(compound.amount, amount_kind), f"{field}.amount.{amount_kind}",
-                    context={"volume_includes_solutes": compound.amount.volume_includes_solutes}
-                    if compound.amount.HasField("volume_includes_solutes") else None,
+                    getattr(compound.amount, amount_kind),
+                    f"{field}.amount.{amount_kind}",
+                    context={
+                        "volume_includes_solutes": compound.amount.volume_includes_solutes
+                    }
+                    if compound.amount.HasField("volume_includes_solutes")
+                    else None,
                 )
                 if amount is not None:
                     amounts.append(amount)
-            names = [item.value for item in compound.identifiers if enum_name(item, "type") == "NAME" and item.value.strip()]
+            names = [
+                item.value
+                for item in compound.identifiers
+                if enum_name(item, "type") == "NAME" and item.value.strip()
+            ]
             if not names:
                 names = [
                     f"{enum_name(item, 'type')}: {item.value}"
                     for item in compound.identifiers
-                    if item.value.strip() and enum_name(item, "type") not in ("SMILES", "CXSMILES", "INCHI", "MOLBLOCK")
+                    if item.value.strip()
+                    and enum_name(item, "type")
+                    not in ("SMILES", "CXSMILES", "INCHI", "MOLBLOCK")
                 ]
             if not names and structures.input_smiles[key, index] is None:
                 raise OrdRecordError("empty_recorded_input_identity", field)
-            conditions.inputs.append(RecordedInput(
-                role=enum_name(compound, "reaction_role"), name="; ".join(names) or None,
-                smiles=structures.input_smiles[key, index], amounts=amounts, source_field=field,
-            ))
+            conditions.inputs.append(
+                RecordedInput(
+                    role=enum_name(compound, "reaction_role"),
+                    name="; ".join(names) or None,
+                    smiles=structures.input_smiles[key, index],
+                    amounts=amounts,
+                    source_field=field,
+                )
+            )
     for index in outcome_indices:
-        value = _parameter(reaction.outcomes[index].reaction_time, f"outcomes[{index}].reaction_time")
+        value = _parameter(
+            reaction.outcomes[index].reaction_time, f"outcomes[{index}].reaction_time"
+        )
         if value is not None:
             conditions.time.append(value)
     return conditions if any(conditions.model_dump().values()) else None
@@ -113,7 +154,10 @@ def recorded_conditions(reaction, structures, outcome_indices: list[int]) -> Rec
 def _analysis(outcome, measurement) -> str | None:
     if not measurement.analysis_key:
         return None
-    data = {"key": measurement.analysis_key, "analysis_record_present": measurement.analysis_key in outcome.analyses}
+    data = {
+        "key": measurement.analysis_key,
+        "analysis_record_present": measurement.analysis_key in outcome.analyses,
+    }
     if data["analysis_record_present"]:
         analysis = outcome.analyses[measurement.analysis_key]
         data.update(type=enum_name(analysis, "type"), details=analysis.details)
@@ -144,17 +188,30 @@ def recorded_yields(reaction, outcome_structures) -> list[EvidenceYield]:
                         unit = "%"
                 # A text-only or mass-based yield remains source text. Do not
                 # parse a number, convert a peak area, or invent a percentage.
-                fields = ("type", "details", "analysis_key", "uses_internal_standard", "is_normalized", "uses_authentic_standard")
+                fields = (
+                    "type",
+                    "details",
+                    "analysis_key",
+                    "uses_internal_standard",
+                    "is_normalized",
+                    "uses_authentic_standard",
+                )
                 data = _message_dict(measurement)
                 text = {key: data[key] for key in fields if key in data}
                 if kind:
                     text[kind] = data[kind]
-                yields.append(EvidenceYield(
-                    value=value, unit=unit, method="ord_product_measurement", text=_json(text),
-                    product_smiles=smiles, analysis=_analysis(outcome, measurement),
-                    measurement_type=enum_name(measurement, "type"),
-                    source_field=f"outcomes[{structures.index}].products[{index}].measurements[{measurement_index}]",
-                ))
+                yields.append(
+                    EvidenceYield(
+                        value=value,
+                        unit=unit,
+                        method="ord_product_measurement",
+                        text=_json(text),
+                        product_smiles=smiles,
+                        analysis=_analysis(outcome, measurement),
+                        measurement_type=enum_name(measurement, "type"),
+                        source_field=f"outcomes[{structures.index}].products[{index}].measurements[{measurement_index}]",
+                    )
+                )
     return yields
 
 

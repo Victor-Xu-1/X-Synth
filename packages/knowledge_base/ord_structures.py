@@ -32,7 +32,9 @@ def compound_smiles(compound, *, required: bool) -> str | None:
             for identifier in compound.identifiers:
                 if identifier.type not in message_helpers.STRUCTURAL_IDENTIFIER_TYPES:
                     continue
-                smiles = message_helpers.canonical_smiles_for_identifier(identifier.type, identifier.value)
+                smiles = message_helpers.canonical_smiles_for_identifier(
+                    identifier.type, identifier.value
+                )
                 if smiles is None:
                     raise OrdRecordError("invalid_compound_structure")
                 identities.add(_definite_smiles(smiles))
@@ -96,19 +98,33 @@ def audit_ord_structures(reaction) -> OrdReactionStructures:
             input_smiles[key, index] = smiles
             if smiles is not None and is_reactant:
                 reactants.append(smiles)
-            elif smiles is not None and role in (roles.REAGENT, roles.SOLVENT, roles.CATALYST):
+            elif smiles is not None and role in (
+                roles.REAGENT,
+                roles.SOLVENT,
+                roles.CATALYST,
+            ):
                 agents.append(smiles)
-    if not reactants or _side_signature(reactants) != component_multiset(derived_reactants):
+    if not reactants or _side_signature(reactants) != component_multiset(
+        derived_reactants
+    ):
         raise OrdRecordError("derived_reactant_mismatch")
 
     outcomes, rejected = [], []
-    product_roles = (roles.PRODUCT, roles.UNSPECIFIED, roles.BYPRODUCT, roles.SIDE_PRODUCT)
+    product_roles = (
+        roles.PRODUCT,
+        roles.UNSPECIFIED,
+        roles.BYPRODUCT,
+        roles.SIDE_PRODUCT,
+    )
     for index, outcome in enumerate(reaction.outcomes):
         try:
             products, identities = [], {}
             for product_index, product in enumerate(outcome.products):
                 if product.reaction_role not in product_roles:
-                    if any(m.type == reaction_pb2.ProductMeasurement.YIELD for m in product.measurements):
+                    if any(
+                        m.type == reaction_pb2.ProductMeasurement.YIELD
+                        for m in product.measurements
+                    ):
                         raise OrdRecordError("yield_on_nonproduct_species")
                     continue
                 smiles = compound_smiles(product, required=True)
@@ -116,7 +132,9 @@ def audit_ord_structures(reaction) -> OrdReactionStructures:
                 products.append(smiles)
             if not products:
                 raise OrdRecordError("missing_recorded_products")
-            outcomes.append(OrdOutcomeStructures(index, tuple(sorted(set(products))), identities))
+            outcomes.append(
+                OrdOutcomeStructures(index, tuple(sorted(set(products))), identities)
+            )
         except OrdRecordError as exc:
             rejected.append((index, exc.code))
 
@@ -132,12 +150,18 @@ def audit_ord_structures(reaction) -> OrdReactionStructures:
     # The derived helper intentionally omits agents. Keep explicitly recorded
     # agent-block structures too, without ever promoting them to reactants.
     for identifier in reaction.identifiers:
-        if identifier.type in (
-            reaction_pb2.ReactionIdentifier.REACTION_SMILES,
-            reaction_pb2.ReactionIdentifier.REACTION_CXSMILES,
-        ) and identifier.value:
+        if (
+            identifier.type
+            in (
+                reaction_pb2.ReactionIdentifier.REACTION_SMILES,
+                reaction_pb2.ReactionIdentifier.REACTION_CXSMILES,
+            )
+            and identifier.value
+        ):
             try:
-                recorded_r, recorded_p, recorded_a = parse_reference_reaction(identifier.value)
+                recorded_r, recorded_p, recorded_a = parse_reference_reaction(
+                    identifier.value
+                )
             except (ValueError, RuntimeError) as exc:
                 raise OrdRecordError("invalid_recorded_reaction_smiles") from exc
             if component_multiset(recorded_r) != component_multiset(derived_reactants):
@@ -146,15 +170,22 @@ def audit_ord_structures(reaction) -> OrdReactionStructures:
                 raise OrdRecordError("recorded_product_mismatch")
             agents.extend(recorded_a)
     return OrdReactionStructures(
-        tuple(sorted(set(reactants))), tuple(sorted(set(agents))), input_smiles,
-        tuple(outcomes), tuple(rejected),
+        tuple(sorted(set(reactants))),
+        tuple(sorted(set(agents))),
+        input_smiles,
+        tuple(outcomes),
+        tuple(rejected),
     )
 
 
-def evidence_reaction_smiles(structures: OrdReactionStructures, products: tuple[str, ...]):
+def evidence_reaction_smiles(
+    structures: OrdReactionStructures, products: tuple[str, ...]
+):
     def side(values):
         return ".".join(f"({value})" if "." in value else value for value in values)
 
-    smiles = f"{side(structures.reactants)}>{'.'.join(structures.agents)}>{side(products)}"
+    smiles = (
+        f"{side(structures.reactants)}>{'.'.join(structures.agents)}>{side(products)}"
+    )
     reactants, product_list, agents = parse_reference_reaction(smiles)
     return smiles, reactants, product_list, agents

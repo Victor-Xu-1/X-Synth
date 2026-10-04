@@ -71,6 +71,7 @@ const props = defineProps({
   overview: Boolean,
   reading: Boolean,
   scores: { type: Object, default: () => ({}) },
+  catalogPrices: { type: Object, default: () => ({}) },
   id: { type: String, default: () => `route-${crypto.randomUUID()}` },
 });
 const emit = defineEmits(["update:graph", "select", "select-edge", "error"]);
@@ -88,6 +89,7 @@ const flowNodes = computed(() =>
       imageWidth: props.reading ? 200 : 168,
       imageHeight: props.reading ? 144 : 95,
       score: props.scores[node.id],
+      catalogPrice: props.catalogPrices[node.smiles] || null,
     },
   })),
 );
