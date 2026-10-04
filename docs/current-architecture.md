@@ -4,7 +4,7 @@
 
 X-Synth owns the existing Chinese Vue workbench, product API, job state,
 history, unified stock evidence, route selection, and delivery. ASKCOS V2 is
-the only integrated chemistry engine. New engines must implement the same
+the only integrated retrosynthesis engine. New search engines must implement the same
 adapter contract; they are not prerequisites for ASKCOS. LLM integration is
 deferred. Neither model login tokens nor browser sessions are extracted.
 
@@ -13,6 +13,15 @@ flowchart TD
   UI["X-Synth Chinese Workbench"] --> API["X-Synth Product API"]
   API --> JOB["Transactional Job Repository / Queue / Checkpoint"]
   API --> NATIVE["ASKCOS Native Capability Adapter"]
+  API --> TOOLS["Typed Scientific Tool Adapters"]
+  TOOLS --> NN["ASKCOS NNv1 Conditions / Isolated TF-Keras"]
+  TOOLS --> FORWARD["Graph2SMILES + Atom Inventory + Fast Filter"]
+  TOOLS --> IMPURITY["ASKCOS Five Impurity Modes / RXNMapper Atom Mapping"]
+  IMPURITY --> FORWARD
+  TOOLS --> DESCRIPTOR["RDKit SA / SPS / Bertz / Descriptors / Batch PMI"]
+  TOOLS --> OPTIMIZE["BayBE / BoTorch / Selected Real Measurements"]
+  TOOLS --> ANALYSES["Owned Input / Execution / Immutable Result Records"]
+  ANALYSES --> API
   JOB --> ENGINE["ASKCOS Engine Adapter"]
   ENGINE --> MCTS["Native MCTS Search"]
   ENGINE --> RS["Native RetroStar Search"]
@@ -51,6 +60,9 @@ flowchart TD
 | Product API                     | apps/api                                   | Input validation, identity boundary, capability delegation, response models                       |
 | Product jobs                    | packages/orchestrator                      | One lifecycle, resource admission, checkpoints, route workflow                                    |
 | Route documents                 | packages/workspace                         | Independent documents, canonical chemical DAGs, immutable source provenance, optimistic revisions |
+| Research records                | packages/workspace/analysis_repository.py   | Immutable input/result snapshots, owner isolation, interrupted-process recovery                   |
+| Reaction optimization           | packages/adapters/optimization             | Real BayBE computation, bounded subprocess admission, measured-data and result binding              |
+| Molecular and process metrics   | packages/chemistry                         | Maintained RDKit descriptors, user-input mass accounting, atom provenance                           |
 | ASKCOS integration              | packages/adapters/askcos                   | Typed transport, native search invocation, recoverable errors                                     |
 | Native algorithms and functions | apps/askcos-v2                             | Full ASKCOS source, isolated native runtime                                                       |
 | Commercial evidence             | packages/adapters/stock                    | Exact catalog validation, immutable indexed snapshots, batch lookup                               |
@@ -100,10 +112,15 @@ another product version.
 
 The layout shell owns navigation, theme and live readiness only. Task composition,
 task history, result detail, route documents and graph editing are separate pages.
-The sidebar exposes three workflow groups (design, tasks/routes, research tools),
-with environment deployment in the footer. One contextual navigation reuses the
-existing pages and capability snapshot. There is no additional portal, result
-repository or model execution path. Editing and step-wise design remain actions
+The sidebar exposes design, tasks/routes, stock lookup, reactions/conditions,
+structure tools, batch process accounting and measured-data experimental optimization.
+Environment deployment remains in the footer. Each workspace
+has its own capability-filtered navigation; single-tool workspaces have no redundant
+tab strip. Ready forward/context tools are direct reaction tabs; optional solubility/QM
+tools remain secondary. A research workspace with no ready tools is hidden. Active
+workspace links preserve chemical prefill. There is no additional portal, result
+portal or bypass execution path. Research calculations use one owned analysis repository,
+separate from route jobs and editable route documents. Editing and step-wise design remain actions
 inside the route workflow; task detail and editor retain their immersive canvas.
 The structure-first composer has three explicit modes: route search, one-step
 analysis, and X-Synth JSON import. `/retro` redirects to `/?mode=manual`; the
@@ -185,7 +202,9 @@ The interaction organization was informed by the observable Chemiscal home,
 task list and route list, not its private source code or search implementation.
 X-Synth retains its own identity, Ketcher and the actual ASKCOS capability
 boundary. Unsupported groups, similar-molecule routes, price/risk/yield claims,
-process optimization and proprietary CDX/Marvin integrations are not added.
+industrial scale-up prediction and proprietary CDX/Marvin integrations are not added.
+Condition/forward predictions, molecular metrics, batch PMI and BayBE experiment
+recommendations are independent scientific capabilities, not substitutes for those claims.
 
 - The composer owns mode/navigation; `useRouteWorkbench` owns real submission;
   `workbench-model` owns supported query presets; the authoritative
@@ -232,6 +251,9 @@ chemical validation or mark unfinished searches complete.
 The existing service-status page reads product health and runtime metrics.
 Runtime memory is sampled only for supervised PIDs with matching start-time
 identity, preventing PID reuse from attributing another project's process.
+Owned descendant processes are included, with parent/start-time checks and a
+bounded process/thread traversal. RSS is summed per process and can count shared
+pages more than once; it is not a system-wide physical-memory or PSS measurement.
 12 GiB native RSS is a warning threshold, not a chemical-completion shortcut.
 
 ## Repository Governance
@@ -245,7 +267,8 @@ The product API contract is /api/v1; the existing /api native capability and
 result projections serve the ASKCOS-derived UI through that same host. There is
 no separate legacy orchestrator or /synon-api job owner. Job schema 1 and native
 UDS schema 2 are independent of product 0.1.0. First-party dependency authorities
-are the two Python runtime locks and apps/web/package-lock.json; upstream
+are one lock per documented process boundary: product, native ASKCOS, TF-Keras
+condition inference, RXNMapper impurity analysis and BayBE optimization, plus apps/web/package-lock.json; upstream
 requirements and deployment samples do not define the product installation.
 
 Task worktrees use refactor/ or fix/ branches and contain no private assets.

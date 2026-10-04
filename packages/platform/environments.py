@@ -23,6 +23,9 @@ ENGINE_SERVICES = (
     "pathway_ranker",
     "value_network",
     "cluster",
+    "condition_recommender",
+    "forward_predictor",
+    "impurity",
 )
 
 
@@ -85,6 +88,16 @@ def environment_snapshot(
             health=health, runtime=runtime, configured_models=configured_models
         ),
         "integrations": inactive_integrations(),
+        "scientific_engines": [
+            {"id": identifier, "name": name, "purpose": purpose,
+             "ready": health.get("scientific_engines", {}).get(identifier, {}).get("ready") is True,
+             "versions": health.get("scientific_engines", {}).get(identifier, {}).get("versions", {})}
+            for identifier, name, purpose in (
+                ("optimization", "BayBE / BoTorch", "实测实验优化"),
+                ("assessment", "RDKit", "结构描述符与复杂度"),
+                ("process", "RDKit / 物料核算", "录入批次质量与 PMI"),
+            )
+        ],
         "dependencies": dependency_inventory(
             health=health, template_library=template_library
         ),

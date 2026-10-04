@@ -1,75 +1,97 @@
 export const researchTools = [
   {
+    title: "结构评估",
+    icon: "mdi-molecule",
+    to: "/assessment",
+    feature: "assessment",
+    workspace: "structures",
+    primary: true,
+  },
+  {
     title: "原料检索",
     icon: "mdi-flask-outline",
     to: "/buyables",
     feature: "stock",
+    workspace: "stock",
     primary: true,
   },
   {
-    title: "反应评估",
+    title: "可行性评估",
     icon: "mdi-check-decagram-outline",
     to: "/feasibility",
     feature: "fast_filter",
+    workspace: "reactions",
     primary: true,
   },
   {
-    title: "结构评估",
+    title: "复杂度评估",
     icon: "mdi-chart-scatter-plot",
     to: "/molcom",
     feature: "scscore",
+    workspace: "structures",
     primary: true,
   },
-  { title: "结构绘制", icon: "mdi-draw", to: "/drawing", feature: "drawing" },
+  {
+    title: "结构绘制",
+    icon: "mdi-draw",
+    to: "/drawing",
+    feature: "drawing",
+    workspace: "structures",
+    primary: true,
+  },
   {
     title: "模板检索",
     icon: "mdi-database-search-outline",
     to: "/template",
     feature: "templates",
+    workspace: "reactions",
+    primary: true,
   },
   {
     title: "反应条件",
     to: "/forward?tab=context",
     feature: "conditions",
+    workspace: "reactions",
     icon: "mdi-beaker-outline",
+    primary: true,
   },
   {
     title: "产物预测",
     to: "/forward?tab=forward",
     feature: "forward",
+    workspace: "reactions",
     icon: "mdi-arrow-right-bold-outline",
+    primary: true,
   },
   {
     title: "杂质预测",
-    to: "/forward?tab=impurity",
+    to: "/impurity",
     feature: "impurity",
+    workspace: "reactions",
     icon: "mdi-filter-variant",
-  },
-  {
-    title: "区域选择性",
-    to: "/forward?tab=selectivity",
-    feature: "selectivity",
-    icon: "mdi-target",
-  },
-  {
-    title: "芳香 C-H 位点",
-    to: "/forward?tab=sites",
-    feature: "sites",
-    icon: "mdi-crosshairs",
+    primary: true,
   },
   {
     title: "溶解度",
     to: "/solprop?tab=solpred",
     feature: "solubility",
+    workspace: "structures",
     icon: "mdi-water-outline",
   },
   {
     title: "溶剂筛选",
     to: "/solprop?tab=solscreen",
     feature: "solubility",
+    workspace: "structures",
     icon: "mdi-flask-round-bottom-outline",
   },
-  { title: "QM 描述符", to: "/qm", feature: "qm", icon: "mdi-atom" },
+  {
+    title: "QM 描述符",
+    to: "/qm",
+    feature: "qm",
+    workspace: "structures",
+    icon: "mdi-atom",
+  },
 ];
 const environmentTools = [
   { title: "环境部署", icon: "mdi-server-network", to: "/environments" },
@@ -88,6 +110,7 @@ const environmentTools = [
 ];
 const libraryPages = [
   { title: "任务记录", icon: "mdi-history", to: "/results" },
+  { title: "研究记录", icon: "mdi-flask-outline", to: "/analyses" },
   {
     title: "保存的路线",
     icon: "mdi-file-document-multiple-outline",
@@ -110,14 +133,50 @@ export const navigation = [
         title: "任务与路线",
         icon: "mdi-folder-outline",
         to: "/results",
-        paths: ["/results", "/documents", "/editor"],
+        paths: ["/results", "/documents", "/editor", "/analyses"],
+      },
+    ],
+  },
+  {
+    label: "研究工具",
+    items: [
+      { id: "stock", title: "原料检索", icon: "mdi-flask-outline" },
+      {
+        id: "reactions",
+        title: "反应与条件",
+        icon: "mdi-check-decagram-outline",
+      },
+      { id: "structures", title: "结构工具", icon: "mdi-draw" },
+    ].map((workspace) => {
+      const tools = researchTools.filter(
+        (tool) => tool.workspace === workspace.id,
+      );
+      return {
+        ...workspace,
+        tools,
+        to: tools[0].to,
+        paths: [...new Set(tools.map((tool) => tool.to.split("?")[0]))],
+      };
+    }),
+  },
+  {
+    label: "实验研究",
+    items: [
+      {
+        id: "process",
+        title: "工艺核算",
+        icon: "mdi-scale-balance",
+        to: "/process",
+        feature: "process",
+        paths: ["/process"],
       },
       {
-        id: "research",
-        title: "研究工具",
-        icon: "mdi-flask-outline",
-        to: "/buyables",
-        paths: [...new Set(researchTools.map((item) => item.to.split("?")[0]))],
+        id: "optimization",
+        title: "实验优化",
+        icon: "mdi-chart-bell-curve-cumulative",
+        to: "/optimization",
+        feature: "optimization",
+        paths: ["/optimization"],
       },
     ],
   },
@@ -136,6 +195,40 @@ export const navigation = [
   },
 ];
 
+const availableTools = (items, features) =>
+  items.filter((item) => !item.feature || features[item.feature] === true);
+
+export function reactionWorkspaceRedirect(route) {
+  if (route.path !== "/forward") return null;
+  const tab = route.query.tab;
+  if (tab === undefined)
+    return {
+      path: "/forward",
+      query: { ...route.query, tab: "context" },
+      replace: true,
+    };
+  if (tab === "impurity") {
+    const query = { ...route.query };
+    delete query.tab;
+    return { path: "/impurity", query, replace: true };
+  }
+  if (tab === "context" || tab === "forward") return null;
+  return { path: "/environments", query: { tab: "engines" }, replace: true };
+}
+
+export function visibleNavigation(features) {
+  return navigation
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) =>
+          (!item.feature || features[item.feature] === true) &&
+          (!item.tools || availableTools(item.tools, features).length > 0),
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
 export function navigationLocation(item, route, features) {
   if (item.id === "design" && route.path === "/")
     return { path: route.path, query: { ...route.query } };
@@ -146,28 +239,22 @@ export function navigationLocation(item, route, features) {
     )
   )
     return "/documents";
-  if (item.id === "research") {
+  if (item.tools) {
     if (activeNavigation(item, route))
       return { path: route.path, query: { ...route.query } };
-    return (
-      researchTools.find((tool) => features[tool.feature] === true)?.to ||
-      item.to
-    );
+    return availableTools(item.tools, features)[0]?.to || item.to;
   }
   return item.to;
 }
 
 export function sectionNavigation(route, features) {
-  if (["/results", "/documents"].includes(route.path))
+  if (["/results", "/documents", "/analyses"].includes(route.path))
     return { label: "任务与路线", items: libraryPages, more: [] };
-  const visible = (items) =>
-    items.filter((item) => !item.feature || features[item.feature] === true);
-  if (
-    navigation[0].items
-      .find((item) => item.id === "research")
-      .paths.includes(route.path)
-  ) {
-    const tools = visible(researchTools);
+  const workspace = navigation
+    .flatMap((group) => group.items)
+    .find((item) => item.tools && activeNavigation(item, route));
+  if (workspace) {
+    const tools = availableTools(workspace.tools, features);
     const more = new Map();
     for (const item of tools.filter((tool) => !tool.primary)) {
       const path = item.to.split("?")[0];
@@ -178,14 +265,12 @@ export function sectionNavigation(route, features) {
       if (!more.has(path) || activeNavigation(item, route))
         more.set(path, title ? { ...item, title, paths: [path] } : item);
     }
-    return {
-      label: "研究工具",
-      items: tools.filter((item) => item.primary),
-      more: [...more.values()],
-    };
+    const items = tools.filter((item) => item.primary);
+    if (items.length + more.size <= 1) return null;
+    return { label: workspace.title, items, more: [...more.values()] };
   }
   if (environmentTools.some((item) => item.to === route.path)) {
-    const tools = visible(environmentTools);
+    const tools = availableTools(environmentTools, features);
     if (tools.length > 1) return { label: "环境管理", items: tools, more: [] };
   }
   return null;

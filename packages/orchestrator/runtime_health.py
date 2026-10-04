@@ -69,6 +69,15 @@ def route_runtime_status(repo_root: Path, *, force: bool = False) -> dict:
         "cluster": os.environ.get("X_SYNTH_CLUSTER_URL", "http://127.0.0.1:9801")
         + "/health/ready",
     }
+    endpoints["condition_recommender"] = os.environ.get(
+        "X_SYNTH_CONDITION_URL", "http://127.0.0.1:9901"
+    ).rstrip("/") + "/health/ready"
+    endpoints["forward_predictor"] = os.environ.get(
+        "X_SYNTH_FORWARD_URL", "http://127.0.0.1:9911"
+    ).rstrip("/") + "/health/ready"
+    endpoints["impurity"] = os.environ.get(
+        "X_SYNTH_IMPURITY_URL", "http://127.0.0.1:9941"
+    ).rstrip("/") + "/health/ready"
     stock_path = os.environ.get("X_SYNTH_STOCK_INDEX", "")
     cache_key = (
         tuple(endpoints.items()),

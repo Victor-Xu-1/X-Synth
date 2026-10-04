@@ -23,6 +23,9 @@ class NativeService:
     directory: str
     module: str
     port: int
+    python_asset: str | None = None
+    required_asset: str | None = None
+    environment: tuple[tuple[str, str], ...] = ()
 
 
 SERVICES = {
@@ -38,6 +41,22 @@ SERVICES = {
     "expand_one": NativeService("tree_search/expand_one", "expand_one_server", 9301),
     "mcts": NativeService("tree_search/mcts", "mcts_server", 9311),
     "retro_star": NativeService("tree_search/retro_star", "retro_star_server", 9321),
+    "condition_recommender": NativeService(
+        "context_recommender", "condition_server", 9901,
+        python_asset="context-env/bin/python", required_asset="models/context/v1/asset.json",
+        environment=(("TF_USE_LEGACY_KERAS", "1"), ("CUDA_VISIBLE_DEVICES", "-1")),
+    ),
+    "forward_predictor": NativeService(
+        "forward_predictor/graph2smiles", "forward_server", 9911,
+        required_asset="models/forward/USPTO_STEREO/asset.json",
+        environment=(("CUDA_VISIBLE_DEVICES", "-1"),),
+    ),
+    "impurity": NativeService(
+        "impurity_predictor", "native_server", 9941,
+        python_asset="impurity-env/bin/python",
+        required_asset="impurity-env/lib/python3.12/site-packages/rxnmapper/models/transformers/albert_heads_8_uspto_all_1310k/pytorch_model.bin",
+        environment=(("CUDA_VISIBLE_DEVICES", "-1"), ("HF_HUB_OFFLINE", "1"), ("TRANSFORMERS_OFFLINE", "1")),
+    ),
 }
 
 
@@ -141,12 +160,46 @@ class NativeRuntime:
             self.source, self.assets, stock, models
         )
 
+    def _service_available(self, name):
+        service = SERVICES[name]
+        python = self.assets / service.python_asset if service.python_asset else self.python
+        return not service.required_asset or not (
+            not python.is_file() or not (self.assets / service.required_asset).is_file()
+        )
+
+    def _service_environment(self, name):
+        service = SERVICES[name]
+        environment = self.environment
+        if name in {"condition_recommender", "forward_predictor", "impurity"}:
+            allowed = {
+                "PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "PYTHONPATH",
+                "ASKCOS_DATA_DIR", "X_SYNTH_MODEL_THREADS", "X_SYNTH_MODEL_PARALLELISM",
+                "OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+                "TF_NUM_INTRAOP_THREADS", "TF_NUM_INTEROP_THREADS", "PYTHONUNBUFFERED",
+                "X_SYNTH_FORWARD_URL", "X_SYNTH_FAST_FILTER_URL",
+            }
+            environment = {key: value for key, value in environment.items() if key in allowed}
+            model_home = self.state / "native/model-home" / name
+            if model_home.is_symlink() or not model_home.resolve().is_relative_to(self.state):
+                raise ValueError("Scientific process HOME must remain inside private runtime state")
+            model_home.mkdir(parents=True, mode=0o700, exist_ok=True)
+            model_home.chmod(0o700)
+            environment.update(
+                HOME=str(model_home), HF_HOME=str(model_home / "huggingface"),
+                XDG_CACHE_HOME=str(model_home / ".cache"), PYTHONNOUSERSITE="1",
+            )
+        return {**environment, **dict(service.environment), "HF_HUB_DISABLE_IMPLICIT_TOKEN": "1"}
+
     def _spawn(self, name, logs):
         service = SERVICES[name]
+        python = self.assets / service.python_asset if service.python_asset else self.python
+        if not self._service_available(name):
+            print(json.dumps({"service": name, "status": "unavailable", "reason": "optional_assets_missing"}), flush=True)
+            return
         log = (logs / f"{name}.log").open("ab", buffering=0)
         self.logs.append(log)
         command = [
-            str(self.python),
+            str(python),
             "-m",
             "uvicorn",
             f"{service.module}:app",
@@ -161,7 +214,7 @@ class NativeRuntime:
         process = subprocess.Popen(
             command,
             cwd=self.source / "apps/askcos-v2" / service.directory,
-            env=self.environment,
+            env=self._service_environment(name),
             stdout=log,
             stderr=subprocess.STDOUT,
             start_new_session=True,
@@ -190,7 +243,8 @@ class NativeRuntime:
         logs.mkdir(parents=True, exist_ok=True)
         # Refuse occupied ports before starting any process. Never kill another stack.
         for name in self.services:
-            ensure_port_available(SERVICES[name].port)
+            if self._service_available(name):
+                ensure_port_available(SERVICES[name].port)
         try:
             for name in self.services:
                 self._spawn(name, logs)

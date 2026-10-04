@@ -82,6 +82,12 @@ def mock_frontend(monkeypatch, before, after, old_records, new_records):
         "README.md",
         "NOTICE",
         "requirements/orchestrator-linux-py312.lock",
+        "scripts/operations/serve_platform.py",
+        "requirements/askcos-runtime-linux-py312.lock",
+        "packages/chemistry/forward_evaluation.py",
+        "packages/adapters/optimization/runtime.py",
+        "apps/api/condition_routes.py",
+        "tests/integration/forward_browser.mjs",
     ],
 )
 def test_workspace_profile_accepts_explicitly_scoped_paths(path):
@@ -93,8 +99,6 @@ def test_workspace_profile_accepts_explicitly_scoped_paths(path):
     [
         "packages/orchestrator/pipeline.py",
         "apps/askcos-v2/askcos2_core/api.py",
-        "scripts/operations/serve_platform.py",
-        "requirements/askcos-runtime-linux-py312.lock",
         ".github/workflows/deploy.yml",
         "tests/unit/conftest.py",
         "apps/web/playwright.config.js",

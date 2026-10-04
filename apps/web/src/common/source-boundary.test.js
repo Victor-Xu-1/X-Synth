@@ -59,6 +59,11 @@ test("workspace has one navigation authority and no retired route renderer", () 
     "路线设计",
     "任务与路线",
     "研究工具",
+    "原料检索",
+    "反应与条件",
+    "结构工具",
+    "工艺核算",
+    "实验优化",
     "环境部署",
   ])
     expect(navigation).toContain(marker);

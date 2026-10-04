@@ -18,7 +18,7 @@ GPT Web、Codex token、AiZynthFinder、RabbitMQ 或 Redis。其他原生功能�
 | 凭据                             | $HOME/.config/x-synth/native.env | 普通文件；权限 0600；不输出内容 |
 | 下载、截图、审计证据             | 外部缓存/证据目录                | 不进入发布源码                  |
 
-产品和原生推理是两个独立 Python 进程边界，各自使用一个锁文件：
+产品和原生路线推理是独立 Python 进程边界，各自使用一个锁文件：
 
 ```bash
 python3.12 -m venv "$HOME/.local/share/x-synth/product-env"
@@ -33,6 +33,53 @@ python3.12 -m venv "$HOME/.local/share/x-synth/native-env"
 "$HOME/.local/share/x-synth/native-env/bin/python" -m pip check
 ```
 
+条件预测的旧 Keras 序列化与路线 TensorFlow 隔离；实验优化也不改变 ASKCOS 的依赖。
+每个已启用边界只使用自己的 `.in` 与生成的锁文件。可选环境未安装时隐藏相应入口，
+不阻碍路线搜索，也不使用演示结果代替。
+
+```bash
+python3.12 -m venv "$HOME/.local/share/x-synth/context-env"
+"$HOME/.local/share/x-synth/context-env/bin/python" -m pip install \
+  --require-hashes -r requirements/context-runtime-linux-py312.lock
+python3.12 -m venv "$HOME/.local/share/x-synth/optimization-env"
+"$HOME/.local/share/x-synth/optimization-env/bin/python" -m pip install \
+  --require-hashes -r requirements/optimization-runtime-linux-py312.lock
+python3.12 -m venv "$HOME/.local/share/x-synth/impurity-env"
+"$HOME/.local/share/x-synth/impurity-env/bin/python" -m pip install \
+  --require-hashes -r requirements/impurity-runtime-linux-py312.lock
+"$HOME/.local/share/x-synth/context-env/bin/python" -m pip check
+"$HOME/.local/share/x-synth/optimization-env/bin/python" -m pip check
+"$HOME/.local/share/x-synth/impurity-env/bin/python" -m pip check
+```
+
+监督器在条件服务内设置 `TF_USE_LEGACY_KERAS=1`，不对其他服务启用。
+BayBE 使用一个受限 CPU 子进程执行一次计算；环境探针单独缓存，不在每次全局健康读取时导入 Torch。
+条件、正向和杂质模型进程只继承明确的路径与资源配置，不继承 Mongo、API 或 Hugging Face 凭据。
+它们使用各自的私有 HOME/cache，禁止用户 site-packages；这不是同 UID 文件系统或操作系统网络沙箱。
+杂质分析使用一个驻留 CPU 映射进程，执行原 ASKCOS 五模式；FF、正向序列评分、
+原子映射置信值与结构相似度分别保留，已知主产物是用户参照，不是实验确认结果。
+
+### 原子映射安全边界
+
+RXNMapper 0.4.3 的官方依赖声明要求 Transformers <5，不能强装 v5 后忽略 `pip check`。
+该隔离锁文件的包级审计仍包含 7 个独立 advisory，不能宣称零漏洞或上游问题已经修复。
+当前支持边界是可信本机源码/模型目录、回环服务和受限化学输入；不接受外部 checkpoint、
+模型路径、Hub 仓库、训练、生成或保存指令。模型目录不得由不可信主体写入。
+
+| 上游 advisory | 本产品执行边界 |
+|---|---|
+| CVE-2026-4372 | 共享加载代码会执行；固定官方配置/权重、ALBERT 与 eager，禁止远程代码/在线加载，不能仅凭 weights-only 声称修复 |
+| CVE-2026-1839 | 不调用 Trainer RNG 恢复；Torch 2.14.1 不满足公告的 <2.6 前提 |
+| CVE-2026-5241 | 不加载 LightGlue 或嵌套 AutoConfig |
+| CVE-2026-80047 | 不调用 custom generation；五模式不是 Hugging Face generate 接口 |
+| CVE-2026-9856 | 不调用 save_pretrained 或聊天模板保存 |
+| CVE-2025-14929 | 不执行 X-CLIP checkpoint 转换 |
+| CVE-2025-69872 | 实际映射调用链不使用 DiskCache 的磁盘 pickle 缓存；保留传递依赖审计记录 |
+
+官方兼容性进展见 [RXNMapper v5 支持讨论](https://github.com/rxn4chemistry/rxnmapper/pull/81)。
+引入任意模型、在线代码、缓存导入或不可信文件写入前必须重新审查；公网/多租户部署还需要
+独立 UID、文件系统和出站隔离，不能将本机环境白名单当作完整沙箱。审计证据保存在外部证据目录。
+
 ## 数据与模型
 
 操作员应取得合法资产并核对许可、SHA256，不得用空文件或模拟内容冒充。路径相对 assets 根：
@@ -44,6 +91,8 @@ python3.12 -m venv "$HOME/.local/share/x-synth/native-env"
 | models/pathway_ranker/treeLSTM512-fp2048.pt | 原生路线排序权重 |
 | models/value_network/epoch_99.pt | RetroStar 价值网络 |
 | models/scscore/model_1024bool.npz | 安全转换后的数组，运行时不执行 pickle |
+| models/context/v1 | model.json、weights.h5、五份原始标签字典、EHS 表、asset.json |
+| models/forward/USPTO_STEREO | Graph2SMILES model.pt、vocab.txt、asset.json |
 | stock/catalog.sqlite | 精确结构和供应商目录证据的不可变索引 |
 
 安装工具：
@@ -54,6 +103,14 @@ python -m scripts.data_import.convert_scscore_model --help
 python -m scripts.data_import.compile_stock_index --help
 python -m scripts.data_import.compile_template_library --help
 ```
+
+NNv1 的发布源是 ASKCOS `context_recommender/scripts/download_trained_models.sh` 中的 v1 压缩包。
+用安装器的 `--archive-format tar --member-prefix v1 --members ...` 明确选择八个文件，
+核对压缩包 SHA256 `409d8be4a95bac701021e799d3c4af1b65fcf7e993b09d00402b114fd59426ce`。
+Graph2SMILES 的发布源是其下载脚本内的 USPTO_STEREO.mar；按 ZIP 安装仅选择 model.pt 与
+vocab.txt，SHA256 为 `e5bde90a4cb2485408358cc39f1b7405780f20f2336a3580fbb60d4100a1fdd1`。
+模型代码随源码提供，运行时不解压或执行模型包里的 Python，也不加载未受限的 pickle 对象。
+模型资产仍不随 Apache-2.0 源码公开。
 
 训练类别顺序与模型模板不可分离。统一知识索引可管理 ORD/USPTO 等合法语料，但不会
 自动让不兼容模板成为训练模型的输出。商业证据不能只凭 CID、CAS 或供应商名字。
@@ -102,6 +159,11 @@ curl --fail http://127.0.0.1:8769/api/v1/stock-sources/summary
 和统一资源预算。旧 `/status` 重定向到监测页。环境 API 在共享部署中同样需要身份，
 不返回凭据文件、连接口令或完整环境变量。该模块只读；安装、启动和重启仍使用
 本节的统一运维入口，不提供网页系统命令接口。
+研究计算环境分别列出 BayBE / BoTorch、RDKit 评估与批次核算。安装路径与登录凭据不返回浏览器。
+条件与正向服务端口为 9901、9911；浏览器只调用 `/api/v1/conditions/predict` 和
+`/api/v1/reactions/predict`，不直接连接模型端口。
+杂质模型端口为 9941；浏览器只调用 `/api/v1/impurities/predict`。旧条件、正向与杂质
+通用模型转发返回 410 及对应产品入口，不继续转发到旧端口或绕过研究记录。
 
 ## 持续运行
 
@@ -155,10 +217,15 @@ curl --fail http://127.0.0.1:8769/api/v1/unified-route/jobs/JOB_ID
 私人结果默认不能分享。
 
 路线文档独立保存在同一状态根的 `workspace.sqlite`，不混入任务库。升级时同时备份
-`jobs.sqlite`、`workspace.sqlite` 及各自 WAL 状态，使用 SQLite 一致性备份接口；
+`jobs.sqlite`、`workspace.sqlite`、`analyses.sqlite` 及各自 WAL 状态，使用 SQLite 一致性备份接口；
 不要直接复制仍在写入的单个数据库文件。文档 API 不需要模型启动才能预览或编辑，
 但一步继续逆合成仍需要真实模型就绪。未保存修改有页面离开保护；版本冲突保留画布，
 不能静默覆盖。计算结果编辑必须通过创建副本，不回写任务结果。
+
+研究记录的 schema 1 与路线文档 schema 分开。服务端保存实际提交、模型/方法版本、
+完成或失败结果；原始结果不可修改。正在执行的记录绑定 PID 与进程启动身份，服务中断
+后保留输入并标为 interrupted。它们不冒充可断点接续的长路线搜索；重算须由用户显式提交。
+CSV、模型、暂存数据与截图都不进入 Git。优化建议的实验响应留空，不将预测填写为实测收率。
 
 ## 验收与性能
 

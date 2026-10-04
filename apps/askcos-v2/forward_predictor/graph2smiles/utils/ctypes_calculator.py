@@ -1,35 +1,15 @@
-import ctypes
+"""Graph distances without a checkout-local compiled shared library."""
+
 import numpy as np
-import numpy.ctypeslib as npct
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import shortest_path
 
 
 class DistanceCalculator:
-    # Declare an alias for the C type int*, equivalent to int[]
-    array_1d_uint8 = npct.ndpointer(dtype=np.uint8, ndim=1, flags="C_CONTIGUOUS")
-    array_1d_bool = npct.ndpointer(dtype=np.bool_, ndim=1, flags="C_CONTIGUOUS")
-
-    # Load c_func.so into my_lib; my_lib.c_func is now callable
-    my_lib = npct.load_library("c_calculate", "./utils")
-
-    my_lib.c_calculate.restype = None        # return type
-    my_lib.c_calculate.argtypes = [          # args type
-        array_1d_uint8, ctypes.c_int32,
-        array_1d_bool,
-        ctypes.c_int32
-    ]
-
     @staticmethod
-    def calculate(adjacency: np.ndarray,
-                  a_length: int,
-                  max_distance: int) -> np.ndarray:
-        flattened_distance = np.zeros(a_length * a_length, dtype=np.uint8)
-        flattened_adjacency = adjacency.ravel()
-
-        DistanceCalculator.my_lib.c_calculate(
-            flattened_distance, a_length,
-            flattened_adjacency,
-            max_distance
-        )
-        distance = flattened_distance.reshape(a_length, a_length)
-
-        return distance
+    def calculate(adjacency: np.ndarray, a_length: int, max_distance: int) -> np.ndarray:
+        if adjacency.shape != (a_length, a_length):
+            raise ValueError("Invalid Graph2SMILES graph distance input")
+        distances = shortest_path(csr_matrix(adjacency), directed=True, unweighted=True)
+        valid = np.isfinite(distances) & (distances <= max_distance)
+        return np.where(valid, distances, 0).astype(np.int32)

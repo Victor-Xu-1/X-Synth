@@ -9,6 +9,7 @@ enabled = {
     "cluster", "fast_filter", "pathway_ranker", "retro_template_relevance",
     "scscore", "tree_search_expand_one", "tree_search_mcts",
     "tree_search_retro_star", "value_network",
+    "context_recommender", "forward_graph2smiles", "impurity_predictor",
 }
 module_config["modules_to_start"] = {
     name: False for name in module_config["modules_to_start"]

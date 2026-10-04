@@ -26,7 +26,7 @@
           {{ activeExtra?.title || "更多" }}
         </v-btn>
       </template>
-      <v-list density="compact" aria-label="其他研究工具">
+      <v-list density="compact" :aria-label="`${section.label}其他工具`">
         <v-list-item
           v-for="item in section.more"
           :key="item.to"

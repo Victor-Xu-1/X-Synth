@@ -13,8 +13,16 @@ from .environment_dependencies import (
 from .native_capability_catalog import REPO_ROOT, configured_model_names, source_catalog
 from .native_runtime import SERVICES
 
+SCIENTIFIC_ENTRYPOINTS = {
+    "forward": "/api/v1/reactions/predict",
+    "context-recommender": "/api/v1/conditions/predict",
+    "condition-recommendation": "/api/v1/conditions/predict",
+    "impurity-predictor": "/api/v1/impurities/predict",
+}
+
 __all__ = [
     "REPO_ROOT",
+    "SCIENTIFIC_ENTRYPOINTS",
     "configured_model_names",
     "dependency_inventory",
     "inactive_integrations",
@@ -95,6 +103,7 @@ def native_operations() -> dict:
         "expand_one": {
             "endpoint": "/api/tree-search/expand-one/call-sync-without-token"
         },
+        "scientific_tools": {"managed": True, "endpoints": dict(SCIENTIFIC_ENTRYPOINTS)},
     }
 
 

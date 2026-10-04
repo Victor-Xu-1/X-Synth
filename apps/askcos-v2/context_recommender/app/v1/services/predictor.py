@@ -2,7 +2,6 @@
 import logging
 from os import PathLike
 from pathlib import Path
-import pickle
 
 import numpy as np
 from rdkit import Chem
@@ -11,6 +10,7 @@ from typing import List, Optional
 import tensorflow as tf
 
 from app.common.services.recommender import ReactionContextRecommender
+from app.common.services.model_assets import load_labels
 from app.v1.services import utils
 from app.v1.services.config import ContextConfig, DEFAULT_CONFIG
 
@@ -121,20 +121,11 @@ class NeuralNetContextRecommender(ReactionContextRecommender):
         s2_dict_file = info_path / "s2_dict.pickle"
         c1_dict_file = info_path / "c1_dict.pickle"
 
-        with open(r1_dict_file, "rb") as R1_DICT_F:
-            self.r1_dict = pickle.load(R1_DICT_F)
-
-        with open(r2_dict_file, "rb") as R2_DICT_F:
-            self.r2_dict = pickle.load(R2_DICT_F)
-
-        with open(s1_dict_file, "rb") as S1_DICT_F:
-            self.s1_dict = pickle.load(S1_DICT_F)
-
-        with open(s2_dict_file, "rb") as S2_DICT_F:
-            self.s2_dict = pickle.load(S2_DICT_F)
-
-        with open(c1_dict_file, "rb") as C1_DICT_F:
-            self.c1_dict = pickle.load(C1_DICT_F)
+        self.r1_dict = load_labels(r1_dict_file)
+        self.r2_dict = load_labels(r2_dict_file)
+        self.s1_dict = load_labels(s1_dict_file)
+        self.s2_dict = load_labels(s2_dict_file)
+        self.c1_dict = load_labels(c1_dict_file)
 
         # extract input/output dimensions from model
         self.c1_dim = self.nnModel.input_shape[2][1]
