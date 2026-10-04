@@ -56,11 +56,10 @@ test("workspace has one navigation authority and no retired route renderer", () 
     "utf8",
   );
   for (const marker of [
-    "新建任务",
-    "任务历史",
-    "路线文档",
-    "一步逆合成",
-    "商业原料",
+    "路线设计",
+    "任务与路线",
+    "研究工具",
+    "环境部署",
   ])
     expect(navigation).toContain(marker);
   for (const retired of [

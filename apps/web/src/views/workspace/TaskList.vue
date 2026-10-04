@@ -2,7 +2,7 @@
   <section class="standard-page task-history">
     <header class="page-heading">
       <div>
-        <h1>任务历史</h1>
+        <h1>任务记录</h1>
         <p role="status">{{ countLabel }}</p>
       </div>
       <div class="page-actions">

@@ -148,22 +148,6 @@ textarea:focus-visible {
   justify-content: center;
   padding: 8px;
 }
-.nav-muted {
-  display: block;
-  padding: 10px;
-  font-size: 11px;
-  color: var(--ws-muted);
-}
-.optional-tool-list > summary {
-  display: flex;
-  gap: 12px;
-  padding: 8px 11px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.optional-tool-list > summary::-webkit-details-marker {
-  display: none;
-}
 .workspace-sidebar-footer {
   border-top: 1px solid var(--ws-border);
   padding-top: 10px;

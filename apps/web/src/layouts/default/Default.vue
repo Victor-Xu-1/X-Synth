@@ -24,7 +24,9 @@
         <div v-if="!online" class="workspace-connection-message" role="status">
           网络已断开
         </div>
-        <main class="workspace-page"><router-view /></main>
+        <main class="workspace-page">
+          <WorkspaceSectionNav /><router-view />
+        </main>
       </div>
     </div>
   </v-app>
@@ -34,6 +36,7 @@ import { computed, onMounted, onBeforeUnmount, ref } from "vue";
 import { useWindowSize, useOnline } from "@vueuse/core";
 import Sidebar from "./Sidebar.vue";
 import AppBar from "./AppBar.vue";
+import WorkspaceSectionNav from "@/components/workspace/WorkspaceSectionNav.vue";
 import { useWorkspaceStore } from "@/store/workspace";
 const workspace = useWorkspaceStore();
 const online = useOnline();

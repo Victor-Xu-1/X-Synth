@@ -1,66 +1,31 @@
-export const navigation = [
+export const researchTools = [
   {
-    label: "工作区",
-    items: [
-      { title: "新建任务", icon: "mdi-plus", to: "/", feature: "search" },
-      { title: "任务历史", icon: "mdi-history", to: "/results" },
-      { title: "路线编辑", icon: "mdi-vector-polyline-edit", to: "/editor" },
-      {
-        title: "路线文档",
-        icon: "mdi-file-document-multiple-outline",
-        to: "/documents",
-      },
-      { title: "环境部署", icon: "mdi-server-network", to: "/environments" },
-    ],
+    title: "原料检索",
+    icon: "mdi-flask-outline",
+    to: "/buyables",
+    feature: "stock",
+    primary: true,
   },
   {
-    label: "研究工具",
-    items: [
-      {
-        title: "一步逆合成",
-        icon: "mdi-source-branch",
-        to: "/?mode=manual",
-        feature: "retro",
-      },
-      {
-        title: "反应可行性",
-        icon: "mdi-check-decagram-outline",
-        to: "/feasibility",
-        feature: "fast_filter",
-      },
-      {
-        title: "商业原料",
-        icon: "mdi-flask-outline",
-        to: "/buyables",
-        feature: "stock",
-      },
-      {
-        title: "模板检索",
-        icon: "mdi-database-search-outline",
-        to: "/template",
-        feature: "templates",
-      },
-      {
-        title: "结构绘制",
-        icon: "mdi-draw",
-        to: "/drawing",
-        feature: "drawing",
-      },
-      {
-        title: "结构复杂度",
-        icon: "mdi-chart-scatter-plot",
-        to: "/molcom",
-        feature: "scscore",
-      },
-    ],
+    title: "反应评估",
+    icon: "mdi-check-decagram-outline",
+    to: "/feasibility",
+    feature: "fast_filter",
+    primary: true,
   },
-];
-export const optionalTools = [
   {
-    title: "用户与权限",
-    to: "/admin",
-    feature: "administrator",
-    icon: "mdi-account-cog-outline",
+    title: "结构评估",
+    icon: "mdi-chart-scatter-plot",
+    to: "/molcom",
+    feature: "scscore",
+    primary: true,
+  },
+  { title: "结构绘制", icon: "mdi-draw", to: "/drawing", feature: "drawing" },
+  {
+    title: "模板检索",
+    icon: "mdi-database-search-outline",
+    to: "/template",
+    feature: "templates",
   },
   {
     title: "反应条件",
@@ -105,6 +70,15 @@ export const optionalTools = [
     icon: "mdi-flask-round-bottom-outline",
   },
   { title: "QM 描述符", to: "/qm", feature: "qm", icon: "mdi-atom" },
+];
+const environmentTools = [
+  { title: "环境部署", icon: "mdi-server-network", to: "/environments" },
+  {
+    title: "用户与权限",
+    to: "/admin",
+    feature: "administrator",
+    icon: "mdi-account-cog-outline",
+  },
   {
     title: "禁用规则",
     to: "/banlist",
@@ -112,6 +86,110 @@ export const optionalTools = [
     icon: "mdi-shield-outline",
   },
 ];
+const libraryPages = [
+  { title: "任务记录", icon: "mdi-history", to: "/results" },
+  {
+    title: "保存的路线",
+    icon: "mdi-file-document-multiple-outline",
+    to: "/documents",
+  },
+];
+export const navigation = [
+  {
+    label: "工作区",
+    items: [
+      {
+        id: "design",
+        title: "路线设计",
+        icon: "mdi-source-branch",
+        to: "/",
+        paths: ["/"],
+      },
+      {
+        id: "library",
+        title: "任务与路线",
+        icon: "mdi-folder-outline",
+        to: "/results",
+        paths: ["/results", "/documents", "/editor"],
+      },
+      {
+        id: "research",
+        title: "研究工具",
+        icon: "mdi-flask-outline",
+        to: "/buyables",
+        paths: [...new Set(researchTools.map((item) => item.to.split("?")[0]))],
+      },
+    ],
+  },
+  {
+    label: "系统",
+    placement: "footer",
+    items: [
+      {
+        id: "environment",
+        title: "环境部署",
+        icon: "mdi-server-network",
+        to: "/environments",
+        paths: ["/environments", "/status", "/admin", "/banlist"],
+      },
+    ],
+  },
+];
+
+export function navigationLocation(item, route, features) {
+  if (item.id === "design" && route.path === "/")
+    return { path: route.path, query: { ...route.query } };
+  if (
+    item.id === "library" &&
+    ["/editor", "/documents"].some(
+      (path) => route.path === path || route.path.startsWith(path + "/"),
+    )
+  )
+    return "/documents";
+  if (item.id === "research") {
+    if (activeNavigation(item, route))
+      return { path: route.path, query: { ...route.query } };
+    return (
+      researchTools.find((tool) => features[tool.feature] === true)?.to ||
+      item.to
+    );
+  }
+  return item.to;
+}
+
+export function sectionNavigation(route, features) {
+  if (["/results", "/documents"].includes(route.path))
+    return { label: "任务与路线", items: libraryPages, more: [] };
+  const visible = (items) =>
+    items.filter((item) => !item.feature || features[item.feature] === true);
+  if (
+    navigation[0].items
+      .find((item) => item.id === "research")
+      .paths.includes(route.path)
+  ) {
+    const tools = visible(researchTools);
+    const more = new Map();
+    for (const item of tools.filter((tool) => !tool.primary)) {
+      const path = item.to.split("?")[0];
+      const title = {
+        "/forward": "合成与反应条件",
+        "/solprop": "溶解度与溶剂",
+      }[path];
+      if (!more.has(path) || activeNavigation(item, route))
+        more.set(path, title ? { ...item, title, paths: [path] } : item);
+    }
+    return {
+      label: "研究工具",
+      items: tools.filter((item) => item.primary),
+      more: [...more.values()],
+    };
+  }
+  if (environmentTools.some((item) => item.to === route.path)) {
+    const tools = visible(environmentTools);
+    if (tools.length > 1) return { label: "环境管理", items: tools, more: [] };
+  }
+  return null;
+}
 export function pageFeature(route) {
   if (route.path === "/" && route.query.mode === "manual") return "retro";
   if (route.path === "/" && route.query.mode === "import") return null;
@@ -127,6 +205,12 @@ export function pageFeature(route) {
   return route.meta.feature || null;
 }
 export function activeNavigation(item, route) {
+  if (item.paths)
+    return item.paths.some(
+      (path) =>
+        path === route.path ||
+        (path !== "/" && route.path.startsWith(path + "/")),
+    );
   const [path, query] = item.to.split("?");
   if (
     path !== route.path &&

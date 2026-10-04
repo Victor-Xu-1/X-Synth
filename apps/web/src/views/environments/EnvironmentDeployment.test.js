@@ -79,9 +79,12 @@ test("legacy status redirects without a competing page and shell links enter the
   expect(router).toContain('tab: "monitor"');
   expect(router).not.toContain("views/status/Status.vue");
   expect(existsSync(resolve(__dirname, "../status/Status.vue"))).toBe(false);
-  for (const filename of [
-    "layouts/default/AppBar.vue",
-    "layouts/default/Sidebar.vue",
-  ])
-    expect(source(filename)).toContain("/environments");
+  expect(source("layouts/default/AppBar.vue")).toContain("/environments");
+  expect(source("layouts/default/Sidebar.vue")).toContain("footerItems");
+  expect(source("common/workspace-navigation.js")).toContain(
+    'placement: "footer"',
+  );
+  expect(source("common/workspace-navigation.js")).toContain(
+    'to: "/environments"',
+  );
 });
