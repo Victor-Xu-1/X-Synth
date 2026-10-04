@@ -1,5 +1,6 @@
 """Check deposited identifiers without choosing InChI's tautomer over source SMILES."""
 
+from collections import Counter
 from functools import lru_cache
 
 from rdkit import Chem, rdBase
@@ -10,6 +11,8 @@ from packages.adapters.askcos.reference_identity import canonical_reference_quer
 from packages.adapters.askcos.reference_models import ReferenceSearchInput
 
 from .ord_reader import OrdRecordError
+
+CURRENT_IDENTIFIER_POLICY = "explicit-standard-inchi-component-charge-v2"
 
 
 @lru_cache(maxsize=16_384)
@@ -27,6 +30,41 @@ def _standard_inchi(smiles: str) -> str:
     if not result.startswith("InChI=1S/"):
         raise OrdRecordError("invalid_compound_structure")
     return result
+
+
+def _component_profiles(molecule) -> tuple:
+    profiles = []
+    with rdBase.BlockLogs():
+        for fragment in Chem.GetMolFrags(molecule, asMols=True):
+            charges = Counter(
+                (atom.GetAtomicNum(), atom.GetFormalCharge())
+                for atom in fragment.GetAtoms()
+                if atom.GetFormalCharge()
+            )
+            # Bind charge to component identity, not just to an equal formula.
+            profiles.append(
+                (
+                    _standard_inchi(Chem.MolToSmiles(fragment)),
+                    rdMolDescriptors.CalcMolFormula(fragment),
+                    Chem.GetFormalCharge(fragment),
+                    tuple(sorted(charges.items())),
+                )
+            )
+    return tuple(sorted(profiles))
+
+
+@lru_cache(maxsize=16_384)
+def requires_source_recheck(smiles: str) -> bool:
+    """Legacy records with normalized charge states need their deposited identifiers."""
+    try:
+        with rdBase.BlockLogs():
+            primary = Chem.MolFromSmiles(smiles)
+            normalized = Chem.MolFromInchi(_standard_inchi(smiles))
+        if primary is None or normalized is None:
+            return True
+        return _component_profiles(primary) != _component_profiles(normalized)
+    except (OrdRecordError, ValueError, RuntimeError):
+        return True
 
 
 def compound_smiles(compound, *, required: bool) -> str | None:
@@ -61,7 +99,8 @@ def compound_smiles(compound, *, required: bool) -> str | None:
             standard = _standard_inchi(primary)
             if any(value != standard for value in declared_inchi):
                 raise OrdRecordError("inconsistent_compound_identifiers")
-            primary_mol = Chem.MolFromSmiles(primary)
+            with rdBase.BlockLogs():
+                primary_mol = Chem.MolFromSmiles(primary)
             # Standard InChI disconnects metals and normalizes some protonation.
             # Those are not grounds for relaxing this explicit-structure check.
             if any(
@@ -70,16 +109,11 @@ def compound_smiles(compound, *, required: bool) -> str | None:
                 for atom in primary_mol.GetAtoms()
             ):
                 raise OrdRecordError("inconsistent_compound_identifiers")
-            formula = rdMolDescriptors.CalcMolFormula(primary_mol)
-            charge = Chem.GetFormalCharge(primary_mol)
-            fragments = len(Chem.GetMolFrags(primary_mol))
+            profiles = _component_profiles(primary_mol)
             for other in identities:
-                molecule = Chem.MolFromSmiles(other)
-                if (
-                    rdMolDescriptors.CalcMolFormula(molecule) != formula
-                    or Chem.GetFormalCharge(molecule) != charge
-                    or len(Chem.GetMolFrags(molecule)) != fragments
-                ):
+                with rdBase.BlockLogs():
+                    molecule = Chem.MolFromSmiles(other)
+                if _component_profiles(molecule) != profiles:
                     raise OrdRecordError("inconsistent_compound_identifiers")
             return primary
         if identities:

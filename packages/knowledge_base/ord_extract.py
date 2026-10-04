@@ -35,6 +35,9 @@ class OrdExtractionStats:
     records_emitted: int = 0
     rows_skipped_verified: int = 0
     records_skipped_existing: int = 0
+    records_rechecked_existing: int = 0
+    records_new_emitted: int = 0
+    rechecked_reaction_ids_seen: set[str] = field(default_factory=set)
     reactions_emitted: int = 0
     rejected_reactions: int = 0
     rejected_outcomes: int = 0
@@ -71,7 +74,10 @@ class OrdExtractionStats:
         result = {
             key: value
             for key, value in vars(self).items()
-            if key not in ("rejection_reasons", "representation_gaps", "issue_samples")
+            if key not in (
+                "rejection_reasons", "representation_gaps", "issue_samples",
+                "rechecked_reaction_ids_seen",
+            )
         }
         return {
             **result,
@@ -79,6 +85,7 @@ class OrdExtractionStats:
             "rejection_reasons": dict(sorted(self.rejection_reasons.items())),
             "representation_gaps": dict(sorted(self.representation_gaps.items())),
             "issue_samples": list(self.issue_samples),
+            "rechecked_reaction_ids_seen": sorted(self.rechecked_reaction_ids_seen),
         }
 
     def emitted(self, record: ReactionEvidence) -> None:
@@ -270,6 +277,14 @@ def iter_ord_evidence(
             try:
                 if row_id != reaction.reaction_id:
                     raise OrdRecordError("row_reaction_id_mismatch")
+                if (
+                    baseline is not None
+                    and row_id in baseline.identity.recheck_reaction_ids
+                    and baseline.has_original_record_source(
+                        row_id, source_path, source_sha256
+                    )
+                ):
+                    stats.rechecked_reaction_ids_seen.add(row_id)
                 if (
                     baseline is not None
                     and len(reaction.outcomes) == 1

@@ -9,7 +9,10 @@ from ord_schema.proto import reaction_pb2 as pb
 from rdkit import Chem
 from rdkit.Chem import inchi
 
-from packages.knowledge_base.ord_identifiers import compound_smiles
+from packages.knowledge_base.ord_identifiers import (
+    compound_smiles,
+    requires_source_recheck,
+)
 from packages.knowledge_base.ord_reader import OrdRecordError
 from packages.knowledge_base.ord_structures import audit_ord_structures
 
@@ -55,6 +58,9 @@ def identifiers(smiles, inchi_structure):
         ("C[NH3+]", "CN"),
         ("CCO", "COC"),
         ("CC[NH3+].[Cl-]", "CCN"),
+        ("CC(=O)[O-].[NH4+]", "CC(=O)O.N"),
+        ("[NH3+]CC(=O)[O-]", "NCC(=O)O"),
+        ("CC[NH3+].CNC", "CCN.C[NH2+]C"),
     ],
 )
 def test_distinct_stereo_isotope_charge_connectivity_and_salt_cannot_be_reconciled(
@@ -78,3 +84,22 @@ def test_an_inchi_only_compound_still_has_a_definite_source_structure():
         value=inchi.MolToInchi(Chem.MolFromSmiles("CCO")),
     )
     assert compound_smiles(compound, required=True) == "CCO"
+
+
+@pytest.mark.parametrize(
+    "smiles", ["CC(=O)[O-].[NH4+]", "[NH3+]CC(=O)[O-]", "CC[NH3+].CNC"]
+)
+def test_legacy_normalization_candidates_are_rechecked_against_deposited_identifiers(
+    smiles,
+):
+    assert requires_source_recheck(smiles)
+
+
+@pytest.mark.parametrize(
+    "smiles", ["Nc1ccc(NC(=O)c2ccc(N)cc2)cc1", "NC(=O)c1ccc([N+](=O)[O-])cc1"]
+)
+def test_neutral_and_nitro_amide_tautomers_keep_their_component_charge_profiles(smiles):
+    assert not requires_source_recheck(smiles)
+    assert compound_smiles(identifiers(smiles, smiles), required=True) == (
+        Chem.MolToSmiles(Chem.MolFromSmiles(smiles))
+    )

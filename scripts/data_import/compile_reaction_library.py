@@ -21,6 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # Operator commands support both module and direct-path execution.
 from packages.knowledge_base.ord_import import extraction_totals, iter_import_records  # noqa: E402
+from packages.knowledge_base.ord_identifiers import CURRENT_IDENTIFIER_POLICY  # noqa: E402
 from packages.knowledge_base.ord_incremental import VerifiedOrdBaseline  # noqa: E402
 from packages.knowledge_base.ord_reader import OrdSourceError, verify_ord_sources  # noqa: E402
 
@@ -164,6 +165,7 @@ def main(argv: list[str] | None = None) -> int:
             {
                 **source.as_source(),
                 "rejection_policy": "allow" if args.allow_rejected else "fail",
+                "identity_policy": CURRENT_IDENTIFIER_POLICY,
             }
             for source in sources
         ]

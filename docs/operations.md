@@ -273,7 +273,9 @@ manifest 包含官方 repository/mirror、固定 revision、CC-BY-SA-4.0，以�
 
 结构字段仍以明确的原始 SMILES/MOL 为准。InChI 重建时可能选择另一个互变异构式，
 不得仅因其 canonical SMILES 不同就丢弃记录。只有原始完整 Standard InChI 与明确结构生成值
-完全一致，且分子式、电荷、组分数一致，才允许这种表示差异；真正的立体、同位素、盐型、
+完全一致，且各组分的分子式、形式电荷与原子电荷计数一致，才允许这种表示差异。
+总电荷相同并不足够：例如带电盐与中性酸/胺混合物可能共享 Standard InChI。
+真正的立体、同位素、盐型、
 连接性或多个明确结构冲突仍拒绝。该规则不更改库存、路线或文献查询的精确结构键。
 
 修正提取规则后可添加 `--base-library /absolute/previous/reactions.sqlite`，输出到新路径。
@@ -282,6 +284,11 @@ manifest 包含官方 repository/mirror、固定 revision、CC-BY-SA-4.0，以�
 单 outcome 记录可跳过重复提取，多 outcome 仍解析并核对原 ID 的完整 payload。
 差异冲突或原库/源文件变化会中止发布，不能覆盖旧库。完整报告分别记录复用数、
 已验证跳过行数、新索引记录数和未读取行数，不能将复用记录冒充本轮新增提取。
+
+新导入源元数据保存结构标识校验策略。旧索引没有当前策略标记时，先筛出 Standard InChI
+会改变组分电荷状态的记录，整条原始反应从复用集合扣除，再按固定源文件重验。
+重新验收通过的已有记录仍写入同一个编译器；未通过的记录不进入新索引，旧索引保持完整。
+审计分别记录原库核验、实际复用、重验保留与重验移除，不把移除伪装成新增或漏读。
 
 运行时可设置 `X_SYNTH_REACTION_LIBRARY_DB` 或传 `serve_platform --reaction-library PATH`。
 未设置时仅当 assets 下 `knowledge/reaction-evidence/reactions.sqlite` 实际存在才自动启用。
