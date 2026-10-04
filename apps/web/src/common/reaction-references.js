@@ -295,6 +295,21 @@ export function reportedYieldMethod(method) {
   return yieldMethods[method] || "未记录";
 }
 
+export function referenceReactionDrawing(row) {
+  if (
+    !structures(row?.reactants, 1, 1024) ||
+    !structures(row?.products, 1, 1024) ||
+    !structures(row?.agents ?? [], 0, 1024)
+  )
+    invalid("参考反应的已核验结构不完整，未生成图示。");
+  const side = (values) =>
+    values
+      .map((value) => (value.includes(".") ? `(${value})` : value))
+      .join(".");
+  // Draw verified chemical identities; keep original mapping/CX notation in citations.
+  return `${side(row.reactants)}>${side(row.agents ?? [])}>${side(row.products)}`;
+}
+
 export function referenceReactionFileBody(row) {
   if (
     !structures(row?.reactants, 1, 99) ||

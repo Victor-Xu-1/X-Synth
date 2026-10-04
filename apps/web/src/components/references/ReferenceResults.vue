@@ -88,7 +88,7 @@
         </header>
         <div class="reference-record-layout">
           <SmilesImage
-            :smiles="row.reaction_smiles"
+            :smiles="referenceReactionDrawing(row)"
             input-type="reaction"
             width="100%"
             :height="160"
@@ -103,13 +103,14 @@
                 :key="index"
                 class="reference-yield"
               >
-                <span v-if="yieldValue.unit || Number.isFinite(yieldValue.value)"
+                <span
+                  v-if="yieldValue.unit || Number.isFinite(yieldValue.value)"
                   >{{
                     yieldValue.method === "ord_product_measurement"
                       ? recordedNumber(yieldValue.value)
                       : recordedValue(yieldValue.value)
                   }}
-                  {{ yieldValue.unit || '单位未记录' }}</span
+                  {{ yieldValue.unit || "单位未记录" }}</span
                 >
                 <small>{{ reportedYieldMethod(yieldValue.method) }}</small>
                 <small v-if="yieldValue.method === 'ord_product_measurement'">{{
@@ -240,6 +241,7 @@ import {
   referenceReactionFileBody,
   referenceResponse,
   referenceReason,
+  referenceReactionDrawing,
   ReferenceContractError,
   reportedYieldMethod,
 } from "@/common/reaction-references";

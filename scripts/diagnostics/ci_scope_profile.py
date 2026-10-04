@@ -165,6 +165,8 @@ REFERENCE_FILES = {
     "packages/knowledge_base/reaction_models.py",
     "packages/knowledge_base/reaction_library.py",
     "packages/knowledge_base/reaction_evidence.py",
+    "apps/askcos-v2/askcos2_core/utils/reaction_drawing.py",
+    "apps/askcos-v2/askcos2_core/utils/draw_impl.py",
 }
 REACTION_FIXTURES = {
     "tests/fixtures/reactions/ord-astra-zeneca.json",
@@ -364,6 +366,11 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
         )
     if roots & (REFERENCE_FILES | REACTION_FIXTURES):
         selected.add("tests/unit/test_reaction_library.py")
+    if roots & {
+        "apps/askcos-v2/askcos2_core/utils/reaction_drawing.py",
+        "apps/askcos-v2/askcos2_core/utils/draw_impl.py",
+    }:
+        selected.add("tests/unit/test_reaction_drawing.py")
     if roots & PRICING_FILES:
         selected.update(
             {
