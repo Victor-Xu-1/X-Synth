@@ -271,6 +271,18 @@ manifest 包含官方 repository/mirror、固定 revision、CC-BY-SA-4.0，以�
 保存在外部证据目录，不进入源码；全量文件、拒绝原因与未读取行数必须核验。
 并行进程只提取记录，只有一个数据库编译与原子发布入口；既有索引绝不覆盖。
 
+结构字段仍以明确的原始 SMILES/MOL 为准。InChI 重建时可能选择另一个互变异构式，
+不得仅因其 canonical SMILES 不同就丢弃记录。只有原始完整 Standard InChI 与明确结构生成值
+完全一致，且分子式、电荷、组分数一致，才允许这种表示差异；真正的立体、同位素、盐型、
+连接性或多个明确结构冲突仍拒绝。该规则不更改库存、路线或文献查询的精确结构键。
+
+修正提取规则后可添加 `--base-library /absolute/previous/reactions.sqlite`，输出到新路径。
+原库必须只读、无 SQLite sidecar，schema、快照、许可及全部源文件 path/SHA256 必须与
+重新验证的完整 manifest 一致。旧记录逐条类型和来源核验，再进入同一个编译器；只有已核验
+单 outcome 记录可跳过重复提取，多 outcome 仍解析并核对原 ID 的完整 payload。
+差异冲突或原库/源文件变化会中止发布，不能覆盖旧库。完整报告分别记录复用数、
+已验证跳过行数、新索引记录数和未读取行数，不能将复用记录冒充本轮新增提取。
+
 运行时可设置 `X_SYNTH_REACTION_LIBRARY_DB` 或传 `serve_platform --reaction-library PATH`。
 未设置时仅当 assets 下 `knowledge/reaction-evidence/reactions.sqlite` 实际存在才自动启用。
 可见收率、条件覆盖来自实际索引计数；条件计数包含原始输入/投料字段，并不表示温度、时间、

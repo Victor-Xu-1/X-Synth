@@ -4,51 +4,14 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from functools import lru_cache
-
 from rdkit import rdBase
 
 from packages.adapters.askcos.reference_identity import (
-    canonical_reference_query,
     component_multiset,
     parse_reference_reaction,
 )
-from packages.adapters.askcos.reference_models import ReferenceSearchInput
-
+from .ord_identifiers import compound_smiles
 from .ord_reader import OrdRecordError
-
-
-@lru_cache(maxsize=16_384)
-def _definite_smiles(value: str) -> str:
-    return canonical_reference_query(ReferenceSearchInput(product=value)).product
-
-
-def compound_smiles(compound, *, required: bool) -> str | None:
-    from ord_schema import message_helpers
-
-    try:
-        identities = set()
-        with rdBase.BlockLogs():
-            for identifier in compound.identifiers:
-                if identifier.type not in message_helpers.STRUCTURAL_IDENTIFIER_TYPES:
-                    continue
-                smiles = message_helpers.canonical_smiles_for_identifier(
-                    identifier.type, identifier.value
-                )
-                if smiles is None:
-                    raise OrdRecordError("invalid_compound_structure")
-                identities.add(_definite_smiles(smiles))
-        if len(identities) > 1:
-            raise OrdRecordError("inconsistent_compound_identifiers")
-        if identities:
-            return identities.pop()
-    except OrdRecordError:
-        raise
-    except (ValueError, RuntimeError) as exc:
-        raise OrdRecordError("invalid_compound_structure") from exc
-    if required:
-        raise OrdRecordError("undefined_compound_structure")
-    return None
 
 
 @dataclass(frozen=True)

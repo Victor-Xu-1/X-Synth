@@ -91,9 +91,12 @@ def mock_frontend(monkeypatch, before, after, old_records, new_records):
         "tests/integration/workbench_shell_browser.mjs",
         "packages/knowledge_base/reaction_library.py",
         "packages/knowledge_base/ord_reader.py",
+        "packages/knowledge_base/ord_identifiers.py",
+        "packages/knowledge_base/ord_incremental.py",
         "scripts/data_import/compile_reaction_library.py",
         "requirements/reaction-data-linux-py312.lock",
         "tests/fixtures/reactions/ord-astra-zeneca.json",
+        "tests/fixtures/reactions/ord-inchi-tautomer.json",
         "packages/adapters/stock/catalog_pricing.py",
     ],
 )
@@ -129,10 +132,18 @@ def test_ord_import_checks_are_isolated_and_diff_selected():
         profile.reaction_data_tests({"apps/web/src/components/routes/MoleculeNode.vue"})
         == []
     )
-    assert (
-        scope.test_command("reaction-data", sorted(profile.ORD_TESTS))[-1]
-        == "tests/unit/test_ord_extraction.py"
+    assert set(scope.test_command("reaction-data", sorted(profile.ORD_TESTS))[6:]) == (
+        profile.ORD_TESTS
     )
+    for path in (
+        "packages/knowledge_base/ord_identifiers.py",
+        "packages/knowledge_base/ord_incremental.py",
+        "tests/fixtures/reactions/ord-inchi-tautomer.json",
+    ):
+        assert set(profile.reaction_data_tests({path})) == profile.ORD_TESTS
+    files = {path: "pass" for path in profile.ORD_TESTS}
+    before = snapshot(Path("."), files)
+    assert profile.python_tests(before, before, profile.ORD_TESTS) == []
 
 
 def test_python_workspace_maps_document_contracts_not_native_engine_suite(tmp_path):
