@@ -1,5 +1,13 @@
 export const researchTools = [
   {
+    title: "专利参考反应",
+    icon: "mdi-book-open-page-variant-outline",
+    to: "/references",
+    feature: "references",
+    workspace: "reactions",
+    primary: true,
+  },
+  {
     title: "结构评估",
     icon: "mdi-molecule",
     to: "/assessment",

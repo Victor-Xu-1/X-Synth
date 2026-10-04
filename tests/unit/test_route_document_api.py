@@ -103,6 +103,28 @@ def captured_task(api, *, owner="local_workspace"):
     return job, artifact, candidates
 
 
+def test_editable_copy_uses_display_title_without_rewriting_scientific_request(api):
+    job, _, candidates = captured_task(api)
+    repository = api.app.state.repository
+    repository.edit_history(
+        job["id"],
+        owner="local_workspace",
+        description="Renamed study",
+        expected_revision=job["revision"],
+    )
+    response = api.client.post(
+        "/api/v1/route-documents/from-task",
+        json={"job_id": job["id"], "route_index": 0},
+    )
+    assert response.status_code == 200
+    assert response.json()["title"].startswith("Renamed study")
+    assert response.json()["source"]["route_id"] == candidates[0].route_id
+    assert (
+        repository.get(job["id"])["request"]["description"]
+        == "Captured schema evidence"
+    )
+
+
 def test_http_crud_has_stable_fields_canonicalization_revisions_and_true_deletion(api):
     client = api.client
     response = client.post("/api/v1/route-documents", json=document_body())

@@ -212,7 +212,10 @@ import ManualReactionDialog from "@/components/routes/ManualReactionDialog.vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import { useWorkspaceStore } from "@/store/workspace";
 import { API } from "@/common/api";
-import { importRouteDocument } from "@/common/route-document-file";
+import {
+  importRouteDocument,
+  routeDocumentPayload,
+} from "@/common/route-document-file";
 import {
   createDocumentNavigation,
   documentOrigin,
@@ -472,18 +475,7 @@ function download(blob, name) {
 function exportDocument() {
   download(
     new Blob(
-      [
-        JSON.stringify(
-          {
-            format: "x-synth-route",
-            version: 1,
-            title: title.value,
-            graph: cleanGraph(graph.value),
-          },
-          null,
-          2,
-        ),
-      ],
+      [JSON.stringify(routeDocumentPayload(title.value, graph.value), null, 2)],
       { type: "application/json" },
     ),
     "route.x-synth.json",

@@ -5,6 +5,19 @@ from fastapi import HTTPException
 from packages.workspace.history_projection import historical_routes
 
 
+def history_metadata(job: dict) -> dict:
+    return {
+        "group_id": job.get("group_id"),
+        "history_revision": job.get("history_revision", 0),
+        "archived": bool(job.get("archived", False)),
+    }
+
+
+def display_description(job: dict) -> str:
+    request = job["request"]
+    return job.get("history_title") or request.get("description") or request["smiles"]
+
+
 def job_response(job: dict) -> dict:
     summary = public_summary(job.get("summary") or {})
     request = job["request"]
@@ -13,7 +26,8 @@ def job_response(job: dict) -> dict:
         "status": job["status"],
         "revision": job["revision"],
         "target_smiles": request["smiles"],
-        "description": request.get("description") or request["smiles"],
+        "description": display_description(job),
+        **history_metadata(job),
         "created_at": job["created"],
         "modified": job["modified"],
         "selected_route_count": summary.get("selected_route_count", 0),
@@ -25,6 +39,28 @@ def job_response(job: dict) -> dict:
         "public": False,
         "origin": summary.get("origin", "x_synth"),
         "stored_route_count": summary.get("stored_route_count", 0),
+    }
+
+
+def result_record(job: dict) -> dict:
+    data = job_response(job)
+    return {
+        "result_id": data["job_id"],
+        "description": data["description"],
+        "revision": data["revision"],
+        **history_metadata(data),
+        "progress": data["progress"],
+        "created": data["created_at"],
+        "modified": data["modified"],
+        "result_type": "unified_route_job",
+        "result_state": data["status"],
+        "target_smiles": data["target_smiles"],
+        "num_trees": data["stored_route_count"]
+        if data["origin"] == "askcos_history"
+        else data["selected_route_count"],
+        "tags": ["ASKCOS"],
+        "public": False,
+        "unified_route_pool_summary": {"id": data["job_id"], **data["summary"]},
     }
 
 
@@ -59,6 +95,9 @@ def route_result(job, *, artifacts, budget):
         if not isinstance(result, dict):
             raise HTTPException(409, "Historical result format is invalid")
         document["result_state"] = job["status"]
+        document.update(history_metadata(job))
+        if job.get("request"):
+            document["description"] = display_description(job)
         result["unified_route_pool"] = {
             "summary": public_summary(job["summary"]),
             "selected_routes": routes,
@@ -80,7 +119,8 @@ def route_result(job, *, artifacts, budget):
     return {
         "result_id": job["id"],
         "target_smiles": job["request"]["smiles"],
-        "description": job["request"].get("description") or job["request"]["smiles"],
+        "description": display_description(job),
+        **history_metadata(job),
         "created": job["created"],
         "modified": job["modified"],
         "result_type": "tree_builder",

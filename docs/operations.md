@@ -227,6 +227,22 @@ curl --fail http://127.0.0.1:8769/api/v1/unified-route/jobs/JOB_ID
 后保留输入并标为 interrupted。它们不冒充可断点接续的长路线搜索；重算须由用户显式提交。
 CSV、模型、暂存数据与截图都不进入 Git。优化建议的实验响应留空，不将预测填写为实测收率。
 
+路线任务库 schema 2 在同一 SQLite 内增加历史显示标题、分组、元数据修订、可恢复归档和轻量进度。
+升级前停止产品写入，并通过 SQLite `Connection.backup` 在独立恢复目录保存一致性备份，
+包含已提交 WAL 内容。schema 1 到 2 为原子迁移，保留原请求、事件、checkpoint 与 artifacts；
+旧归档记录由最后一个非归档终态事件恢复真实状态，证据不足则拒绝整个升级。
+先前版本已经改写的请求标题不能凭空恢复，原始字节按现有记录保留。
+旧 schema-1 程序会拒绝 schema 2，不能修改版本号绕过。若回滚旧代码，使用升级前备份的独立状态目录，
+保留升级库与后续任务，不覆盖私有数据。读库工具按 `jobs.archived` 过滤回收箱，不按执行 status 过滤。
+
+专利参考反应需要 Mongo `USPTO_FULL` 的真实反应记录、product_smiles 与记录 ID 索引。
+产品 `/api/v1/references/status` 检查索引及原始记录关联，缓存最多 60 秒；缺失或失联返回 503。
+没有 source-leading 索引时总记录数为 null，不扫描全库制造统计。查询只允许该公开来源，
+3 秒数据库期限、300 条召回和 30 条结果上限，不开放未知集合或相似反应全库扫描。
+当前抽取字段没有温度、溶剂及催化剂，因此展示为空，不混入 NN 条件预测。
+数据许可独立于产品源码，公开原始 USPTO 来源见
+[Daniel Lowe 数据发布](https://figshare.com/articles/dataset/Chemical_reactions_from_US_patents_1976-Sep2016_/5104873)。
+
 ## 验收与性能
 
 ```bash

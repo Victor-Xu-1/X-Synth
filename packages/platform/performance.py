@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import asdict, dataclass
 
@@ -27,12 +28,13 @@ class PerformanceBudget:
     max_structure_atoms: int = 1024
     health_cache_seconds: float = 10.0
     health_timeout_seconds: float = 2.0
+    history_query_seconds: float = 1.0
     request_bytes: int = 10 * 1024 * 1024
     response_bytes: int = 32 * 1024 * 1024
 
     def __post_init__(self):
         for name, value in asdict(self).items():
-            if value <= 0:
+            if value <= 0 or (isinstance(value, float) and not math.isfinite(value)):
                 raise ValueError(f"Performance budget {name} must be positive")
         if self.model_parallelism > self.search_parallelism:
             raise ValueError("Model parallelism cannot exceed search parallelism")

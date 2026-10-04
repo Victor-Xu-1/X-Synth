@@ -5,6 +5,7 @@ export const useWorkspaceStore = defineStore("workspace", {
     session: null,
     templates: null,
     optimization: null,
+    references: null,
     loading: false,
     error: "",
     refreshed: 0,
@@ -33,7 +34,9 @@ export const useWorkspaceStore = defineStore("workspace", {
           state.session?.mode === "askcos" &&
           state.session?.administrator === true,
         conditions: checks.condition_recommender === true,
-        forward: checks.forward_predictor === true && checks.fast_filter === true,
+        references: state.references?.ready === true,
+        forward:
+          checks.forward_predictor === true && checks.fast_filter === true,
         impurity: checks.impurity === true,
         selectivity: checks.selectivity === true,
         sites: checks.sites === true,
@@ -67,6 +70,7 @@ export const useWorkspaceStore = defineStore("workspace", {
           read("/api/v1/session"),
           read("/api/v1/template-library/health"),
           read("/api/v1/optimization/health"),
+          read("/api/v1/references/status"),
         ]);
         if (values[0].status === "fulfilled") {
           this.health = values[0].value;
@@ -74,8 +78,11 @@ export const useWorkspaceStore = defineStore("workspace", {
         } else this.error = "无法连接工作区服务";
         if (values[1].status === "fulfilled") this.session = values[1].value;
         if (values[2].status === "fulfilled") this.templates = values[2].value;
-        if (values[3].status === "fulfilled") this.optimization = values[3].value;
+        if (values[3].status === "fulfilled")
+          this.optimization = values[3].value;
         else this.optimization = null;
+        this.references =
+          values[4].status === "fulfilled" ? values[4].value : null;
         this.refreshed = Date.now();
       } finally {
         clearTimeout(timer);

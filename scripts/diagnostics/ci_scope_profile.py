@@ -54,17 +54,41 @@ API_FILES = {
     "apps/api/reaction_routes.py",
     "apps/api/optimization_routes.py",
     "apps/api/impurity_routes.py",
+    "apps/api/result_routes.py",
+    "apps/api/reference_routes.py",
 }
 SCIENTIFIC_FILES = {
-    "packages/adapters/askcos/native_models.py", "packages/adapters/askcos/conditions.py",
-    "packages/adapters/askcos/forward.py", "packages/chemistry/forward_evaluation.py",
-    "packages/adapters/askcos/impurities.py", "apps/api/impurity_routes.py",
-    "packages/chemistry/assessment.py", "packages/chemistry/process_metrics.py",
-    *{path for path in API_FILES if any(word in path for word in ("analysis_", "assessment_", "condition_", "reaction_", "optimization_"))},
+    "packages/adapters/askcos/native_models.py",
+    "packages/adapters/askcos/conditions.py",
+    "packages/adapters/askcos/forward.py",
+    "packages/chemistry/forward_evaluation.py",
+    "packages/adapters/askcos/impurities.py",
+    "apps/api/impurity_routes.py",
+    "packages/chemistry/assessment.py",
+    "packages/chemistry/process_metrics.py",
+    *{
+        path
+        for path in API_FILES
+        if any(
+            word in path
+            for word in (
+                "analysis_",
+                "assessment_",
+                "condition_",
+                "reaction_",
+                "optimization_",
+            )
+        )
+    },
 }
 RUNTIME_FILES = {
-    ".gitignore", ".env.example", "packages/platform/native_runtime.py", "packages/platform/resource_metrics.py", "packages/orchestrator/runtime_health.py",
-    "scripts/operations/serve_platform.py", "scripts/data_import/install_askcos_model.py",
+    ".gitignore",
+    ".env.example",
+    "packages/platform/native_runtime.py",
+    "packages/platform/resource_metrics.py",
+    "packages/orchestrator/runtime_health.py",
+    "scripts/operations/serve_platform.py",
+    "scripts/data_import/install_askcos_model.py",
     "apps/askcos-v2/askcos2_core/configs/module_config_x_synth.py",
     "apps/askcos-v2/context_recommender/app/v1/services/predictor.py",
     "apps/askcos-v2/context_recommender/app/common/services/model_assets.py",
@@ -76,19 +100,36 @@ RUNTIME_FILES = {
     "apps/askcos-v2/impurity_predictor/native_mapper.py",
     "apps/askcos-v2/impurity_predictor/native_session.py",
     "apps/askcos-v2/impurity_predictor/native_runtime.py",
-    "requirements/askcos-runtime.in", "requirements/askcos-runtime-linux-py312.lock",
-    "requirements/context-runtime.in", "requirements/context-runtime-linux-py312.lock",
-    "requirements/optimization-runtime.in", "requirements/optimization-runtime-linux-py312.lock",
-    "requirements/impurity-runtime.in", "requirements/impurity-runtime-linux-py312.lock",
-    *{"apps/askcos-v2/forward_predictor/graph2smiles/models/" + file for file in (
-        "attention_xl.py", "dgat.py", "dgcn.py", "graph2smiles.py", "graphfeat.py", "model_utils.py", "transformer_decoder.py",
-    )},
+    "requirements/askcos-runtime.in",
+    "requirements/askcos-runtime-linux-py312.lock",
+    "requirements/context-runtime.in",
+    "requirements/context-runtime-linux-py312.lock",
+    "requirements/optimization-runtime.in",
+    "requirements/optimization-runtime-linux-py312.lock",
+    "requirements/impurity-runtime.in",
+    "requirements/impurity-runtime-linux-py312.lock",
+    *{
+        "apps/askcos-v2/forward_predictor/graph2smiles/models/" + file
+        for file in (
+            "attention_xl.py",
+            "dgat.py",
+            "dgcn.py",
+            "graph2smiles.py",
+            "graphfeat.py",
+            "model_utils.py",
+            "transformer_decoder.py",
+        )
+    },
 }
 SCIENTIFIC_TESTS = {
-    "tests/unit/test_native_scientific_boundaries.py", "tests/unit/test_analysis_records.py",
-    "tests/unit/test_molecular_assessment.py", "tests/unit/test_process_metrics.py",
-    "tests/unit/test_assessment_routes.py", "tests/unit/test_optimization_api.py",
-    "tests/unit/test_optimization_tables.py", "tests/unit/test_optimization_runtime.py",
+    "tests/unit/test_native_scientific_boundaries.py",
+    "tests/unit/test_analysis_records.py",
+    "tests/unit/test_molecular_assessment.py",
+    "tests/unit/test_process_metrics.py",
+    "tests/unit/test_assessment_routes.py",
+    "tests/unit/test_optimization_api.py",
+    "tests/unit/test_optimization_tables.py",
+    "tests/unit/test_optimization_runtime.py",
     "tests/unit/test_impurity_boundaries.py",
 }
 ENVIRONMENT_FILES = {
@@ -105,7 +146,23 @@ TEMPLATE_FILES = {
     "apps/api/data_routes.py",
     "packages/knowledge_base/template_library.py",
 }
-HISTORY_FILES = {"apps/api/job_views.py", "packages/workspace/history_projection.py"}
+HISTORY_FILES = {
+    "apps/api/job_views.py",
+    "apps/api/result_routes.py",
+    "packages/workspace/history_projection.py",
+    "packages/orchestrator/job_repository.py",
+    "packages/orchestrator/job_history.py",
+    "packages/orchestrator/job_history_schema.py",
+}
+PERFORMANCE_FILES = {"packages/platform/performance.py"}
+REFERENCE_FILES = {
+    "apps/api/reference_routes.py",
+    "packages/adapters/askcos/references.py",
+    "packages/adapters/askcos/reference_models.py",
+    "packages/adapters/askcos/reference_identity.py",
+    "apps/askcos-v2/askcos2_core/utils/reactions.py",
+    "apps/askcos-v2/askcos2_core/app.py",
+}
 CHEMICAL_FILE_FILES = {
     "apps/api/structure_routes.py",
     "packages/workspace/chemical_files.py",
@@ -140,6 +197,8 @@ def guard_paths(paths: set[str]) -> None:
             | NATIVE_CAPABILITY_FILES
             | TEMPLATE_FILES
             | HISTORY_FILES
+            | REFERENCE_FILES
+            | PERFORMANCE_FILES
             | {
                 PYTHON_LOCK,
                 "VERSION",
@@ -148,9 +207,11 @@ def guard_paths(paths: set[str]) -> None:
         known |= path.startswith("packages/workspace/") and suffix == ".py"
         known |= path.startswith("packages/adapters/optimization/") and suffix == ".py"
         known |= path in {
-            "tests/integration/test_optimization_published.py", "tests/integration/optimization_browser.mjs",
+            "tests/integration/test_optimization_published.py",
+            "tests/integration/optimization_browser.mjs",
             "tests/integration/forward_browser.mjs",
             "tests/integration/analysis_browser.mjs",
+            "tests/integration/task_workspace_browser.mjs",
             "tests/integration/test_impurity_native.py",
             "tests/integration/test_impurity_mapper.py",
             "tests/integration/test_impurity_assets.py",
@@ -222,13 +283,23 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
     }
     if roots & ENVIRONMENT_FILES:
         selected.add("tests/unit/test_environment_api.py")
-    if roots & SCIENTIFIC_FILES or any(path.startswith("packages/adapters/optimization/") for path in roots):
+    if roots & SCIENTIFIC_FILES or any(
+        path.startswith("packages/adapters/optimization/") for path in roots
+    ):
         selected.update(SCIENTIFIC_TESTS)
         selected.add("tests/unit/test_product_api_security.py")
     if roots & RUNTIME_FILES:
-        selected.update({"tests/unit/test_native_scientific_boundaries.py", "tests/unit/test_operations_scripts.py",
-                         "tests/unit/test_native_ports.py", "tests/unit/test_environment_api.py",
-                         "tests/unit/test_model_archive_installation.py", "tests/unit/test_public_source_export.py", "tests/unit/test_resource_metrics.py"})
+        selected.update(
+            {
+                "tests/unit/test_native_scientific_boundaries.py",
+                "tests/unit/test_operations_scripts.py",
+                "tests/unit/test_native_ports.py",
+                "tests/unit/test_environment_api.py",
+                "tests/unit/test_model_archive_installation.py",
+                "tests/unit/test_public_source_export.py",
+                "tests/unit/test_resource_metrics.py",
+            }
+        )
     if roots & NATIVE_CAPABILITY_FILES:
         selected.update(
             {
@@ -251,6 +322,26 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
                 "tests/unit/test_history_projection.py",
                 "tests/unit/test_route_document_api.py",
                 "tests/unit/test_product_api_security.py",
+                "tests/unit/test_job_history.py",
+                "tests/unit/test_job_repository.py",
+                "tests/unit/test_route_lifecycle.py",
+            }
+        )
+    if roots & REFERENCE_FILES:
+        selected.update(
+            {
+                "tests/unit/test_reaction_references.py",
+                "tests/unit/test_native_capability_boundary.py",
+                "tests/unit/test_product_api_security.py",
+            }
+        )
+    if roots & PERFORMANCE_FILES:
+        selected.update(
+            {
+                "tests/unit/test_performance_budget.py",
+                "tests/unit/test_job_history.py",
+                "tests/unit/test_environment_api.py",
+                "tests/unit/test_route_request.py",
             }
         )
     if roots & CHEMICAL_FILE_FILES:

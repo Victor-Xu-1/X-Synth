@@ -10,6 +10,10 @@
       :delete-key-code="null"
       :min-zoom="0.12"
       :max-zoom="2"
+      :pan-on-drag="!overview"
+      :zoom-on-scroll="!overview"
+      :zoom-on-double-click="!overview"
+      :zoom-on-pinch="!overview"
       @nodes-initialized="fit"
       @node-click="({ node }) => $emit('select', node.id)"
       @edge-click="({ edge }) => $emit('select-edge', edge.id)"
@@ -23,7 +27,7 @@
       <template #node-reaction="props"
         ><ReactionNode v-bind="props"
       /></template>
-      <div class="route-viewport-controls">
+      <div v-if="!overview" class="route-viewport-controls">
         <v-tooltip v-for="tool in tools" :key="tool.label" :text="tool.label"
           ><template #activator="{ props }"
             ><v-btn
@@ -35,8 +39,9 @@
               @click="tool.action" /></template
         ></v-tooltip>
       </div>
-      <div class="route-graph-counter">
-        {{ graph.nodes.length }} 节点 ·
+      <div v-if="!overview" class="route-graph-counter">
+        {{ graph.nodes.filter((node) => node.type === "molecule").length }}
+        化合物 ·
         {{ graph.nodes.filter((node) => node.type === "reaction").length }} 反应
       </div>
     </VueFlow>
@@ -52,6 +57,7 @@ import { canConnect, layoutGraph } from "@/common/route-graph";
 const props = defineProps({
   graph: { type: Object, required: true },
   editable: Boolean,
+  overview: Boolean,
   scores: { type: Object, default: () => ({}) },
   id: { type: String, default: () => `route-${crypto.randomUUID()}` },
 });

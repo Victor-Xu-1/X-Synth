@@ -1,91 +1,53 @@
 <template>
-  <v-dialog v-model="open" max-width="1150" scrollable>
+  <v-dialog v-model="open" max-width="1280" scrollable>
     <v-card class="route-preview-dialog">
-      <header class="route-preview-heading">
+      <header>
         <div>
           <strong>{{ title || "路线预览" }}</strong
           ><span class="workspace-muted">{{ candidates.length }} 条路线</span>
         </div>
         <div class="page-actions">
-          <v-select
-            v-if="candidates.length > 1"
-            v-model="index"
-            :disabled="editing"
-            :items="
-              candidates.map((_, i) => ({ title: `路线 ${i + 1}`, value: i }))
-            "
-            density="compact"
-            variant="outlined"
-            hide-details
-            class="route-preview-select"
-          /><v-btn
+          <v-btn
+            v-if="jobId"
+            variant="text"
+            :to="detailLocation"
+            @click="open = false"
+            >打开详情</v-btn
+          >
+          <v-btn
             icon="mdi-close"
             variant="text"
             size="small"
+            title="关闭预览"
             aria-label="关闭预览"
             @click="open = false"
           />
         </div>
       </header>
-      <div class="route-preview-body">
-        <div class="route-preview-canvas">
-          <RouteGraph
-            v-if="candidate"
-            :key="index"
-            :graph="graph"
-            :scores="scores"
-            @select="selected = $event"
-          />
-          <div v-else class="workspace-empty">暂无路线数据</div>
-        </div>
-        <RouteInspector
-          v-if="node"
-          :node="node"
-          :graph="graph"
-          :step="stepForNode(candidate, selected)"
-          :snapshot="stockSnapshot"
-          :score="scores[selected]"
-          :target="selected === graph.target_id"
-          @close="selected = null"
-          @navigate="open = false"
-        />
-      </div>
-      <footer class="route-preview-footer">
-        <span class="workspace-muted">{{
-          engineLabel(candidate?.engine)
-        }}</span>
-        <div class="page-actions">
-          <v-btn
-            v-if="jobId"
-            variant="text"
-            :to="`/results/${jobId}`"
-            @click="open = false"
-            >打开详情</v-btn
-          ><v-btn
-            v-if="candidate && jobId"
-            color="primary"
-            variant="flat"
-            prepend-icon="mdi-pencil-outline"
-            :loading="editing"
-            @click="edit"
-            >编辑副本</v-btn
-          >
-        </div>
-      </footer>
-      <div v-if="error" class="tool-error">{{ error }}</div>
+      <RouteReader
+        v-if="open"
+        v-model:selected-route="selectedId"
+        v-model:view="view"
+        :candidates="candidates"
+        :stock-snapshot="stockSnapshot"
+        :busy="editing"
+        :can-edit="Boolean(jobId)"
+        :original-indices="originalIndices"
+        compact
+        @edit="edit"
+        @navigate="open = false"
+      />
+      <p v-if="error" class="tool-error" role="alert">{{ error }}</p>
     </v-card>
   </v-dialog>
 </template>
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, ref, watch, onBeforeUnmount } from "vue";
 import { useRouter } from "vue-router";
-import RouteGraph from "./RouteGraph.vue";
-import RouteInspector from "./RouteInspector.vue";
-import { graphFromCandidate, predictionScores } from "@/common/route-graph";
 import { API } from "@/common/api";
-import { engineLabel, taskIdentifier } from "@/common/route-details";
-import { stepForNode } from "@/common/route-node-context";
+import { originalRouteIndex, taskIdentifier } from "@/common/route-details";
 import { errorMessage } from "@/common/workspace-errors";
+import RouteReader from "./RouteReader.vue";
 const open = defineModel({ type: Boolean, default: false });
 const props = defineProps({
   candidates: { type: Array, default: () => [] },
@@ -93,40 +55,41 @@ const props = defineProps({
   title: String,
   initialIndex: { type: Number, default: 0 },
   stockSnapshot: String,
+  originalIndices: Array,
+  detailQuery: Object,
 });
 const router = useRouter(),
-  index = ref(0),
-  selected = ref(null),
+  selectedId = ref(""),
+  view = ref("graph"),
   editing = ref(false),
   error = ref("");
-const candidate = computed(() => props.candidates[index.value]);
-const graph = computed(() =>
-  candidate.value
-    ? graphFromCandidate(candidate.value)
-    : { nodes: [], edges: [], target_id: "" },
-);
-const scores = computed(() => predictionScores(candidate.value || {}));
-const node = computed(() =>
-  graph.value.nodes.find((value) => value.id === selected.value),
-);
+const detailLocation = computed(() => ({
+  path: `/results/${props.jobId}`,
+  query: props.detailQuery || {},
+}));
 let generation = 0,
   disposed = false;
-watch(index, () => (selected.value = null));
-watch(open, (value) => {
-  generation++;
-  editing.value = false;
-  if (value) {
-    index.value = props.initialIndex;
+watch(
+  () => [open.value, props.jobId],
+  ([value]) => {
+    generation++;
+    editing.value = false;
     error.value = "";
-    selected.value = null;
-  }
-});
-async function edit() {
-  if (editing.value || !candidate.value || !open.value) return;
+    if (value) {
+      selectedId.value = props.candidates[props.initialIndex]?.route_id || "";
+      view.value = "graph";
+    }
+  },
+);
+async function edit(routeId) {
+  if (editing.value || !open.value) return;
   const current = generation,
     jobId = props.jobId,
-    originalIndex = index.value;
+    index = originalRouteIndex(props.candidates, routeId);
+  if (!jobId || index < 0) return;
+  const originalIndex = props.originalIndices?.[index] ?? index;
   editing.value = true;
+  error.value = "";
   try {
     const value = await API.post("/api/v1/route-documents/from-task", {
       job_id: jobId,
@@ -139,13 +102,13 @@ async function edit() {
       props.jobId !== jobId
     )
       return;
-    const identifier = taskIdentifier(value.id);
-    if (!identifier) throw new Error("编辑副本文档标识无效。");
+    const id = taskIdentifier(value.id);
+    if (!id) throw new Error("编辑副本文档标识无效。");
     open.value = false;
-    router.push("/editor/" + identifier);
-  } catch (e) {
+    await router.push("/editor/" + id);
+  } catch (cause) {
     if (!disposed && current === generation)
-      error.value = errorMessage(e, "无法创建编辑副本。");
+      error.value = errorMessage(cause, "无法创建编辑副本。");
   } finally {
     if (!disposed && current === generation) editing.value = false;
   }
@@ -160,65 +123,44 @@ onBeforeUnmount(() => {
   padding: 0 !important;
   background: var(--ws-surface) !important;
 }
-.route-preview-heading,
-.route-preview-footer {
-  padding: 14px 18px;
+header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 15px;
+  padding: 14px 20px;
+  gap: 12px;
   border-bottom: 1px solid var(--ws-border);
 }
-.route-preview-heading > div:first-child {
+header > div:first-child {
   display: flex;
-  gap: 12px;
   align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+strong {
   font-size: 14px;
+  overflow-wrap: anywhere;
 }
-.route-preview-canvas {
-  height: 560px;
-  min-height: 320px;
+header span {
+  font-size: 12px;
+  flex-shrink: 0;
 }
-.route-preview-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+.page-actions {
+  flex-shrink: 0;
 }
-.route-preview-body > :deep(.route-inspector) {
-  position: static;
-  width: 290px;
-  box-shadow: none;
-  max-height: 560px;
-}
-.route-preview-footer {
-  border-bottom: 0;
-  border-top: 1px solid var(--ws-border);
-}
-.route-preview-select {
-  width: 130px;
+.tool-error {
+  padding: 12px 20px;
 }
 @media (max-width: 700px) {
-  .route-preview-body {
-    grid-template-columns: minmax(0, 1fr);
+  header {
+    padding: 12px;
   }
-  .route-preview-body > :deep(.route-inspector) {
-    width: 100%;
-    border-left: 0;
-    border-top: 1px solid var(--ws-border);
-    max-height: 360px;
+  header > div:first-child {
+    flex-wrap: wrap;
+    gap: 4px;
   }
-  .route-preview-canvas {
-    height: 62dvh;
-  }
-  .route-preview-heading > div:first-child {
-    display: block;
-  }
-  .route-preview-heading strong {
-    display: block;
+  strong {
     font-size: 12px;
-    max-width: 180px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 }
 </style>

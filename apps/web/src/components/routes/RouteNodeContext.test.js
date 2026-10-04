@@ -49,11 +49,16 @@ test("inspector validation captures a node/draft and refuses late writes after s
 });
 
 test("read-only preview selection is inspected and reset across route/document changes", () => {
-  for (const filename of ["RoutePreview.vue", "DocumentPreview.vue"]) {
+  expect(source("RoutePreview.vue")).toContain("<RouteReader");
+  for (const filename of ["RouteReader.vue", "DocumentPreview.vue"]) {
     const preview = source(filename);
     expect(preview).toContain("<RouteInspector");
     expect(preview).toContain("@select=");
-    expect(preview).toContain("selected.value = null");
+    expect(preview).toContain(
+      filename === "RouteReader.vue"
+        ? "selectedNode.value = null"
+        : "selected.value = null",
+    );
     expect(preview).not.toContain("@update:graph");
   }
 });

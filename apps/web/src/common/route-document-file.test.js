@@ -2,8 +2,23 @@
 import {
   parseRouteDocument,
   MAX_ROUTE_FILE_BYTES,
+  routeDocumentPayload,
 } from "./route-document-file";
 import { graphFromCandidate, cleanGraph } from "./route-graph";
+
+test("preview and editor export the same importable structure-only document", () => {
+  const graph = graphFromCandidate({
+    target_smiles: "[13CH3][C@H](N)C(=O)O.[Na+]",
+    steps: [],
+  });
+  const exported = routeDocumentPayload("R001", graph);
+  expect(parseRouteDocument(JSON.stringify(exported))).toEqual({
+    title: "R001",
+    graph: cleanGraph(graph),
+  });
+  expect(exported.graph.nodes[0].smiles).toBe("[13CH3][C@H](N)C(=O)O.[Na+]");
+  expect(exported).not.toHaveProperty("closed");
+});
 
 test("route import uses the supported format and strips untrusted provenance", () => {
   const graph = graphFromCandidate({ target_smiles: "CCO", steps: [] });

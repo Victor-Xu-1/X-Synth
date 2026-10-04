@@ -6,7 +6,7 @@ from packages.workspace.http_validation import WorkspaceRoute
 from packages.workspace.route_graph import RouteGraph, graph_from_candidate
 from packages.workspace.route_repository import UnsupportedRouteDocumentSchema
 
-from .job_views import route_result
+from .job_views import display_description, route_result
 from .security import authenticate
 
 
@@ -86,7 +86,7 @@ def document_router(*, documents, repository, transport, artifacts, budget):
                 409, "任务路线数据无效或不可用，无法创建路线文档。"
             ) from exc
         source.update(job_id=body.job_id, route_index=body.route_index)
-        title = (job["request"].get("description") or "合成路线")[:140]
+        title = display_description(job)[:140]
         return guarded(
             lambda: documents.create(
                 owner, f"{title} · 路线 {body.route_index + 1}", graph, source=source
