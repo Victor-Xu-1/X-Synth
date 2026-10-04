@@ -6,9 +6,16 @@ import multiprocessing
 import tempfile
 from collections.abc import Iterator
 from concurrent.futures import ProcessPoolExecutor
+from contextlib import nullcontext
+from multiprocessing.util import Finalize
 from pathlib import Path
 
 from .ord_extract import OrdExtractionStats, OrdReadError, iter_ord_evidence
+from .ord_incremental import (
+    OrdBaselineIdentity,
+    OrdBaselineLookup,
+    VerifiedOrdBaseline,
+)
 from .ord_reader import VerifiedOrdSource
 from .reaction_models import ReactionEvidence
 
@@ -17,19 +24,39 @@ class OrdImportError(ValueError):
     pass
 
 
+_worker_baseline: OrdBaselineLookup | None = None
+
+
+def _initialize_worker(identity: OrdBaselineIdentity | None) -> None:
+    global _worker_baseline
+    if identity is not None:
+        _worker_baseline = OrdBaselineLookup(identity)
+        Finalize(_worker_baseline, _worker_baseline.close, exitpriority=10)
+
+
 def _evidence(
-    source: VerifiedOrdSource, stats: OrdExtractionStats, row_group: int | None = None
+    source: VerifiedOrdSource,
+    stats: OrdExtractionStats,
+    row_group: int | None = None,
+    baseline: OrdBaselineLookup | None = None,
 ):
     source.check_unchanged()
-    yield from iter_ord_evidence(
+    for record in iter_ord_evidence(
         source.local_path,
         source_path=source.path,
         source_sha256=source.sha256,
         source_revision=source.revision,
         stats=stats,
         row_group=row_group,
-    )
+        baseline=baseline,
+    ):
+        if baseline is not None and baseline.matches_existing(record):
+            stats.records_skipped_existing += 1
+            continue
+        yield record
     source.check_unchanged()
+    if baseline is not None:
+        baseline.identity.check_unchanged()
 
 
 def _report(
@@ -50,7 +77,7 @@ def _extract_spool(task: tuple[VerifiedOrdSource, Path, int]) -> dict:
     error = None
     try:
         with spool.open("x", encoding="utf-8") as handle:
-            for record in _evidence(source, stats, row_group):
+            for record in _evidence(source, stats, row_group, _worker_baseline):
                 handle.write(record.model_dump_json() + "\n")
     except (OSError, ValueError, OrdReadError) as exc:
         error = f"{type(exc).__name__}: {exc}"
@@ -58,13 +85,15 @@ def _extract_spool(task: tuple[VerifiedOrdSource, Path, int]) -> dict:
 
 
 def _serial(
-    sources: list[VerifiedOrdSource], reports: list[dict]
+    sources: list[VerifiedOrdSource],
+    reports: list[dict],
+    baseline: OrdBaselineLookup | None = None,
 ) -> Iterator[ReactionEvidence]:
     for source in sources:
         stats = OrdExtractionStats()
         error = None
         try:
-            yield from _evidence(source, stats)
+            yield from _evidence(source, stats, baseline=baseline)
         except (OSError, ValueError, OrdReadError) as exc:
             error = f"{type(exc).__name__}: {exc}"
             raise
@@ -78,6 +107,7 @@ def _parallel(
     *,
     workers: int,
     staging_root: Path,
+    baseline: OrdBaselineIdentity | None = None,
 ) -> Iterator[ReactionEvidence]:
     import pyarrow.parquet as pq
 
@@ -105,7 +135,12 @@ def _parallel(
                         (source, Path(directory) / f"{len(tasks):06d}.jsonl", group)
                     )
         context = multiprocessing.get_context("spawn")
-        with ProcessPoolExecutor(max_workers=workers, mp_context=context) as pool:
+        with ProcessPoolExecutor(
+            max_workers=workers,
+            mp_context=context,
+            initializer=_initialize_worker,
+            initargs=(baseline,),
+        ) as pool:
             results = pool.map(_extract_spool, tasks, chunksize=1)
             failed = False
             for (source, spool, _), result in zip(tasks, results, strict=True):
@@ -148,15 +183,37 @@ def iter_import_records(
     workers: int,
     staging_root: Path,
     allow_rejected: bool,
+    base_library: VerifiedOrdBaseline | None = None,
 ) -> Iterator[ReactionEvidence]:
     if not 1 <= workers <= 4:
         raise ValueError("ORD extraction workers must be between 1 and 4")
-    if workers == 1:
-        yield from _serial(sources, reports)
-    else:
-        yield from _parallel(
-            sources, reports, workers=workers, staging_root=staging_root
-        )
+    identity = None
+    if base_library is not None:
+        if tuple(sources) != base_library.identity.sources:
+            raise OrdImportError(
+                "Incremental extraction must retain the complete baseline source set"
+            )
+        yield from base_library.iter_records()
+        identity = base_library.freeze()
+    try:
+        with (
+            OrdBaselineLookup(identity)
+            if identity is not None and workers == 1
+            else nullcontext()
+        ) as baseline:
+            if workers == 1:
+                yield from _serial(sources, reports, baseline)
+            else:
+                yield from _parallel(
+                    sources,
+                    reports,
+                    workers=workers,
+                    staging_root=staging_root,
+                    baseline=identity,
+                )
+    finally:
+        if identity is not None:
+            identity.check_unchanged()
     for source in sources:
         source.check_unchanged()
     if not allow_rejected and any(

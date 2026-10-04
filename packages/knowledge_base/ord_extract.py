@@ -12,6 +12,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from .ord_incremental import OrdBaselineLookup
 from .ord_measurements import recorded_conditions, recorded_yields, representation_gaps
 from .ord_reader import (
     ORD_LICENSE,
@@ -32,6 +33,8 @@ class OrdExtractionStats:
     reactions_seen: int = 0
     outcomes_seen: int = 0
     records_emitted: int = 0
+    rows_skipped_verified: int = 0
+    records_skipped_existing: int = 0
     reactions_emitted: int = 0
     rejected_reactions: int = 0
     rejected_outcomes: int = 0
@@ -219,6 +222,7 @@ def iter_ord_evidence(
     source_revision: str,
     stats: OrdExtractionStats | None = None,
     row_group: int | None = None,
+    baseline: OrdBaselineLookup | None = None,
 ) -> Iterator[ReactionEvidence]:
     """Read only current ORD Parquet; caller verifies the source hash beforehand.
 
@@ -266,6 +270,15 @@ def iter_ord_evidence(
             try:
                 if row_id != reaction.reaction_id:
                     raise OrdRecordError("row_reaction_id_mismatch")
+                if (
+                    baseline is not None
+                    and len(reaction.outcomes) == 1
+                    and baseline.has_single_record(
+                        reaction.reaction_id, source_path, source_sha256
+                    )
+                ):
+                    stats.rows_skipped_verified += 1
+                    continue
                 yield from _reaction_records(
                     reaction,
                     dataset_id=view.dataset_id,

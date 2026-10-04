@@ -21,6 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # Operator commands support both module and direct-path execution.
 from packages.knowledge_base.ord_import import extraction_totals, iter_import_records  # noqa: E402
+from packages.knowledge_base.ord_incremental import VerifiedOrdBaseline  # noqa: E402
 from packages.knowledge_base.ord_reader import OrdSourceError, verify_ord_sources  # noqa: E402
 
 
@@ -37,6 +38,11 @@ def _arguments(argv: list[str] | None):
         required=True,
         type=Path,
         help="New immutable SQLite asset; existing outputs are refused.",
+    )
+    parser.add_argument(
+        "--base-library",
+        type=Path,
+        help="Reuse an immutable verified ORD SQLite baseline matching the complete manifest; no source filters.",
     )
     parser.add_argument(
         "--report",
@@ -74,6 +80,7 @@ def _arguments(argv: list[str] | None):
 def main(argv: list[str] | None = None) -> int:
     args = _arguments(argv)
     reports = []
+    base_library = None
     report_path = args.report.resolve() if args.report else None
     report_allowed = False
     result = {
@@ -81,6 +88,7 @@ def main(argv: list[str] | None = None) -> int:
         "output": str(args.output.absolute()),
         "workers": args.workers,
         "allow_rejected": args.allow_rejected,
+        "base_library": str(args.base_library.absolute()) if args.base_library else None,
     }
     try:
         root = (args.source_dir or args.manifest.parent).resolve(strict=True)
@@ -88,6 +96,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.report:
             if (
                 report_path == output
+                or (
+                    args.base_library is not None
+                    and report_path == args.base_library.resolve()
+                )
                 or report_path.is_relative_to(root)
                 or report_path.is_relative_to(PROJECT_ROOT)
             ):
@@ -109,6 +121,9 @@ def main(argv: list[str] | None = None) -> int:
                 "Output must be outside the read-only ORD source directory"
             )
         all_sources = verify_ord_sources(args.manifest, root)
+        result["files_verified"] = len(all_sources)
+        if args.base_library and (args.source or args.exclude_source):
+            raise ValueError("--base-library cannot be combined with --source or --exclude-source")
         known = {source.path for source in all_sources}
         requested = set(args.source or args.exclude_source)
         if not requested <= known:
@@ -134,6 +149,8 @@ def main(argv: list[str] | None = None) -> int:
         # This is the only index implementation. Owned and supplied by the main agent.
         from packages.knowledge_base.reaction_library import compile_reaction_library
 
+        if args.base_library is not None:
+            base_library = VerifiedOrdBaseline(args.base_library, sources)
         output.parent.mkdir(parents=True, exist_ok=True)
         records = iter_import_records(
             sources,
@@ -141,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
             workers=args.workers,
             staging_root=output.parent,
             allow_rejected=args.allow_rejected,
+            base_library=base_library,
         )
         compiler_sources = [
             {
@@ -175,6 +193,10 @@ def main(argv: list[str] | None = None) -> int:
         }
     finally:
         result["extraction"] = {"totals": extraction_totals(reports), "files": reports}
+        if base_library is not None:
+            result["incremental"] = base_library.audit(
+                totals=result["extraction"]["totals"], library=result.get("library")
+            )
         encoded = json.dumps(result, sort_keys=True, ensure_ascii=True)
         if report_allowed:
             try:
