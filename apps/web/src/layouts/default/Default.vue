@@ -1,26 +1,38 @@
 <template>
   <v-app>
     <div
+      ref="shell"
       class="workspace-shell"
       :class="{
         'sidebar-compact': compact,
         'mobile-navigation-open': mobileOpen,
       }"
+      @keydown="handleNavigationKeydown"
     >
+      <AppBar
+        :mobile="mobile"
+        :navigation-open="mobile ? mobileOpen : !compact"
+        :online="online"
+        @toggle-navigation="toggleNavigation"
+        @navigate="closeNavigation()"
+      />
       <button
         v-if="mobileOpen"
+        type="button"
         class="navigation-scrim"
         aria-label="关闭导航"
-        @click="mobileOpen = false"
+        @click="closeNavigation()"
       />
       <Sidebar
+        id="workspace-navigation"
         :compact="compact && !mobile"
         :inert="mobile && !mobileOpen ? true : undefined"
         :aria-hidden="mobile && !mobileOpen ? 'true' : undefined"
-        @navigate="mobileOpen = false"
+        :role="mobile ? 'dialog' : undefined"
+        :aria-modal="mobile && mobileOpen ? 'true' : undefined"
+        @navigate="closeNavigation()"
       />
-      <div class="workspace-main">
-        <AppBar @toggle-navigation="toggleNavigation" />
+      <div class="workspace-main" :inert="mobileOpen ? true : undefined">
         <div v-if="!online" class="workspace-connection-message" role="status">
           网络已断开
         </div>
@@ -32,7 +44,7 @@
   </v-app>
 </template>
 <script setup>
-import { computed, onMounted, onBeforeUnmount, ref } from "vue";
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from "vue";
 import { useWindowSize, useOnline } from "@vueuse/core";
 import Sidebar from "./Sidebar.vue";
 import AppBar from "./AppBar.vue";
@@ -42,16 +54,61 @@ const workspace = useWorkspaceStore();
 const online = useOnline();
 const { width } = useWindowSize();
 const mobile = computed(() => width.value < 900);
-const preferredCompact = ref(null);
-const compact = computed(
-  () => !mobile.value && (preferredCompact.value ?? width.value < 1180),
-);
+const shell = ref(null);
+const preferredCompact = ref(false);
+const compact = computed(() => !mobile.value && preferredCompact.value);
 const mobileOpen = ref(false);
 let timer;
-function toggleNavigation() {
-  if (mobile.value) mobileOpen.value = !mobileOpen.value;
-  else preferredCompact.value = !compact.value;
+function navigationControls() {
+  return [
+    ...(shell.value?.querySelectorAll(
+      '#workspace-navigation a[href], #workspace-navigation button:not([disabled]), #workspace-navigation [tabindex="0"]',
+    ) || []),
+  ];
 }
+function focusToggle() {
+  shell.value?.querySelector(".workspace-navigation-toggle")?.focus();
+}
+function closeNavigation() {
+  if (!mobileOpen.value) return;
+  mobileOpen.value = false;
+  nextTick(focusToggle);
+}
+async function toggleNavigation() {
+  if (!mobile.value) {
+    preferredCompact.value = !compact.value;
+    return;
+  }
+  if (mobileOpen.value) return closeNavigation();
+  mobileOpen.value = true;
+  await nextTick();
+  navigationControls()[0]?.focus();
+}
+function handleNavigationKeydown(event) {
+  if (!mobileOpen.value) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeNavigation();
+  } else if (event.key === "Tab") {
+    const controls = navigationControls();
+    const first = controls[0];
+    const last = controls.at(-1);
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last?.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first?.focus();
+    }
+  }
+}
+watch(mobile, () => {
+  const focused = shell.value
+    ?.querySelector(".workspace-sidebar")
+    ?.contains(document.activeElement);
+  mobileOpen.value = false;
+  if (focused) nextTick(focusToggle);
+});
 onMounted(() => {
   workspace.refresh(true);
   timer = setInterval(() => workspace.refresh(true), 15000);

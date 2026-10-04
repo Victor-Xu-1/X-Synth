@@ -1,17 +1,28 @@
 <template>
   <aside class="workspace-sidebar" :class="{ compact }" aria-label="工作区导航">
-    <router-link
-      to="/"
-      class="workspace-brand"
-      :aria-label="`X-Synth v${version}`"
-      title="X-Synth"
-    >
-      <BrandMark />
-      <span v-if="!compact" class="workspace-brand-copy"
-        ><span>X-Synth</span><small>v{{ version }}</small></span
+    <div class="workspace-drawer-heading">
+      <router-link
+        to="/"
+        class="workspace-brand"
+        :aria-label="`X-Synth v${version}`"
+        title="X-Synth"
+        @click="$emit('navigate')"
       >
-    </router-link>
-    <nav class="workspace-nav">
+        <BrandMark :size="24" />
+        <span v-if="!compact" class="workspace-brand-copy"
+          ><span>X-Synth</span><small>v{{ version }}</small></span
+        >
+      </router-link>
+      <v-btn
+        icon="mdi-close"
+        variant="text"
+        size="small"
+        aria-label="关闭导航"
+        title="关闭导航"
+        @click="$emit('navigate')"
+      />
+    </div>
+    <nav class="workspace-nav" aria-label="研究模块">
       <section v-for="group in mainGroups" :key="group.label" class="nav-group">
         <p v-if="!compact">{{ group.label }}</p>
         <router-link
@@ -50,6 +61,7 @@
       <button
         type="button"
         class="nav-item"
+        aria-label="切换主题"
         :title="compact ? '切换主题' : undefined"
         @click="toggleTheme"
       >
