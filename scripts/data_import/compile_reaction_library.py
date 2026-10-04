@@ -146,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
                 source.as_source() for source in all_sources if source not in sources
             ],
         )
-        # This is the only index implementation. Owned and supplied by the main agent.
+        # Extraction streams into the shared immutable index compiler.
         from packages.knowledge_base.reaction_library import compile_reaction_library
 
         if args.base_library is not None:
