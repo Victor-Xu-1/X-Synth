@@ -11,6 +11,7 @@ import {
 import { API } from "@/common/api";
 import TaskList from "./TaskList.vue";
 import TaskCard from "@/components/workspace/TaskCard.vue";
+import TaskGroups from "@/components/workspace/TaskGroups.vue";
 import TaskInfoDialog from "@/components/workspace/TaskInfoDialog.vue";
 import TaskBatchActions from "@/components/workspace/TaskBatchActions.vue";
 import RoutePreview from "@/components/routes/RoutePreview.vue";
@@ -46,7 +47,11 @@ const stubs = {
     template: '<div><slot name="activator" :props="{}" /><slot /></div>',
   },
   VList: { template: "<div><slot /></div>" },
-  VBtnToggle: { template: "<div><slot /></div>" },
+  VBtnToggle: {
+    props: ["modelValue"],
+    emits: ["update:modelValue"],
+    template: "<div><slot /></div>",
+  },
   VListItem: {
     props: ["title", "disabled"],
     template: '<button :disabled="disabled">{{ title }}</button>',
@@ -100,6 +105,7 @@ async function setup(url = "/results") {
     routes: [
       { path: "/results", component: { render: () => null } },
       { path: "/results/:id", component: { render: () => null } },
+      { path: "/", component: { render: () => null } },
     ],
   });
   await router.push(url);
@@ -142,6 +148,173 @@ test("actual history composition reads one page, keeps server group totals, and 
   expect(wrapper.text()).not.toContain("搜索本页");
   expect(API.post).not.toHaveBeenCalled();
   expect(API.delete).not.toHaveBeenCalled();
+});
+
+test("collection heading and independent group rail use server counts, not the current card count", async () => {
+  API.get.mockResolvedValueOnce(
+    data([row("grouped", { group_id: "g-1" })], 11),
+  );
+  const { wrapper } = await setup("/results?group=g-1");
+  expect(wrapper.get("h1").text()).toBe("任务记录");
+  expect(wrapper.get("#history-collection-title").text()).toBe("项目");
+  expect(wrapper.get(".history-collection-heading [role=status]").text()).toBe(
+    "共 11 个任务，第 1 / 1 页",
+  );
+  expect(wrapper.findComponent(TaskGroups).props()).toMatchObject({
+    allTotal: 42,
+    ungroupedTotal: 31,
+    selected: "g-1",
+    groups: [{ id: "g-1", name: "项目", revision: 3, count: 11 }],
+  });
+  expect(wrapper.findAllComponents(TaskCard)).toHaveLength(1);
+});
+
+test("pending history distinguishes unread counts from an actual empty result", async () => {
+  let respond;
+  API.get.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        respond = resolve;
+      }),
+  );
+  const { wrapper } = await setup();
+  expect(wrapper.get(".history-groups").classes()).toContain(
+    "history-groups-pending",
+  );
+  expect(wrapper.get(".history-collection-heading [role=status]").text()).toBe(
+    "正在读取任务",
+  );
+  expect(wrapper.find(".workspace-empty").exists()).toBe(false);
+  respond(data([], 0));
+  await flushPromises();
+  expect(wrapper.get(".history-groups").classes()).not.toContain(
+    "history-groups-pending",
+  );
+  expect(wrapper.text()).toContain("共 0 个任务");
+  expect(wrapper.text()).toContain("暂无任务记录");
+});
+
+test("comparable cards preserve long titles, chemical identity, actual status and unknown route counts, with actions in the footer", async () => {
+  const title = "先导系列的完整研究名称".repeat(12);
+  const smiles = "[13CH3][C@@H](O)C(=O)[O-].[Na+]";
+  API.get.mockResolvedValueOnce(
+    data([
+      row("running", {
+        description: title,
+        target_smiles: smiles,
+        result_state: "searching",
+        num_trees: 0,
+        modified: "2026-10-04T00:00:00Z",
+      }),
+      row("unclosed", { result_state: "failed_unclosed", num_trees: null }),
+    ]),
+  );
+  const { wrapper } = await setup();
+  const cards = wrapper.findAllComponents(TaskCard);
+  expect(cards[0].get(".task-card-title").attributes("title")).toBe(title);
+  expect(cards[0].get("[data-smiles]").attributes("data-smiles")).toBe(smiles);
+  expect(cards[0].get(".state-badge").text()).toBe("搜索中");
+  expect(cards[0].get(".task-route-count").text()).toBe("0 条路线");
+  expect(cards[0].get("time").attributes("datetime")).toBe(
+    "2026-10-04T00:00:00Z",
+  );
+  expect(cards[0].get("time").attributes("title")).toContain("2026");
+  expect(cards[1].get(".state-badge").text()).toBe("未闭合");
+  expect(cards[1].get(".task-route-count").text()).toBe("路线数未记录");
+  expect(cards[1].get("time").text()).toBe("时间未记录");
+  expect(cards[0].find(".task-card-controls button").exists()).toBe(false);
+  for (const label of ["重命名任务", "任务信息", "预览路线", "重新搜索"])
+    expect(
+      cards[0].get(`.task-card-footer [aria-label="${label}"]`).exists(),
+    ).toBe(true);
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test("toolbar reset clears only search and status, keeps the selected group, and reads the server again", async () => {
+  const { wrapper, router } = await setup(
+    "/results?query=CCO&status=completed&group=g-1",
+  );
+  await wrapper
+    .get('.history-view-tools [aria-label="清除筛选"]')
+    .trigger("click");
+  await flushPromises();
+  expect(API.get.mock.calls.at(-1)).toEqual([
+    "/api/v1/results/page",
+    {
+      limit: 24,
+      offset: 0,
+      query: "",
+      status: "all",
+      group: "g-1",
+      archived: false,
+    },
+  ]);
+  expect(router.currentRoute.value.query).toEqual({ group: "g-1" });
+  expect(
+    wrapper.find('.history-view-tools [aria-label="清除筛选"]').exists(),
+  ).toBe(false);
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test("a failed refresh keeps the actual cards, shows the server error, and disables metadata actions without claiming an empty result", async () => {
+  const { wrapper } = await setup();
+  API.get.mockRejectedValueOnce(
+    new Error(JSON.stringify({ detail: "查询超时" })),
+  );
+  await wrapper.get('[aria-label="刷新任务"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.get(".history-error").text()).toContain("查询超时");
+  expect(wrapper.findAllComponents(TaskCard)).toHaveLength(1);
+  expect(wrapper.get(".state-badge").text()).toBe("已完成");
+  expect(wrapper.find(".workspace-empty").exists()).toBe(false);
+  expect(wrapper.get('[aria-label="移入回收箱"]').element.disabled).toBe(true);
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test("card rerun only prefills the original search parameters and never submits a model job", async () => {
+  const { wrapper, router } = await setup();
+  const settings = {
+    smiles: "[13CH3][C@@H](O)C(=O)[O-].[Na+]",
+    description: "原始搜索名称",
+    expansion_time: 120,
+    strategies: ["mcts", "retro_star"],
+  };
+  API.get.mockResolvedValueOnce({ ...row(), settings });
+  await wrapper
+    .get('.task-card-footer [aria-label="重新搜索"]')
+    .trigger("click");
+  await flushPromises();
+  expect(router.currentRoute.value.path).toBe("/");
+  expect(router.currentRoute.value.query).toEqual({
+    smiles: settings.smiles,
+    task_name: settings.description,
+    search_settings: JSON.stringify(settings),
+  });
+  expect(API.post).not.toHaveBeenCalled();
+  expect(API.put).not.toHaveBeenCalled();
+  expect(API.delete).not.toHaveBeenCalled();
+});
+
+test("view switching reuses the same server page and preserves filters and selection", async () => {
+  const { wrapper, router } = await setup(
+    "/results?query=CCO&status=completed&group=g-1",
+  );
+  await wrapper.get('input[aria-label="全选当前页"]').setValue(true);
+  wrapper
+    .findComponent(".history-view-toggle")
+    .vm.$emit("update:modelValue", "list");
+  await flushPromises();
+  expect(wrapper.find(".task-table").exists()).toBe(true);
+  expect(wrapper.findAllComponents(TaskCard)).toHaveLength(0);
+  expect(wrapper.findComponent(TaskBatchActions).props("count")).toBe(1);
+  expect(router.currentRoute.value.query).toEqual({
+    query: "CCO",
+    status: "completed",
+    group: "g-1",
+    view: "list",
+  });
+  expect(API.get).toHaveBeenCalledTimes(1);
+  expect(API.post).not.toHaveBeenCalled();
 });
 
 test("server search displays off-page matches and matching total without local filtering", async () => {
@@ -341,14 +514,10 @@ test("zero-route waiting task in the info dialog opens progress and closes the i
   expect(API.post).not.toHaveBeenCalled();
 });
 
-test("all owned Vue surfaces compile scripts, templates and responsive styles without touching shared navigation", () => {
+test("the history page and its exclusive card compile scripts, templates and responsive styles", () => {
   for (const relative of [
     "views/workspace/TaskList.vue",
     "components/workspace/TaskCard.vue",
-    "components/workspace/TaskActions.vue",
-    "components/workspace/TaskInfoDialog.vue",
-    "components/workspace/TaskGroups.vue",
-    "components/workspace/TaskBatchActions.vue",
   ]) {
     const filename = resolve(__dirname, "../../", relative),
       source = readFileSync(filename, "utf8");

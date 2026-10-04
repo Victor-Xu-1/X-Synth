@@ -1,10 +1,7 @@
 <template>
   <section class="standard-page task-history" :aria-busy="loading">
-    <header class="page-heading">
-      <div>
-        <h1>{{ archived ? "回收箱" : "任务记录" }}</h1>
-        <p role="status">{{ countLabel }}</p>
-      </div>
+    <header class="page-heading history-heading">
+      <h1>任务记录</h1>
       <div class="page-actions">
         <v-tooltip text="刷新任务">
           <template #activator="{ props }">
@@ -19,13 +16,19 @@
             />
           </template>
         </v-tooltip>
-        <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" to="/"
+        <v-btn
+          class="history-create"
+          variant="flat"
+          prepend-icon="mdi-plus"
+          to="/"
           >新建任务</v-btn
         >
       </div>
     </header>
     <div class="history-layout">
       <TaskGroups
+        class="history-groups"
+        :class="{ 'history-groups-pending': !loaded }"
         :groups="groups"
         :selected="group"
         :archived="archived"
@@ -43,12 +46,18 @@
         @name="groupForm.name = $event"
         @close="groupForm = null"
       />
-      <main class="history-content">
-        <div class="task-list-filters">
+      <main class="history-content" aria-labelledby="history-collection-title">
+        <header class="history-collection-heading">
+          <h2 id="history-collection-title" :title="collectionTitle">
+            {{ collectionTitle }}
+          </h2>
+          <p role="status">{{ countLabel }}</p>
+        </header>
+        <div class="task-list-filters" role="search" aria-label="筛选任务">
           <v-text-field
             v-model="query"
             prepend-inner-icon="mdi-magnify"
-            label="搜索名称、SMILES 或 ID"
+            label="名称、SMILES 或 ID"
             aria-label="搜索任务"
             density="compact"
             variant="outlined"
@@ -64,38 +73,51 @@
             aria-label="任务状态"
             hide-details
           />
-          <v-btn-toggle
-            v-model="view"
-            mandatory
-            divided
-            density="compact"
-            variant="outlined"
-            class="history-view-toggle"
-            aria-label="任务历史视图"
-          >
-            <v-tooltip text="结构卡片">
+          <div class="history-view-tools">
+            <v-tooltip v-if="filtering" text="清除筛选">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"
-                  value="cards"
-                  icon="mdi-view-grid-outline"
-                  aria-label="结构卡片"
-                  :aria-pressed="view === 'cards'"
+                  icon="mdi-filter-remove-outline"
+                  variant="text"
+                  aria-label="清除筛选"
+                  @click="clearFilters"
                 />
               </template>
             </v-tooltip>
-            <v-tooltip text="紧凑列表">
-              <template #activator="{ props }">
-                <v-btn
-                  v-bind="props"
-                  value="list"
-                  icon="mdi-format-list-bulleted"
-                  aria-label="紧凑列表"
-                  :aria-pressed="view === 'list'"
-                />
-              </template>
-            </v-tooltip>
-          </v-btn-toggle>
+            <v-btn-toggle
+              v-model="view"
+              mandatory
+              divided
+              density="compact"
+              variant="outlined"
+              class="history-view-toggle"
+              aria-label="任务历史视图"
+            >
+              <v-tooltip text="结构卡片">
+                <template #activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    value="cards"
+                    icon="mdi-view-grid-outline"
+                    aria-label="结构卡片"
+                    :aria-pressed="view === 'cards'"
+                  />
+                </template>
+              </v-tooltip>
+              <v-tooltip text="紧凑列表">
+                <template #activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    value="list"
+                    icon="mdi-format-list-bulleted"
+                    aria-label="紧凑列表"
+                    :aria-pressed="view === 'list'"
+                  />
+                </template>
+              </v-tooltip>
+            </v-btn-toggle>
+          </div>
         </div>
         <div v-if="error" class="tool-error history-error" role="alert">
           <span>{{ error }}</span
@@ -112,6 +134,8 @@
           {{ actionError }}
         </div>
         <TaskBatchActions
+          class="history-selection"
+          :class="{ 'has-selection': selection.length > 0 }"
           :groups="groups"
           :count="selection.length"
           :page-size="rows.length"
@@ -208,13 +232,15 @@
           <table class="data-table task-table">
             <thead>
               <tr>
-                <th class="selection-cell"></th>
-                <th>目标与名称</th>
-                <th>状态</th>
-                <th>路线</th>
-                <th>分组</th>
-                <th>更新时间</th>
-                <th>操作</th>
+                <th class="selection-cell" scope="col">
+                  <span class="history-selection-label">选择任务</span>
+                </th>
+                <th scope="col">目标与名称</th>
+                <th scope="col">状态</th>
+                <th scope="col">路线</th>
+                <th scope="col">分组</th>
+                <th scope="col">更新时间</th>
+                <th scope="col">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -512,6 +538,15 @@ const selectionArchivable = computed(
 const groupNames = computed(
   () => new Map(groups.value.map((item) => [item.id, item.name])),
 );
+const collectionTitle = computed(() =>
+  archived.value
+    ? "回收箱"
+    : group.value === "all"
+      ? "全部任务"
+      : group.value === "ungrouped"
+        ? "未分组"
+        : groupNames.value.get(group.value) || "分组已变更",
+);
 function groupLabel(task) {
   return task?.group_id
     ? groupNames.value.get(task.group_id) || "分组已变更"
@@ -524,42 +559,181 @@ function isInfoLoading(task) {
 
 <style scoped>
 .task-history {
+  width: 100%;
+  min-height: 100%;
   min-width: 0;
+  padding: 24px 28px;
+  background: var(--ws-canvas, var(--ws-muted-surface));
   letter-spacing: 0;
 }
-.page-heading {
-  flex-wrap: wrap;
+.history-heading {
   gap: 12px;
+  margin-bottom: 24px;
+}
+.history-heading h1 {
+  font-size: 22px;
+  font-weight: 600;
+}
+.history-heading .page-actions {
+  gap: 6px;
+}
+.history-heading :deep(.v-btn) {
+  height: 36px;
+  border-radius: 4px;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+.history-heading :deep(.v-btn--icon) {
+  width: 36px;
+  min-width: 36px;
+  color: var(--ws-muted);
+}
+.history-create {
+  background: var(--ws-accent, #16876f);
+  color: #fff;
 }
 .history-layout {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  gap: 22px;
+  grid-template-columns: 184px minmax(0, 1fr);
+  gap: 24px;
   align-items: start;
+}
+.history-groups {
+  padding-right: 16px;
+}
+.history-groups :deep(header) {
+  min-height: 36px;
+  margin-bottom: 12px;
+}
+.history-groups :deep(.group-link) {
+  min-height: 38px;
+  padding: 9px 8px;
+}
+.history-groups :deep(.group-link[aria-current]) {
+  background: var(
+    --ws-accent-soft,
+    color-mix(in srgb, #16876f 12%, var(--ws-surface))
+  );
+  color: var(--ws-accent, #16876f);
+}
+.history-groups :deep(.group-link small) {
+  min-width: 22px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.history-groups :deep(.group-link[aria-current] small) {
+  color: inherit;
+}
+.history-groups-pending :deep(.group-link small) {
+  visibility: hidden;
+}
+.history-groups :deep(.group-row > .v-btn) {
+  color: var(--ws-muted);
 }
 .history-content {
   min-width: 0;
 }
+.history-collection-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-height: 36px;
+  margin-bottom: 12px;
+}
+.history-collection-heading h2 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+}
+.history-collection-heading p {
+  flex-shrink: 0;
+  margin: 0;
+  color: var(--ws-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
 .task-list-filters {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 190px auto;
+  grid-template-columns: minmax(0, 1fr) 200px auto;
   gap: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   align-items: center;
+}
+.task-list-filters > :deep(.v-input) {
+  min-width: 0;
+  font-size: 12px;
+}
+.task-list-filters :deep(.v-field) {
+  border-radius: 4px;
+  background: var(--ws-surface);
+}
+.task-list-filters :deep(.v-field__input) {
+  min-width: 0;
+}
+.task-list-filters :deep(.v-select__selection-text) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-view-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.history-view-tools > :deep(.v-btn) {
+  width: 36px;
+  height: 40px;
+  min-width: 36px;
+  color: var(--ws-muted);
+  border-radius: 4px;
 }
 .history-view-toggle {
   height: 40px;
   border-radius: 4px;
+  background: var(--ws-surface);
+  color: var(--ws-muted);
 }
 .history-view-toggle :deep(.v-btn) {
-  width: 38px;
-  min-width: 38px;
+  width: 36px;
+  min-width: 36px;
   height: 40px;
   border-radius: 0;
 }
+.history-view-toggle :deep(.v-btn--active) {
+  background: var(
+    --ws-accent-soft,
+    color-mix(in srgb, #16876f 12%, var(--ws-surface))
+  );
+  color: var(--ws-accent, #16876f);
+}
+.history-selection {
+  margin-bottom: 0;
+  padding-bottom: 8px;
+}
+.history-selection :deep(.v-selection-control) {
+  flex: 0 0 32px;
+  color: var(--ws-accent, #16876f);
+}
+.history-selection :deep(.batch-count) {
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.history-selection.has-selection :deep(.batch-count) {
+  color: var(--ws-accent, #16876f);
+  font-weight: 600;
+}
+.history-selection :deep(.batch-tools .v-btn) {
+  color: var(--ws-muted);
+}
 .history-progress {
   height: 2px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
+  color: var(--ws-accent, #16876f);
 }
 .history-error {
   display: flex;
@@ -574,20 +748,37 @@ function isInfoLoading(task) {
 .task-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 265px), 1fr));
-  gap: 14px;
+  gap: 16px;
 }
 .task-table-scroll {
   overflow-x: auto;
   max-width: 100%;
+  border: 1px solid var(--ws-border);
+  border-radius: 6px;
+  background: var(--ws-surface);
 }
 .task-table {
   min-width: 850px;
 }
+.task-table th {
+  background: var(--ws-muted-surface);
+  white-space: nowrap;
+}
 .task-table td {
-  padding: 8px;
+  padding: 10px 8px;
 }
 .task-table tr.selected {
-  background: var(--ws-muted-surface);
+  background: var(
+    --ws-accent-soft,
+    color-mix(in srgb, #16876f 12%, var(--ws-surface))
+  );
+}
+.history-selection-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 .selection-cell {
   width: 36px;
@@ -596,8 +787,11 @@ function isInfoLoading(task) {
 .task-target-cell {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   max-width: 300px;
+}
+.task-target-cell > a {
+  flex: 0 0 64px;
 }
 .task-row-title {
   min-width: 0;
@@ -652,9 +846,17 @@ function isInfoLoading(task) {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin-top: 18px;
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ws-border);
   font-size: 12px;
   color: var(--ws-muted);
+}
+.history-pagination span {
+  min-width: 0;
+  text-align: center;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 .history-pagination :deep(.v-btn) {
   width: 32px;
@@ -662,6 +864,10 @@ function isInfoLoading(task) {
   min-width: 32px;
 }
 @media (max-width: 1000px) {
+  .history-layout {
+    grid-template-columns: 164px minmax(0, 1fr);
+    gap: 18px;
+  }
   .task-list-filters {
     grid-template-columns: minmax(0, 1fr) auto;
   }
@@ -670,15 +876,60 @@ function isInfoLoading(task) {
   }
 }
 @media (max-width: 760px) {
+  .task-history {
+    padding: 18px 16px;
+  }
+  .history-heading {
+    margin-bottom: 18px;
+  }
   .history-layout {
     grid-template-columns: minmax(0, 1fr);
     gap: 14px;
+  }
+  .history-groups {
+    padding: 0 0 12px;
+  }
+  .history-groups :deep(header) {
+    min-height: 28px;
+    margin-bottom: 6px;
+  }
+  .history-collection-heading {
+    flex-wrap: wrap;
+  }
+  .history-collection-heading h2 {
+    max-width: 100%;
+  }
+  .history-collection-heading p {
+    flex-shrink: 1;
+    overflow-wrap: anywhere;
   }
   .task-list-filters {
     grid-template-columns: minmax(0, 1fr) auto;
   }
   .task-card-grid {
-    gap: 10px;
+    gap: 12px;
+  }
+}
+@media (max-width: 380px) {
+  .task-history {
+    padding: 16px 12px;
+  }
+  .history-heading h1 {
+    font-size: 20px;
+  }
+  .history-heading .page-actions {
+    gap: 2px;
+  }
+  .task-list-filters {
+    gap: 8px;
+  }
+  .history-view-tools {
+    gap: 2px;
+  }
+  .history-view-toggle :deep(.v-btn),
+  .history-view-tools > :deep(.v-btn) {
+    width: 32px;
+    min-width: 32px;
   }
 }
 </style>
