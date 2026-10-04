@@ -4,12 +4,31 @@ import {
   canConnect,
   attachPrecursors,
   cleanGraph,
+  ROUTE_NODE_SIZE,
 } from "./route-graph";
 
 const route = {
   target_smiles: "CCO",
   steps: [{ product: "CCO", precursors: ["CC=O", "[H][H]"], confidence: 0.8 }],
 };
+
+test("chemical cards have a single immutable geometry for layout and export", () => {
+  expect(ROUTE_NODE_SIZE.molecule).toEqual({ width: 224, height: 214 });
+  expect(Object.isFrozen(ROUTE_NODE_SIZE.molecule)).toBe(true);
+  const graph = graphFromCandidate(route);
+  for (const first of graph.nodes)
+    for (const second of graph.nodes) {
+      if (first.id === second.id) continue;
+      const a = ROUTE_NODE_SIZE[first.type],
+        b = ROUTE_NODE_SIZE[second.type];
+      expect(
+        first.position.x + a.width <= second.position.x ||
+          second.position.x + b.width <= first.position.x ||
+          first.position.y + a.height <= second.position.y ||
+          second.position.y + b.height <= first.position.y,
+      ).toBe(true);
+    }
+});
 test("graph preserves every precursor and has stable measured layout", () => {
   const graph = graphFromCandidate(route);
   expect(graph.nodes).toHaveLength(4);

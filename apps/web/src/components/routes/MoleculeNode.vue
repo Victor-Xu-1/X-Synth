@@ -9,16 +9,33 @@
     </div>
     <SmilesImage
       :smiles="data.smiles"
-      :width="168"
-      :height="95"
+      :width="ROUTE_NODE_SIZE.molecule.width - 24"
+      :height="144"
       :show-error-image="false"
     />
-    <div class="graph-node-smiles" :title="data.smiles">{{ data.smiles }}</div>
+    <div class="graph-node-footer">
+      <div class="graph-node-smiles" :title="data.smiles">
+        {{ data.smiles }}
+      </div>
+      <v-tooltip v-if="!data.overview" text="查看化合物详情">
+        <template #activator="{ props }">
+          <v-btn
+            v-bind="props"
+            class="graph-node-action nodrag"
+            icon="mdi-dots-horizontal"
+            size="x-small"
+            variant="text"
+            aria-label="查看化合物详情"
+          />
+        </template>
+      </v-tooltip>
+    </div>
     <Handle v-if="!data.isTarget" type="source" :position="Position.Right" />
   </div>
 </template>
 <script setup>
 import { Handle, Position } from "@vue-flow/core";
 import SmilesImage from "@/components/SmilesImage.vue";
+import { ROUTE_NODE_SIZE } from "@/common/route-graph";
 defineProps({ data: { type: Object, required: true }, selected: Boolean });
 </script>

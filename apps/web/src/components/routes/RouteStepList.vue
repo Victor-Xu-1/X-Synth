@@ -59,7 +59,7 @@
         </div>
       </dl>
       <v-lazy
-        :min-height="300"
+        :min-height="360"
         :options="{ rootMargin: '250px' }"
         transition="fade-transition"
       >
@@ -259,10 +259,16 @@ const hasMetadata = (step) =>
   border-bottom: 1px solid var(--ws-border);
   min-width: 0;
 }
-.route-step.active,
-.route-overview.active {
+.route-step.active {
   border-left: 3px solid var(--ws-text);
   padding-left: 12px;
+}
+.route-overview.active {
+  border-left: 0;
+}
+.route-overview header > strong {
+  font-size: 14px;
+  color: var(--ws-accent, #16876f);
 }
 .step-heading,
 .route-overview header {
@@ -391,10 +397,10 @@ summary:focus-visible {
   gap: 12px;
 }
 .overview-route-graph {
-  height: 300px;
+  height: 360px;
   min-width: 0;
-  border: 1px solid var(--ws-border);
-  border-radius: 6px;
+  border-top: 1px solid var(--ws-border);
+  border-bottom: 1px solid var(--ws-border);
   overflow: hidden;
 }
 .overview-materials {

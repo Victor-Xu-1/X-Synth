@@ -4,8 +4,12 @@
     :class="{ compact }"
     aria-label="合成路线阅读工作台"
   >
-    <RouteFilters v-model="filters" :candidates="candidates" />
-    <div class="route-reader-selection">
+    <RouteFilters
+      v-if="view === 'overview'"
+      v-model="filters"
+      :candidates="candidates"
+    />
+    <div v-if="view === 'overview'" class="route-reader-selection">
       <v-checkbox-btn
         :model-value="allSelected"
         :indeterminate="picked.length > 0 && !allSelected"
@@ -22,37 +26,6 @@
         @click="readSelected"
         >查看选中路线</v-btn
       >
-      <v-btn
-        v-if="readingIds.length"
-        prepend-icon="mdi-arrow-left"
-        variant="text"
-        size="small"
-        @click="showAll"
-        >全部路线</v-btn
-      >
-      <div class="reader-view-controls">
-        <v-btn-toggle
-          v-model="view"
-          mandatory
-          density="compact"
-          variant="text"
-          aria-label="路线视图"
-        >
-          <v-btn value="overview" prepend-icon="mdi-view-list-outline"
-            >路线列表</v-btn
-          >
-          <v-btn value="graph" prepend-icon="mdi-graph-outline">路线图</v-btn>
-          <v-btn value="steps" prepend-icon="mdi-format-list-numbered"
-            >步骤</v-btn
-          >
-          <v-btn value="conditions" prepend-icon="mdi-beaker-outline"
-            >反应条件</v-btn
-          >
-          <v-btn value="materials" prepend-icon="mdi-flask-outline"
-            >物料清单</v-btn
-          >
-        </v-btn-toggle>
-      </div>
     </div>
     <div
       v-if="view !== 'overview' && readingChoices.length"
@@ -60,6 +33,13 @@
       role="tablist"
       aria-label="所选合成路线"
     >
+      <v-btn
+        prepend-icon="mdi-arrow-left"
+        size="small"
+        variant="text"
+        @click="showAll"
+        >全部路线</v-btn
+      >
       <button
         v-for="choice in readingChoices"
         :key="choice.route.route_id"
@@ -147,6 +127,27 @@
       </div>
     </div>
     <div v-else-if="candidate" class="reader-detail-body">
+      <nav class="reader-tool-rail" aria-label="路线视图">
+        <v-tooltip
+          v-for="tool in readerTools"
+          :key="tool.value"
+          :text="tool.label"
+          location="right"
+        >
+          <template #activator="{ props }">
+            <v-btn
+              v-bind="props"
+              :icon="tool.icon"
+              :aria-label="tool.label"
+              :aria-pressed="view === tool.value"
+              :class="{ active: view === tool.value }"
+              size="small"
+              variant="text"
+              @click="view = tool.value"
+            />
+          </template>
+        </v-tooltip>
+      </nav>
       <main class="reader-main">
         <div v-show="view === 'graph'" class="reader-graph">
           <RouteGraph
@@ -243,6 +244,12 @@ import RouteStepList from "./RouteStepList.vue";
 import RouteConditions from "./RouteConditions.vue";
 import RouteMaterials from "./RouteMaterials.vue";
 import RouteEvidencePanel from "./RouteEvidencePanel.vue";
+const readerTools = [
+  { value: "graph", label: "路线图", icon: "mdi-graph-outline" },
+  { value: "steps", label: "步骤", icon: "mdi-format-list-numbered" },
+  { value: "conditions", label: "反应条件", icon: "mdi-beaker-outline" },
+  { value: "materials", label: "物料清单", icon: "mdi-flask-outline" },
+];
 const props = defineProps({
   candidates: { type: Array, default: () => [] },
   stockSnapshot: String,
@@ -436,20 +443,11 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid var(--ws-border);
   font-size: 12px;
 }
-.reader-view-controls {
-  margin-left: auto;
-  max-width: 100%;
-  overflow-x: auto;
-}
-.reader-view-controls :deep(.v-btn) {
-  font-size: 12px;
-  padding: 0 12px;
-}
 .reader-route-tabs {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 20px;
+  gap: 8px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--ws-border);
   overflow-x: auto;
 }
@@ -462,8 +460,9 @@ onBeforeUnmount(() => {
   border-bottom: 2px solid transparent;
 }
 .reader-route-tabs button.active {
-  color: var(--ws-text);
-  border-bottom-color: #16866c;
+  color: var(--ws-accent, #16876f);
+  border-bottom-color: var(--ws-accent, #16876f);
+  background: var(--ws-accent-soft, #e9f5ef);
 }
 .reader-route-summary {
   padding: 10px 20px;
@@ -480,12 +479,18 @@ onBeforeUnmount(() => {
   margin-left: auto;
 }
 .reader-route-overviews {
-  padding: 0 16px;
+  padding: 16px 20px;
+  background: var(--ws-canvas, #f3f5f6);
 }
 .reader-overview-entry {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr);
   align-items: start;
+  padding: 0 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--ws-border);
+  border-radius: 8px;
+  background: var(--ws-surface);
 }
 .reader-overview-entry > :first-child {
   margin-top: 14px;
@@ -501,20 +506,34 @@ onBeforeUnmount(() => {
 }
 .reader-detail-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
   align-items: start;
+}
+.reader-tool-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  align-self: stretch;
+  padding: 14px 6px;
+  border-right: 1px solid var(--ws-border);
+  background: var(--ws-surface);
+}
+.reader-tool-rail .active {
+  color: var(--ws-accent, #16876f);
+  background: var(--ws-accent-soft, #e9f5ef);
 }
 .reader-main {
   min-width: 0;
 }
 .reader-graph {
-  height: max(460px, 60vh);
+  height: max(520px, calc(100dvh - 240px));
   min-width: 0;
 }
 .reader-detail-body > :deep(.route-inspector) {
   position: static;
-  width: 310px;
-  max-height: 720px;
+  width: 336px;
+  max-height: calc(100dvh - 240px);
   box-shadow: none;
   min-width: 0;
 }
@@ -533,14 +552,15 @@ summary {
   min-height: 300px;
 }
 .compact .reader-graph {
-  height: 56vh;
+  height: 65vh;
   min-height: 350px;
 }
 @media (max-width: 1100px) {
   .reader-detail-body {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 56px minmax(0, 1fr);
   }
   .reader-detail-body > :deep(.route-inspector) {
+    grid-column: 2;
     width: 100%;
     border-left: 0;
     border-top: 1px solid var(--ws-border);
@@ -551,9 +571,18 @@ summary {
     padding: 6px 10px;
     gap: 4px;
   }
-  .reader-view-controls {
-    flex-basis: 100%;
-    margin: 0;
+  .reader-detail-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .reader-tool-rail {
+    flex-direction: row;
+    padding: 6px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--ws-border);
+  }
+  .reader-detail-body > :deep(.route-inspector) {
+    grid-column: 1;
+    max-height: none;
   }
   .reader-route-summary,
   .reader-evidence {
@@ -561,6 +590,9 @@ summary {
     gap: 10px;
   }
   .reader-route-overviews {
+    padding: 10px;
+  }
+  .reader-overview-entry {
     padding: 0 8px;
   }
   .reader-route-tabs {

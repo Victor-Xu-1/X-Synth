@@ -84,7 +84,7 @@ const sorts = [
 .route-filter-bar :deep(.v-select__selection-text) {
   font-size: 12px;
 }
-@media (max-width: 1100px) {
+@media (max-width: 900px) {
   .route-filter-bar {
     grid-template-columns: repeat(2, minmax(0, 1fr)) 40px;
   }
@@ -94,6 +94,9 @@ const sorts = [
   .route-filter-bar > :last-child {
     grid-column: 3;
     grid-row: 1;
+  }
+  .route-filter-bar > :nth-child(4) {
+    grid-column: 1 / 3;
   }
 }
 @media (max-width: 600px) {

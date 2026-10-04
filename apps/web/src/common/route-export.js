@@ -1,11 +1,11 @@
 import { toPng } from "html-to-image";
+import { ROUTE_NODE_SIZE } from "./route-graph";
 
 export function exportBounds(graph) {
   const boxes = graph.nodes.map((node) => ({
     x: node.position.x,
     y: node.position.y,
-    width: node.type === "molecule" ? 190 : 110,
-    height: node.type === "molecule" ? 156 : 66,
+    ...ROUTE_NODE_SIZE[node.type],
   }));
   const x = Math.min(...boxes.map((box) => box.x));
   const y = Math.min(...boxes.map((box) => box.y));
@@ -92,7 +92,7 @@ export async function routeImage(surface, graph) {
     pixelRatio: 1,
     filter: (node) =>
       !node.classList?.contains("vue-flow__handle") &&
-      !node.classList?.contains("v-icon"),
+      !node.classList?.contains("graph-node-action"),
     style: {
       width: `${bounds.width}px`,
       height: `${bounds.height}px`,

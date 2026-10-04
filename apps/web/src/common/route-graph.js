@@ -1,6 +1,11 @@
 import dagre from "@dagrejs/dagre";
 import { syntheticStepOrder } from "./synthetic-step-order";
 
+export const ROUTE_NODE_SIZE = Object.freeze({
+  molecule: Object.freeze({ width: 224, height: 214 }),
+  reaction: Object.freeze({ width: 84, height: 96 }),
+});
+
 export function graphFromCandidate(route) {
   const sourceSteps = route.steps || [];
   const order = syntheticStepOrder(sourceSteps);
@@ -62,8 +67,7 @@ export function layoutGraph(value) {
   graph.setDefaultEdgeLabel(() => ({}));
   value.nodes.forEach((node) =>
     graph.setNode(node.id, {
-      width: node.type === "molecule" ? 190 : 110,
-      height: node.type === "molecule" ? 156 : 66,
+      ...ROUTE_NODE_SIZE[node.type],
     }),
   );
   value.edges.forEach((edge) => graph.setEdge(edge.source, edge.target));
