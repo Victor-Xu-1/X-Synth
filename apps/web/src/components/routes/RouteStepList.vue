@@ -68,9 +68,10 @@
           :aria-label="`${routeLabel(choice.originalIndex)} 完整路线缩略图`"
         >
           <RouteGraph
-            :graph="graphFromCandidate(choice.route)"
+            :graph="graphFromCandidate(choice.route, READING_NODE_SIZE)"
             :scores="predictionScores(choice.route)"
             :overview="true"
+            reading
             @select="$emit('choose', choice.route.route_id)"
           />
         </div>
@@ -203,7 +204,11 @@ import { computed } from "vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import RouteEvidencePanel from "./RouteEvidencePanel.vue";
 import RouteGraph from "./RouteGraph.vue";
-import { graphFromCandidate, predictionScores } from "@/common/route-graph";
+import {
+  graphFromCandidate,
+  predictionScores,
+  READING_NODE_SIZE,
+} from "@/common/route-graph";
 import { routeLabel } from "@/common/route-reading";
 import {
   closureLabel,

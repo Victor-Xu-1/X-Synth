@@ -2,11 +2,15 @@ import dagre from "@dagrejs/dagre";
 import { syntheticStepOrder } from "./synthetic-step-order";
 
 export const ROUTE_NODE_SIZE = Object.freeze({
+  molecule: Object.freeze({ width: 190, height: 156 }),
+  reaction: Object.freeze({ width: 110, height: 66 }),
+});
+export const READING_NODE_SIZE = Object.freeze({
   molecule: Object.freeze({ width: 224, height: 214 }),
   reaction: Object.freeze({ width: 84, height: 96 }),
 });
 
-export function graphFromCandidate(route) {
+export function graphFromCandidate(route, nodeSize = ROUTE_NODE_SIZE) {
   const sourceSteps = route.steps || [];
   const order = syntheticStepOrder(sourceSteps);
   const stepNumbers = new Map(
@@ -52,10 +56,10 @@ export function graphFromCandidate(route) {
       target: molecule(step.product),
     });
   }
-  return layoutGraph({ nodes, edges, target_id });
+  return layoutGraph({ nodes, edges, target_id }, nodeSize);
 }
 
-export function layoutGraph(value) {
+export function layoutGraph(value, nodeSize = ROUTE_NODE_SIZE) {
   const graph = new dagre.graphlib.Graph();
   graph.setGraph({
     rankdir: "LR",
@@ -67,7 +71,7 @@ export function layoutGraph(value) {
   graph.setDefaultEdgeLabel(() => ({}));
   value.nodes.forEach((node) =>
     graph.setNode(node.id, {
-      ...ROUTE_NODE_SIZE[node.type],
+      ...nodeSize[node.type],
     }),
   );
   value.edges.forEach((edge) => graph.setEdge(edge.source, edge.target));

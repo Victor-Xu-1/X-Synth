@@ -1,7 +1,10 @@
 <template>
   <div class="reaction-graph-node" :class="{ selected }">
     <Handle type="target" :position="Position.Left" />
-    <div class="reaction-disc"><v-icon icon="mdi-arrow-right" size="22" /></div>
+    <div v-if="data.reading" class="reaction-disc">
+      <v-icon icon="mdi-arrow-right" size="22" />
+    </div>
+    <v-icon v-else icon="mdi-arrow-right" size="18" />
     <strong>{{ data.label || "反应" }}</strong>
     <small v-if="typeof data.score === 'number'"
       >分数 {{ data.score.toFixed(2) }}</small

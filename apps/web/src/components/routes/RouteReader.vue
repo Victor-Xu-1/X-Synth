@@ -157,6 +157,7 @@
             :graph="graph"
             :scores="scores"
             :editable="false"
+            reading
             @select="selectNode"
           />
         </div>
@@ -219,7 +220,11 @@
 <script setup>
 import { computed, nextTick, ref, watch, onBeforeUnmount } from "vue";
 import { useVueFlow } from "@vue-flow/core";
-import { graphFromCandidate, predictionScores } from "@/common/route-graph";
+import {
+  graphFromCandidate,
+  predictionScores,
+  READING_NODE_SIZE,
+} from "@/common/route-graph";
 import {
   candidateChoices,
   retainedRouteId,
@@ -285,7 +290,7 @@ const selectedChoice = computed(() =>
 const candidate = computed(() => selectedChoice.value?.route);
 const sourceGraph = computed(() =>
   candidate.value
-    ? graphFromCandidate(candidate.value)
+    ? graphFromCandidate(candidate.value, READING_NODE_SIZE)
     : { nodes: [], edges: [], target_id: "" },
 );
 const graph = computed(() => ({

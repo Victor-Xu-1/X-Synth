@@ -9,8 +9,8 @@
     </div>
     <SmilesImage
       :smiles="data.smiles"
-      :width="ROUTE_NODE_SIZE.molecule.width - 24"
-      :height="144"
+      :width="data.imageWidth"
+      :height="data.imageHeight"
       :show-error-image="false"
     />
     <div class="graph-node-footer">
@@ -36,6 +36,5 @@
 <script setup>
 import { Handle, Position } from "@vue-flow/core";
 import SmilesImage from "@/components/SmilesImage.vue";
-import { ROUTE_NODE_SIZE } from "@/common/route-graph";
 defineProps({ data: { type: Object, required: true }, selected: Boolean });
 </script>
