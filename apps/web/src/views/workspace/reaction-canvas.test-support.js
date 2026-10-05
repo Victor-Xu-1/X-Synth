@@ -15,7 +15,9 @@ export const reactionInput = defineComponent({
       agents.value = [];
       emit("update:modelValue", "");
     }
-    expose({ pending, product, reactants, agents, clear });
+    const importRevision = ref(0);
+    function cancelImport() { importRevision.value++; }
+    expose({ pending, product, reactants, agents, clear, cancelImport, importRevision });
     return { pending, agents };
   },
   template: `<div class="reaction-boundary"><textarea class="reaction-text"

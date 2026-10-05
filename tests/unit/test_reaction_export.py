@@ -221,13 +221,33 @@ def test_total_budget_counts_all_roles_before_returning_any_output(client, count
 
 
 @pytest.mark.parametrize("role", ROLES)
-@pytest.mark.parametrize("smiles", ["[Pt@SP1](Cl)(Br)(I)F", "[CH3]"])
-def test_ctab_incompatible_identities_fail_closed(client, role, smiles):
+def test_ctab_incompatible_identities_fail_closed(client, role):
     body = {"reactants": ["C"], "products": ["N"], "agents": []}
-    body[role] = [smiles]
+    body[role] = ["[Pt@SP1](Cl)(Br)(I)F"]
     response = client.post(EXPORT_PATH, json=body)
     assert response.status_code == 422
+    assert "content" not in response.json()
     assert "无损" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("role", ["reactants", "products"])
+def test_rxn_query_conversion_of_radicals_is_rejected(client, role):
+    body = {"reactants": ["C"], "products": ["N"], "agents": []}
+    body[role] = ["[CH3]"]
+    response = client.post(EXPORT_PATH, json=body)
+    assert response.status_code == 422
+    assert "content" not in response.json()
+
+
+def test_representable_agent_radical_preserves_its_full_identity(client):
+    body = {"reactants": ["C"], "products": ["N"], "agents": ["[CH3]"]}
+    response = client.post(EXPORT_PATH, json=body)
+    assert response.status_code == 200
+    restored = client.post(
+        DRAFT_PATH, json={"format": "rxn", "content": response.json()["content"]}
+    )
+    assert restored.status_code == 200
+    assert_roles(restored.json(), body)
 
 
 def test_export_keeps_existing_authentication_and_cross_site_guards(

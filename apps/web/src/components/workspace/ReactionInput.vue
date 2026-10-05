@@ -63,6 +63,15 @@
       spellcheck="false"
     />
     <div class="reaction-board" :inert="disabled || fileBusy || undefined">
+      <v-progress-linear
+        v-if="fileBusy"
+        indeterminate
+        color="primary"
+        class="reaction-transfer-progress"
+        :aria-label="
+          fileOrigin === 'reference' ? '载入参考反应' : '处理 RXN 反应'
+        "
+      />
       <InlineKetcherEditor
         ref="board"
         v-model:smiles="text"
@@ -132,7 +141,9 @@
       @update:model-value="discardFile"
     >
       <v-card v-if="fileDraft">
-        <v-card-title>确认反应文件</v-card-title>
+        <v-card-title>{{
+          fileOrigin === "reference" ? "确认参考反应" : "确认反应文件"
+        }}</v-card-title>
         <v-card-text class="reaction-file-preview">
           <ReactionRecordPreview :value="fileDraft" />
           <v-select
@@ -200,8 +211,10 @@ const {
   fileDraft,
   fileProduct,
   fileError,
+  fileOrigin,
   discardFile,
   importFile,
+  importRecords,
   applyFile,
   exportFile,
 } = useReactionFiles({ text, disabled: () => props.disabled, board, draft });
@@ -225,7 +238,19 @@ async function clear() {
   if (board.value) await board.value.clearEditor();
   else text.value = "";
 }
-defineExpose({ pending, product, reactants, agents, clear });
+function cancelImport() {
+  discardFile();
+  fileError.value = "";
+}
+defineExpose({
+  pending,
+  product,
+  reactants,
+  agents,
+  clear,
+  importRecords,
+  cancelImport,
+});
 </script>
 <style scoped>
 .reaction-input {
@@ -257,8 +282,14 @@ defineExpose({ pending, product, reactants, agents, clear });
   margin-top: 4px;
 }
 .reaction-board {
+  position: relative;
   min-width: 0;
   margin-top: 12px;
+}
+.reaction-transfer-progress {
+  position: absolute;
+  top: 0;
+  z-index: 1;
 }
 .reaction-role-summary {
   flex-wrap: wrap;

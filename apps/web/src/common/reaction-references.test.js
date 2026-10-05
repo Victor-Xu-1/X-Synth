@@ -363,11 +363,27 @@ test("RXN export includes every supplied component and agent, without guessed co
   };
   expect(referenceReactionFileBody(row)).toEqual({
     reactants: [...row.reactants],
-    product: "[13CH3][C@@H](O)C.[Na+]",
+    products: [...row.products],
     agents: ["O"],
   });
   expect(() => referenceReactionFileBody({ ...row, reactants: [] })).toThrow();
   expect(() =>
     referenceReactionFileBody({ ...row, reactants: Array(100).fill("CCO") }),
   ).toThrow();
+  expect(() =>
+    referenceReactionFileBody({
+      ...row,
+      reactants: Array(60).fill("CCO"),
+      products: Array(40).fill("CCN"),
+    }),
+  ).toThrow();
+  const source = {
+    reactants: ["CCO", "CCO"],
+    products: ["CC[NH3+].[Cl-]", "CCN"],
+    agents: ["O", "O"],
+  };
+  const output = referenceReactionFileBody(source);
+  expect(output).toEqual(source);
+  output.products.push("CN");
+  expect(source.products).toHaveLength(2);
 });

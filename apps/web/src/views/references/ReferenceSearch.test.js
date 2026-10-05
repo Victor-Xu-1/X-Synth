@@ -151,12 +151,14 @@ test("raw edit and immediate revert cannot revive a late result with the same ro
 
 test("a new URL invalidates the active search and restores confirmation", async () => {
   const { wrapper, route } = await setup();
+  const revision = reactionDraft(wrapper).importRevision.value;
   await setReactionDraft(wrapper, { product: "CC=O", reactants: ["CCO"] });
   const held = deferred();
   API.post.mockReturnValue(held.promise);
   await wrapper.get("form").trigger("submit");
   route.query = { rxnsmiles: "CCN>O>CC=N" };
   await nextTick();
+  expect(reactionDraft(wrapper).importRevision.value).toBe(revision + 1);
   held.resolve(packet());
   await flushPromises();
   expect(wrapper.find('[data-cy="reference-row"]').exists()).toBe(false);

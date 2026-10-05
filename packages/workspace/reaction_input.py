@@ -8,7 +8,6 @@ from rdkit import Chem, rdBase
 from rdkit.Chem import rdChemReactions
 
 from .chemical_files import (
-    MAX_CHEMICAL_FILE_BYTES,
     MAX_CHEMICAL_RECORDS,
     molecular_record,
 )

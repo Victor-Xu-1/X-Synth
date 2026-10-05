@@ -289,12 +289,13 @@ export function referenceReactionFileBody(row) {
   if (
     !structures(row?.reactants, 1, 99) ||
     !structures(row?.products, 1, 99) ||
-    !structures(row?.agents ?? [], 0, 98)
+    !structures(row?.agents ?? [], 0, 98) ||
+    row.reactants.length + row.products.length + (row.agents?.length || 0) > 100
   )
     invalid("该记录不能完整导出为 RXN。");
   return {
     reactants: [...row.reactants],
-    product: row.products.join("."),
+    products: [...row.products],
     agents: [...(row.agents ?? [])],
   };
 }

@@ -135,6 +135,8 @@
       :pending="loading"
       :error="error"
       :searched="searched"
+      allow-canvas-reuse
+      @load-reaction="loadReaction"
     />
   </ModuleWorkbench>
 </template>
@@ -192,13 +194,17 @@ const {
 watch(
   () => route.query,
   () => {
+    canvas.value?.cancelImport();
     invalidate();
     prefill.value = null;
     prefillError.value = "";
     try {
       prefill.value = reactionInputPrefill(route.query);
     } catch (failure) {
-      prefillError.value = referenceFailure(failure, "链接反应格式无效或存在冲突，未应用输入。");
+      prefillError.value = referenceFailure(
+        failure,
+        "链接反应格式无效或存在冲突，未应用输入。",
+      );
     }
   },
   { immediate: true, deep: true, flush: "sync" },
@@ -216,6 +222,23 @@ function discardPrefill() {
 async function search() {
   await nextTick();
   await searchReferences();
+}
+async function loadReaction(records) {
+  const response = result.value,
+    original = reactionSmiles.value;
+  await nextTick();
+  if (
+    !response ||
+    response !== result.value ||
+    original !== reactionSmiles.value ||
+    inputPending.value ||
+    loading.value ||
+    prefill.value ||
+    prefillError.value ||
+    !canvas.value
+  )
+    return;
+  await canvas.value.importRecords(records);
 }
 </script>
 

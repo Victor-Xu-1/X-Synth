@@ -7,12 +7,18 @@ import {
 } from "@/common/reaction-input";
 import { downloadChemicalFile } from "@/common/chemical-files";
 import { errorMessage } from "@/common/workspace-errors";
+import {
+  exportedReactionDraft,
+  reactionRecordsBody,
+  ReactionRecordsError,
+} from "@/common/reaction-records";
 
 export function useReactionFiles({ text, disabled, board, draft }) {
   const fileBusy = ref(false),
     fileDraft = ref(null),
     fileProduct = ref(""),
-    fileError = ref("");
+    fileError = ref(""),
+    fileOrigin = ref("file");
   let revision = 0,
     disposed = false,
     applyingFile = false;
@@ -21,6 +27,7 @@ export function useReactionFiles({ text, disabled, board, draft }) {
     fileDraft.value = null;
     fileProduct.value = "";
     fileBusy.value = false;
+    fileOrigin.value = "file";
   }
   watch(
     [text, disabled],
@@ -34,29 +41,52 @@ export function useReactionFiles({ text, disabled, board, draft }) {
   async function importFile(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file || disabled() || fileBusy.value) return;
-    discardFile();
-    const current = revision;
-    fileBusy.value = true;
-    fileError.value = "";
-    try {
+    if (!file) return;
+    return stageImport(async (current) => {
       const body = await reactionFileBody(file);
-      const value = checkedReactionDraft(
+      if (!current()) return null;
+      return checkedReactionDraft(
         await API.post(REACTION_DRAFT_PATH, body),
         body,
       );
-      if (disposed || current !== revision || disabled()) return;
+    }, "file");
+  }
+  async function importRecords(records) {
+    return stageImport(
+      (current) =>
+        exportedReactionDraft(reactionRecordsBody(records), API, current),
+      "reference",
+    );
+  }
+  async function stageImport(load, origin) {
+    if (disabled() || fileBusy.value || fileDraft.value) return false;
+    discardFile();
+    const requested = revision;
+    const current = () => !disposed && requested === revision && !disabled();
+    fileOrigin.value = origin;
+    fileBusy.value = true;
+    fileError.value = "";
+    try {
+      const value = await load(current);
+      if (!current() || !value) return false;
       fileDraft.value = value;
       fileProduct.value =
         value.products.length === 1 ? value.products[0].smiles : "";
+      return true;
     } catch (failure) {
-      if (!disposed && current === revision)
-        fileError.value = errorMessage(
-          failure,
-          "RXN 文件无法解析，未改变画板。",
-        );
+      if (current())
+        fileError.value =
+          failure instanceof ReactionRecordsError
+            ? failure.message
+            : errorMessage(
+                failure,
+                origin === "reference"
+                  ? "参考反应不能完整载入，未改变画板。"
+                  : "RXN 文件无法解析，未改变画板。",
+              );
+      return false;
     } finally {
-      if (current === revision) fileBusy.value = false;
+      if (current()) fileBusy.value = false;
     }
   }
   function applyFile() {
@@ -132,8 +162,10 @@ export function useReactionFiles({ text, disabled, board, draft }) {
     fileDraft,
     fileProduct,
     fileError,
+    fileOrigin,
     discardFile,
     importFile,
+    importRecords,
     applyFile,
     exportFile,
   };

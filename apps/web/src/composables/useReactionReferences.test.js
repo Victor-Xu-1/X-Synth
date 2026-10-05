@@ -484,7 +484,7 @@ describe("reference records", () => {
     expect(API.post.mock.calls).toEqual([
       [
         "/api/v1/structure/reaction-export",
-        { reactants: ["CCO"], product: "CC=O", agents: [] },
+        { reactants: ["CCO"], products: ["CC=O"], agents: [] },
       ],
     ]);
     expect(downloadChemicalFile).toHaveBeenCalledWith(

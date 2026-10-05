@@ -49,13 +49,18 @@ def reaction_records_block(records: dict) -> str:
     """Write validated full-compound roles, without requiring a complete draft."""
     with rdBase.BlockLogs():
         reaction = rdChemReactions.ChemicalReaction()
+        depictions = {}
         for role, add in (
             ("reactants", reaction.AddReactantTemplate),
             ("products", reaction.AddProductTemplate),
             ("agents", reaction.AddAgentTemplate),
         ):
             for record in records[role]:
-                add(reaction_file_molecule(record["smiles"]))
+                smiles = record["smiles"]
+                if smiles not in depictions:
+                    depictions[smiles] = reaction_file_molecule(smiles)
+                # Share coordinate work, not role records or mutable molecule objects.
+                add(Chem.Mol(depictions[smiles]))
         content = rdChemReactions.ReactionToRxnBlock(
             reaction, separateAgents=True, forceV3000=True
         )
