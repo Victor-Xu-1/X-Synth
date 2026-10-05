@@ -129,8 +129,11 @@ def test_rxn_salt_records_and_agent_grouping_survive_canonical_reparse():
     assert result["products"][0]["components"] == 2
     assert identities(result, "agents") == ["[Cl-].[Na+]", "O"]
     restored = parse(result["reaction_smiles"])
+    canvas = parse(result["canvas_rxn"], "rxn")
+    assert "MDLV30/STEABS" in result["canvas_rxn"]
     for role in ["reactants", "products", "agents"]:
         assert sorted(identities(restored, role)) == sorted(identities(result, role))
+        assert sorted(identities(canvas, role)) == sorted(identities(result, role))
 
 
 @pytest.mark.parametrize(
@@ -321,10 +324,24 @@ def test_real_http_draft_response_and_default_role(client):
         "input_kind",
         "requested",
         "reaction_smiles",
+        "canvas_rxn",
         "reactants",
         "products",
         "agents",
     }
+
+
+def test_real_http_readback_restores_only_explicit_exact_groups(client):
+    content = parse("[NH4+].[Cl-]>>CN")["canvas_rxn"]
+    groups = {"reactants": ["[NH4+].[Cl-]"], "products": [], "agents": []}
+    body = {"format": "rxn", "content": content, "compound_groups": groups}
+    response = client.post("/api/v1/structure/reaction-draft", json=body)
+    assert response.status_code == 200
+    value = response.json()
+    assert value["requested"] == {**body, "single_role": "product"}
+    assert value["reactants"][0]["components"] == 2
+    groups["reactants"] = ["[NH4+].[Br-]"]
+    assert client.post("/api/v1/structure/reaction-draft", json=body).status_code == 422
     response = client.post(
         "/api/v1/structure/reaction-draft",
         json={"format": "rxn", "content": rxn(products=["CCO"])},

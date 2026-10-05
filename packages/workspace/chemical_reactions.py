@@ -18,6 +18,28 @@ def _concrete_molecule(template):
     )
 
 
+def reaction_file_molecule(smiles: str):
+    """Depict a validated identity with explicit absolute CTAB stereochemistry."""
+    molecule = Chem.RWMol(Chem.MolFromSmiles(smiles))
+    centers = [
+        atom.GetIdx()
+        for atom in molecule.GetAtoms()
+        if atom.GetChiralTag()
+        in {Chem.ChiralType.CHI_TETRAHEDRAL_CW, Chem.ChiralType.CHI_TETRAHEDRAL_CCW}
+    ]
+    if centers:
+        molecule.SetIntProp("_MolFileChiralFlag", 1)
+        molecule.SetStereoGroups(
+            [
+                Chem.CreateStereoGroup(
+                    Chem.StereoGroupType.STEREO_ABSOLUTE, molecule, centers
+                )
+            ]
+        )
+    rdDepictor.Compute2DCoords(molecule)
+    return molecule
+
+
 def reaction_file_molecules(content: str) -> dict:
     """Read bounded RXN role templates without imposing a completed reaction."""
     text = chemical_text(content)
@@ -95,9 +117,8 @@ def export_reaction_file(
                 "agents": reaction.AddAgentTemplate,
             }[group]
             for smiles in values:
-                molecule = Chem.MolFromSmiles(smiles)
+                molecule = reaction_file_molecule(smiles)
                 molecular_record(molecule, index=1, max_atoms=max_atoms)
-                rdDepictor.Compute2DCoords(molecule)
                 add(molecule)
         content = rdChemReactions.ReactionToRxnBlock(
             reaction, separateAgents=True, forceV3000=True

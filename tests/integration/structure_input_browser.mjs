@@ -135,13 +135,25 @@ for (const width of [1440, 390]) {
     async () => {
       await run(width, "reference-input", async (page) => {
         await page.goto("/references");
-        const product = structure(page, "产物"),
-          reactants = structure(page, "反应物（可选）");
-        await product.getByRole("textbox").fill(fixture.products[0]);
-        await reactants.getByRole("textbox").fill(fixture.reactants.join("."));
-        await boardMatches(page, reactants, fixture.reactants.join("."));
-        await boardMatches(page, product, fixture.products[0]);
-        const layout = await product.evaluate((field) => ({
+        const reaction = page.locator(".reaction-input");
+        await reaction.getByRole("textbox").fill(fixture.reaction_smiles);
+        await settled(reaction);
+        await expect(reaction.locator("iframe")).toHaveCount(1);
+        const roles = await json(
+          await page.request.post("/api/v1/structure/reaction-draft", {
+            data: {
+              format: "smiles",
+              single_role: "product",
+              content: await boardSmiles(reaction),
+            },
+          }),
+        );
+        assert.equal(roles.reactants.length, 2);
+        assert.equal(
+          roles.products[0].smiles,
+          await canonical(page, fixture.products[0]),
+        );
+        const layout = await reaction.evaluate((field) => ({
           inputBottom: field.querySelector("textarea").getBoundingClientRect()
             .bottom,
           boardTop: field.querySelector("iframe").getBoundingClientRect().top,
@@ -166,7 +178,7 @@ for (const width of [1440, 390]) {
         await expect(
           page.locator(`[data-reference-id="${fixture.id}"]`),
         ).toContainText("65.39 %");
-        await product.scrollIntoViewIfNeeded();
+        await reaction.scrollIntoViewIfNeeded();
       });
     },
   );

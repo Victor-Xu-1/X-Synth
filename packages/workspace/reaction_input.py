@@ -7,8 +7,13 @@ from typing import Literal
 from rdkit import Chem, rdBase
 from rdkit.Chem import rdChemReactions
 
-from .chemical_files import MAX_CHEMICAL_RECORDS, molecular_record
-from .chemical_reactions import reaction_file_molecules
+from .chemical_files import (
+    MAX_CHEMICAL_FILE_BYTES,
+    MAX_CHEMICAL_RECORDS,
+    molecular_record,
+)
+from .chemical_reactions import reaction_file_molecule, reaction_file_molecules
+from .reaction_compounds import restore_compound_groups
 from .structure_validation import MAX_SMILES_LENGTH
 
 ReactionDraftFormat = Literal["smiles", "rxn"]
@@ -233,11 +238,26 @@ def _reaction_smiles(records: dict) -> str:
     return notation
 
 
+def _canvas_rxn(records: dict) -> str:
+    reaction = rdChemReactions.ChemicalReaction()
+    for role, add in (
+        ("reactants", reaction.AddReactantTemplate),
+        ("products", reaction.AddProductTemplate),
+        ("agents", reaction.AddAgentTemplate),
+    ):
+        for record in records[role]:
+            add(reaction_file_molecule(record["smiles"]))
+    return rdChemReactions.ReactionToRxnBlock(
+        reaction, separateAgents=True, forceV3000=True
+    )
+
+
 def parse_reaction_draft(
     content: str,
     format: ReactionDraftFormat,
     *,
     single_role: SingleRole = "product",
+    compound_groups: dict | None = None,
     max_atoms: int,
 ) -> dict:
     if single_role not in {"product", "reactant"}:
@@ -263,17 +283,34 @@ def parse_reaction_draft(
                 for role in _ROLE_ORDER
             }
             if input_kind == "molecule":
+                if compound_groups is not None:
+                    raise ValueError("画板分组上下文只能用于 RXN 回读。")
                 notation = records[
                     "products" if single_role == "product" else "reactants"
                 ][0]["smiles"]
             else:
+                if compound_groups is not None:
+                    if format != "rxn":
+                        raise ValueError("画板分组上下文只能用于 RXN 回读。")
+                    records = restore_compound_groups(
+                        records, compound_groups, max_atoms=max_atoms
+                    )
                 notation = _reaction_smiles(records)
+            if len(notation.encode("utf-8")) > MAX_SMILES_LENGTH:
+                raise ValueError("完整反应超出当前 SMILES 长度范围。")
+            canvas_rxn = _canvas_rxn(records)
+            if len(canvas_rxn.encode("utf-8")) > MAX_CHEMICAL_FILE_BYTES:
+                raise ValueError("完整反应超出当前 RXN 文件大小范围。")
     except (RuntimeError, ValueError) as exc:
         raise ValueError("反应草稿不能作为确定结构解析：" + str(exc)) from exc
+    requested = {"format": format, "content": content, "single_role": single_role}
+    if compound_groups is not None:
+        requested["compound_groups"] = compound_groups
     return {
         "format": format,
         "input_kind": input_kind,
-        "requested": {"format": format, "content": content, "single_role": single_role},
+        "requested": requested,
         "reaction_smiles": notation,
+        "canvas_rxn": canvas_rxn,
         **records,
     }

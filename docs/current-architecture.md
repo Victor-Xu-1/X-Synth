@@ -63,6 +63,7 @@ flowchart TD
 | Product jobs                    | packages/orchestrator                      | One lifecycle, resource admission, checkpoints, route workflow                                    |
 | Route documents                 | packages/workspace                         | Independent documents, canonical chemical DAGs, immutable source provenance, optimistic revisions |
 | Research records                | packages/workspace/analysis_repository.py   | Immutable input/result snapshots, owner isolation, interrupted-process recovery                   |
+| Concrete chemical input         | packages/workspace/reaction_input.py, reaction_compounds.py, chemical_reactions.py | One RDKit authority for draft roles, RXN interchange and exact explicit compound grouping |
 | Reaction optimization           | packages/adapters/optimization             | Real BayBE computation, bounded subprocess admission, measured-data and result binding              |
 | Molecular and process metrics   | packages/chemistry                         | Maintained RDKit descriptors, user-input mass accounting, atom provenance                           |
 | ASKCOS integration              | packages/adapters/askcos                   | Typed transport, native search invocation, recoverable errors                                     |
@@ -88,6 +89,12 @@ another product version.
 ## Single Authorities
 
 - Browser requests terminate at the product API, never a second direct gateway.
+- Reaction reference search, NN conditions and FF share one reaction canvas,
+  one draft API and separate draft/file lifecycle controllers. Ketcher renders
+  validated RXN; it does not replace RDKit role parsing or source identity checks.
+  File/SMILES-declared salts retain exact component counts through the older editor;
+  undeclared ions are not inferred to be salts. Legacy single-molecule inputs and
+  explicit model submission remain unchanged. See [Workspace Workflows](workspace-workflows.md).
 - Product job IDs and ownership are authoritative in the transactional job store.
   Native engine execution is a child operation, not another product task owner.
 - Task grouping, display titles and recoverable archives use schema-2 metadata in

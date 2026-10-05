@@ -53,11 +53,19 @@ class ReactionExportBody(BaseModel):
     agents: list[str] = Field(default_factory=list, max_length=98)
 
 
+class CompoundGroupsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    reactants: list[str] = Field(max_length=100)
+    products: list[str] = Field(max_length=100)
+    agents: list[str] = Field(max_length=100)
+
+
 class ReactionDraftBody(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     format: ReactionDraftFormat
     content: str = Field(min_length=1, max_length=MAX_CHEMICAL_FILE_BYTES)
     single_role: SingleRole = "product"
+    compound_groups: CompoundGroupsBody | None = None
 
 
 def structure_router(*, transport, budget):
@@ -128,6 +136,9 @@ def structure_router(*, transport, budget):
                 body.content,
                 body.format,
                 single_role=body.single_role,
+                compound_groups=body.compound_groups.model_dump()
+                if body.compound_groups is not None
+                else None,
                 max_atoms=budget.max_structure_atoms,
             )
         except ValueError as exc:
