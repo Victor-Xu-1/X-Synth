@@ -3,7 +3,12 @@
 from rdkit import Chem, rdBase
 from rdkit.Chem import rdChemReactions, rdDepictor
 
-from .chemical_files import MAX_CHEMICAL_RECORDS, chemical_text, molecular_record
+from .chemical_files import (
+    MAX_CHEMICAL_FILE_BYTES,
+    MAX_CHEMICAL_RECORDS,
+    chemical_text,
+    molecular_record,
+)
 from .structure_validation import canonical_structure
 
 
@@ -38,6 +43,25 @@ def reaction_file_molecule(smiles: str):
         )
     rdDepictor.Compute2DCoords(molecule)
     return molecule
+
+
+def reaction_records_block(records: dict) -> str:
+    """Write validated full-compound roles, without requiring a complete draft."""
+    with rdBase.BlockLogs():
+        reaction = rdChemReactions.ChemicalReaction()
+        for role, add in (
+            ("reactants", reaction.AddReactantTemplate),
+            ("products", reaction.AddProductTemplate),
+            ("agents", reaction.AddAgentTemplate),
+        ):
+            for record in records[role]:
+                add(reaction_file_molecule(record["smiles"]))
+        content = rdChemReactions.ReactionToRxnBlock(
+            reaction, separateAgents=True, forceV3000=True
+        )
+    if len(content.encode("utf-8")) > MAX_CHEMICAL_FILE_BYTES:
+        raise ValueError("RXN 文件大小不能超过 2 MiB。")
+    return content
 
 
 def reaction_file_molecules(content: str) -> dict:
@@ -96,35 +120,48 @@ def parse_reaction_file(content: str, *, max_atoms: int) -> dict:
     return {"format": "rxn", **result}
 
 
+def export_reaction_record(
+    reactants: list[str], products: list[str], agents: list[str], *, max_atoms: int
+) -> dict:
+    """Export one complete reaction, preserving role order and repeated records."""
+    structures = {"reactants": reactants, "products": products, "agents": agents}
+    if any(not isinstance(values, list) for values in structures.values()):
+        raise ValueError("RXN 导出角色必须为结构列表。")
+    if (
+        not reactants
+        or not products
+        or sum(len(values) for values in structures.values()) > MAX_CHEMICAL_RECORDS
+    ):
+        raise ValueError("RXN 导出必须有反应物、产物且不超过 100 条结构。")
+    try:
+        with rdBase.BlockLogs():
+            records = {
+                role: [
+                    molecular_record(
+                        Chem.MolFromSmiles(
+                            canonical_structure(smiles, max_atoms=max_atoms)[0]
+                        ),
+                        index=index,
+                        max_atoms=max_atoms,
+                    )
+                    for index, smiles in enumerate(values, 1)
+                ]
+                for role, values in structures.items()
+            }
+            content = reaction_records_block(records)
+            checked = parse_reaction_file(content, max_atoms=max_atoms)
+            for role in structures:
+                if [record["smiles"] for record in records[role]] != [
+                    record["smiles"] for record in checked[role]
+                ]:
+                    raise ValueError("该反应不能无损导出为 RXN。")
+    except RuntimeError as exc:
+        raise ValueError("该反应不能导出为确定 RXN。") from exc
+    return {"format": "rxn", "content": content, "media_type": "chemical/x-mdl-rxnfile"}
+
+
 def export_reaction_file(
     reactants: list[str], product: str, agents: list[str], *, max_atoms: int
 ) -> dict:
-    if not reactants or len(reactants) + len(agents) + 1 > MAX_CHEMICAL_RECORDS:
-        raise ValueError("RXN 导出必须有反应物、一个产物且不超过 100 条结构。")
-    structures = {"reactants": reactants, "products": [product], "agents": agents}
-    canonical = {
-        group: [
-            canonical_structure(smiles, max_atoms=max_atoms)[0] for smiles in values
-        ]
-        for group, values in structures.items()
-    }
-    with rdBase.BlockLogs():
-        reaction = rdChemReactions.ChemicalReaction()
-        for group, values in canonical.items():
-            add = {
-                "reactants": reaction.AddReactantTemplate,
-                "products": reaction.AddProductTemplate,
-                "agents": reaction.AddAgentTemplate,
-            }[group]
-            for smiles in values:
-                molecule = reaction_file_molecule(smiles)
-                molecular_record(molecule, index=1, max_atoms=max_atoms)
-                add(molecule)
-        content = rdChemReactions.ReactionToRxnBlock(
-            reaction, separateAgents=True, forceV3000=True
-        )
-    checked = parse_reaction_file(content, max_atoms=max_atoms)
-    for group, values in canonical.items():
-        if values != [record["smiles"] for record in checked[group]]:
-            raise ValueError("该反应不能无损导出为 RXN。")
-    return {"format": "rxn", "content": content, "media_type": "chemical/x-mdl-rxnfile"}
+    """Keep the legacy single-product interface on the full-record authority."""
+    return export_reaction_record(reactants, [product], agents, max_atoms=max_atoms)

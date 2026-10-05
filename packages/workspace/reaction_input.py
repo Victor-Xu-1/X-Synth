@@ -12,7 +12,7 @@ from .chemical_files import (
     MAX_CHEMICAL_RECORDS,
     molecular_record,
 )
-from .chemical_reactions import reaction_file_molecule, reaction_file_molecules
+from .chemical_reactions import reaction_file_molecules, reaction_records_block
 from .reaction_compounds import restore_compound_groups
 from .structure_validation import MAX_SMILES_LENGTH
 
@@ -238,20 +238,6 @@ def _reaction_smiles(records: dict) -> str:
     return notation
 
 
-def _canvas_rxn(records: dict) -> str:
-    reaction = rdChemReactions.ChemicalReaction()
-    for role, add in (
-        ("reactants", reaction.AddReactantTemplate),
-        ("products", reaction.AddProductTemplate),
-        ("agents", reaction.AddAgentTemplate),
-    ):
-        for record in records[role]:
-            add(reaction_file_molecule(record["smiles"]))
-    return rdChemReactions.ReactionToRxnBlock(
-        reaction, separateAgents=True, forceV3000=True
-    )
-
-
 def parse_reaction_draft(
     content: str,
     format: ReactionDraftFormat,
@@ -298,9 +284,7 @@ def parse_reaction_draft(
                 notation = _reaction_smiles(records)
             if len(notation.encode("utf-8")) > MAX_SMILES_LENGTH:
                 raise ValueError("完整反应超出当前 SMILES 长度范围。")
-            canvas_rxn = _canvas_rxn(records)
-            if len(canvas_rxn.encode("utf-8")) > MAX_CHEMICAL_FILE_BYTES:
-                raise ValueError("完整反应超出当前 RXN 文件大小范围。")
+            canvas_rxn = reaction_records_block(records)
             try:
                 recovered = reaction_file_molecules(canvas_rxn)
                 for role in _ROLE_ORDER:
