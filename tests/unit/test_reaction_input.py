@@ -86,6 +86,14 @@ def test_plain_molecule_is_one_explicit_role_record(content, expected, single_ro
     assert math.isfinite(record["molecular_weight"])
 
 
+@pytest.mark.parametrize(
+    "content", ["CCO>>[Pt@SP1](Cl)(Br)(I)F", "[CH3]>>N", "C>>N |^1:0|"]
+)
+def test_non_ctab_identity_cannot_be_silently_erased_by_draft_depiction(content):
+    with pytest.raises(ValueError, match="无损"):
+        parse(content)
+
+
 def test_reaction_roles_and_mapped_input_are_not_inferred_from_coordinates():
     content = "[CH3:1][OH:2].[NH3:3]>O>[CH3:1][NH2:3]"
     result = parse(content, single_role="reactant")
@@ -178,10 +186,8 @@ def test_native_ketcher_extended_smiles_without_explicit_fragment_groups():
     assert result["requested"]["content"] == content
 
 
-@pytest.mark.parametrize(
-    "content", ["C[C@H](F)Cl |a:1|", "C[C@H](F)Cl>>N |a:1|", "C>>N |^1:0|"]
-)
-def test_supported_absolute_stereo_and_radicals_survive_canonical_reparse(content):
+@pytest.mark.parametrize("content", ["C[C@H](F)Cl |a:1|", "C[C@H](F)Cl>>N |a:1|"])
+def test_supported_absolute_stereo_survives_canonical_reparse(content):
     result = parse(content)
     restored = parse(result["reaction_smiles"])
     for role in ["reactants", "agents", "products"]:

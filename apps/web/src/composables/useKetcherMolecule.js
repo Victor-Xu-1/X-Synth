@@ -13,6 +13,7 @@ export function useKetcherMolecule({
   readStructure = (editor) => editor.getSmiles(),
   editorContent = (value) => value,
   onApplied = () => {},
+  onPublished = () => {},
   formatError = (_failure, fallback) => fallback,
 }) {
   const ready = ref(false),
@@ -27,11 +28,13 @@ export function useKetcherMolecule({
   );
   const writeMolecule = createKetcherWriter(getEditor, { signal });
   let revision = 0,
+    readRevision = 0,
     publishing = false,
     timer,
     ketcher,
     subscription;
   let readQueue = Promise.resolve();
+  let writeQueue = Promise.resolve();
 
   function invalidate() {
     clearTimeout(timer);
@@ -57,52 +60,65 @@ export function useKetcherMolecule({
     dirty.value = true;
     writes.value++;
     status.value = "正在同步结构";
-    try {
-      const content = await editorContent(value);
-      if (!current(requested)) return false;
-      const applied = await writeMolecule(content);
-      if (!applied || !current(requested)) return false;
-      await fitDrawing();
-      if (!current(requested)) return false;
-      onApplied(value);
-      dirty.value = false;
-      status.value = options.statusMessage || "画板就绪";
-      return true;
-    } catch (failure) {
-      if (current(requested)) {
-        error.value = formatError(
-          failure,
-          "结构同步失败，请检查 SMILES 或重新打开画板。",
-        );
-        status.value = error.value;
+    const write = async () => {
+      try {
+        if (!current(requested)) return false;
+        const content = await editorContent(value);
+        if (!current(requested)) return false;
+        const applied = await writeMolecule(content);
+        if (!applied || !current(requested)) return false;
+        await fitDrawing();
+        if (!current(requested)) return false;
+        onApplied(value);
+        dirty.value = false;
+        status.value = options.statusMessage || "画板就绪";
+        return true;
+      } catch (failure) {
+        if (current(requested)) {
+          error.value = formatError(
+            failure,
+            "结构同步失败，请检查 SMILES 或重新打开画板。",
+          );
+          status.value = error.value;
+        }
+        throw failure;
+      } finally {
+        writes.value--;
       }
-      throw failure;
-    } finally {
-      writes.value--;
-    }
+    };
+    writeQueue = writeQueue.then(write, write);
+    return writeQueue;
   }
   function readSnapshot(reader = readStructure, shouldPublish = false) {
     const requested = revision;
+    const epoch = readRevision;
+    const canRead = () =>
+      current(requested) && epoch === readRevision && !disabled();
     const read = async () => {
-      if (!current(requested) || disabled()) return null;
+      if (!canRead()) return null;
       reads.value++;
       try {
+        // Preparation, native import and accepted context are one owned write transaction.
+        await writeQueue;
         await writeMolecule.flush();
-        if (!current(requested) || error.value) return null;
+        if (!canRead() || error.value) return null;
         const editor = await getEditor();
         const content = await reader(editor);
-        if (typeof content !== "string")
+        const snapshot =
+          typeof content === "string" ? { text: content } : content;
+        if (typeof snapshot?.text !== "string")
           throw new Error("Invalid editor export");
-        const value = content.trim();
-        if (!current(requested) || disabled()) return null;
+        const value = snapshot.text.trim();
+        if (!canRead()) return null;
         if (shouldPublish) await publish(value);
-        if (shouldPublish && current(requested)) {
+        if (shouldPublish && canRead()) {
+          onPublished(snapshot);
           dirty.value = false;
           status.value = value ? "结构已同步" : "当前画板为空";
         }
         return value || null;
       } catch (failure) {
-        if (current(requested)) {
+        if (canRead()) {
           error.value = formatError(failure, "结构读取失败，请检查画板内容。");
           status.value = error.value;
         }
@@ -170,8 +186,11 @@ export function useKetcherMolecule({
   watch(
     disabled,
     (value) => {
-      if (value) invalidate();
-      else if (autoSync() && ready.value && dirty.value) readSmilesFromEditor();
+      if (value) {
+        readRevision++;
+        clearTimeout(timer);
+      } else if (autoSync() && ready.value && dirty.value)
+        readSmilesFromEditor();
     },
     { flush: "sync" },
   );

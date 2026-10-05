@@ -66,7 +66,7 @@ import { useKetcherMolecule } from "@/composables/useKetcherMolecule";
 import { createKetcherFocusGuard } from "@/common/ketcher-focus";
 import {
   ReactionCanvasError,
-  readReactionSmiles,
+  readReactionCanvas,
 } from "@/common/ketcher-reaction";
 import { errorMessage } from "@/common/workspace-errors";
 import {
@@ -95,6 +95,7 @@ const props = defineProps({
   prepareContent: { type: Function, default: null },
   readContent: { type: Function, default: null },
   contentApplied: { type: Function, default: null },
+  contentPublished: { type: Function, default: null },
 });
 
 const ketcherIframe = ref(null);
@@ -259,13 +260,14 @@ const {
     props.readContent
       ? props.readContent(editor)
       : props.reaction
-        ? readReactionSmiles(editor)
+        ? readReactionCanvas(editor)
         : editor.getSmiles(),
   editorContent: (value) =>
     value && props.prepareContent
       ? props.prepareContent(value)
       : value || props.emptyContent,
   onApplied: (value) => props.contentApplied?.(value),
+  onPublished: (snapshot) => props.contentPublished?.(snapshot),
   formatError: (failure, fallback) =>
     props.reaction
       ? failure instanceof ReactionCanvasError

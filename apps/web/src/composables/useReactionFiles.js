@@ -60,7 +60,12 @@ export function useReactionFiles({ text, disabled, board, draft }) {
     }
   }
   function applyFile() {
-    if (disabled() || !fileDraft.value || !fileProduct.value) return;
+    if (
+      disabled() ||
+      !fileDraft.value ||
+      (fileDraft.value.products.length && !fileProduct.value)
+    )
+      return;
     const value = fileDraft.value;
     applyingFile = true;
     try {
@@ -76,7 +81,7 @@ export function useReactionFiles({ text, disabled, board, draft }) {
       disabled() ||
       fileBusy.value ||
       fileDraft.value ||
-      draft.pending.value ||
+      draft.structurePending.value ||
       !draft.parsed.value ||
       draft.parsed.value.input_kind !== "reaction"
     )

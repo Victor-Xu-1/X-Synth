@@ -26,7 +26,9 @@
               aria-label="导出完整 RXN 反应"
               :disabled="
                 disabled ||
-                pending ||
+                fileBusy ||
+                fileDraft ||
+                structurePending ||
                 !parsed ||
                 parsed.input_kind !== 'reaction'
               "
@@ -72,6 +74,7 @@
         :prepare-content="draft.prepareContent"
         :read-content="draft.readCanvas"
         :content-applied="draft.canvasApplied"
+        :content-published="draft.canvasRead"
         reaction
         auto-sync
         fill-height
@@ -146,7 +149,9 @@
           ><v-spacer /><v-btn variant="text" @click="discardFile">取消</v-btn>
           <v-btn
             color="primary"
-            :disabled="disabled || !fileProduct"
+            :disabled="
+              disabled || (!!fileDraft.products.length && !fileProduct)
+            "
             @click="applyFile"
             >应用反应</v-btn
           >
@@ -188,6 +193,7 @@ const {
   agents,
   error: parseError,
   pending: parsePending,
+  structurePending,
 } = draft;
 const {
   fileBusy,

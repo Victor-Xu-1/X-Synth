@@ -39,7 +39,7 @@ export async function parseCanvasReaction(content, compoundGroups, api = API) {
 
 export class ReactionCanvasError extends Error {}
 
-export async function readReactionSmiles(
+export async function readReactionCanvas(
   ketcher,
   compoundGroups,
   api = API,
@@ -51,18 +51,17 @@ export async function readReactionSmiles(
   const arrows = document.root.nodes.filter((node) => node.type === "arrow");
   if (arrows.length > 1)
     throw new ReactionCanvasError("一次只能提交一个反应箭头。");
-  if (!ketcher.editor.struct().atoms.size) return "";
+  if (!ketcher.editor.struct().atoms.size) return { text: "", kind: "empty" };
   if (!arrows.length) {
     if (requiresArrow)
       throw new ReactionCanvasError("反应箭头已删除，尚未确认反应角色。");
-    return ketcher.getSmiles(true);
+    return { text: await ketcher.getSmiles(true), kind: "molecule" };
   }
   // Ketcher 2.13 splits disconnected compounds. Restore only explicit, exact groups.
-  return (
-    await parseCanvasReaction(
-      await ketcher.getRxn("v3000"),
-      compoundGroups,
-      api,
-    )
-  ).reaction_smiles;
+  const value = await parseCanvasReaction(
+    await ketcher.getRxn("v3000"),
+    compoundGroups,
+    api,
+  );
+  return { text: value.reaction_smiles, kind: "reaction" };
 }

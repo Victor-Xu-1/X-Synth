@@ -301,6 +301,20 @@ def parse_reaction_draft(
             canvas_rxn = _canvas_rxn(records)
             if len(canvas_rxn.encode("utf-8")) > MAX_CHEMICAL_FILE_BYTES:
                 raise ValueError("完整反应超出当前 RXN 文件大小范围。")
+            try:
+                recovered = reaction_file_molecules(canvas_rxn)
+                for role in _ROLE_ORDER:
+                    identities = sorted(record["smiles"] for record in records[role])
+                    restored = sorted(
+                        _record(molecule, index=index, max_atoms=max_atoms)["smiles"]
+                        for index, molecule in enumerate(recovered[role], 1)
+                    )
+                    if identities != restored:
+                        raise ValueError("RXN identity mismatch")
+            except ValueError as exc:
+                raise ValueError(
+                    "该立体化学或结构身份不能无损转换到反应画板。"
+                ) from exc
     except (RuntimeError, ValueError) as exc:
         raise ValueError("反应草稿不能作为确定结构解析：" + str(exc)) from exc
     requested = {"format": format, "content": content, "single_role": single_role}

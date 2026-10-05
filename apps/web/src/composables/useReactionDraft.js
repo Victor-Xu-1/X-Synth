@@ -3,7 +3,7 @@ import { API } from "@/common/api";
 import { errorMessage } from "@/common/workspace-errors";
 import {
   parseCanvasReaction,
-  readReactionSmiles,
+  readReactionCanvas,
 } from "@/common/ketcher-reaction";
 import {
   checkedReactionDraft,
@@ -80,19 +80,16 @@ export function useReactionDraft({
     );
     canvasReaction = cachedValue.input_kind === "reaction";
   }
-  const readCanvas = async (editor) => {
-    const value = await readReactionSmiles(
-      editor,
-      compoundGroups,
-      api,
-      canvasReaction,
-    );
-    if (!value) {
+  const readCanvas = (editor) =>
+    readReactionCanvas(editor, compoundGroups, api, canvasReaction);
+  function canvasRead(snapshot) {
+    if (snapshot.kind === "empty") {
       compoundGroups = undefined;
       canvasReaction = false;
-    }
-    return value;
-  };
+    } else if (["reaction", "molecule"].includes(snapshot.kind))
+      canvasReaction = snapshot.kind === "reaction";
+    else throw new Error("反应画板读取状态不完整。");
+  }
   const parseCanvas = (content) =>
     parseCanvasReaction(content, compoundGroups, api);
   const selectedProduct = computed(() =>
@@ -108,16 +105,16 @@ export function useReactionDraft({
       text.value.trim() &&
       (!product.value || (requireReactants() && !reactants.value.length)),
   );
-  const pending = computed(
+  const structurePending = computed(
     () =>
       !!(
         boardPending.value ||
         loading.value ||
         error.value ||
-        incomplete.value ||
         (text.value.trim() && !parsed.value)
       ),
   );
+  const pending = computed(() => structurePending.value || !!incomplete.value);
   function invalidate() {
     revision++;
     clearTimeout(timer);
@@ -181,11 +178,13 @@ export function useReactionDraft({
     loading,
     error,
     pending,
+    structurePending,
     invalidate,
     validate,
     prepareContent,
     canvasApplied,
     readCanvas,
+    canvasRead,
     parseCanvas,
   };
 }
