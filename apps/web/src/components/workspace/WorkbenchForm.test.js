@@ -19,6 +19,12 @@ test("keeps parameters and chemical input in one native form with labeled region
     wrapper.get('aside[aria-label="检索条件"]').get("select").exists(),
   ).toBe(true);
   expect(wrapper.get(".workbench-input-area").get("input").exists()).toBe(true);
+  expect(
+    wrapper
+      .get("input")
+      .element.compareDocumentPosition(wrapper.get("select").element) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
   expect(wrapper.get(".workbench-page-heading h1").text()).toBe("反应检索");
   expect(wrapper.get(".workbench-page-modes button").attributes("type")).toBe(
     "button",

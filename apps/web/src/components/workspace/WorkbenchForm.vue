@@ -7,13 +7,6 @@
     }"
     @submit.prevent="$emit('submit', $event)"
   >
-    <aside
-      v-show="inspectorVisible"
-      class="workbench-inspector"
-      :aria-label="parameterLabel"
-    >
-      <slot name="parameters" />
-    </aside>
     <div class="workbench-input-area">
       <header v-if="$slots.heading" class="workbench-page-heading">
         <slot name="heading" />
@@ -23,6 +16,13 @@
       </div>
       <slot />
     </div>
+    <aside
+      v-show="inspectorVisible"
+      class="workbench-inspector"
+      :aria-label="parameterLabel"
+    >
+      <slot name="parameters" />
+    </aside>
   </form>
 </template>
 
@@ -50,12 +50,16 @@ defineEmits(["submit"]);
   border-bottom: 0;
 }
 .workbench-inspector {
+  grid-column: 1;
+  grid-row: 1;
   min-width: 0;
   padding: 34px;
   border-right: 1px solid var(--ws-border);
   background: var(--ws-inspector);
 }
 .workbench-input-area {
+  grid-column: 2;
+  grid-row: 1;
   min-width: 0;
   padding: 32px;
 }
@@ -71,6 +75,9 @@ defineEmits(["submit"]);
 }
 .inspector-hidden {
   grid-template-columns: minmax(0, 1fr);
+}
+.inspector-hidden .workbench-input-area {
+  grid-column: 1;
 }
 @media (max-width: 1199px) {
   .inspector-workbench {
@@ -89,10 +96,12 @@ defineEmits(["submit"]);
     grid-template-columns: minmax(0, 1fr);
   }
   .workbench-input-area {
+    grid-column: 1;
     grid-row: 1;
     padding: 22px 16px;
   }
   .workbench-inspector {
+    grid-column: 1;
     grid-row: 2;
     border-right: 0;
     border-top: 1px solid var(--ws-border);

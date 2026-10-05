@@ -51,11 +51,22 @@ async function layout(name) {
       };
       return {
         parameters: region(".workbench-inspector"),
+        inputFirst: Boolean(
+          form
+            .querySelector(".workbench-input-area")
+            .compareDocumentPosition(
+              form.querySelector(".workbench-inspector"),
+            ) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ),
         input: region(".workbench-input-area"),
         pageOverflow: document.documentElement.scrollWidth > innerWidth + 1,
       };
     });
   assert.equal(metrics.pageOverflow, false, `${name}: page overflow`);
+  assert(
+    metrics.inputFirst,
+    `${name}: keyboard order begins with chemical input`,
+  );
   assert.equal(
     metrics.input.overflow,
     false,
