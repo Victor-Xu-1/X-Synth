@@ -1,18 +1,34 @@
 <template>
-  <div :class="['inline-ketcher-editor', { 'fill-height-mode': fillHeight }]">
+  <div
+    :class="[
+      'inline-ketcher-editor',
+      { 'fill-height-mode': fillHeight, 'compact-mode': compact },
+    ]"
+  >
     <div
       ref="ketcherFrame"
       class="inline-ketcher-frame"
       :style="ketcherFrameStyle"
     >
+      <v-progress-linear
+        v-if="pending"
+        class="editor-progress"
+        indeterminate
+        height="2"
+        aria-label="正在同步结构"
+      />
       <iframe
         ref="ketcherIframe"
         data-cy="home-inline-ketcher"
         :src="KETCHER_URL"
-        title="结构绘制器"
+        :title="title"
+        :inert="disabled || !ready || busy || undefined"
         @load="patchKetcherDocument"
       ></iframe>
     </div>
+    <p v-if="editorError" class="editor-error" role="alert">
+      {{ editorError }}
+    </p>
     <div v-if="showActions" class="inline-ketcher-actions">
       <span class="editor-status">{{ editorStatus }}</span>
       <div class="editor-buttons">
@@ -21,7 +37,7 @@
           color="primary"
           rounded="pill"
           prepend-icon="mdi-eraser"
-          :disabled="busy"
+          :disabled="busy || disabled || !ready"
           @click="clearEditor"
         >
           清除面板
@@ -32,6 +48,7 @@
           rounded="pill"
           prepend-icon="mdi-check"
           :loading="busy"
+          :disabled="disabled || !ready || !!editorError"
           @click="readSmilesFromEditor"
         >
           应用结构
@@ -42,19 +59,10 @@
 </template>
 
 <script setup>
-import {
-  computed,
-  nextTick,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  watch,
-} from "vue";
-import {
-  KETCHER_URL,
-  createKetcherWriter,
-  waitForKetcher as waitForEditor,
-} from "@/common/ketcher";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { KETCHER_URL, waitForKetcher as waitForEditor } from "@/common/ketcher";
+import { useKetcherMolecule } from "@/composables/useKetcherMolecule";
+import { createKetcherFocusGuard } from "@/common/ketcher-focus";
 import {
   fitKetcherCanvas,
   prepareKetcherDocument,
@@ -71,13 +79,14 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  compact: Boolean,
+  autoSync: Boolean,
+  disabled: Boolean,
+  title: { type: String, default: "结构绘制器" },
 });
 
 const ketcherIframe = ref(null);
 const ketcherFrame = ref(null);
-const busy = ref(false);
-const editorStatus = ref("画板就绪");
-const writingFromEditor = ref(false);
 const KETCHER_BASE_WIDTH = 808;
 const KETCHER_BASE_HEIGHT = 432;
 const KETCHER_MIN_VIEWPORT_WIDTH = 320;
@@ -122,7 +131,7 @@ const syncKetcherLayout = () => {
   if (!frame) return;
 
   const availableWidth = Math.max(
-    KETCHER_MIN_VIEWPORT_WIDTH,
+    props.compact ? 1 : KETCHER_MIN_VIEWPORT_WIDTH,
     frame.clientWidth,
     frame.getBoundingClientRect().width,
     frame.parentElement?.clientWidth || 0,
@@ -145,14 +154,16 @@ const syncKetcherLayout = () => {
     availableParentHeight >= KETCHER_MIN_VISUAL_HEIGHT
       ? availableParentHeight
       : KETCHER_MAX_VISUAL_HEIGHT;
-  const visualHeightLimit = Math.max(
-    KETCHER_MIN_VISUAL_HEIGHT,
-    Math.min(
-      KETCHER_MAX_VISUAL_HEIGHT,
-      parentVisualLimit,
-      viewportHeight - viewportHeightReserve,
-    ),
-  );
+  const visualHeightLimit = props.compact
+    ? 380
+    : Math.max(
+        KETCHER_MIN_VISUAL_HEIGHT,
+        Math.min(
+          KETCHER_MAX_VISUAL_HEIGHT,
+          parentVisualLimit,
+          viewportHeight - viewportHeightReserve,
+        ),
+      );
 
   if (props.fillHeight) {
     const resized =
@@ -187,6 +198,7 @@ const syncKetcherLayout = () => {
 const patchKetcherDocument = () => {
   const doc = ketcherIframe.value?.contentDocument;
   prepareKetcherDocument(doc);
+  focusGuard.observe();
   scheduleKetcherLayoutSync();
 };
 
@@ -205,81 +217,33 @@ const waitForKetcher = async () => {
   patchKetcherDocument();
   return ketcher;
 };
-const writeMolecule = createKetcherWriter(waitForKetcher, {
+const focusGuard = createKetcherFocusGuard(
+  () => ketcherIframe.value,
+  () => !ready.value || busy.value,
+);
+const {
+  busy,
+  ready,
+  pending,
+  error: editorError,
+  status: editorStatus,
+  initialize,
+  readSmilesFromEditor,
+  clearEditor,
+  setSmilesToEditor,
+} = useKetcherMolecule({
+  smiles,
+  getEditor: waitForKetcher,
   signal: editorLifetime.signal,
-});
-
-const setSmilesToEditor = async (value = smiles.value, options = {}) => {
-  const applied = await writeMolecule(value);
-  if (applied) await fitDrawing();
-  if (applied && options.statusMessage) {
-    editorStatus.value = options.statusMessage;
-  }
-};
-
-const readSmilesFromEditor = async () => {
-  busy.value = true;
-  try {
-    await nextTick();
-    await writeMolecule.flush();
-    const ketcher = await waitForKetcher();
-    const rawSmiles = String(await ketcher.getSmiles()).trim();
-    if (!rawSmiles) {
-      writingFromEditor.value = true;
-      smiles.value = "";
-      emit("commit", "");
-      await nextTick();
-      writingFromEditor.value = false;
-      editorStatus.value = "当前画板为空。";
-      return null;
-    }
-
-    // Backend route submission still performs RDKit normalization and validation.
-    const nextSmiles = rawSmiles;
-    writingFromEditor.value = true;
-    smiles.value = nextSmiles;
-    emit("commit", nextSmiles);
-    editorStatus.value = "结构已读取。";
-    await nextTick();
-    writingFromEditor.value = false;
-    return nextSmiles;
-  } catch (error) {
-    writingFromEditor.value = false;
-    editorStatus.value = "结构读取失败，请检查画板内容。";
-    console.error("Could not read SMILES from inline Ketcher:", error);
-    return null;
-  } finally {
-    busy.value = false;
-  }
-};
-
-const clearEditor = async () => {
-  busy.value = true;
-  try {
-    await writeMolecule("");
-    writingFromEditor.value = true;
-    smiles.value = "";
-    emit("commit", "");
-    editorStatus.value = "画板已清空。";
-    await nextTick();
-    writingFromEditor.value = false;
-  } catch (error) {
-    writingFromEditor.value = false;
-    console.error("Could not clear inline Ketcher:", error);
-  } finally {
-    busy.value = false;
-  }
-};
-
-watch(smiles, (nextValue, previousValue) => {
-  if (writingFromEditor.value || nextValue === previousValue) return;
-  setSmilesToEditor(nextValue).catch((error) => {
-    editorStatus.value = "结构同步失败，请检查输入。";
-    console.error("Could not sync SMILES into inline Ketcher:", error);
-  });
+  autoSync: () => props.autoSync,
+  disabled: () => props.disabled,
+  fitDrawing,
+  captureFocus: focusGuard.capture,
+  commit: (value) => emit("commit", value),
 });
 
 onMounted(() => {
+  focusGuard.observe();
   scheduleKetcherLayoutSync();
   if (typeof ResizeObserver !== "undefined") {
     resizeObserver = new ResizeObserver(syncKetcherLayout);
@@ -292,20 +256,19 @@ onMounted(() => {
   }
   window.addEventListener("resize", syncKetcherLayout, { passive: true });
 
-  const initialLoad = smiles.value ? setSmilesToEditor() : waitForKetcher();
-  initialLoad.catch((error) => {
-    editorStatus.value = "结构绘制器加载失败。";
-    console.error("Could not initialize inline Ketcher:", error);
-  });
+  initialize();
 });
 
 onBeforeUnmount(() => {
+  focusGuard.dispose();
   editorLifetime.abort();
   resizeObserver?.disconnect();
   window.removeEventListener("resize", syncKetcherLayout);
 });
 
 defineExpose({
+  ready,
+  pending,
   readSmilesFromEditor,
   captureDraft: () =>
     ketcherIframe.value?.contentWindow?.ketcher?.editor
@@ -344,6 +307,21 @@ defineExpose({
 .inline-ketcher-editor.fill-height-mode .inline-ketcher-frame {
   height: var(--ketcher-visual-height, 100%);
   min-height: clamp(420px, var(--ketcher-visual-height, 560px), 860px);
+}
+
+.inline-ketcher-editor.compact-mode .inline-ketcher-frame {
+  height: 380px;
+  min-height: 380px;
+}
+.editor-progress {
+  position: absolute;
+  top: 0;
+  z-index: 1;
+}
+.editor-error {
+  color: var(--ws-danger, #b42318);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .inline-ketcher-frame iframe {

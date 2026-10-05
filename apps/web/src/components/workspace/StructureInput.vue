@@ -1,51 +1,59 @@
 <template>
-  <div class="structure-field">
+  <div ref="root" class="structure-field" :aria-busy="pending">
     <div class="structure-field-heading">
       <label :for="id">{{ label }}</label>
       <div class="structure-field-actions">
         <MoleculeFileControls
+          v-if="allowFiles"
           ref="files"
           :smiles="smiles"
           :disabled="disabled"
           @import="applyFile"
           @busy="fileBusy = $event"
-        /><v-tooltip text="绘制结构"
+          :read-structure="read"
+        /><v-tooltip text="放大绘图"
           ><template #activator="{ props }"
             ><v-btn
               v-bind="props"
-              icon="mdi-draw"
+              icon="mdi-arrow-expand-all"
               variant="text"
               size="x-small"
-              :aria-label="`绘制${label}`"
+              :aria-label="`放大绘制${label}`"
               :disabled="disabled || fileBusy"
               @click="drawing = true" /></template
         ></v-tooltip>
       </div>
     </div>
-    <SmilesImage
-      v-if="smiles.trim()"
-      :smiles="smiles"
-      :width="240"
-      :height="130"
-      :show-error-image="false"
-    />
-    <details
-      class="structure-code"
-      :open="codeOpen"
-      @toggle="codeOpen = $event.target.open"
-    >
-      <summary>SMILES</summary>
+    <div class="structure-code">
+      <label :for="id">SMILES</label>
       <textarea
         :id="id"
         class="workspace-input workspace-code"
         v-model="smiles"
-        :rows="rows"
-        placeholder="SMILES"
+        rows="2"
+        placeholder="粘贴 SMILES"
         :disabled="disabled || fileBusy"
         :aria-label="label"
         spellcheck="false"
       />
-    </details>
+    </div>
+    <div
+      class="structure-board"
+      :inert="disabled || fileBusy || drawing || undefined"
+    >
+      <InlineKetcherEditor
+        v-if="mountEditor"
+        ref="editor"
+        v-model:smiles="smiles"
+        :show-actions="false"
+        :title="`${label}绘图板`"
+        :disabled="disabled || drawing"
+        auto-sync
+        compact
+        fill-height
+      />
+      <div v-else class="structure-board-placeholder" aria-hidden="true" />
+    </div>
     <KetcherModal
       v-model:smiles="smiles"
       :value="drawing"
@@ -55,28 +63,63 @@
 </template>
 <script setup>
 import { computed, ref } from "vue";
+import { useIntersectionObserver } from "@vueuse/core";
 import KetcherModal from "@/components/KetcherModal.vue";
-import SmilesImage from "@/components/SmilesImage.vue";
+import InlineKetcherEditor from "@/components/InlineKetcherEditor.vue";
 import MoleculeFileControls from "./MoleculeFileControls.vue";
 const smiles = defineModel({ type: String, default: "" });
-defineProps({
+const props = defineProps({
   label: { type: String, default: "分子结构" },
-  rows: { type: Number, default: 3 },
   disabled: Boolean,
+  allowFiles: { type: Boolean, default: true },
+  recycle: Boolean,
   id: { type: String, default: () => `structure-${crypto.randomUUID()}` },
 });
 const drawing = ref(false),
   fileBusy = ref(false);
-const codeOpen = ref(!smiles.value.trim());
-const files = ref(null);
+const files = ref(null),
+  editor = ref(null),
+  root = ref(null),
+  visible = ref(false),
+  activated = ref(false);
+const { stop } = useIntersectionObserver(
+  root,
+  ([entry]) => {
+    visible.value = !!entry?.isIntersecting;
+    if (visible.value) {
+      activated.value = true;
+      if (!props.recycle) stop();
+    }
+  },
+  { rootMargin: "160px" },
+);
+const mountEditor = computed(
+  () =>
+    visible.value ||
+    (!props.recycle && activated.value) ||
+    Boolean(editor.value?.pending),
+);
+const pending = computed(
+  () =>
+    fileBusy.value ||
+    drawing.value ||
+    files.value?.hasPending === true ||
+    (mountEditor.value && (!editor.value || editor.value.pending)),
+);
 defineExpose({
-  pending: computed(
-    () => fileBusy.value || drawing.value || files.value?.hasPending === true,
-  ),
+  pending,
+  read,
 });
+async function read() {
+  if (
+    drawing.value ||
+    (files.value?.hasPending && !files.value?.readingStructure)
+  )
+    throw new Error("请先确认结构文件或画板内容。");
+  return editor.value ? editor.value.readSmilesFromEditor() : smiles.value;
+}
 function applyFile(record) {
   smiles.value = record.smiles;
-  codeOpen.value = false;
 }
 </script>
 <style scoped>
@@ -92,23 +135,34 @@ function applyFile(record) {
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  resize: vertical;
-  min-height: 75px;
-  line-height: 1.7;
+  resize: none;
+  height: 48px;
+  min-height: 48px;
+  padding: 6px 10px;
+  line-height: 1.45;
 }
 .structure-field-actions {
   display: flex;
   align-items: center;
 }
-.structure-field :deep(img) {
-  max-width: 100%;
+.structure-field {
+  min-width: 0;
+}
+.structure-board {
+  min-width: 0;
+  margin-top: 10px;
+}
+.structure-board-placeholder {
+  height: 380px;
+  border: 1px solid var(--ws-border);
+  border-radius: 6px;
 }
 .structure-code {
   font-size: 12px;
   color: var(--ws-muted);
 }
-.structure-code summary {
-  cursor: pointer;
-  margin: 6px 0;
+.structure-code label {
+  display: block;
+  margin-bottom: 4px;
 }
 </style>

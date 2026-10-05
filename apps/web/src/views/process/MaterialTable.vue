@@ -6,7 +6,7 @@
         <thead><tr><th>化学身份</th><th>角色</th><th>质量</th><th>单位</th><th aria-label="操作"></th></tr></thead>
         <tbody><tr v-for="(row, index) in rows" :key="row.id">
           <td class="identity-cell"><input class="workspace-input" :value="row.name" :disabled="disabled" :aria-label="`${title} ${index + 1} 名称`" placeholder="名称 / 批号（可空）" maxlength="160" @input="setField(row.id, 'name', $event.target.value)" />
-            <StructureInput :ref="(element) => setRef(row.id, element)" :model-value="row.smiles" :label="`${title} ${index + 1} 结构（可空）`" :disabled="disabled" :rows="2" @update:model-value="setField(row.id, 'smiles', $event)" /></td>
+            <StructureInput :ref="(element) => setRef(row.id, element)" :model-value="row.smiles" :label="`${title} ${index + 1} 结构（可空）`" :disabled="disabled" recycle @update:model-value="setField(row.id, 'smiles', $event)" /></td>
           <td><select class="workspace-input" :value="row.role" :disabled="disabled" :aria-label="`${title} ${index + 1} 角色`" @change="setField(row.id, 'role', $event.target.value)"><option v-for="role in roles" :key="role.value" :value="role.value">{{ role.label }}</option></select></td>
           <td><input class="workspace-input mass-input" type="number" min="0" step="any" :value="row.mass.value" :disabled="disabled" :aria-label="`${title} ${index + 1} 质量`" placeholder="未录入" @input="setMass(row.id, 'value', $event.target.value)" /></td>
           <td><select class="workspace-input" :value="row.mass.unit" :disabled="disabled" :aria-label="`${title} ${index + 1} 单位`" @change="setMass(row.id, 'unit', $event.target.value)"><option v-for="unit in ['mg', 'g', 'kg']" :key="unit">{{ unit }}</option></select></td>

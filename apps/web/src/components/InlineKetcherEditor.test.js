@@ -125,7 +125,10 @@ test.each(["InlineKetcherEditor.vue", "KetcherModal.vue"])(
         compilerOptions: { bindingMetadata: script.bindings },
       }).errors,
     ).toEqual([]);
-    expect(text).toContain("await writeMolecule.flush()");
+    const control = filename === "InlineKetcherEditor.vue"
+      ? fs.readFileSync(path.resolve(__dirname, "../composables/useKetcherMolecule.js"), "utf8")
+      : text;
+    expect(control).toContain("await writeMolecule.flush()");
     expect(text).toContain("editorLifetime.signal");
     expect(text).toContain("editorLifetime.abort()");
     expect(text).not.toContain("structure-read-start");
