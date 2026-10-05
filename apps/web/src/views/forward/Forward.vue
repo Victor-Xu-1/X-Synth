@@ -14,13 +14,11 @@
     <form class="forward-input-layout" aria-label="反应输入" @submit.prevent="predict">
       <section class="forward-reaction" aria-labelledby="reaction-heading">
         <h2 id="reaction-heading" class="tool-section-title">反应结构</h2>
-        <div class="reaction-canvas" :class="{ 'single-structure': !needsProduct }">
-          <StructureInput ref="reactantsInput" v-model="reactants" label="反应物"
-            id="forward-reactants" :disabled="busy" data-cy="reactants" />
-          <v-icon v-if="needsProduct" class="reaction-arrow" icon="mdi-arrow-right" aria-hidden="true" />
-          <StructureInput v-if="needsProduct" ref="productInput" v-model="product"
-            label="产物" id="forward-product" :disabled="busy" data-cy="product" />
-        </div>
+        <ReactionInput v-if="needsProduct" ref="canvas" v-model="reactionSmiles"
+          label="反应结构" :disabled="busy" :require-reactants="true"
+          data-cy="forward-reaction" />
+        <StructureInput v-else ref="reactantsInput" v-model="forwardSmiles" label="反应物"
+          id="forward-reactants" :disabled="busy" data-cy="reactants" />
       </section>
       <aside class="forward-parameters" aria-labelledby="parameter-heading">
         <h2 id="parameter-heading" class="tool-section-title">预测参数</h2>
@@ -35,8 +33,8 @@
             <template v-if="!needsProduct"><dt>训练集</dt><dd>USPTO Stereo</dd></template>
           </dl>
         </details>
-        <p v-if="requestError" class="tool-error" role="alert"
-          data-cy="forward-request-error">{{ requestError }}</p>
+        <p v-if="displayError" class="tool-error" role="alert"
+          data-cy="forward-request-error">{{ displayError }}</p>
         <div class="forward-submit-actions">
           <v-btn type="submit" color="primary" variant="flat" prepend-icon="mdi-play-outline"
             :loading="pendingTasks > 0" :disabled="!submissionReady" data-cy="submit-button">
@@ -61,26 +59,28 @@
       </header>
       <ConditionRecommendation v-if="needsProduct" :results="contextResults"
         :prediction="conditions.prediction.value" :submitted="conditions.submitted.value"
-        :error="requestError" :pending="pendingTasks" :evaluating="evaluating"
+        :error="displayError" :pending="pendingTasks" :evaluating="evaluating"
         :score="reactionScore" :input-pending="inputPending" @evaluate="evaluate" />
       <SynthesisPrediction v-else :results="forwardResults" :prediction="forward.prediction.value"
-        :submitted="forward.submitted.value" :error="requestError" :pending="pendingTasks" />
+        :submitted="forward.submitted.value" :error="displayError" :pending="pendingTasks" />
     </section>
   </ModuleWorkbench>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useConfirm } from "vuetify-use-dialog";
 import { API } from "@/common/api";
 import { nativeResult } from "@/common/native-response";
 import { errorMessage } from "@/common/workspace-errors";
+import { reactionInputPrefill, reactionInputText } from "@/common/reaction-input";
 import { useWorkspaceStore } from "@/store/workspace";
 import { useConditionPrediction } from "@/composables/useConditionPrediction";
 import { useForwardPrediction } from "@/composables/useForwardPrediction";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";
+import ReactionInput from "@/components/workspace/ReactionInput.vue";
 import ConditionRecommendation from "./tab/ConditionRecommendation.vue";
 import SynthesisPrediction from "./tab/SynthesisPrediction.vue";
 
@@ -90,13 +90,18 @@ const tab = computed(() => route.query.tab === "forward" ? "forward" : "context"
 const mode = computed(() => tab.value);
 const needsProduct = computed(() => mode.value === "context");
 const pageTitle = computed(() => needsProduct.value ? "反应条件预测" : "产物预测");
-const reactants = ref(""), product = ref("");
+const reactionSmiles = ref(""), forwardSmiles = ref("");
+const canvas = ref(null), reactantsInput = ref(null);
+const contextReactants = computed(() => canvas.value?.reactants?.join(".") || "");
+const product = computed(() => canvas.value?.product || "");
+const forwardReactants = computed(() => forwardSmiles.value);
+const reactants = computed(() => needsProduct.value ? contextReactants.value : forwardReactants.value);
 const contextResults = ref([]), forwardResults = ref([]);
 const numContextResults = ref(10), numForwardResults = ref(5);
 const pendingTasks = ref(0), evaluating = ref(false), reactionScore = ref(null);
-const requestError = ref("");
-const reactantsInput = ref(null), productInput = ref(null);
-const inputPending = computed(() => !!(reactantsInput.value?.pending || productInput.value?.pending));
+const requestError = ref(""), prefillError = ref("");
+const displayError = computed(() => prefillError.value || requestError.value);
+const inputPending = computed(() => !!(needsProduct.value ? canvas.value?.pending : reactantsInput.value?.pending));
 const busy = computed(() => pendingTasks.value > 0 || evaluating.value);
 const createConfirm = useConfirm();
 let generation = 0, disposed = false;
@@ -110,14 +115,16 @@ function reportError(prefix, error) {
   requestError.value = error ? `${prefix}：${errorMessage(error, error.message || "计算请求失败。")}` : prefix;
 }
 const shared = {
-  reactants, pending: pendingTasks, context: [tab, inputPending],
+  pending: pendingTasks, context: [tab, inputPending],
   reportError, onInvalidate: invalidatePresentation,
 };
 const conditions = useConditionPrediction({
-  ...shared, product, count: numContextResults, results: contextResults,
+  ...shared, reactants: contextReactants, product, count: numContextResults, results: contextResults,
+  context: [...shared.context, reactionSmiles, prefillError],
 });
 const forward = useForwardPrediction({
-  ...shared, count: numForwardResults, results: forwardResults,
+  ...shared, reactants: forwardReactants, count: numForwardResults, results: forwardResults,
+  context: [...shared.context, prefillError],
 });
 const selected = computed(() => needsProduct.value ? conditions : forward);
 const selectedResults = computed(() => needsProduct.value ? contextResults.value : forwardResults.value);
@@ -127,23 +134,27 @@ const resultLimit = computed({
   set: (value) => { if (needsProduct.value) numContextResults.value = value; else numForwardResults.value = value; },
 });
 const submissionReady = computed(() =>
-  workspace.can(features[mode.value]) && !busy.value && !inputPending.value && !countError.value &&
+  workspace.can(features[mode.value]) && !busy.value && !inputPending.value && !prefillError.value && !countError.value &&
   !!reactants.value.trim() && (!needsProduct.value || !!product.value.trim()),
 );
 
 async function predict() {
-  if (busy.value || inputPending.value || !workspace.can(features[mode.value])) return;
+  await nextTick();
+  if (disposed || busy.value || inputPending.value || prefillError.value || !workspace.can(features[mode.value])) return;
   await selected.value.predict();
 }
 
 async function evaluate() {
-  if (busy.value || inputPending.value || !contextResults.value.length || !workspace.can("fast_filter")) return;
+  await nextTick();
+  if (disposed || !needsProduct.value || busy.value || inputPending.value || prefillError.value ||
+    !contextReactants.value.trim() || !product.value.trim() ||
+    !contextResults.value.length || !workspace.can("fast_filter")) return;
   const current = ++generation;
   reactionScore.value = null;
   requestError.value = "";
   evaluating.value = true;
   try {
-    const response = await API.post("/api/fast-filter/call-sync", { smiles: [reactants.value, product.value] });
+    const response = await API.post("/api/fast-filter/call-sync", { smiles: [contextReactants.value, product.value] });
     const result = nativeResult(response);
     const score = typeof result === "number" ? result : result?.score;
     if (!Number.isFinite(score)) throw new Error("反应评分返回格式无效。");
@@ -163,8 +174,11 @@ async function clear() {
   if (!confirmed || disposed || busy.value || inputPending.value) return;
   conditions.invalidate();
   forward.invalidate();
-  reactants.value = "";
-  product.value = "";
+  prefillError.value = "";
+  if (needsProduct.value) {
+    canvas.value?.clear?.();
+    reactionSmiles.value = "";
+  } else forwardSmiles.value = "";
 }
 
 function replaceRoute(value) {
@@ -173,17 +187,25 @@ function replaceRoute(value) {
 }
 function prefill() {
   const query = route.query;
+  conditions.invalidate();
+  forward.invalidate();
+  prefillError.value = "";
   if (query.tab !== undefined && (typeof query.tab !== "string" || !Object.hasOwn(features, query.tab)))
     replaceRoute("context");
-  if (typeof query.rxnsmiles === "string") {
-    const parts = query.rxnsmiles.split(">");
-    reactants.value = parts[0];
-    product.value = parts.length === 3 ? parts[2] : "";
+  try {
+    const raw = reactionInputPrefill(query);
+    if ([query.reactants, query.product].some((value) => value !== undefined && typeof value !== "string"))
+      throw new Error("链接结构字段格式无效，未应用输入。");
+    if (raw !== null) reactionSmiles.value = raw;
+    else if (query.reactants !== undefined || query.product !== undefined)
+      reactionSmiles.value = reactionInputText({ reactants: query.reactants || "", product: query.product || "" });
+    if (typeof query.reactants === "string") forwardSmiles.value = query.reactants;
+  } catch (error) {
+    prefillError.value = errorMessage(error, "链接反应格式无效，未应用输入。");
   }
-  if (typeof query.reactants === "string") reactants.value = query.reactants;
-  if (typeof query.product === "string") product.value = query.product;
 }
-watch(() => route.query, prefill, { immediate: true, deep: true });
+watch([reactionSmiles, forwardSmiles], () => { prefillError.value = ""; }, { flush: "sync" });
+watch(() => route.query, prefill, { immediate: true, deep: true, flush: "sync" });
 onBeforeUnmount(() => { disposed = true; generation++; });
 </script>
 
@@ -196,20 +218,6 @@ onBeforeUnmount(() => { disposed = true; generation++; });
 }
 .forward-reaction, .forward-parameters, .forward-results { min-width: 0; }
 .forward-reaction { padding: 20px 24px 24px 0; }
-.reaction-canvas {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  min-height: 280px;
-}
-.reaction-canvas.single-structure { grid-template-columns: minmax(0, 1fr); }
-.reaction-canvas :deep(.structure-field) {
-  display: flex;
-  flex-direction: column;
-  align-self: stretch;
-  min-width: 0;
-}
 .forward-parameters {
   border-left: 1px solid var(--ws-border);
   padding: 20px 0 24px 20px;
@@ -231,10 +239,5 @@ onBeforeUnmount(() => { disposed = true; generation++; });
   .forward-input-layout { grid-template-columns: minmax(0, 1fr); }
   .forward-reaction { padding-right: 0; }
   .forward-parameters { border-left: 0; border-top: 1px solid var(--ws-border); padding-left: 0; }
-}
-@media (max-width: 580px) {
-  .reaction-canvas { grid-template-columns: minmax(0, 1fr); }
-  .reaction-arrow { transform: rotate(90deg); justify-self: center; }
-  .reaction-canvas :deep(.structure-field) { min-height: 250px; }
 }
 </style>

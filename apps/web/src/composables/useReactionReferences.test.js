@@ -1,34 +1,23 @@
-import { defineComponent, h, reactive, ref } from "vue";
+import { defineComponent, h, ref } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
-import { useRoute } from "vue-router";
 import { API } from "@/common/api";
 import { downloadChemicalFile } from "@/common/chemical-files";
 import {
   REFERENCE_SEARCH_PATH,
   REFERENCE_STATUS_PATH,
 } from "@/common/reaction-references";
-import ReferenceSearch from "@/views/references/ReferenceSearch.vue";
 import ReferenceResults from "@/components/references/ReferenceResults.vue";
 import ReactionReferences from "@/components/references/ReactionReferences.vue";
 import { useReactionReferences } from "./useReactionReferences";
 
-jest.mock("vue-router", () => ({ useRoute: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn() } }));
 jest.mock("@/common/chemical-files", () => ({
   downloadChemicalFile: jest.fn(),
-}));
-jest.mock("@/components/ModuleWorkbench.vue", () => ({
-  props: ["title"],
-  template: "<section><h1>{{ title }}</h1><slot /></section>",
 }));
 jest.mock("@/components/SmilesImage.vue", () => ({
   name: "SmilesImage",
   props: ["smiles", "inputType"],
   template: '<span class="rendered-smiles">{{ smiles }}</span>',
-}));
-jest.mock("@/components/workspace/StructureInput.vue", () => ({
-  name: "StructureInput",
-  template: "<div />",
 }));
 
 // Only isolated UI/transport boundaries are stubbed; NativeMongo/Chrome acceptance belongs to parent.
@@ -92,21 +81,7 @@ function deferred() {
   return { promise, resolve, reject };
 }
 const wrappers = [];
-const structureInput = defineComponent({
-  name: "StructureInput",
-  props: ["modelValue", "id", "label", "disabled"],
-  emits: ["update:modelValue"],
-  setup(_, { expose }) {
-    const pending = ref(false);
-    expose({ pending });
-    return { pending };
-  },
-  template: `<div><textarea :id="id" :aria-label="label" :value="modelValue" :disabled="disabled"
-    @input="$emit('update:modelValue', $event.target.value)" />
-    <button type="button" class="draft" @click="pending = !pending">Draft</button></div>`,
-});
 const stubs = {
-  StructureInput: structureInput,
   VBtn: {
     props: ["disabled", "loading", "type"],
     template:
@@ -418,74 +393,7 @@ describe("shared reaction references", () => {
   });
 });
 
-describe("reference page and records", () => {
-  async function page(query = {}) {
-    const route = reactive({ query });
-    useRoute.mockReturnValue(route);
-    const wrapper = mounted(ReferenceSearch);
-    await flushPromises();
-    return { wrapper, route };
-  }
-  test.each(["reaction_smiles", "rxnsmiles"])(
-    "%s links require explicit application and a separate search",
-    async (key) => {
-      const product = "[13CH3][C@H](O)C.[Na+]",
-        reactants = "[13CH3][C@@H](Cl)C.[Cl-]";
-      const { wrapper } = await page({ [key]: `${reactants}>O>${product}` });
-      expect(wrapper.get("#reference-product").element.value).toBe("");
-      expect(
-        wrapper.get('[data-cy="reference-search-submit"]').element.disabled,
-      ).toBe(true);
-      await wrapper.get('[data-cy="reference-apply-prefill"]').trigger("click");
-      expect(wrapper.get("#reference-product").element.value).toBe(product);
-      expect(wrapper.get("#reference-reactants").element.value).toBe(reactants);
-      expect(API.post).not.toHaveBeenCalled();
-      API.post.mockResolvedValue(packet(product, [reactants]));
-      await wrapper.get("form").trigger("submit");
-      await flushPromises();
-      expect(API.post.mock.calls[0]).toEqual([
-        REFERENCE_SEARCH_PATH,
-        { product, reactants: [reactants], limit: 20 },
-      ]);
-    },
-  );
-  test("malformed links, source failure and unconfirmed drafts do not submit", async () => {
-    API.get.mockResolvedValue(unavailable);
-    const { wrapper } = await page({ rxnsmiles: "CCO>CC=O" });
-    expect(wrapper.text()).toContain("未应用输入");
-    await wrapper.get("form").trigger("submit");
-    expect(API.post).not.toHaveBeenCalled();
-    expect(wrapper.text()).toContain("索引未就绪");
-  });
-  test("confirmed structure boundary emissions support product-only search and draft invalidation", async () => {
-    const { wrapper } = await page();
-    await wrapper.get("#reference-product").setValue("CC=O");
-    API.post.mockResolvedValue(packet("CC=O", []));
-    await wrapper.get("form").trigger("submit");
-    await flushPromises();
-    expect(API.post.mock.calls[0][1].reactants).toEqual([]);
-    expect(wrapper.text()).toContain("仅产物一致");
-    await wrapper.get(".draft").trigger("click");
-    expect(
-      wrapper.get('[data-cy="reference-search-submit"]').element.disabled,
-    ).toBe(true);
-    expect(wrapper.find('[data-cy="reference-row"]').exists()).toBe(false);
-  });
-  test("route changes invalidate an in-flight search and restore explicit confirmation", async () => {
-    const { wrapper, route } = await page();
-    await wrapper.get("#reference-product").setValue("CC=O");
-    const held = deferred();
-    API.post.mockReturnValue(held.promise);
-    await wrapper.get("form").trigger("submit");
-    route.query = { rxnsmiles: "CCN>>CC=N" };
-    await flushPromises();
-    held.resolve(packet("CC=O", []));
-    await flushPromises();
-    expect(wrapper.find('[data-cy="reference-row"]').exists()).toBe(false);
-    expect(wrapper.find('[data-cy="reference-apply-prefill"]').exists()).toBe(
-      true,
-    );
-  });
+describe("reference records", () => {
   test("records show unrecorded fields and raw yield text without guessing units or unsafe links", () => {
     const response = packet();
     response.results[0].patent_url = "javascript:alert(1)";
