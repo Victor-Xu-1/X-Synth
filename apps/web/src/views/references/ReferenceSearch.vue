@@ -32,11 +32,91 @@
         >
       </div>
     </section>
-    <form
+    <WorkbenchForm
       class="reference-input-layout"
       aria-label="参考反应检索输入"
-      @submit.prevent="search"
+      parameter-label="检索参数"
+      @submit="search"
     >
+      <template #parameters>
+        <div
+          class="reference-parameters"
+          aria-labelledby="reference-parameters-heading"
+        >
+          <h2 id="reference-parameters-heading" class="tool-section-title">
+            检索参数
+          </h2>
+          <dl class="reference-source">
+            <dt>来源</dt>
+            <dd>{{ evidenceSourceLabel(sourceStatus) }}</dd>
+            <dt>匹配方式</dt>
+            <dd>产物结构精确匹配</dd>
+            <dt>参考记录</dt>
+            <dd>{{ recordedValue(sourceStatus?.record_count) }}</dd>
+          </dl>
+          <details
+            v-if="sourceStatus?.sources?.length"
+            class="reference-source"
+          >
+            <summary>来源与数据覆盖</summary>
+            <dl v-for="source in sourceStatus.sources" :key="source.source">
+              <dt>{{ source.source }}</dt>
+              <dd>{{ source.ready ? "已就绪" : referenceReason(source) }}</dd>
+              <dt>参考记录</dt>
+              <dd>{{ recordedValue(source.record_count) }}</dd>
+              <template v-if="source.source === 'ORD'">
+                <dt>含收率记录</dt>
+                <dd>{{ recordedValue(source.yields_count) }}</dd>
+                <dt>含条件/投料记录</dt>
+                <dd>{{ recordedValue(source.conditions_count) }}</dd>
+                <dt>数据许可</dt>
+                <dd>{{ source.license || "未记录" }}</dd>
+              </template>
+            </dl>
+          </details>
+          <v-text-field
+            v-model="limit"
+            label="结果数量"
+            type="number"
+            min="1"
+            max="30"
+            step="1"
+            inputmode="numeric"
+            variant="outlined"
+            density="compact"
+            :disabled="loading"
+            :error-messages="countError"
+            data-cy="reference-limit"
+          />
+          <p v-if="!ready" class="reference-source-state" role="status">
+            {{ unavailableReason }}
+          </p>
+          <div class="reference-submit-actions">
+            <v-btn
+              type="submit"
+              color="primary"
+              variant="flat"
+              prepend-icon="mdi-magnify"
+              :disabled="!canSearch"
+              :loading="loading"
+              data-cy="reference-search-submit"
+              >查询参考反应</v-btn
+            >
+            <v-tooltip text="刷新参考来源状态" location="top">
+              <template #activator="{ props: activator }">
+                <v-btn
+                  v-bind="activator"
+                  icon="mdi-refresh"
+                  variant="text"
+                  aria-label="刷新参考来源状态"
+                  :disabled="statusLoading"
+                  @click="loadStatus"
+                />
+              </template>
+            </v-tooltip>
+          </div>
+        </div>
+      </template>
       <section
         class="reference-inputs"
         aria-labelledby="reference-structures-heading"
@@ -53,81 +133,7 @@
           data-cy="reference-reaction"
         />
       </section>
-      <aside
-        class="reference-parameters"
-        aria-labelledby="reference-parameters-heading"
-      >
-        <h2 id="reference-parameters-heading" class="tool-section-title">
-          检索参数
-        </h2>
-        <dl class="reference-source">
-          <dt>来源</dt>
-          <dd>{{ evidenceSourceLabel(sourceStatus) }}</dd>
-          <dt>匹配方式</dt>
-          <dd>产物结构精确匹配</dd>
-          <dt>参考记录</dt>
-          <dd>{{ recordedValue(sourceStatus?.record_count) }}</dd>
-        </dl>
-        <details v-if="sourceStatus?.sources?.length" class="reference-source">
-          <summary>来源与数据覆盖</summary>
-          <dl v-for="source in sourceStatus.sources" :key="source.source">
-            <dt>{{ source.source }}</dt>
-            <dd>{{ source.ready ? "已就绪" : referenceReason(source) }}</dd>
-            <dt>参考记录</dt>
-            <dd>{{ recordedValue(source.record_count) }}</dd>
-            <template v-if="source.source === 'ORD'">
-              <dt>含收率记录</dt>
-              <dd>{{ recordedValue(source.yields_count) }}</dd>
-              <dt>含条件/投料记录</dt>
-              <dd>{{ recordedValue(source.conditions_count) }}</dd>
-              <dt>数据许可</dt>
-              <dd>{{ source.license || "未记录" }}</dd>
-            </template>
-          </dl>
-        </details>
-        <v-text-field
-          v-model="limit"
-          label="结果数量"
-          type="number"
-          min="1"
-          max="30"
-          step="1"
-          inputmode="numeric"
-          variant="outlined"
-          density="compact"
-          :disabled="loading"
-          :error-messages="countError"
-          data-cy="reference-limit"
-        />
-        <p v-if="!ready" class="reference-source-state" role="status">
-          {{ unavailableReason }}
-        </p>
-        <div class="reference-submit-actions">
-          <v-btn
-            type="submit"
-            color="primary"
-            variant="flat"
-            prepend-icon="mdi-magnify"
-            :disabled="!canSearch"
-            :loading="loading"
-            data-cy="reference-search-submit"
-            >查询参考反应</v-btn
-          >
-          <v-tooltip text="刷新参考来源状态" location="top">
-            <template #activator="{ props: activator }">
-              <v-btn
-                v-bind="activator"
-                icon="mdi-refresh"
-                variant="text"
-                aria-label="刷新参考来源状态"
-                :disabled="statusLoading"
-                @click="loadStatus"
-              />
-            </template>
-          </v-tooltip>
-        </div>
-      </aside>
-    </form>
+    </WorkbenchForm>
     <ReferenceResults
       class="reference-search-results"
       :response="result"
@@ -153,6 +159,7 @@ import {
 } from "@/common/reaction-references";
 import { useReactionReferences } from "@/composables/useReactionReferences";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
+import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import ReactionInput from "@/components/workspace/ReactionInput.vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import ReferenceResults from "@/components/references/ReferenceResults.vue";
@@ -243,29 +250,20 @@ async function loadReaction(records) {
 </script>
 
 <style scoped>
-.reference-input-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 272px;
-  border-top: 1px solid var(--ws-border);
-  border-bottom: 1px solid var(--ws-border);
-}
-.reference-inputs,
-.reference-parameters {
-  min-width: 0;
-}
-.reference-inputs {
-  padding: 20px 24px 24px 0;
-}
-.reference-parameters {
-  border-left: 1px solid var(--ws-border);
-  padding: 20px 0 24px 20px;
-}
 .reference-source {
+  font-size: 12px;
+  margin: 14px 0 24px;
+}
+dl.reference-source,
+.reference-source > dl {
   display: grid;
   grid-template-columns: 66px minmax(0, 1fr);
   gap: 10px;
-  font-size: 12px;
-  margin: 14px 0 24px;
+}
+details.reference-source summary {
+  cursor: pointer;
+  margin-bottom: 12px;
+  font-size: 14px;
 }
 .reference-source dt,
 .reference-source-state {
@@ -306,18 +304,5 @@ async function loadReaction(records) {
 }
 .reference-prefill :deep(.smiles-image-container) {
   min-height: 140px;
-}
-@media (max-width: 1000px) {
-  .reference-input-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .reference-inputs {
-    padding-right: 0;
-  }
-  .reference-parameters {
-    border-left: 0;
-    border-top: 1px solid var(--ws-border);
-    padding-left: 0;
-  }
 }
 </style>

@@ -2,7 +2,7 @@
   <section class="structure-workspace" aria-label="目标结构">
     <div class="structure-input-row">
       <div class="structure-heading">
-        <strong>目标化合物</strong>
+        <label for="target-smiles">目标化合物（SMILES）</label>
         <MoleculeFileControls
           ref="files"
           :smiles="smiles"
@@ -12,7 +12,6 @@
           @busy="fileBusy = $event"
         />
       </div>
-      <label for="target-smiles" class="field-label">SMILES</label>
       <div class="structure-input-actions">
         <input
           id="target-smiles"
@@ -80,7 +79,7 @@ defineExpose({ read, clear, capture });
   min-width: 0;
 }
 .structure-input-row {
-  margin-bottom: 12px;
+  margin-bottom: 20px;
 }
 .structure-heading {
   display: flex;
@@ -88,7 +87,12 @@ defineExpose({ read, clear, capture });
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
-  font-size: 13px;
+  font-size: 18px;
+  font-weight: 600;
+}
+.structure-heading :deep(.v-btn) {
+  width: 32px;
+  height: 32px;
 }
 .structure-input-actions {
   display: flex;
@@ -99,10 +103,12 @@ defineExpose({ read, clear, capture });
 .structure-input-actions input {
   min-width: 0;
   font-family: monospace;
-  font-size: 12px;
+  font-size: 16px;
+  min-height: 50px;
 }
 .structure-board {
   min-width: 0;
+  height: clamp(420px, calc(100dvh - 396px), 760px);
 }
 .board-busy {
   opacity: 0.7;

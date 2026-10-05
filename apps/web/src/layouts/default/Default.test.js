@@ -6,27 +6,37 @@ jest.mock("@vueuse/core", () => ({
   useWindowSize: () => ({ width: mockWidth }),
   useOnline: () => mockOnline,
 }));
-jest.mock("@/store/workspace", () => ({ useWorkspaceStore: () => mockWorkspace }));
-jest.mock("@/composables/useTheme", () => ({ useTheme: () => ({ isDark: false, toggleTheme: jest.fn() }) }));
-jest.mock("vue-router", () => ({ useRoute: () => ({ path: "/", query: {}, meta: {} }) }));
-jest.mock("@/components/workspace/BrandMark.vue", () => ({ template: '<img alt="" />' }));
+jest.mock("@/store/workspace", () => ({
+  useWorkspaceStore: () => mockWorkspace,
+}));
+jest.mock("@/composables/useTheme", () => ({
+  useTheme: () => ({ isDark: false, toggleTheme: jest.fn() }),
+}));
+jest.mock("vue-router", () => ({
+  useRoute: () => ({ path: "/", query: {}, meta: {} }),
+}));
+jest.mock("@/components/workspace/BrandMark.vue", () => ({
+  template: '<img alt="" />',
+}));
 const mockWidth = ref(1440);
 const mockOnline = ref(true);
 const mockWorkspace = { refresh: jest.fn(), features: {} };
 let wrapper;
 const stubs = {
-  VApp: { template: '<div><slot /></div>' },
+  VApp: { template: "<div><slot /></div>" },
   AppBar: {
     props: ["navigationOpen", "mobile", "online"],
     emits: ["toggle-navigation", "navigate"],
-    template: '<header class="workspace-header"><button class="workspace-navigation-toggle" :aria-expanded="navigationOpen" @click="$emit(\'toggle-navigation\')" /><a href="/" @click="$emit(\'navigate\')">X-Synth</a></header>',
+    template:
+      '<header class="workspace-header"><button class="workspace-navigation-toggle" :aria-expanded="navigationOpen" @click="$emit(\'toggle-navigation\')" /><a href="/" @click="$emit(\'navigate\')">X-Synth</a></header>',
   },
   Sidebar: {
     props: ["compact"],
     emits: ["navigate"],
-    template: '<aside class="workspace-sidebar"><a href="/">首页</a><button @click="$emit(\'navigate\')">关闭导航</button></aside>',
+    template:
+      '<aside class="workspace-sidebar"><a href="/">首页</a><button @click="$emit(\'navigate\')">关闭导航</button></aside>',
   },
-  WorkspaceSectionNav: { template: '<nav />' },
+  WorkspaceSectionNav: { template: "<nav />" },
   RouterView: { template: '<button class="page-action">Page</button>' },
 };
 beforeEach(() => {
@@ -42,22 +52,27 @@ afterEach(() => {
 });
 function setup(width = 1440) {
   mockWidth.value = width;
-  wrapper = mount(DefaultLayout, { attachTo: document.body, global: { stubs } });
+  wrapper = mount(DefaultLayout, {
+    attachTo: document.body,
+    global: { stubs },
+  });
   return wrapper;
 }
 
 test("header spans the shell rather than living inside the page column", () => {
   setup();
-  expect(wrapper.get(".workspace-header").element.parentElement).toBe(wrapper.get(".workspace-shell").element);
+  expect(wrapper.get(".workspace-header").element.parentElement).toBe(
+    wrapper.get(".workspace-shell").element,
+  );
   expect(wrapper.get(".workspace-main").find("header").exists()).toBe(false);
   expect(wrapper.findAll("main")).toHaveLength(1);
 });
 
-test("medium desktop keeps Chinese module labels until the user explicitly compacts navigation", async () => {
+test("desktop starts with a labeled compact rail and can expand navigation", async () => {
   setup(1024);
-  expect(wrapper.findComponent(stubs.Sidebar).props("compact")).toBe(false);
-  await wrapper.get(".workspace-navigation-toggle").trigger("click");
   expect(wrapper.findComponent(stubs.Sidebar).props("compact")).toBe(true);
+  await wrapper.get(".workspace-navigation-toggle").trigger("click");
+  expect(wrapper.findComponent(stubs.Sidebar).props("compact")).toBe(false);
 });
 
 test("closed mobile drawer is excluded from focus and accessibility trees", () => {
@@ -92,14 +107,19 @@ test("mobile drawer traps focus, closes on Escape and returns focus to its toggl
   expect(document.activeElement).toBe(toggle.element);
 });
 
-test.each([".navigation-scrim", "aside button"])("%s closes the drawer without losing focus", async (selector) => {
-  setup(390);
-  await wrapper.get(".workspace-navigation-toggle").trigger("click");
-  await wrapper.get(selector).trigger("click");
-  await nextTick();
-  expect(wrapper.get("aside").attributes("aria-hidden")).toBe("true");
-  expect(document.activeElement).toBe(wrapper.get(".workspace-navigation-toggle").element);
-});
+test.each([".navigation-scrim", "aside button"])(
+  "%s closes the drawer without losing focus",
+  async (selector) => {
+    setup(390);
+    await wrapper.get(".workspace-navigation-toggle").trigger("click");
+    await wrapper.get(selector).trigger("click");
+    await nextTick();
+    expect(wrapper.get("aside").attributes("aria-hidden")).toBe("true");
+    expect(document.activeElement).toBe(
+      wrapper.get(".workspace-navigation-toggle").element,
+    );
+  },
+);
 
 test("header navigation closes the modal drawer rather than leaving the destination inert", async () => {
   setup(390);

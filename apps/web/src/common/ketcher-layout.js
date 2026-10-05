@@ -20,7 +20,23 @@ export function fitKetcherCanvas(editor) {
   const molecule = editor.struct();
   if (!molecule?.atoms?.size) return false;
   editor.zoomAccordingContent(molecule);
+  const viewport = editor.render?.clientArea?.getBoundingClientRect?.();
+  const bounds = molecule.getCoordBoundingBox?.();
+  const scale = editor.render?.options?.scale;
+  let zoom = editor.zoom();
+  if (viewport && bounds && Number.isFinite(scale) && scale > 0) {
+    const width = (bounds.max.x - bounds.min.x) * scale;
+    const height = (bounds.max.y - bounds.min.y) * scale;
+    // Ketcher 2.13's native fit omits its label margin when the skeleton just fits.
+    const fitted = Math.min(
+      zoom,
+      width > 0 ? Math.max(1, viewport.width - 64) / width : zoom,
+      height > 0 ? Math.max(1, viewport.height - 64) / height : zoom,
+    );
+    if (Number.isFinite(fitted) && fitted > 0)
+      zoom = Math.max(0.1, Math.floor(fitted * 100) / 100);
+  }
   // Refresh the camera at its current zoom without moving molecular coordinates.
-  editor.zoom(editor.zoom());
+  editor.zoom(zoom);
   return true;
 }

@@ -36,9 +36,7 @@
           :title="compact ? item.title : undefined"
           @click="$emit('navigate')"
         >
-          <v-icon :icon="item.icon" size="20" /><span v-if="!compact">{{
-            item.title
-          }}</span>
+          <v-icon :icon="item.icon" size="20" /><span>{{ item.title }}</span>
         </router-link>
       </section>
     </nav>
@@ -54,9 +52,7 @@
         :title="compact ? item.title : undefined"
         @click="$emit('navigate')"
       >
-        <v-icon :icon="item.icon" size="20" /><span v-if="!compact">{{
-          item.title
-        }}</span>
+        <v-icon :icon="item.icon" size="20" /><span>{{ item.title }}</span>
       </router-link>
       <button
         type="button"
@@ -68,7 +64,7 @@
         <v-icon
           :icon="isDark ? 'mdi-weather-sunny' : 'mdi-weather-night'"
           size="20"
-        /><span v-if="!compact">{{ isDark ? "浅色模式" : "深色模式" }}</span>
+        /><span>{{ isDark ? "浅色模式" : "深色模式" }}</span>
       </button>
       <router-link
         v-if="workspace.refreshed && !workspace.local"
@@ -77,7 +73,7 @@
         :title="compact ? '账户' : undefined"
         to="/login"
         @click="$emit('navigate')"
-        ><v-icon icon="mdi-account-outline" size="20" /><span v-if="!compact"
+        ><v-icon icon="mdi-account-outline" size="20" /><span
           >账户</span
         ></router-link
       >

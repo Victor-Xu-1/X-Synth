@@ -49,10 +49,16 @@
         :title="`${label}绘图板`"
         :disabled="disabled || drawing"
         auto-sync
-        compact
+        :compact="!canvasHeight"
+        :canvas-height="canvasHeight"
         fill-height
       />
-      <div v-else class="structure-board-placeholder" aria-hidden="true" />
+      <div
+        v-else
+        class="structure-board-placeholder"
+        :style="{ height: `${canvasHeight || 380}px` }"
+        aria-hidden="true"
+      />
     </div>
     <KetcherModal
       v-model:smiles="smiles"
@@ -73,6 +79,7 @@ const props = defineProps({
   disabled: Boolean,
   allowFiles: { type: Boolean, default: true },
   recycle: Boolean,
+  canvasHeight: { type: Number, default: 0 },
   id: { type: String, default: () => `structure-${crypto.randomUUID()}` },
 });
 const drawing = ref(false),
@@ -127,9 +134,9 @@ function applyFile(record) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 5px;
-  font-size: 12px;
-  font-weight: 500;
+  margin-bottom: 8px;
+  font-size: 15px;
+  font-weight: 600;
 }
 .structure-field textarea {
   width: 100%;
@@ -158,7 +165,7 @@ function applyFile(record) {
   border-radius: 6px;
 }
 .structure-code {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ws-muted);
 }
 .structure-code label {

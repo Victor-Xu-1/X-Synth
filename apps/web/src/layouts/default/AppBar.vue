@@ -7,7 +7,7 @@
         :aria-label="`X-Synth v${version} 首页`"
         @click="$emit('navigate')"
       >
-        <BrandMark :size="36" />
+        <BrandMark :size="42" />
         <span class="workspace-brand-copy">
           <span>X-Synth</span><small>v{{ version }}</small>
         </span>
@@ -48,7 +48,8 @@
         :class="{ ready: online && workspace.ready, offline: !online }"
         role="status"
         aria-live="polite"
-      ><i aria-hidden="true" />{{ statusLabel }}</span>
+        ><i aria-hidden="true" />{{ statusLabel }}</span
+      >
       <v-tooltip text="环境部署"
         ><template #activator="{ props }"
           ><v-btn

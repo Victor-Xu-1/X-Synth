@@ -8,46 +8,114 @@ jest.mock("@mdi/font/css/materialdesignicons.css", () => ({}));
 jest.mock("vuetify/styles", () => ({}));
 jest.mock("vuetify/locale", () => ({ zhHans: {} }));
 jest.mock("vuetify", () => ({ createVuetify: (options) => options }));
-const css = postcss.parse(readFileSync(resolve(__dirname, "../../styles/workbench.css"), "utf8"));
-const declarations = (selector) => Object.fromEntries(
-  css.nodes.find((node) => node.selector === selector).nodes
-    .filter((node) => node.type === "decl")
-    .map((node) => [node.prop, node.value.toLowerCase()]),
+const modules = ["tokens.css", "foundation.css", "shell.css", "surfaces.css"];
+const entry = postcss.parse(
+  readFileSync(resolve(__dirname, "../../styles/workbench.css"), "utf8"),
 );
+const css = postcss.root();
+for (const module of modules)
+  css.append(
+    postcss.parse(
+      readFileSync(resolve(__dirname, `../../styles/${module}`), "utf8"),
+    ).nodes,
+  );
+const declarations = (selector) =>
+  Object.fromEntries(
+    css.nodes
+      .find((node) => node.selector === selector)
+      .nodes.filter((node) => node.type === "decl")
+      .map((node) => [node.prop, node.value.toLowerCase()]),
+  );
 const light = declarations(":root");
 const dark = declarations(".v-theme--dark");
 
 function luminance(hex) {
-  const channels = hex.replace("#", "").match(/../g).map((value) => parseInt(value, 16) / 255);
-  const linear = channels.map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+  const digits = hex.replace("#", "");
+  const expanded =
+    digits.length === 3
+      ? [...digits].map((digit) => digit.repeat(2)).join("")
+      : digits;
+  const channels = expanded
+    .match(/../g)
+    .map((value) => parseInt(value, 16) / 255);
+  const linear = channels.map((value) =>
+    value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4,
+  );
   return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
 }
+test("contrast checks normalize valid CSS shorthand colors", () => {
+  expect(luminance("#fff")).toBe(luminance("#ffffff"));
+  expect(contrast("#000", "#fff")).toBe(21);
+});
 function contrast(a, b) {
   const values = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (values[0] + 0.05) / (values[1] + 0.05);
 }
 
 test("one shared light/dark palette retains every original consumer token", () => {
-  const original = ["--ws-bg", "--ws-sidebar", "--ws-surface", "--ws-muted-surface", "--ws-text", "--ws-muted", "--ws-border", "--ws-hover"];
+  const original = [
+    "--ws-bg",
+    "--ws-sidebar",
+    "--ws-surface",
+    "--ws-muted-surface",
+    "--ws-text",
+    "--ws-muted",
+    "--ws-border",
+    "--ws-hover",
+  ];
   for (const palette of [light, dark])
-    for (const token of [...original, "--ws-accent", "--ws-accent-soft", "--ws-canvas"])
+    for (const token of [
+      ...original,
+      "--ws-accent",
+      "--ws-accent-soft",
+      "--ws-canvas",
+    ])
       expect(palette[token]).toBeDefined();
-  expect(light["--ws-sidebar-width"]).toBe("196px");
-  expect(light["--ws-canvas"]).toBe("#f3f5f6");
+  expect(light["--ws-sidebar-width"]).toBe("208px");
+  expect(light["--ws-inspector-width"]).toBe("374px");
+  expect(light["--ws-canvas"]).toBe("#f5f7f8");
   expect(declarations(".workspace-page").background).toBe("var(--ws-surface)");
 });
 
-test.each([["light", light], ["dark", dark]])("%s Vuetify primary and surfaces match the shell, without replacing plugin behavior", (name, palette) => {
-  const colors = vuetify.theme.themes[name].colors;
-  for (const [color, token] of [["primary", "--ws-accent"], ["background", "--ws-canvas"], ["on-surface", "--ws-text"]])
-    expect(colors[color].toLowerCase()).toBe(palette[token]);
-  expect(contrast(colors.primary, colors["on-primary"])).toBeGreaterThanOrEqual(4.5);
-  expect(contrast(palette["--ws-accent"], palette["--ws-accent-soft"])).toBeGreaterThanOrEqual(4.5);
-  expect(contrast(palette["--ws-accent"], palette["--ws-header"])).toBeGreaterThanOrEqual(4.5);
-  expect(vuetify.theme.themes.dark.dark).toBe(true);
-  expect(vuetify.locale.locale).toBe("zhHans");
-  expect(vuetify.locale.fallback).toBe("en");
+test("one stylesheet entry composes four owned modules without competing inline rules", () => {
+  expect(
+    entry.nodes.map((node) => [node.type, node.name, node.params]),
+  ).toEqual(modules.map((module) => ["atrule", "import", `"./${module}"`]));
+  expect(
+    declarations(".workspace-shell.sidebar-compact")["--ws-sidebar-width"],
+  ).toBe("124px");
+  expect(
+    declarations(".workspace-sidebar.compact .nav-item")["flex-direction"],
+  ).toBe("column");
 });
+
+test.each([
+  ["light", light],
+  ["dark", dark],
+])(
+  "%s Vuetify primary and surfaces match the shell, without replacing plugin behavior",
+  (name, palette) => {
+    const colors = vuetify.theme.themes[name].colors;
+    for (const [color, token] of [
+      ["primary", "--ws-accent"],
+      ["background", "--ws-canvas"],
+      ["on-surface", "--ws-text"],
+    ])
+      expect(colors[color].toLowerCase()).toBe(palette[token]);
+    expect(
+      contrast(colors.primary, colors["on-primary"]),
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(
+      contrast(palette["--ws-accent"], palette["--ws-accent-soft"]),
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(
+      contrast(palette["--ws-accent"], palette["--ws-header"]),
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(vuetify.theme.themes.dark.dark).toBe(true);
+    expect(vuetify.locale.locale).toBe("zhHans");
+    expect(vuetify.locale.fallback).toBe("en");
+  },
+);
 
 test("saturated accent fills only the selected marker, not broad page surfaces", () => {
   const filled = [];

@@ -22,7 +22,11 @@ test("structure input defaults to an inline board below the compact SMILES field
     text.indexOf("<InlineKetcherEditor"),
   );
   expect(text).toContain('rows="2"');
-  expect(text.replace(/\s+/g, " ")).toContain("auto-sync compact fill-height");
+  expect(text).toContain(':compact="!canvasHeight"');
+  expect(text).toContain(':canvas-height="canvasHeight"');
+  expect(text).toContain("canvasHeight: { type: Number, default: 0 }");
+  expect(text).toContain("auto-sync");
+  expect(text).toContain("fill-height");
   expect(text).toContain("useIntersectionObserver");
   expect(text).toContain("editor.value.pending");
   expect(text).toContain(':read-structure="read"');

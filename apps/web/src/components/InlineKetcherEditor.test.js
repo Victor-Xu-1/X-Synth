@@ -29,7 +29,14 @@ test("inline Ketcher editor scales the fixed-width Ketcher app to the available 
     "const KETCHER_COMPACT_VIEWPORT_HEIGHT_RESERVE = 300;",
   );
   expect(text).toContain("const syncKetcherLayout = () => {");
+  expect(text).toContain(
+    "if (!frame || !frame.getClientRects().length) return;",
+  );
+  expect(text).toContain("!ketcherFrame.value?.clientWidth");
   expect(text).toContain("KETCHER_MIN_VIEWPORT_WIDTH,");
+  statement(
+    "props.fillHeight || props.compact || props.reaction ? 1 : KETCHER_MIN_VIEWPORT_WIDTH",
+  );
   expect(text).toContain("frame.getBoundingClientRect().width");
   expect(text).toContain("frame.parentElement?.clientWidth || 0");
   expect(text).toContain(
@@ -125,9 +132,13 @@ test.each(["InlineKetcherEditor.vue", "KetcherModal.vue"])(
         compilerOptions: { bindingMetadata: script.bindings },
       }).errors,
     ).toEqual([]);
-    const control = filename === "InlineKetcherEditor.vue"
-      ? fs.readFileSync(path.resolve(__dirname, "../composables/useKetcherMolecule.js"), "utf8")
-      : text;
+    const control =
+      filename === "InlineKetcherEditor.vue"
+        ? fs.readFileSync(
+            path.resolve(__dirname, "../composables/useKetcherMolecule.js"),
+            "utf8",
+          )
+        : text;
     expect(control).toContain("await writeMolecule.flush()");
     expect(text).toContain("editorLifetime.signal");
     expect(text).toContain("editorLifetime.abort()");

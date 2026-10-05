@@ -44,7 +44,14 @@
   </v-app>
 </template>
 <script setup>
-import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onBeforeUnmount,
+  ref,
+  watch,
+} from "vue";
 import { useWindowSize, useOnline } from "@vueuse/core";
 import Sidebar from "./Sidebar.vue";
 import AppBar from "./AppBar.vue";
@@ -55,7 +62,7 @@ const online = useOnline();
 const { width } = useWindowSize();
 const mobile = computed(() => width.value < 900);
 const shell = ref(null);
-const preferredCompact = ref(false);
+const preferredCompact = ref(true);
 const compact = computed(() => !mobile.value && preferredCompact.value);
 const mobileOpen = ref(false);
 let timer;
