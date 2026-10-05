@@ -210,14 +210,6 @@ onBeforeUnmount(() => { disposed = true; generation++; });
   align-self: stretch;
   min-width: 0;
 }
-.reaction-canvas :deep(.smiles-image-container) {
-  flex: 1;
-  display: grid;
-  align-items: center;
-  min-height: 190px;
-}
-.reaction-canvas :deep(.v-img) { width: 100% !important; height: 190px !important; }
-.reaction-canvas :deep(.structure-code) { margin-top: auto; }
 .forward-parameters {
   border-left: 1px solid var(--ws-border);
   padding: 20px 0 24px 20px;

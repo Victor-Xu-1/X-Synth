@@ -6,28 +6,12 @@
           <v-form @submit.prevent="predict" ref="form">
             <v-row>
               <v-col cols="12" md="4">
-                <v-text-field :rules="[v => !!v || '必须输入溶质']" variant="outlined" label="溶质"
-                  v-model="solute" data-cy="solpred-solute" clearable prepend-inner-icon="mdi mdi-flask" rounded="pill">
-                  <template v-slot:append-inner>
-                    <draw-button v-model:smiles="solute" />
-                  </template>
-                </v-text-field>
-                <div v-if="!!solute" class="my-3">
-                  <smiles-image :smiles="solute" height="100px">
-                  </smiles-image>
-                </div>
+                <StructureInput ref="soluteInput" v-model="solute" label="溶质"
+                  :disabled="loading" data-cy="solpred-solute" />
               </v-col>
               <v-col cols="12" md="4">
-                <v-text-field :rules="[v => !!v || '必须输入溶剂']" variant="outlined" label="溶剂"
-                  v-model="solvent" data-cy="solpred-solvent" clearable prepend-inner-icon="mdi mdi-flask"
-                  rounded="pill">
-                  <template v-slot:append-inner>
-                    <draw-button v-model:smiles="solvent" />
-                  </template>
-                </v-text-field>
-                <div v-if="!!solvent" class="my-3">
-                  <smiles-image :smiles="solvent" height="100px"></smiles-image>
-                </div>
+                <StructureInput ref="solventInput" v-model="solvent" label="溶剂"
+                  :disabled="loading" data-cy="solpred-solvent" />
               </v-col>
               <v-col cols="12" md="4">
                 <v-text-field :rules="[v => !!v || '必须输入温度']" variant="outlined" label="温度"
@@ -40,7 +24,7 @@
             <v-row justify-start class="align-center justify-center">
               <v-col class="solpred-actions">
                 <v-btn data-cy="solpred-submit" type="submit" variant="flat" color="primary" class="mr-5"
-                  :loading="!batch && loading" :disabled="!selectedModel">提交</v-btn>
+                  :loading="!batch && loading" :disabled="loading || structurePending || !selectedModel">提交</v-btn>
                 <v-btn type="button" data-cy="solpred-run-batch" variant="flat" color="yellow-darken-4" class="mr-5"
                   @click="showUploadModal = true" :loading="batch && loading" :disabled="!selectedModel">批量运行</v-btn>
                 <v-menu location="bottom" id="tb-submit-settings" :close-on-content-click="false">
@@ -279,14 +263,8 @@
               </v-expansion-panel>
               <v-expansion-panel title="参考信息（可选）" class="text-primary">
                 <v-expansion-panel-text class="text-black">
-                  <v-text-field variant="outlined" label="参考溶剂" v-model="refSolvent">
-                    <template v-slot:append-inner>
-                      <draw-button v-model:smiles="refSolvent" />
-                    </template>
-                  </v-text-field>
-                  <div v-if="!!refSolvent" class="my-3">
-                    <smiles-image :smiles="refSolvent" height="100px"></smiles-image>
-                  </div>
+                  <StructureInput ref="referenceInput" v-model="refSolvent" label="参考溶剂"
+                    :disabled="loading" />
                   <v-text-field variant="outlined" label="参考溶解度 (log10(mol/L))"
                     v-model="refSolubility"></v-text-field>
                   <v-text-field variant="outlined" label="参考温度 (K)" v-model="refTemperature"></v-text-field>
@@ -307,7 +285,8 @@
           <v-btn class="mr-2" variant="tonal" color="primary" @click="dialog = false">
             保存
           </v-btn>
-          <v-btn variant="tonal" color="primary" @click="() => { dialog = false; predict() }">
+          <v-btn variant="tonal" color="primary" :disabled="loading || structurePending || !selectedModel"
+            @click="() => { dialog = false; predict() }">
             运行
           </v-btn>
         </v-card-actions>
@@ -318,27 +297,31 @@
 </template>
 
 <script>
-import SmilesImage from "@/components/SmilesImage";
+import { ref } from "vue";
+import StructureInput from "@/components/workspace/StructureInput.vue";
 import SolubilityModal from '@/components/solprop/SolubilityModal'
 import ErrorDialog from '@/components/ErrorDialog'
 import { API } from "@/common/api";
 import { saveAs } from "file-saver";
 import * as Papa from "papaparse";
 import { useConfirm } from 'vuetify-use-dialog'
-import DrawButton from "@/components/DrawButton"
 
 let _contextOverviewCache = null
 
 export default {
   name: "SolubilityPrediction",
   components: {
-    SmilesImage,
     SolubilityModal,
-    DrawButton
+    StructureInput
   },
   setup() {
     const createConfirm = useConfirm();
-    return { createConfirm }
+    return {
+      createConfirm,
+      soluteInput: ref(null),
+      solventInput: ref(null),
+      referenceInput: ref(null),
+    }
   },
   data() {
     return {
@@ -348,7 +331,7 @@ export default {
       solvent: '',
       solute: '',
       temperature: 298,
-      refSolvent: null,
+      refSolvent: '',
       refSolubility: null,
       refTemperature: null,
       soluteHsub: null,
@@ -358,8 +341,6 @@ export default {
       dialog: false,
       showUploadModal: false,
       results: [],
-      currentInputSource: '',
-      showKetcher: false,
       tab: "one",
       uploadFile: null,
       selectedColumnCategories: [
@@ -472,17 +453,8 @@ export default {
       }
       return baseName + '_solubility_export'
     },
-    currentSmiles() {
-      switch (this.currentInputSource) {
-        case 'solute':
-          return this.solute;
-        case 'solvent':
-          return this.solvent;
-        case 'refSolvent':
-          return this.refSolvent;
-        default:
-          return '';
-      }
+    structurePending() {
+      return Boolean(this.soluteInput?.pending || this.solventInput?.pending || this.referenceInput?.pending)
     },
     contextTitle() {
       const lines = this.contextOverview.split('\n')
@@ -625,6 +597,7 @@ export default {
       return body
     },
     predict() {
+      if (this.loading || this.structurePending || !this.selectedModel || !this.solute.trim() || !this.solvent.trim()) return
       this.pendingTasks += 1
       this.loading = true
       this.batch = false
@@ -761,31 +734,6 @@ export default {
         this.uploadFile = null;
       }
       reader.readAsText(this.uploadFile)
-    },
-    openKetcher(source) {
-      this.currentInputSource = source;
-      this.showKetcher = true;
-      this.$refs['ketcherRef'].smilesToKetcher()
-    },
-    processRequest() {
-      if (this.selectedModel === 'solprop') {
-        this.callSolprop();
-      } else if (this.selectedModel === 'fastsolv') {
-        this.callFastsolv();
-      }
-    },
-    updateSmiles(ketcherSmiles) {
-      switch (this.currentInputSource) {
-        case 'solute':
-          this.solute = ketcherSmiles;
-          break;
-        case 'solvent':
-          this.solvent = ketcherSmiles;
-          break;
-        case 'refSolvent':
-          this.refSolvent = ketcherSmiles;
-          break;
-      }
     },
     downloadCSV() {
       if (!this.results.length) {

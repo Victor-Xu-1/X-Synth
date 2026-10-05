@@ -156,8 +156,8 @@ const exportFormats = [
   { value: "smi", title: "SMILES 文件" },
 ];
 let generation = 0,
-  disposed = false,
-  readingBoard = false;
+  disposed = false;
+const readingBoard = ref(false);
 watch(busy, (value) => emit("busy", value));
 function cancel() {
   generation++;
@@ -169,7 +169,7 @@ function cancel() {
 watch(
   () => [props.smiles, props.disabled],
   ([smiles, disabled], [previous]) => {
-    if (disabled || (!readingBoard && smiles !== previous)) cancel();
+    if (disabled || (!readingBoard.value && smiles !== previous)) cancel();
   },
 );
 async function importFile(event) {
@@ -210,12 +210,12 @@ async function exportStructure(format) {
   busy.value = true;
   error.value = "";
   try {
-    readingBoard = true;
+    readingBoard.value = true;
     let smiles;
     try {
       smiles = props.readStructure ? await props.readStructure() : props.smiles;
     } finally {
-      readingBoard = false;
+      readingBoard.value = false;
     }
     if (!smiles?.trim())
       throw new Error("当前结构为空或无法读取，未导出文件。");
@@ -238,7 +238,10 @@ onBeforeUnmount(() => {
   disposed = true;
   generation++;
 });
-defineExpose({ hasPending: computed(() => busy.value || dialog.value) });
+defineExpose({
+  hasPending: computed(() => busy.value || dialog.value),
+  readingStructure: computed(() => busy.value && readingBoard.value),
+});
 </script>
 <style scoped>
 .molecule-file-controls {

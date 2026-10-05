@@ -260,19 +260,6 @@ function discardPrefill() {
   flex-direction: column;
   align-self: stretch;
 }
-.reference-structures :deep(.smiles-image-container) {
-  min-height: 190px;
-  flex: 1;
-  display: grid;
-  align-items: center;
-}
-.reference-structures :deep(.v-img) {
-  width: 100% !important;
-  height: 190px !important;
-}
-.reference-structures :deep(.structure-code) {
-  margin-top: auto;
-}
 .reference-parameters {
   border-left: 1px solid var(--ws-border);
   padding: 20px 0 24px 20px;
