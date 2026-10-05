@@ -4,7 +4,6 @@ import {
   recordedValue,
   referenceFailure,
   referenceLimit,
-  referencePrefill,
   referenceQuery,
   referenceReactionFileBody,
   referenceReactionDrawing,
@@ -167,31 +166,6 @@ test("structured errors use Chinese reference messages", () => {
   expect(referenceFailure(new Error("untrusted network text"))).toContain(
     "检索失败",
   );
-});
-
-test.each(["reaction_smiles", "rxnsmiles"])(
-  "%s prefill keeps a full product salt and never changes stereo",
-  (key) => {
-    const raw = "[13CH3][C@H](Cl)C.[Cl-]>O>[13CH3][C@@H](O)C.[Na+]";
-    expect(referencePrefill({ [key]: raw })).toEqual({
-      reaction_smiles: raw,
-      reactants: ["[13CH3][C@H](Cl)C.[Cl-]"],
-      product: "[13CH3][C@@H](O)C.[Na+]",
-      agents: ["O"],
-    });
-  },
-);
-test("absent links do not invent a reaction; ambiguous or incomplete links cannot apply", () => {
-  expect(referencePrefill({})).toBeNull();
-  for (const query of [
-    { rxnsmiles: ["CCO>>CC=O"] },
-    { reaction_smiles: "" },
-    { rxnsmiles: "CCO>CC=O" },
-    { rxnsmiles: "CCO>>>CC=O" },
-    { rxnsmiles: ">>CC=O" },
-    { rxnsmiles: "CCO>>CC=O", reaction_smiles: "CCN>>CC=N" },
-  ])
-    expect(() => referencePrefill(query)).toThrow(ReferenceContractError);
 });
 
 test("real DTO fields stay distinct and raw mapped SMILES remain untouched", () => {

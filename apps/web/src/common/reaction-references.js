@@ -155,31 +155,6 @@ export function unavailableReferenceStatus(error) {
   }
 }
 
-export function referencePrefill(query = {}) {
-  const values = [query.reaction_smiles, query.rxnsmiles].filter(
-    (value) => value !== undefined,
-  );
-  if (!values.length) return null;
-  if (values.some((value) => !text(value, 32768)) || new Set(values).size !== 1)
-    invalid("链接反应格式无效或存在冲突，未应用输入。");
-  const raw = values[0],
-    sides = raw.trim().split(">");
-  if (
-    sides.length !== 3 ||
-    !smiles(sides[0]) ||
-    !smiles(sides[2]) ||
-    (sides[1] && !smiles(sides[1]))
-  )
-    invalid("链接需要完整的反应 SMILES，未应用输入。");
-  // Keep disconnected structures together; splitting here could detach a salt component.
-  return {
-    reaction_smiles: raw,
-    reactants: [sides[0]],
-    product: sides[2],
-    agents: sides[1] ? [sides[1]] : [],
-  };
-}
-
 function validYield(value) {
   return (
     object(value) &&

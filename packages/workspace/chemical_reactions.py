@@ -18,7 +18,30 @@ def _concrete_molecule(template):
     )
 
 
-def parse_reaction_file(content: str, *, max_atoms: int) -> dict:
+def reaction_file_molecule(smiles: str):
+    """Depict a validated identity with explicit absolute CTAB stereochemistry."""
+    molecule = Chem.RWMol(Chem.MolFromSmiles(smiles))
+    centers = [
+        atom.GetIdx()
+        for atom in molecule.GetAtoms()
+        if atom.GetChiralTag()
+        in {Chem.ChiralType.CHI_TETRAHEDRAL_CW, Chem.ChiralType.CHI_TETRAHEDRAL_CCW}
+    ]
+    if centers:
+        molecule.SetIntProp("_MolFileChiralFlag", 1)
+        molecule.SetStereoGroups(
+            [
+                Chem.CreateStereoGroup(
+                    Chem.StereoGroupType.STEREO_ABSOLUTE, molecule, centers
+                )
+            ]
+        )
+    rdDepictor.Compute2DCoords(molecule)
+    return molecule
+
+
+def reaction_file_molecules(content: str) -> dict:
+    """Read bounded RXN role templates without imposing a completed reaction."""
     text = chemical_text(content)
     if not text.lstrip().startswith("$RXN") or text.count("$RXN") != 1:
         raise ValueError("仅支持包含一个反应的 MDL RXN 文件。")
@@ -34,15 +57,36 @@ def parse_reaction_file(content: str, *, max_atoms: int) -> dict:
                 "products": reaction.GetProducts(),
                 "agents": reaction.GetAgents(),
             }
-            if not groups["reactants"] or not groups["products"]:
-                raise ValueError("RXN 文件必须同时包含反应物和产物。")
-            if sum(len(group) for group in groups.values()) > MAX_CHEMICAL_RECORDS:
+            count = sum(len(group) for group in groups.values())
+            if count > MAX_CHEMICAL_RECORDS:
                 raise ValueError("一个 RXN 文件最多包含 100 条结构。")
+            lines = [line for line in text.splitlines() if line.strip()]
+            v3000 = lines[0].strip() == "$RXN V3000"
+            expected_ends = 1 if v3000 else count
+            if (
+                not count
+                or lines[-1] != "M  END"
+                or lines.count("M  END") != expected_ends
+                or (not v3000 and lines.count("$MOL") != count)
+            ):
+                raise ValueError("RXN 文件包含额外、不完整或空的结构记录。")
+            return {
+                name: [_concrete_molecule(molecule) for molecule in group]
+                for name, group in groups.items()
+            }
+    except (RuntimeError, ValueError) as exc:
+        raise ValueError("RXN 文件不能作为确定反应解析：" + str(exc)) from exc
+
+
+def parse_reaction_file(content: str, *, max_atoms: int) -> dict:
+    groups = reaction_file_molecules(content)
+    if not groups["reactants"] or not groups["products"]:
+        raise ValueError("RXN 文件必须同时包含反应物和产物。")
+    try:
+        with rdBase.BlockLogs():
             result = {
                 name: [
-                    molecular_record(
-                        _concrete_molecule(molecule), index=index, max_atoms=max_atoms
-                    )
+                    molecular_record(molecule, index=index, max_atoms=max_atoms)
                     for index, molecule in enumerate(group, 1)
                 ]
                 for name, group in groups.items()
@@ -73,9 +117,8 @@ def export_reaction_file(
                 "agents": reaction.AddAgentTemplate,
             }[group]
             for smiles in values:
-                molecule = Chem.MolFromSmiles(smiles)
+                molecule = reaction_file_molecule(smiles)
                 molecular_record(molecule, index=1, max_atoms=max_atoms)
-                rdDepictor.Compute2DCoords(molecule)
                 add(molecule)
         content = rdChemReactions.ReactionToRxnBlock(
             reaction, separateAgents=True, forceV3000=True

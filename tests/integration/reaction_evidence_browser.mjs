@@ -131,11 +131,9 @@ for (const width of [1440, 390]) {
       await withPage(width, `ord-evidence-${width}`, async (page) => {
         await page.goto("/references");
         await page
-          .getByRole("textbox", { name: "产物", exact: true })
-          .fill(fixture.products[0]);
-        await page
-          .getByRole("textbox", { name: "反应物（可选）", exact: true })
-          .fill(fixture.reactants.join("."));
+          .locator(".reaction-input")
+          .getByRole("textbox")
+          .fill(fixture.reaction_smiles);
         const submit = page.locator('[data-cy="reference-search-submit"]');
         await expect(submit).toBeEnabled();
         const done = page.waitForResponse(

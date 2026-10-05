@@ -8,7 +8,7 @@
       <h2 class="tool-section-title">待确认的链接反应</h2>
       <SmilesImage
         v-if="prefill"
-        :smiles="prefill.reaction_smiles"
+        :smiles="prefill"
         input-type="reaction"
         width="100%"
         :height="140"
@@ -44,27 +44,14 @@
         <h2 id="reference-structures-heading" class="tool-section-title">
           反应结构
         </h2>
-        <div class="reference-structures">
-          <StructureInput
-            ref="reactantsInput"
-            v-model="reactants"
-            id="reference-reactants"
-            label="反应物（可选）"
-            :disabled="loading"
-          />
-          <v-icon
-            icon="mdi-arrow-right"
-            class="reference-arrow"
-            aria-hidden="true"
-          />
-          <StructureInput
-            ref="productInput"
-            v-model="product"
-            id="reference-product"
-            label="产物"
-            :disabled="loading"
-          />
-        </div>
+        <ReactionInput
+          ref="canvas"
+          v-model="reactionSmiles"
+          label="反应结构"
+          :disabled="loading"
+          :require-reactants="false"
+          data-cy="reference-reaction"
+        />
       </section>
       <aside
         class="reference-parameters"
@@ -153,37 +140,32 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { evidenceSourceLabel } from "@/common/reference-evidence";
+import { reactionInputPrefill } from "@/common/reaction-input";
 import {
   recordedValue,
   referenceFailure,
-  referencePrefill,
   referenceReason,
 } from "@/common/reaction-references";
 import { useReactionReferences } from "@/composables/useReactionReferences";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
-import StructureInput from "@/components/workspace/StructureInput.vue";
+import ReactionInput from "@/components/workspace/ReactionInput.vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import ReferenceResults from "@/components/references/ReferenceResults.vue";
 
 const route = useRoute();
-const product = ref(""),
-  reactants = ref(""),
+const reactionSmiles = ref(""),
   limit = ref(20);
-const productInput = ref(null),
-  reactantsInput = ref(null);
+const canvas = ref(null);
+const product = computed(() => canvas.value?.product || "");
+const reactants = computed(() => canvas.value?.reactants || []);
 const prefill = ref(null),
   prefillError = ref("");
-const inputPending = computed(
-  () => !!(productInput.value?.pending || reactantsInput.value?.pending),
-);
+const inputPending = computed(() => !!canvas.value?.pending);
 const blocked = computed(
   () => inputPending.value || !!prefill.value || !!prefillError.value,
-);
-const substrates = computed(() =>
-  reactants.value.trim() ? [reactants.value.trim()] : [],
 );
 const {
   sourceStatus,
@@ -197,14 +179,15 @@ const {
   actualInput,
   error,
   searched,
-  search,
+  search: searchReferences,
   loadStatus,
   invalidate,
 } = useReactionReferences({
   product,
-  reactants: substrates,
+  reactants,
   limit,
   blocked,
+  context: [reactionSmiles],
 });
 watch(
   () => route.query,
@@ -213,23 +196,26 @@ watch(
     prefill.value = null;
     prefillError.value = "";
     try {
-      prefill.value = referencePrefill(route.query);
+      prefill.value = reactionInputPrefill(route.query);
     } catch (failure) {
-      prefillError.value = referenceFailure(failure);
+      prefillError.value = referenceFailure(failure, "链接反应格式无效或存在冲突，未应用输入。");
     }
   },
   { immediate: true, deep: true, flush: "sync" },
 );
 function applyPrefill() {
   if (!prefill.value || inputPending.value || loading.value) return;
-  reactants.value = prefill.value.reactants.join(".");
-  product.value = prefill.value.product;
+  reactionSmiles.value = prefill.value;
   discardPrefill();
 }
 function discardPrefill() {
   if (loading.value) return;
   prefill.value = null;
   prefillError.value = "";
+}
+async function search() {
+  await nextTick();
+  await searchReferences();
 }
 </script>
 
@@ -246,19 +232,6 @@ function discardPrefill() {
 }
 .reference-inputs {
   padding: 20px 24px 24px 0;
-}
-.reference-structures {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  min-height: 280px;
-}
-.reference-structures :deep(.structure-field) {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-self: stretch;
 }
 .reference-parameters {
   border-left: 1px solid var(--ws-border);
@@ -322,16 +295,6 @@ function discardPrefill() {
     border-left: 0;
     border-top: 1px solid var(--ws-border);
     padding-left: 0;
-  }
-}
-@media (max-width: 600px) {
-  .reference-structures {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
-  }
-  .reference-arrow {
-    justify-self: center;
-    transform: rotate(90deg);
   }
 }
 </style>

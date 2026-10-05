@@ -198,6 +198,7 @@ CHEMICAL_FILE_FILES = {
     "apps/api/structure_routes.py",
     "packages/workspace/chemical_files.py",
     "packages/workspace/chemical_reactions.py",
+    "packages/workspace/reaction_input.py",
 }
 WEB_BUILD_FILES = {WEB + name for name in ("index.html", "vite.config.js")}
 WEB_TEST_TOOLING = {WEB + "jest.config.js"}
@@ -248,6 +249,9 @@ def guard_paths(paths: set[str]) -> None:
             "tests/integration/task_workspace_browser.mjs",
             "tests/integration/reaction_evidence_browser.mjs",
             "tests/integration/structure_input_browser.mjs",
+            "tests/integration/reaction_canvas_browser.mjs",
+            "tests/integration/reaction_canvas_review_browser.mjs",
+            "tests/integration/reaction_browser_support.mjs",
             "tests/integration/workbench_shell_browser.mjs",
             "tests/integration/test_impurity_native.py",
             "tests/integration/test_impurity_mapper.py",

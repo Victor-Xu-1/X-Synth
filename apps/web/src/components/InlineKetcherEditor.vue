@@ -22,6 +22,7 @@
         data-cy="home-inline-ketcher"
         :src="KETCHER_URL"
         :title="title"
+        allowfullscreen
         :inert="disabled || !ready || busy || undefined"
         @load="patchKetcherDocument"
       ></iframe>
@@ -64,6 +65,11 @@ import { KETCHER_URL, waitForKetcher as waitForEditor } from "@/common/ketcher";
 import { useKetcherMolecule } from "@/composables/useKetcherMolecule";
 import { createKetcherFocusGuard } from "@/common/ketcher-focus";
 import {
+  ReactionCanvasError,
+  readReactionCanvas,
+} from "@/common/ketcher-reaction";
+import { errorMessage } from "@/common/workspace-errors";
+import {
   fitKetcherCanvas,
   prepareKetcherDocument,
 } from "@/common/ketcher-layout";
@@ -83,6 +89,13 @@ const props = defineProps({
   autoSync: Boolean,
   disabled: Boolean,
   title: { type: String, default: "结构绘制器" },
+  reaction: Boolean,
+  emptyContent: { type: String, default: "" },
+  canvasHeight: { type: Number, default: 0 },
+  prepareContent: { type: Function, default: null },
+  readContent: { type: Function, default: null },
+  contentApplied: { type: Function, default: null },
+  contentPublished: { type: Function, default: null },
 });
 
 const ketcherIframe = ref(null);
@@ -131,7 +144,7 @@ const syncKetcherLayout = () => {
   if (!frame) return;
 
   const availableWidth = Math.max(
-    props.compact ? 1 : KETCHER_MIN_VIEWPORT_WIDTH,
+    props.compact || props.reaction ? 1 : KETCHER_MIN_VIEWPORT_WIDTH,
     frame.clientWidth,
     frame.getBoundingClientRect().width,
     frame.parentElement?.clientWidth || 0,
@@ -154,16 +167,18 @@ const syncKetcherLayout = () => {
     availableParentHeight >= KETCHER_MIN_VISUAL_HEIGHT
       ? availableParentHeight
       : KETCHER_MAX_VISUAL_HEIGHT;
-  const visualHeightLimit = props.compact
-    ? 380
-    : Math.max(
-        KETCHER_MIN_VISUAL_HEIGHT,
-        Math.min(
-          KETCHER_MAX_VISUAL_HEIGHT,
-          parentVisualLimit,
-          viewportHeight - viewportHeightReserve,
-        ),
-      );
+  const visualHeightLimit = props.canvasHeight
+    ? clampNumber(props.canvasHeight, 360, KETCHER_MAX_VISUAL_HEIGHT)
+    : props.compact
+      ? 380
+      : Math.max(
+          KETCHER_MIN_VISUAL_HEIGHT,
+          Math.min(
+            KETCHER_MAX_VISUAL_HEIGHT,
+            parentVisualLimit,
+            viewportHeight - viewportHeightReserve,
+          ),
+        );
 
   if (props.fillHeight) {
     const resized =
@@ -231,6 +246,7 @@ const {
   readSmilesFromEditor,
   clearEditor,
   setSmilesToEditor,
+  readSnapshot,
 } = useKetcherMolecule({
   smiles,
   getEditor: waitForKetcher,
@@ -240,6 +256,24 @@ const {
   fitDrawing,
   captureFocus: focusGuard.capture,
   commit: (value) => emit("commit", value),
+  readStructure: (editor) =>
+    props.readContent
+      ? props.readContent(editor)
+      : props.reaction
+        ? readReactionCanvas(editor)
+        : editor.getSmiles(),
+  editorContent: (value) =>
+    value && props.prepareContent
+      ? props.prepareContent(value)
+      : value || props.emptyContent,
+  onApplied: (value) => props.contentApplied?.(value),
+  onPublished: (snapshot) => props.contentPublished?.(snapshot),
+  formatError: (failure, fallback) =>
+    props.reaction
+      ? failure instanceof ReactionCanvasError
+        ? failure.message
+        : errorMessage(failure, fallback)
+      : fallback,
 });
 
 onMounted(() => {
@@ -276,6 +310,7 @@ defineExpose({
       : null,
   clearEditor,
   setSmilesToEditor,
+  exportRxn: () => readSnapshot((editor) => editor.getRxn("v3000")),
 });
 </script>
 
