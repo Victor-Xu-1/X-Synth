@@ -128,7 +128,10 @@ test.each(["context", "forward"])(
     if (tab === "context") await setReactionDraft(wrapper, { pending: true });
     const form = wrapper.getComponent(WorkbenchForm);
     expect(wrapper.findAll("form")).toHaveLength(1);
-    expect(form.element.children[0].tagName).toBe("ASIDE");
+    expect(
+      form.element.children[0].classList.contains("workbench-input-area"),
+    ).toBe(true);
+    expect(form.element.children[1].tagName).toBe("ASIDE");
     expect(form.findAll("aside")).toHaveLength(1);
     expect(form.get(".workbench-inspector").attributes("aria-label")).toBe(
       "预测参数",
