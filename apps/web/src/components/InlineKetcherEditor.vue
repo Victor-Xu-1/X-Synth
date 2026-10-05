@@ -121,7 +121,12 @@ const fitDrawing = async () => {
   const current = ++fitRevision;
   await nextTick();
   await new Promise((resolve) => window.requestAnimationFrame(resolve));
-  if (editorLifetime.signal.aborted || current !== fitRevision) return;
+  if (
+    editorLifetime.signal.aborted ||
+    current !== fitRevision ||
+    !ketcherFrame.value?.clientWidth
+  )
+    return;
   fitKetcherCanvas(ketcherIframe.value?.contentWindow?.ketcher?.editor);
 };
 
@@ -141,10 +146,12 @@ const ketcherFrameStyle = computed(() => {
 
 const syncKetcherLayout = () => {
   const frame = ketcherFrame.value;
-  if (!frame) return;
+  if (!frame || !frame.getClientRects().length) return;
 
   const availableWidth = Math.max(
-    props.compact || props.reaction ? 1 : KETCHER_MIN_VIEWPORT_WIDTH,
+    props.fillHeight || props.compact || props.reaction
+      ? 1
+      : KETCHER_MIN_VIEWPORT_WIDTH,
     frame.clientWidth,
     frame.getBoundingClientRect().width,
     frame.parentElement?.clientWidth || 0,

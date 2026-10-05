@@ -69,17 +69,25 @@ defineProps({ disabled: Boolean });
 <style scoped>
 .search-setting-fields {
   display: grid;
-  gap: 20px;
+  gap: 30px;
 }
 .search-primary-settings {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
+  align-items: end;
+}
+.search-primary-settings label {
+  display: flex;
+  flex-direction: column;
+}
+.search-primary-settings label:last-child .field-label {
+  font-size: 14px;
 }
 .search-advanced {
   border-top: 1px solid var(--ws-border);
   padding-top: 17px;
-  font-size: 12px;
+  font-size: 16px;
 }
 .search-advanced summary {
   cursor: pointer;

@@ -1,118 +1,129 @@
 <template>
   <ModuleWorkbench title="商业原料检索">
-    <div class="tool-layout">
-      <form
-        class="tool-input-panel tool-fields"
-        @submit.prevent="!structure?.pending && search()"
-      >
-        <StructureInput
-          ref="structure"
-          v-model="smiles"
-          label="化合物结构"
-        /><v-btn
-          color="primary"
-          variant="flat"
-          prepend-icon="mdi-magnify"
-          type="submit"
-          :disabled="!smiles.trim() || loading || structure?.pending"
-          :loading="loading"
-          >精确检索</v-btn
-        >
-        <p class="workspace-muted">
-          {{
-            workspace.health?.stock_snapshot?.unique_structures?.toLocaleString() ||
-            "—"
-          }}
-          个目录结构
-        </p>
-      </form>
-      <section class="tool-result-panel">
-        <div v-if="prefillError" class="tool-error" role="alert">
-          {{ prefillError }}
-        </div>
-        <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
-        <div v-if="loading" class="workspace-loading" role="status">
-          <v-progress-circular indeterminate size="24" /><span
-            >正在检索目录记录</span
+    <WorkbenchForm
+      parameter-label="原料检索条件"
+      @submit="!structure?.pending && search()"
+    >
+      <StructureInput
+        ref="structure"
+        v-model="smiles"
+        label="化合物结构"
+        :canvas-height="480"
+      />
+      <template #parameters>
+        <div class="tool-fields">
+          <h2 class="tool-section-title">检索条件</h2>
+          <v-btn
+            color="primary"
+            variant="flat"
+            prepend-icon="mdi-magnify"
+            type="submit"
+            :disabled="!smiles.trim() || loading || structure?.pending"
+            :loading="loading"
+            >精确检索</v-btn
           >
+          <p class="workspace-muted">
+            {{
+              workspace.health?.stock_snapshot?.unique_structures?.toLocaleString() ||
+              "—"
+            }}
+            个目录结构
+          </p>
         </div>
-        <template v-if="matchedResult"
-          ><SmilesImage
-            :smiles="matchedResult.smiles"
-            :height="180"
-            :show-error-image="false"
-          />
-          <details class="stock-technical">
-            <summary>结构与目录版本</summary>
-            <dl class="stock-result-identity">
-              <dt>匹配结构</dt>
-              <dd class="workspace-code">{{ matchedResult.smiles }}</dd>
-              <dt>响应快照 SHA256</dt>
-              <dd class="workspace-code">{{ matchedResult.snapshot }}</dd>
-              <template v-if="matchedResult.expectedSnapshot">
-                <dt>任务快照 SHA256</dt>
-                <dd class="workspace-code">
-                  {{ matchedResult.expectedSnapshot }}
-                </dd>
-                <dt>快照比较</dt>
-                <dd :class="{ 'tool-error': snapshotMatches === false }">
-                  {{
-                    snapshotMatches
-                      ? "与任务快照一致"
-                      : "快照不同：当前目录记录不属于原任务快照"
-                  }}
-                </dd>
-              </template>
-            </dl>
-          </details></template
+      </template>
+    </WorkbenchForm>
+    <section class="tool-result-panel stock-results">
+      <div v-if="prefillError" class="tool-error" role="alert">
+        {{ prefillError }}
+      </div>
+      <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
+      <div v-if="loading" class="workspace-loading" role="status">
+        <v-progress-circular indeterminate size="24" /><span
+          >正在检索目录记录</span
         >
-        <div v-if="!matchedResult && !loading" class="workspace-empty">
-          <v-icon icon="mdi-flask-outline" size="30" />
-          <h2>商业原料</h2>
-        </div>
-        <div
-          v-else-if="matchedResult && !matchedResult.records.length"
-          class="workspace-empty"
-        >
-          <h2>未找到精确目录记录</h2>
-          <span class="workspace-muted">当前快照没有匹配此结构</span>
-        </div>
-        <div v-else-if="matchedResult" class="stock-records-scroll">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>供应商</th>
-                <th>目录号</th>
-                <th>CAS</th>
-                <th>目录价格基准</th>
-                <th>目录证据</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="row in matchedResult.records"
-                :key="`${row.source}-${row.catalog_id}-${row.url}`"
-              >
-                <td>{{ row.source }}</td>
-                <td class="workspace-code">{{ row.catalog_id || "—" }}</td>
-                <td>{{ row.cas || "—" }}</td>
-                <td class="stock-price-cell"><SupplierPrice :record="row" :snapshot="matchedResult.snapshot" :smiles="matchedResult.smiles" /></td>
-                <td>
-                  <a
-                    v-if="safeExternalUrl(row.url)"
-                    :href="safeExternalUrl(row.url)"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="catalog-link"
-                    >目录页 <v-icon icon="mdi-open-in-new" size="12" /></a
-                  ><span v-else>—</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
+      </div>
+      <template v-if="matchedResult"
+        ><SmilesImage
+          :smiles="matchedResult.smiles"
+          :height="180"
+          :show-error-image="false"
+        />
+        <details class="stock-technical">
+          <summary>结构与目录版本</summary>
+          <dl class="stock-result-identity">
+            <dt>匹配结构</dt>
+            <dd class="workspace-code">{{ matchedResult.smiles }}</dd>
+            <dt>响应快照 SHA256</dt>
+            <dd class="workspace-code">{{ matchedResult.snapshot }}</dd>
+            <template v-if="matchedResult.expectedSnapshot">
+              <dt>任务快照 SHA256</dt>
+              <dd class="workspace-code">
+                {{ matchedResult.expectedSnapshot }}
+              </dd>
+              <dt>快照比较</dt>
+              <dd :class="{ 'tool-error': snapshotMatches === false }">
+                {{
+                  snapshotMatches
+                    ? "与任务快照一致"
+                    : "快照不同：当前目录记录不属于原任务快照"
+                }}
+              </dd>
+            </template>
+          </dl>
+        </details></template
+      >
+      <div v-if="!matchedResult && !loading" class="workspace-empty">
+        <v-icon icon="mdi-flask-outline" size="30" />
+        <h2>商业原料</h2>
+      </div>
+      <div
+        v-else-if="matchedResult && !matchedResult.records.length"
+        class="workspace-empty"
+      >
+        <h2>未找到精确目录记录</h2>
+        <span class="workspace-muted">当前快照没有匹配此结构</span>
+      </div>
+      <div v-else-if="matchedResult" class="stock-records-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>供应商</th>
+              <th>目录号</th>
+              <th>CAS</th>
+              <th>目录价格基准</th>
+              <th>目录证据</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in matchedResult.records"
+              :key="`${row.source}-${row.catalog_id}-${row.url}`"
+            >
+              <td>{{ row.source }}</td>
+              <td class="workspace-code">{{ row.catalog_id || "—" }}</td>
+              <td>{{ row.cas || "—" }}</td>
+              <td class="stock-price-cell">
+                <SupplierPrice
+                  :record="row"
+                  :snapshot="matchedResult.snapshot"
+                  :smiles="matchedResult.smiles"
+                />
+              </td>
+              <td>
+                <a
+                  v-if="safeExternalUrl(row.url)"
+                  :href="safeExternalUrl(row.url)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="catalog-link"
+                  >目录页 <v-icon icon="mdi-open-in-new" size="12" /></a
+                ><span v-else>—</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
   </ModuleWorkbench>
 </template>
 <script setup>
@@ -125,6 +136,7 @@ import { useWorkspaceStore } from "@/store/workspace";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
+import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import SupplierPrice from "@/components/routes/SupplierPrice.vue";
 const route = useRoute(),
   workspace = useWorkspaceStore();
@@ -147,6 +159,9 @@ watch(
 );
 </script>
 <style scoped>
+.stock-results {
+  margin-top: 28px;
+}
 .stock-result-identity {
   display: grid;
   grid-template-columns: minmax(90px, 140px) minmax(0, 1fr);
@@ -181,7 +196,9 @@ watch(
 .data-table {
   min-width: 560px;
 }
-.data-table td:nth-child(2) { min-width: 130px; }
+.data-table td:nth-child(2) {
+  min-width: 130px;
+}
 .stock-price-cell {
   min-width: 220px;
   max-width: 360px;

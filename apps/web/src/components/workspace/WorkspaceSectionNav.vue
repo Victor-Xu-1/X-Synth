@@ -68,17 +68,17 @@ const activeExtra = computed(() =>
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 34px;
-  padding: 6px 12px;
+  min-height: 38px;
+  padding: 8px 14px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 14px;
 }
 .workspace-section-nav > a:hover {
   background: var(--ws-hover);
 }
 .workspace-section-nav .active {
-  background: var(--ws-hover);
-  color: var(--ws-text);
+  background: var(--ws-accent-soft);
+  color: var(--ws-accent);
 }
 .section-more {
   max-width: 100%;
@@ -93,7 +93,7 @@ const activeExtra = computed(() =>
   }
   .workspace-section-nav > a {
     padding: 6px 8px;
-    font-size: 11px;
+    font-size: 13px;
   }
 }
 </style>

@@ -21,11 +21,80 @@
         </template>
       </v-tooltip>
     </template>
-    <form
+    <WorkbenchForm
       class="forward-input-layout"
       aria-label="反应输入"
-      @submit.prevent="predict"
+      parameter-label="预测参数"
+      @submit="predict"
     >
+      <template #parameters>
+        <div class="forward-parameters" aria-labelledby="parameter-heading">
+          <h2 id="parameter-heading" class="tool-section-title">预测参数</h2>
+          <v-text-field
+            v-model="resultLimit"
+            label="结果数量"
+            type="number"
+            min="1"
+            :max="needsProduct ? 20 : 10"
+            step="1"
+            inputmode="numeric"
+            variant="outlined"
+            density="compact"
+            :disabled="busy"
+            :error-messages="countError"
+            :data-cy="
+              needsProduct
+                ? 'settings-num-results'
+                : 'settings-forward-model-num-results'
+            "
+          />
+          <details class="forward-advanced">
+            <summary>高级设置</summary>
+            <dl>
+              <dt>模型</dt>
+              <dd>{{ needsProduct ? "NN v1" : "Graph2SMILES" }}</dd>
+              <template v-if="!needsProduct"
+                ><dt>训练集</dt>
+                <dd>USPTO Stereo</dd></template
+              >
+            </dl>
+          </details>
+          <p
+            v-if="displayError"
+            class="tool-error"
+            role="alert"
+            data-cy="forward-request-error"
+          >
+            {{ displayError }}
+          </p>
+          <div class="forward-submit-actions">
+            <v-btn
+              type="submit"
+              color="primary"
+              variant="flat"
+              prepend-icon="mdi-play-outline"
+              :loading="pendingTasks > 0"
+              :disabled="!submissionReady"
+              data-cy="submit-button"
+            >
+              {{ needsProduct ? "预测条件" : "预测产物" }}
+            </v-btn>
+            <v-tooltip text="清空当前反应" location="top">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  icon="mdi-delete-sweep-outline"
+                  variant="text"
+                  aria-label="清空当前反应"
+                  :disabled="busy || inputPending"
+                  data-cy="clear-button"
+                  @click="clear"
+                />
+              </template>
+            </v-tooltip>
+          </div>
+        </div>
+      </template>
       <section class="forward-reaction" aria-labelledby="reaction-heading">
         <h2 id="reaction-heading" class="tool-section-title">反应结构</h2>
         <ReactionInput
@@ -47,73 +116,7 @@
           data-cy="reactants"
         />
       </section>
-      <aside class="forward-parameters" aria-labelledby="parameter-heading">
-        <h2 id="parameter-heading" class="tool-section-title">预测参数</h2>
-        <v-text-field
-          v-model="resultLimit"
-          label="结果数量"
-          type="number"
-          min="1"
-          :max="needsProduct ? 20 : 10"
-          step="1"
-          inputmode="numeric"
-          variant="outlined"
-          density="compact"
-          :disabled="busy"
-          :error-messages="countError"
-          :data-cy="
-            needsProduct
-              ? 'settings-num-results'
-              : 'settings-forward-model-num-results'
-          "
-        />
-        <details class="forward-advanced">
-          <summary>高级设置</summary>
-          <dl>
-            <dt>模型</dt>
-            <dd>{{ needsProduct ? "NN v1" : "Graph2SMILES" }}</dd>
-            <template v-if="!needsProduct"
-              ><dt>训练集</dt>
-              <dd>USPTO Stereo</dd></template
-            >
-          </dl>
-        </details>
-        <p
-          v-if="displayError"
-          class="tool-error"
-          role="alert"
-          data-cy="forward-request-error"
-        >
-          {{ displayError }}
-        </p>
-        <div class="forward-submit-actions">
-          <v-btn
-            type="submit"
-            color="primary"
-            variant="flat"
-            prepend-icon="mdi-play-outline"
-            :loading="pendingTasks > 0"
-            :disabled="!submissionReady"
-            data-cy="submit-button"
-          >
-            {{ needsProduct ? "预测条件" : "预测产物" }}
-          </v-btn>
-          <v-tooltip text="清空当前反应" location="top">
-            <template #activator="{ props }">
-              <v-btn
-                v-bind="props"
-                icon="mdi-delete-sweep-outline"
-                variant="text"
-                aria-label="清空当前反应"
-                :disabled="busy || inputPending"
-                data-cy="clear-button"
-                @click="clear"
-              />
-            </template>
-          </v-tooltip>
-        </div>
-      </aside>
-    </form>
+    </WorkbenchForm>
     <section
       class="forward-results"
       aria-labelledby="result-heading"
@@ -170,6 +173,7 @@ import { useWorkspaceStore } from "@/store/workspace";
 import { useConditionPrediction } from "@/composables/useConditionPrediction";
 import { useForwardPrediction } from "@/composables/useForwardPrediction";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
+import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import ReactionInput from "@/components/workspace/ReactionInput.vue";
 import ConditionRecommendation from "./tab/ConditionRecommendation.vue";
@@ -433,23 +437,8 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.forward-input-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 272px;
-  border-top: 1px solid var(--ws-border);
-  border-bottom: 1px solid var(--ws-border);
-}
-.forward-reaction,
-.forward-parameters,
 .forward-results {
   min-width: 0;
-}
-.forward-reaction {
-  padding: 20px 24px 24px 0;
-}
-.forward-parameters {
-  border-left: 1px solid var(--ws-border);
-  padding: 20px 0 24px 20px;
 }
 .forward-advanced {
   font-size: 12px;
@@ -484,18 +473,5 @@ onBeforeUnmount(() => {
 }
 .forward-result-heading .workspace-muted {
   font-size: 12px;
-}
-@media (max-width: 1000px) {
-  .forward-input-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .forward-reaction {
-    padding-right: 0;
-  }
-  .forward-parameters {
-    border-left: 0;
-    border-top: 1px solid var(--ws-border);
-    padding-left: 0;
-  }
 }
 </style>

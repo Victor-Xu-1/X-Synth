@@ -36,3 +36,23 @@ test("empty or unavailable drawings are not mutated", () => {
     }),
   ).toBe(false);
 });
+
+test("narrow camera fitting reserves atom-label space without changing coordinates", () => {
+  const bounds = { min: { x: 4, y: 3 }, max: { x: 8.5, y: 6.5 } };
+  const before = JSON.stringify(bounds);
+  let zoom = 1;
+  const editor = {
+    struct: () => ({ atoms: { size: 13 }, getCoordBoundingBox: () => bounds }),
+    zoomAccordingContent: () => {},
+    zoom: (value) => (value === undefined ? zoom : (zoom = value)),
+    render: {
+      options: { scale: 40 },
+      clientArea: {
+        getBoundingClientRect: () => ({ width: 184, height: 370 }),
+      },
+    },
+  };
+  expect(fitKetcherCanvas(editor)).toBe(true);
+  expect(zoom).toBe(0.66);
+  expect(JSON.stringify(bounds)).toBe(before);
+});
