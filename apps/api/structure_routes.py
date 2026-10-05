@@ -12,6 +12,11 @@ from packages.workspace.chemical_reactions import (
     parse_reaction_file,
 )
 from packages.workspace.http_validation import WorkspaceRoute
+from packages.workspace.reaction_input import (
+    ReactionDraftFormat,
+    SingleRole,
+    parse_reaction_draft,
+)
 from packages.workspace.structure_validation import (
     MAX_SMILES_LENGTH,
     canonical_structure,
@@ -46,6 +51,13 @@ class ReactionExportBody(BaseModel):
     reactants: list[str] = Field(min_length=1, max_length=99)
     product: str = Field(min_length=1, max_length=MAX_SMILES_LENGTH)
     agents: list[str] = Field(default_factory=list, max_length=98)
+
+
+class ReactionDraftBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    format: ReactionDraftFormat
+    content: str = Field(min_length=1, max_length=MAX_CHEMICAL_FILE_BYTES)
+    single_role: SingleRole = "product"
 
 
 def structure_router(*, transport, budget):
@@ -103,6 +115,19 @@ def structure_router(*, transport, budget):
                 body.reactants,
                 body.product,
                 body.agents,
+                max_atoms=budget.max_structure_atoms,
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @router.post("/reaction-draft")
+    def reaction_draft(body: ReactionDraftBody, request: Request):
+        authenticate(request, transport)
+        try:
+            return parse_reaction_draft(
+                body.content,
+                body.format,
+                single_role=body.single_role,
                 max_atoms=budget.max_structure_atoms,
             )
         except ValueError as exc:
