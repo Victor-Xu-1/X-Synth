@@ -6,27 +6,26 @@
           <v-form @submit.prevent>
             <v-row class="justify-center align-center">
               <v-col cols="12" md="4">
-                <v-text-field :rules="[v => !!v || '必须输入溶质']" variant="outlined" label="溶质"
-                  v-model="solute" data-cy="solscreen-solute" clearable prepend-inner-icon="mdi mdi-flask"
-                  rounded="pill">
-                  <template v-slot:append-inner>
-                    <draw-button v-model:smiles="solute" />
-                  </template>
-                </v-text-field>
-                <div v-if="!!solute" class="my-3">
-                  <smiles-image :smiles="solute" height="100px">
-                  </smiles-image>
-                </div>
+                <StructureInput ref="soluteInput" v-model="solute" label="溶质"
+                  :disabled="loading" data-cy="solscreen-solute" />
               </v-col>
               <v-col cols="12" md="4">
                 <v-row class="mb-2">
                   <v-select data-cy="solscreen-solsets" label="溶剂集合" variant="outlined"
-                    :items="solventSetOptions" item-title="title" item-value="value" hide-details v-model="solventSet" rounded="pill">
+                    :items="solventSetOptions" item-title="title" item-value="value" hide-details v-model="solventSet"
+                    :disabled="loading || structurePending" rounded="pill">
                   </v-select>
                 </v-row>
                 <v-row>
-                  <v-textarea label="溶剂列表" hide-details variant="outlined" v-model="solvents"></v-textarea>
+                  <v-textarea label="溶剂列表" hide-details variant="outlined" v-model="solvents"
+                    :rows="3" :disabled="loading || selectedSolventInput?.pending" spellcheck="false"
+                    data-cy="solscreen-solvent-list" />
                 </v-row>
+                <v-select v-model="selectedSolventIndex" :items="solventEntries" item-title="title" item-value="value"
+                  label="溶剂条目" variant="outlined" density="compact" hide-details class="mt-3"
+                  :disabled="loading || selectedSolventInput?.pending" data-cy="solscreen-selected-solvent" />
+                <StructureInput ref="selectedSolventInput" :key="selectedSolventIndex" v-model="selectedSolvent"
+                  label="所选溶剂" :disabled="loading" class="mt-3" />
               </v-col>
               <v-col cols="12" md="4">
                 <v-textarea label="温度列表" hide-details variant="outlined" v-model="temperatures"></v-textarea>
@@ -35,13 +34,13 @@
             <v-row align="center" justify-start>
               <v-col cols="12">
                 <v-btn type="submit" data-cy="solscreen-submit" variant="flat" color="primary" class="mr-5"
-                  @click="predict" :loading="loading">提交</v-btn>
+                  @click="predict" :loading="loading" :disabled="loading || structurePending">提交</v-btn>
                 <v-btn @click="dialog = true" variant="flat" class="mr-5" prepend-icon="mdi-dots-horizontal"
                   color="primary">
                   更多参数
                 </v-btn>
                 <v-btn variant="tonal" class="mr-5" @click="customDialog = !customDialog"
-                  v-if="solventSet === 'custom'">
+                  v-if="solventSet === 'custom'" :disabled="loading || structurePending">
                   保存自定义溶剂集合
                 </v-btn>
                 <v-btn data-cy="solscreen-custom-solv-set-delete" variant="tonal" class="mr-5" color="red"
@@ -139,7 +138,7 @@
           <v-spacer></v-spacer>
           <v-btn data-cy="solscreen-custom-solv-set-close" color="blue darken-1" text @click="customDialog = false">关闭</v-btn>
           <v-btn data-cy="solscreen-custom-solv-set-save" color="blue darken-1" text @click="() => { this.saveSolventSet(); customDialog = false }"
-            :disabled="!newSolventSetNameValid">保存</v-btn>
+            :disabled="loading || structurePending || !newSolventSetNameValid">保存</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -185,14 +184,8 @@
             <v-expansion-panels v-model="panel" multiple>
               <v-expansion-panel title="参考信息（可选）" class="text-primary">
                 <v-expansion-panel-text class="text-black">
-                  <v-text-field variant="outlined" label="参考溶剂" v-model="refSolvent">
-                    <template v-slot:append-inner>
-                      <draw-button v-model:smiles="refSolvent" />
-                    </template>
-                  </v-text-field>
-                  <div v-if="!!refSolvent" class="my-3">
-                    <smiles-image :smiles="refSolvent" height="100px"></smiles-image>
-                  </div>
+                  <StructureInput ref="referenceInput" v-model="refSolvent" label="参考溶剂"
+                    :disabled="loading" />
                   <v-text-field variant="outlined" label="参考溶解度 (log10(mol/L))"
                     v-model="refSolubility"></v-text-field>
                   <v-text-field variant="outlined" label="参考温度 (K)" v-model="refTemperature"></v-text-field>
@@ -213,7 +206,8 @@
           <v-btn class="mr-2" variant="tonal" color="primary" @click="dialog = false">
             保存
           </v-btn>
-          <v-btn variant="tonal" color="primary" @click="() => { dialog = false; predict() }">
+          <v-btn variant="tonal" color="primary" :disabled="loading || structurePending"
+            @click="() => { dialog = false; predict() }">
             运行
           </v-btn>
         </v-card-actions>
@@ -225,6 +219,8 @@
 </template>
 
 <script>
+import { ref } from "vue";
+import StructureInput from "@/components/workspace/StructureInput.vue";
 import SmilesImage from "@/components/SmilesImage";
 import SolubilityModal from '@/components/solprop/SolubilityModal'
 import { API } from "@/common/api";
@@ -238,7 +234,6 @@ import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, Li
 import emptyChart from '@/assets/emptyChart.svg'
 import { useConfirm } from 'vuetify-use-dialog';
 import ErrorDialog from '@/components/ErrorDialog'
-import DrawButton from "@/components/DrawButton"
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale)
 
@@ -249,7 +244,7 @@ export default {
     SolubilityModal,
     'bar-chart': Bar,
     'line-chart': Line,
-    DrawButton
+    StructureInput
   },
   data() {
     return {
@@ -258,12 +253,13 @@ export default {
       customDialog: false,
       solute: '',
       solvents: '',
+      selectedSolventIndex: 0,
       solventSet: '集合 1',
       builtInSolventSets: solventSets,
       customSolventSets: {},
       newSolventSetName: 'mysolventset',
       temperatures: '298\n323',
-      refSolvent: null,
+      refSolvent: '',
       refSolubility: null,
       refTemperature: null,
       soluteHsub: null,
@@ -280,15 +276,16 @@ export default {
       loading: false,
       emptyChartSrc: emptyChart,
       showInfo: false,
-      currentInputSource: '',
-      showKetcher: false,
       showUploadModal: false,
     }
   },
   setup() {
     const createConfirm = useConfirm();
     return {
-      createConfirm
+      createConfirm,
+      soluteInput: ref(null),
+      selectedSolventInput: ref(null),
+      referenceInput: ref(null),
     }
   },
   computed: {
@@ -317,6 +314,25 @@ export default {
     },
     solventList() {
       return this.solvents.split('\n')
+    },
+    solventEntries() {
+      return this.solventList.map((smiles, index) => ({
+        title: `${index + 1}. ${smiles}`,
+        value: index,
+      }))
+    },
+    selectedSolvent: {
+      get() {
+        return this.solventList[this.selectedSolventIndex] || ''
+      },
+      set(value) {
+        const entries = this.solventList.slice()
+        entries[this.selectedSolventIndex] = value
+        this.solvents = entries.join('\n')
+      },
+    },
+    structurePending() {
+      return Boolean(this.soluteInput?.pending || this.selectedSolventInput?.pending || this.referenceInput?.pending)
     },
     temperatureList() {
       return this.temperatures.split('\n').map((t) => Number(t))
@@ -433,16 +449,6 @@ export default {
       } else {
         return '请输入名称'
       }
-    },
-    currentSmiles() {
-      switch (this.currentInputSource) {
-        case 'solute':
-          return this.solute;
-        case 'refSolvent':
-          return this.refSolvent;
-        default:
-          return '';
-      }
     }
   },
   created() {
@@ -481,6 +487,7 @@ export default {
       this.results = []
     },
     predict() {
+      if (this.loading || this.structurePending || !this.solute.trim()) return
       this.loading = true
       this.results = []
       let promises = []
@@ -541,29 +548,17 @@ export default {
       saveCustomSolventSets(this.customSolventSets)
     },
     saveSolventSet() {
+      if (this.loading || this.structurePending) return
       this.customSolventSets[this.newSolventSetName] = this.solventList
       this.solventSet = this.newSolventSetName
       saveCustomSolventSets(this.customSolventSets)
     },
-    openKetcher(source) {
-      this.currentInputSource = source;
-      this.showKetcher = true;
-      this.$refs['ketcherRef'].smilesToKetcher()
-    },
-    updateSmiles(ketcherSmiles) {
-      switch (this.currentInputSource) {
-        case 'solute':
-          this.solute = ketcherSmiles;
-          break;
-        case 'refSolvent':
-          this.refSolvent = ketcherSmiles;
-          break;
-      }
-    },
   },
   watch: {
     solvents(newVal) {
-      if (newVal in this.solventSets && newVal !== this.solventSets[this.solventSet].join('\n')) {
+      this.selectedSolventIndex = Math.min(this.selectedSolventIndex, this.solventList.length - 1)
+      const selectedSet = this.solventSets[this.solventSet]
+      if (selectedSet && newVal !== selectedSet.join('\n')) {
         this.solventSet = 'custom'
       }
     },

@@ -12,22 +12,14 @@
       <section class="tool-input-panel">
         <h2 class="tool-section-title">分子输入</h2>
         <v-form @submit.prevent="predict">
-          <v-text-field
+          <StructureInput
+            ref="structureInput"
             v-model="smiles"
             label="分子或反应 SMILES"
-            variant="outlined"
-            density="comfortable"
-            clearable
+            :allow-files="allowMoleculeFiles"
             :disabled="loading"
             data-cy="qm-smiles-input"
-          >
-            <template #append-inner
-              ><draw-button v-model:smiles="smiles"
-            /></template>
-          </v-text-field>
-          <div v-if="smiles" class="qm-input-preview">
-            <smiles-image :smiles="smiles" :show-error-image="false" />
-          </div>
+          />
           <div class="page-actions">
             <v-btn
               type="submit"
@@ -35,7 +27,7 @@
               variant="flat"
               prepend-icon="mdi-play-outline"
               :loading="loading"
-              :disabled="!smiles?.trim()"
+              :disabled="loading || inputPending || !smiles?.trim()"
               data-cy="qm-submit-button"
               >计算</v-btn
             >
@@ -256,7 +248,7 @@ import {
 import SmilesImage from "@/components/SmilesImage.vue";
 import * as Papa from "papaparse";
 import { useRoute } from "vue-router";
-import DrawButton from "@/components/DrawButton";
+import StructureInput from "@/components/workspace/StructureInput.vue";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import { useWorkspaceStore } from "@/store/workspace";
 import { saveAs } from "file-saver";
@@ -282,6 +274,9 @@ const viewer = ref(null);
 const selectedAtom = ref(null);
 
 const smiles = ref("");
+const structureInput = ref(null);
+const inputPending = computed(() => structureInput.value?.pending === true);
+const allowMoleculeFiles = computed(() => !smiles.value.includes(">"));
 const loading = ref(false);
 const results = ref([]);
 const itemsPerPage = ref(10);
@@ -390,7 +385,7 @@ const apiKeyToField = ref({
 });
 
 const predict = async () => {
-  if (loading.value || !workspace.can("qm") || !smiles.value?.trim()) return;
+  if (loading.value || inputPending.value || !workspace.can("qm") || !smiles.value?.trim()) return;
   loading.value = true;
   requestError.value = "";
   try {
@@ -713,15 +708,10 @@ onMounted(async () => {
   onSelectedCategory();
   if (typeof route.query.smiles === "string") smiles.value = route.query.smiles;
   await workspace.refresh();
-  if (smiles.value && workspace.can("qm")) predict();
 });
 </script>
 
 <style scoped>
-.qm-input-preview {
-  height: 160px;
-  margin-bottom: 20px;
-}
 .qm-result-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
