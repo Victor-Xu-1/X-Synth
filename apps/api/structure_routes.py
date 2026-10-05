@@ -1,5 +1,7 @@
+from typing import Annotated
+
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from packages.workspace.chemical_files import (
     MAX_CHEMICAL_FILE_BYTES,
@@ -8,7 +10,7 @@ from packages.workspace.chemical_files import (
     parse_chemical_file,
 )
 from packages.workspace.chemical_reactions import (
-    export_reaction_file,
+    export_reaction_record,
     parse_reaction_file,
 )
 from packages.workspace.http_validation import WorkspaceRoute
@@ -46,11 +48,29 @@ class ReactionFileBody(BaseModel):
     content: str = Field(min_length=1, max_length=MAX_CHEMICAL_FILE_BYTES)
 
 
+ReactionIdentity = Annotated[str, Field(min_length=1, max_length=MAX_SMILES_LENGTH)]
+
+
 class ReactionExportBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    reactants: list[str] = Field(min_length=1, max_length=99)
-    product: str = Field(min_length=1, max_length=MAX_SMILES_LENGTH)
-    agents: list[str] = Field(default_factory=list, max_length=98)
+    model_config = ConfigDict(extra="forbid", strict=True)
+    reactants: list[ReactionIdentity] = Field(min_length=1, max_length=99)
+    product: ReactionIdentity | None = None
+    products: list[ReactionIdentity] | None = Field(
+        default=None, min_length=1, max_length=99
+    )
+    agents: list[ReactionIdentity] = Field(default_factory=list, max_length=98)
+
+    @model_validator(mode="before")
+    @classmethod
+    def explicit_products(cls, value):
+        if isinstance(value, dict):
+            has_product, has_products = "product" in value, "products" in value
+            if (
+                has_product == has_products
+                or value["product" if has_product else "products"] is None
+            ):
+                raise ValueError("必须提供 product 或 products，不能同时提供或为空。")
+        return value
 
 
 class CompoundGroupsBody(BaseModel):
@@ -119,9 +139,9 @@ def structure_router(*, transport, budget):
     def export_reaction(body: ReactionExportBody, request: Request):
         authenticate(request, transport)
         try:
-            return export_reaction_file(
+            return export_reaction_record(
                 body.reactants,
-                body.product,
+                body.products if body.products is not None else [body.product],
                 body.agents,
                 max_atoms=budget.max_structure_atoms,
             )

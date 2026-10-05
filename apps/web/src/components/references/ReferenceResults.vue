@@ -86,6 +86,17 @@
             }}
           </span>
         </header>
+        <div v-if="allowCanvasReuse" class="reference-continue-actions">
+          <v-btn
+            variant="text"
+            size="small"
+            prepend-icon="mdi-draw"
+            :disabled="Boolean(action) || !canExport(row)"
+            data-cy="reference-load-reaction"
+            @click="loadReaction(row)"
+            >载入画板</v-btn
+          >
+        </div>
         <div class="reference-record-layout">
           <SmilesImage
             :smiles="referenceReactionDrawing(row)"
@@ -254,7 +265,9 @@ const props = defineProps({
   pending: Boolean,
   error: { type: String, default: "" },
   searched: Boolean,
+  allowCanvasReuse: Boolean,
 });
+const emit = defineEmits(["load-reaction"]);
 const checked = computed(() => {
   if (!props.response || !props.actualInput) return null;
   try {
@@ -295,6 +308,18 @@ function canExport(row) {
   } catch {
     return false;
   }
+}
+function loadReaction(row) {
+  if (
+    !alive ||
+    !props.allowCanvasReuse ||
+    action.value ||
+    props.pending ||
+    !checked.value?.results.includes(row) ||
+    !canExport(row)
+  )
+    return;
+  emit("load-reaction", referenceReactionFileBody(row));
 }
 async function operate(row, kind) {
   if (
@@ -342,6 +367,11 @@ onBeforeUnmount(() => {
 <style scoped>
 .reference-results {
   min-width: 0;
+}
+.reference-continue-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
 }
 .reference-results-heading,
 .reference-row-heading,

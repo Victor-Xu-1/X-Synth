@@ -159,7 +159,7 @@ def test_python_workspace_maps_document_contracts_not_native_engine_suite(tmp_pa
 def test_chemical_file_changes_select_file_and_workspace_contracts(tmp_path, path):
     files = {
         name: "pass"
-        for name in profile.WORKSPACE_TESTS | {"tests/unit/test_chemical_files.py"}
+        for name in profile.WORKSPACE_TESTS | profile.CHEMICAL_FILE_TESTS
     }
     before = snapshot(tmp_path, files)
     after = snapshot(tmp_path, {**files, path: "pass"})
