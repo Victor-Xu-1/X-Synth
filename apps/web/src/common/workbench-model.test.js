@@ -8,6 +8,40 @@ import {
   workbenchModes,
 } from "./workbench-model";
 import { buildTaskSearchLocation } from "./task-history-view";
+import {
+  candidateChoices,
+  originalRouteIndex,
+  retainedRouteId,
+} from "./route-details";
+
+test("one-step preview identity is stable within a result and distinct across fresh results and indices", () => {
+  const result = {
+    canonical: "[13CH3][C@H]([NH3+])CO.[Cl-]",
+    model: "pistachio",
+    outcomes: [
+      { outcome: "[13CH3][C@@H](N)CO.[Na+]", plausibility: 0 },
+      { outcome: "CCO.N", plausibility: 0.8 },
+    ],
+  };
+  const before = JSON.stringify(result);
+  const first = oneStepCandidate(result, 0);
+  const second = oneStepCandidate(result, 1);
+  expect(first.route_id).toMatch(/^preview:one-step:/);
+  expect(oneStepCandidate(result, 0).route_id).toBe(first.route_id);
+  expect(second.route_id).not.toBe(first.route_id);
+  expect(oneStepCandidate({ ...result }, 0).route_id).not.toBe(first.route_id);
+  const routes = [first, second];
+  expect(retainedRouteId(candidateChoices(routes), "")).toBe(first.route_id);
+  expect(originalRouteIndex(routes, second.route_id)).toBe(1);
+  expect(first.target_smiles).toBe(result.canonical);
+  expect(first.steps[0].metadata).toBe(result.outcomes[0]);
+  expect(first.steps[0].precursors).toEqual([
+    "[13CH3][C@@H](N)CO",
+    "[Na+]",
+  ]);
+  expect(first.closed).toBe(false);
+  expect(JSON.stringify(result)).toBe(before);
+});
 
 test("one-step previews retain provided native evidence without adding a closure claim", () => {
   const item = {

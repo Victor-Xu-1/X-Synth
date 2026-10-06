@@ -77,13 +77,16 @@ const props = defineProps({
 const emit = defineEmits(["update:graph", "select", "select-edge", "error"]);
 const surface = ref(null);
 const { fitView, zoomIn, zoomOut } = useVueFlow({ id: props.id });
+const incomingNodeIds = computed(() =>
+  new Set(props.graph.edges.map((edge) => edge.target)),
+);
 const flowNodes = computed(() =>
   props.graph.nodes.map((node) => ({
     ...node,
     data: {
       ...node,
       isTarget: node.id === props.graph.target_id,
-      isStarting: !props.graph.edges.some((edge) => edge.target === node.id),
+      isStarting: !incomingNodeIds.value.has(node.id),
       overview: props.overview,
       reading: props.reading,
       imageWidth: props.reading ? 200 : 168,
@@ -114,6 +117,7 @@ const flowEdges = computed(() =>
   })),
 );
 function onDrag({ node }) {
+  if (!props.editable) return;
   emit("update:graph", {
     ...props.graph,
     nodes: props.graph.nodes.map((item) =>
@@ -122,6 +126,7 @@ function onDrag({ node }) {
   });
 }
 function onConnect({ source, target }) {
+  if (!props.editable) return;
   if (!canConnect(props.graph, source, target)) {
     emit("error", "该连接无效或会形成循环。");
     return;

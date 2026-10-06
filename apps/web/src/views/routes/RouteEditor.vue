@@ -6,7 +6,7 @@
           v-if="document"
           v-model="title"
           class="document-title-input"
-          :disabled="saving || importing"
+          :disabled="editingLocked"
           aria-label="路线名称"
           maxlength="160"
           @input="dirty = true"
@@ -26,7 +26,7 @@
               variant="text"
               :disabled="action.disabled || editingLocked"
               :aria-label="action.label"
-              @click="action.run" /></template
+              @click="runEditAction(action)" /></template
         ></v-tooltip>
         <v-menu
           ><template #activator="{ props }"
@@ -34,7 +34,7 @@
               v-bind="props"
               prepend-icon="mdi-download"
               variant="text"
-              :disabled="!document || importing"
+              :disabled="!document || importing || applying"
               >导出路线</v-btn
             ></template
           ><v-list density="compact"
@@ -125,9 +125,9 @@
         :graph="graph"
         :editable="!editingLocked"
         :scores="scores"
-        @update:graph="replaceGraph"
-        @select="selected = $event"
-        @select-edge="selected = $event"
+        @update:graph="updateGraph"
+        @select="selectNode"
+        @select-edge="selectNode"
         @error="error = $event"
       />
       <RouteInspector
@@ -135,11 +135,12 @@
         :context-id="document.id"
         :node="selectedNode"
         :graph="graph"
-        :editable="!editingLocked"
+        :editable="!inspectorLocked"
         :target="selected === graph.target_id"
         :score="scores[selected]"
         @close="selected = null"
-        @remove="removeSelected"
+        @remove="removeNode"
+        @pending="applying = $event"
         @update="updateNode"
       />
     </div>
@@ -265,13 +266,14 @@ const {
 } = useRouteDocument();
 const canvas = ref(null),
   importing = ref(false),
+  applying = ref(false),
   fileInput = ref(null),
   newTitle = ref("未命名路线"),
   newSmiles = ref(""),
   moleculeDialog = ref(false),
   reactionDialog = ref(false),
   moleculeSmiles = ref("");
-const editingLocked = computed(
+const inspectorLocked = computed(
   () =>
     loading.value ||
     saving.value ||
@@ -281,10 +283,12 @@ const editingLocked = computed(
     reactionDialog.value ||
     expandDialog.value,
 );
+const editingLocked = computed(() => inspectorLocked.value || applying.value);
 let expansionContext = null;
 const hasUnsavedChanges = computed(
   () =>
     dirty.value ||
+    applying.value ||
     (!document.value &&
       !loading.value &&
       Boolean(
@@ -316,6 +320,18 @@ const sourceStateLabel = computed(() =>
   documentStateLabel(document.value, graph.value),
 );
 const origin = computed(() => documentOrigin(document.value));
+function runEditAction(action) {
+  if (!editingLocked.value && !action.disabled) action.run();
+}
+function selectNode(value) {
+  if (!editingLocked.value) selected.value = value;
+}
+function updateGraph(value) {
+  if (!editingLocked.value) replaceGraph(value);
+}
+function removeNode() {
+  if (!editingLocked.value) removeSelected();
+}
 const editActions = computed(() => [
   {
     label: "打开路线文档",
@@ -373,6 +389,7 @@ watch(
   () => route.params.id,
   (identifier) => {
     documentNavigation.invalidate();
+    applying.value = false;
     moleculeDialog.value = false;
     reactionDialog.value = false;
     expandDialog.value = false;
@@ -417,6 +434,7 @@ async function createDocument() {
   if (value) router.replace(`/editor/${value.id}`);
 }
 async function saveDocument(asCopy) {
+  if (editingLocked.value) return;
   const value = await save(asCopy);
   if (value && asCopy) router.replace(`/editor/${value.id}`);
 }
@@ -428,6 +446,12 @@ async function insertMolecule() {
   }
 }
 function updateNode(value) {
+  if (
+    inspectorLocked.value ||
+    !document.value ||
+    value.id !== selectedNode.value?.id
+  )
+    return;
   replaceGraph({
     ...graph.value,
     nodes: graph.value.nodes.map((node) =>
@@ -473,6 +497,7 @@ function download(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function exportDocument() {
+  if (!document.value || importing.value || applying.value) return;
   download(
     new Blob(
       [JSON.stringify(routeDocumentPayload(title.value, graph.value), null, 2)],
@@ -482,6 +507,7 @@ function exportDocument() {
   );
 }
 async function exportImage() {
+  if (!document.value || importing.value || applying.value) return;
   try {
     const url = await routeImage(canvas.value.element, graph.value);
     const link = window.document.createElement("a");
@@ -494,7 +520,7 @@ async function exportImage() {
 }
 async function importDocument(event) {
   const file = event.target.files?.[0];
-  if (!file || importing.value || saving.value) return;
+  if (!file || editingLocked.value) return;
   importing.value = true;
   try {
     await documentNavigation.importFile(

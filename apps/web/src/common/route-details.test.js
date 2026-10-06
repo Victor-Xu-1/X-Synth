@@ -8,6 +8,7 @@ import {
   parse,
 } from "@vue/compiler-sfc";
 import { graphFromCandidate } from "./route-graph";
+import dagre from "@dagrejs/dagre";
 import {
   candidateChoices,
   closureLabel,
@@ -290,6 +291,26 @@ test("longest linear length traverses all branches and ignores provider depth or
   expect(longestLinearSteps(candidate)).toBe(1);
   expect(longestLinearSteps({ target_smiles: "CCO", steps: [] })).toBe(0);
 });
+test("topology metrics never perform layout and accept a prepared topology", () => {
+  const layout = jest.spyOn(dagre, "layout");
+  try {
+    expect(longestLinearSteps(branch)).toBe(2);
+    expect(longestLinearSteps(branch, graph)).toBe(2);
+    expect(longestLinearSteps({ target_smiles: "O", steps: [] })).toBe(0);
+    expect(
+      longestLinearSteps({
+        target_smiles: "O",
+        steps: [
+          { product: "O", precursors: ["N"] },
+          { product: "N", precursors: ["O"] },
+        ],
+      }),
+    ).toBeNull();
+    expect(layout).not.toHaveBeenCalled();
+  } finally {
+    layout.mockRestore();
+  }
+});
 test("template reconstruction does not imply independent forward prediction", () => {
   expect(forwardEvidence(candidate)).toEqual(
     expect.arrayContaining([
@@ -396,6 +417,9 @@ test.each([
   "components/routes/RouteStepList.vue",
   "components/routes/RouteEvidencePanel.vue",
   "components/routes/RouteReader.vue",
+  "components/routes/RouteGraph.vue",
+  "components/routes/RouteInspector.vue",
+  "views/routes/RouteEditor.vue",
   "components/routes/RouteFilters.vue",
   "components/routes/RouteMaterials.vue",
   "components/routes/RouteConditions.vue",

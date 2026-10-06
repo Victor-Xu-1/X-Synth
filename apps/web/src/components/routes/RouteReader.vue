@@ -55,7 +55,7 @@
     <div v-if="candidate && view !== 'overview'" class="reader-route-summary">
       <strong>{{ labelFor(selectedChoice) }}</strong
       ><span>总步数 {{ candidate.steps.length }}</span>
-      <span>最长线性步数 {{ longestLinearSteps(candidate) ?? "未记录" }}</span
+      <span>最长线性步数 {{ linearSteps ?? "未记录" }}</span
       ><span>{{ closureLabel(candidate) }}</span>
       <div class="page-actions">
         <v-menu
@@ -235,8 +235,7 @@
 import { computed, nextTick, ref, watch, onBeforeUnmount } from "vue";
 import { useVueFlow } from "@vue-flow/core";
 import {
-  graphFromCandidate,
-  predictionScores,
+  prepareCandidateGraph,
   READING_NODE_SIZE,
 } from "@/common/route-graph";
 import {
@@ -290,8 +289,20 @@ const picked = ref([]),
   graphView = ref(null),
   exporting = ref(false),
   exportError = ref("");
+const preparedGraphs = new WeakMap();
+function prepareRoute(candidate) {
+  if (!preparedGraphs.has(candidate))
+    preparedGraphs.set(
+      candidate,
+      computed(() => prepareCandidateGraph(candidate, READING_NODE_SIZE)),
+    );
+  return preparedGraphs.get(candidate).value;
+}
 const choices = computed(() =>
-  candidateChoices(props.candidates, filters.value),
+  candidateChoices(props.candidates, filters.value).map((choice) => ({
+    ...choice,
+    prepared: prepareRoute(choice.route),
+  })),
 );
 const readingChoices = computed(() =>
   readingIds.value.length
@@ -304,10 +315,15 @@ const selectedChoice = computed(() =>
   ),
 );
 const candidate = computed(() => selectedChoice.value?.route);
+const emptyGraph = { nodes: [], edges: [], target_id: "" };
+const topology = computed(
+  () => selectedChoice.value?.prepared.topology || emptyGraph,
+);
 const sourceGraph = computed(() =>
-  candidate.value
-    ? graphFromCandidate(candidate.value, READING_NODE_SIZE)
-    : { nodes: [], edges: [], target_id: "" },
+  selectedChoice.value?.prepared.graph || emptyGraph,
+);
+const linearSteps = computed(() =>
+  candidate.value ? longestLinearSteps(candidate.value, topology.value) : null,
 );
 const graph = computed(() => ({
   ...sourceGraph.value,
@@ -316,9 +332,9 @@ const graph = computed(() => ({
     selected: node.id === selectedNode.value,
   })),
 }));
-const scores = computed(() => predictionScores(candidate.value || {}));
+const scores = computed(() => selectedChoice.value?.prepared.scores || {});
 const { prices: catalogPrices, error: catalogError } = useRouteCatalogPrices({
-  graph: sourceGraph,
+  graph: topology,
   expectedSnapshot: computed(() => props.stockSnapshot),
   enabled: computed(() => view.value === "graph" && !!candidate.value),
 });

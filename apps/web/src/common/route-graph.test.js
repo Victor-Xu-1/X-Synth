@@ -1,17 +1,90 @@
 /** @jest-environment node */
 import {
   graphFromCandidate,
+  topologyFromCandidate,
+  prepareCandidateGraph,
+  layoutGraph,
   canConnect,
   attachPrecursors,
   cleanGraph,
   ROUTE_NODE_SIZE,
   READING_NODE_SIZE,
 } from "./route-graph";
+import dagre from "@dagrejs/dagre";
 
 const route = {
   target_smiles: "CCO",
   steps: [{ product: "CCO", precursors: ["CC=O", "[H][H]"], confidence: 0.8 }],
 };
+
+test("topology preserves exact chemistry, source anchors and all branches without layout", () => {
+  const salt = "[13CH3][C@H]([NH3+])C(=O)[O-].[Na+]";
+  const opposite = "[13CH3][C@@H]([NH3+])C(=O)[O-].[Na+]";
+  const candidate = {
+    target_smiles: "CCO",
+    steps: [
+      {
+        product: "CCO",
+        precursors: [salt, opposite],
+        metadata: { source: "native", index: 17 },
+      },
+      { product: salt, precursors: ["[13CH3]CO", "[NH4+].[Cl-]"] },
+    ],
+  };
+  const before = JSON.stringify(candidate);
+  const layout = jest.spyOn(dagre, "layout");
+  try {
+    const topology = topologyFromCandidate(candidate);
+    expect(layout).not.toHaveBeenCalled();
+    expect(
+      topology.nodes
+        .filter((node) => node.type === "molecule")
+        .map((node) => node.smiles),
+    ).toEqual(["CCO", salt, opposite, "[13CH3]CO", "[NH4+].[Cl-]"]);
+    expect(
+      topology.nodes
+        .filter((node) => node.type === "reaction")
+        .map(({ id, label }) => ({ id, label })),
+    ).toEqual([
+      { id: "r-1", label: "步骤 2" },
+      { id: "r-2", label: "步骤 1" },
+    ]);
+    expect(topology.edges).toHaveLength(6);
+    expect(
+      topology.nodes.every(
+        (node) => node.position.x === 0 && node.position.y === 0,
+      ),
+    ).toBe(true);
+    const positioned = layoutGraph(topology, READING_NODE_SIZE);
+    expect(layout).toHaveBeenCalledTimes(1);
+    expect(positioned).toEqual(graphFromCandidate(candidate, READING_NODE_SIZE));
+    expect(
+      topology.nodes.every(
+        (node) => node.position.x === 0 && node.position.y === 0,
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(candidate)).toBe(before);
+  } finally {
+    layout.mockRestore();
+  }
+});
+
+test("prepared candidates defer layout, reuse it and retain native score indices", () => {
+  const layout = jest.spyOn(dagre, "layout");
+  try {
+    const prepared = prepareCandidateGraph(route, READING_NODE_SIZE);
+    expect(prepared.topology.edges).toHaveLength(3);
+    expect(prepared.scores).toEqual({ "r-1": 0.8 });
+    expect(layout).not.toHaveBeenCalled();
+    const graph = prepared.graph;
+    expect(prepared.graph).toBe(graph);
+    expect(layout).toHaveBeenCalledTimes(1);
+    expect(graph.edges).toBe(prepared.topology.edges);
+    expect(graph.nodes).not.toBe(prepared.topology.nodes);
+  } finally {
+    layout.mockRestore();
+  }
+});
 
 test("chemical cards have a single immutable geometry for layout and export", () => {
   expect(ROUTE_NODE_SIZE.molecule).toEqual({ width: 190, height: 156 });

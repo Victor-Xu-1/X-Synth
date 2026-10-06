@@ -1,5 +1,5 @@
 import dagre from "@dagrejs/dagre";
-import { graphFromCandidate } from "./route-graph.js";
+import { topologyFromCandidate } from "./route-graph.js";
 import { syntheticStepOrder } from "./synthetic-step-order";
 const list = (value) => (Array.isArray(value) ? value : []);
 const strings = (value) =>
@@ -143,9 +143,11 @@ export function retainedRouteId(choices, routeId) {
     ? routeId
     : choices[0]?.route.route_id || "";
 }
-export function longestLinearSteps(candidate) {
-  const value = graphFromCandidate(candidate),
-    graph = new dagre.graphlib.Graph();
+export function longestLinearSteps(
+  candidate,
+  value = topologyFromCandidate(candidate),
+) {
+  const graph = new dagre.graphlib.Graph();
   value.nodes.forEach((node) => graph.setNode(node.id, node));
   value.edges.forEach((edge) => graph.setEdge(edge.source, edge.target));
   if (!dagre.graphlib.alg.isAcyclic(graph)) return null;
@@ -207,7 +209,7 @@ export function stepDetails(candidate, graph) {
 }
 export function nodeChoices(graph) {
   const nodes = list(graph?.nodes),
-    edges = list(graph?.edges);
+    incoming = new Set(list(graph?.edges).map((edge) => edge.target));
   return [...nodes]
     .sort(
       (a, b) =>
@@ -219,7 +221,7 @@ export function nodeChoices(graph) {
           ? "目标分子"
           : node.type === "reaction"
             ? node.label || "反应"
-            : edges.some((edge) => edge.target === node.id)
+            : incoming.has(node.id)
               ? "中间体"
               : "起始原料";
       return { value: node.id, label: `${kind} · ${node.id}` };
