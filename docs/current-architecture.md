@@ -10,47 +10,31 @@ deferred. Neither model login tokens nor browser sessions are extracted.
 
 ```mermaid
 flowchart TD
-  UI["X-Synth Chinese Workbench"] --> API["X-Synth Product API"]
-  API --> JOB["Transactional Job Repository / Queue / Checkpoint"]
-  API --> NATIVE["ASKCOS Native Capability Adapter"]
-  API --> TOOLS["Typed Scientific Tool Adapters"]
-  API --> EVIDENCE["Exact Reaction Evidence / Native USPTO + Immutable ORD Index"]
-  EVIDENCE --> ORD["Public ORD Parquet / Measured Yields / Conditions / Provenance"]
-  TOOLS --> NN["ASKCOS NNv1 Conditions / Isolated TF-Keras"]
-  TOOLS --> FORWARD["Graph2SMILES + Atom Inventory + Fast Filter"]
-  TOOLS --> IMPURITY["ASKCOS Five Impurity Modes / RXNMapper Atom Mapping"]
-  IMPURITY --> FORWARD
-  TOOLS --> DESCRIPTOR["RDKit SA / SPS / Bertz / Descriptors / Batch PMI"]
-  TOOLS --> OPTIMIZE["BayBE / BoTorch / Selected Real Measurements"]
-  TOOLS --> ANALYSES["Owned Input / Execution / Immutable Result Records"]
-  ANALYSES --> API
-  JOB --> ENGINE["ASKCOS Engine Adapter"]
-  ENGINE --> MCTS["Native MCTS Search"]
-  ENGINE --> RS["Native RetroStar Search"]
-  MCTS --> EXPAND["Native One-Step Expansion"]
-  RS --> EXPAND
-  EXPAND --> MODELS["Persistent Trained Models / Matching Template Index"]
-  MODELS --> FF["Native Fast Filter"]
-  STOCK["Unified Immutable Catalog Snapshot"] --> EXPAND
-  STOCK --> REVIEW["Exact Leaf Closure / Cycle Check / Family Dedup / Ranking"]
-  MCTS --> REVIEW
-  RS --> REVIEW
+  UI["Chinese Structure-First Workbench"] --> API["One Product API / Identity / Input Validation"]
+  API --> CMD["Application Commands / Idempotency / Admission"]
+  CMD --> JOB["Owned SQLite Queue / Checkpoints"]
+  JOB --> RUN["One Product Orchestrator"]
+  RUN --> SEARCH["Private ASKCOS Child Jobs: MCTS + RetroStar"]
+  MODELS["Resident Trained Models + Matching Template Order"] --> SEARCH
+  STOCK["Pinned Unified Stock Snapshot"] --> SEARCH
+  SEARCH --> POOL["Pure Route Pool: Closure / Cycles / Families / Ranking"]
+  STOCK --> POOL
+  POOL --> REVIEW["Independent Forward Validation + Evidence Qualification"]
+  REFERENCES["Immutable ORD + Source-Scoped USPTO Records"] --> REVIEW
   REVIEW --> GATE{"3-10 Qualified Routes?"}
-  GATE -- "Yes" --> RESULT["Private Immutable Results / Vue Flow Preview"]
-  GATE -- "No, First Pass" --> ENGINE
-  GATE -- "Engine Recovery Required" --> WAIT["Checkpoint / Waiting for Engine"]
+  GATE -- "First Pass Insufficient: One Repair" --> RUN
+  GATE -- "Qualified or Explicit Incomplete" --> SEAL["Immutable Result Generation"]
+  SEAL --> COMMIT["Atomic Job Summary + Snapshot Pointer"]
+  COMMIT --> API
+  SEARCH -- "Recoverable Outage" --> WAIT["Waiting for Engine / Same Checkpoint"]
   WAIT --> JOB
-  GATE -- "Search Completed Without Closure" --> INCOMPLETE["Persist Actual Result; Never Claim Closure"]
-  RESULT --> API
-  INCOMPLETE --> API
-  NATIVE --> CAP["Configured ASKCOS Native Functions"]
-  UI --> DOCAPI["Route Document API / Owner / Revision"]
-  RESULT --> COPY["Copy Actual Selected Route"]
-  COPY --> DOCAPI
-  DOCAPI --> DOC["Independent Workspace SQLite / DAG / RDKit Validation"]
-  DOC --> EDIT["Vue Flow Editor / Dagre Layout / Ketcher Structures"]
-  EDIT --> DOCAPI
-  EDIT -- "One-Step Candidate" --> NATIVE
+  API --> ANALYSIS["Framework-Independent Scientific Execution"]
+  ANALYSIS --> TOOLS["Configured ASKCOS Tools / RDKit / BayBE"]
+  ANALYSIS --> RECORDS["Owned Immutable Research Records"]
+  RECORDS --> API
+  API --> DOC["Independent Route Documents / Revisions / Chemical DAG"]
+  COMMIT -- "Copy Selected Route + Snapshot Provenance" --> DOC
+  DOC --> API
 ```
 
 ## Source and Data Ownership
@@ -61,8 +45,10 @@ flowchart TD
 | Frontend                        | apps/web                                   | Existing Vue workbench, Chinese UI, editor, history, route viewer                                 |
 | Product API                     | apps/api                                   | Input validation, identity boundary, capability delegation, response models                       |
 | Product jobs                    | packages/orchestrator                      | One lifecycle, resource admission, checkpoints, route workflow                                    |
+| Result publication              | packages/orchestrator/route_artifacts.py    | Immutable generations; committed job pointer is the only delivery authority                        |
 | Route documents                 | packages/workspace                         | Independent documents, canonical chemical DAGs, immutable source provenance, optimistic revisions |
 | Research records                | packages/workspace/analysis_repository.py   | Immutable input/result snapshots, owner isolation, interrupted-process recovery                   |
+| Scientific execution            | packages/workspace/analysis_execution.py    | Shared application service; API routing and job orchestration do not call each other's controllers  |
 | Concrete chemical input         | packages/workspace/reaction_input.py, reaction_compounds.py, chemical_reactions.py | One RDKit authority for draft roles, RXN interchange and exact explicit compound grouping |
 | Reaction optimization           | packages/adapters/optimization             | Real BayBE computation, bounded subprocess admission, measured-data and result binding              |
 | Molecular and process metrics   | packages/chemistry                         | Maintained RDKit descriptors, user-input mass accounting, atom provenance                           |
@@ -97,6 +83,14 @@ another product version.
   explicit model submission remain unchanged. See [Workspace Workflows](workspace-workflows.md).
 - Product job IDs and ownership are authoritative in the transactional job store.
   Native engine execution is a child operation, not another product task owner.
+- Accepted idempotency receipts are resolved before readiness checks. Replaying a
+  receipt cannot create another job; reusing its key for a different request is a
+  conflict. New requests still require a ready engine and valid admission.
+- Review builds a pure route pool, then seals a content-addressed result generation.
+  Only one database transition commits its summary and snapshot pointer. Partial
+  files, cancelled work and uncommitted generations cannot appear as delivered routes.
+  Readers verify manifest checksums, target identity and committed summary agreement;
+  corrupt published data is an explicit error, never a false empty result.
 - Task grouping, display titles and recoverable archives use schema-2 metadata in
   that same store. Metadata revisions are independent of worker revisions; they
   never rewrite scientific requests, execution states or checkpoints. Owner-filtered
@@ -120,6 +114,9 @@ another product version.
   native proposal mechanism is configured.
 - Quality evaluation and a bounded second search are coordinated once by the
   product pipeline. Layered repair loops must not multiply silently.
+- CPU-heavy route review runs in one owned, cancellable child process. Cancellation
+  interrupts that child without a chemistry time limit or signalling unrelated
+  processes; API handling and task observation remain available.
 - Native status polling contains progress only. Every full explored graph is
   preserved privately, while a separate bounded artifact delivers every enumerated
   route. Large graphs must not be serialized into every status response.
@@ -190,6 +187,11 @@ and filtering unsafe evidence links. Strategy definitions include actual
 matching counts so unavailable ORD/USPTO/forward assets do not appear loaded.
 Preserved native history uses the existing route decoder but does not recertify
 closure. Lifecycle status remains usable independently of route-artifact errors.
+Lightweight status polling and full artifact refresh are separate. A stable
+published snapshot does not trigger repeated route downloads. Read failures retain
+the last visible routes with an error, but stale copy/edit actions remain disabled
+until a successful refresh confirms their identity. Leaving a calculation page
+stops observation, not the owned remote calculation.
 Full interaction paths and reference access boundaries are recorded in
 [Workspace Workflows](workspace-workflows.md).
 
@@ -199,6 +201,10 @@ drag and connections; Dagre supplies layout and graph cycle checks. UI-only grap
 state is not serialized into scientific records. Graphs contain alternating
 molecule/reaction nodes and directed precursor-to-reaction-to-product edges.
 The server repeats graph and RDKit validation rather than trusting UI checks.
+Topology preparation is distinct from display layout. Read-only inspection reuses
+prepared topology and incoming-edge indexes instead of rerunning Dagre on every
+selection. One-step candidate identities are stable within their session; they
+never become server-assigned task provenance.
 
 The `/api/v1/route-documents` API stores private documents in `workspace.sqlite`
 under the configured state root. Schema version 1 is independent of product
@@ -210,6 +216,9 @@ archive contract and is labeled accordingly.
 
 `from-task` copies only a real selected route owned by the caller. Provenance and
 scores are set by the server, never an imported JSON or client-supplied flag.
+Current clients bind the selected index to its route ID; a changed selection is
+rejected rather than copied as a different route. Published source provenance also
+retains the immutable result snapshot. Legacy index-only callers remain compatible.
 Layout and annotations preserve the original chemical signature. Any chemistry
 change invalidates original prediction scores and closure, even if restored
 later. Edited documents are drafts, not independently validated model outputs.
