@@ -18,6 +18,7 @@ from packages.orchestrator.route_request import RouteJobRequest
 from packages.orchestrator.runtime_health import route_runtime_status
 from packages.platform.performance import PerformanceBudget, PerformanceTargets
 from packages.platform.resource_metrics import runtime_resources
+from packages.platform.cgroup_metrics import memory_pressure_warning, product_cgroup_memory
 from packages.platform.version import product_version, source_build
 from packages.workspace.analysis_repository import AnalysisRepository
 from packages.workspace.route_repository import RouteDocumentRepository
@@ -184,11 +185,13 @@ def create_app(
 
     def runtime_snapshot():
         metrics = runtime_resources(state_root / "native/runtime.json")
+        metrics["cgroup"] = product_cgroup_memory()
         return {
             "budget": budget.summary(),
             "resources": metrics,
-            "memory_warning": metrics["rss_bytes"]
-            > PerformanceTargets().native_rss_warning_bytes,
+            "memory_warning": memory_pressure_warning(
+                metrics, PerformanceTargets().native_rss_warning_bytes
+            ),
         }
 
     app.include_router(

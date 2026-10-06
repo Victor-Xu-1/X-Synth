@@ -1,16 +1,17 @@
-import itertools
 import networkx as nx
 import numpy as np
 import operator
 import os
 import time
-import uuid
 from api.pathway_ranker_api import PathwayRankerAPI
 from api.scscorer_api import SCScorerAPI
 from collections import defaultdict
 from collections.abc import Iterator
 from rdkit import Chem
 from typing import Any, Dict, List, Tuple
+
+from packages.adapters.askcos.route_reachability import grounded_route_graph
+from packages.adapters.askcos.route_enumeration import enumerate_route_graphs
 
 
 NIL_UUID = "00000000-0000-0000-0000-000000000000"
@@ -190,29 +191,6 @@ def get_graph_from_tree(tree: nx.DiGraph) -> nx.DiGraph:
 
     return graph
 
-
-def chunk_by_comma(string):
-    # Find the indices of commas from right to left
-    comma_indices = []
-    balance = 0
-    for i in range(len(string)-1, -1, -1):
-        if string[i] == ',' and balance == 0: comma_indices.append(i)
-        elif string[i] == '}': balance -= 1
-        elif string[i] == '{': balance += 1
-
-    # Reverse the indices list to be in the order they appear from left to right
-    comma_indices.reverse()
-    comma_indices = comma_indices + [len(string)]
-
-    chunks = []
-    start = 0
-    for idx in comma_indices:
-        chunks.append(string[start:idx])
-        start = idx + 1  # Move start to the next position after comma
-
-    return chunks
-
-
 def is_terminal(
     smiles: str,
     build_tree_options=None,
@@ -303,50 +281,8 @@ def is_terminal(
         and all(local_dict[criteria]() for criteria in and_criteria)
     )
 
-def prune(tree: nx.DiGraph, root: str, max_prunes: int = 100):
-    """
-    Returns a pruned networkx graph. Iteratively removes non-"terminal" leaf nodes
-    and their associated parent reaction nodes.
-
-    Args:
-        tree (nx.DiGraph): full results graph from tree builder expansion
-        root (str): node ID of the root node (i.e. target chemical)
-        max_prunes (int): maximum number of pruning iterations.
-
-    Returns:
-        nx.DiGraph with non-terminal leaf nodes and parent reaction nodes removed
-    """
-    pruned_tree = tree.copy()
-    num_nodes = pruned_tree.number_of_nodes()
-
-    parent_reactions = list(pruned_tree.predecessors(root))
-    pruned_tree.remove_nodes_from(parent_reactions)
-
-    for i in range(max_prunes):
-        non_terminal_leaves = [
-            v
-            for v, d in pruned_tree.out_degree()
-            if d == 0 and not pruned_tree.nodes[v]["terminal"] and v != root
-        ]
-
-        for leaf in non_terminal_leaves:
-            pruned_tree.remove_nodes_from(list(pruned_tree.predecessors(leaf)))
-            pruned_tree.remove_node(leaf)
-
-        if pruned_tree.number_of_nodes() == num_nodes:
-            break
-        else:
-            num_nodes = pruned_tree.number_of_nodes()
-
-    # If pruning resulted in a disconnected graph, remove nodes not connected to
-    # the root subgraph
-    if not nx.is_weakly_connected(pruned_tree):
-        for c in nx.weakly_connected_components(pruned_tree):
-            if root in c:
-                pruned_tree.remove_nodes_from([n for n in pruned_tree if n not in c])
-                break
-
-    return pruned_tree
+def prune(tree: nx.DiGraph, root: str):
+    return grounded_route_graph(tree, root)
 
 
 def full_update(
@@ -411,145 +347,15 @@ def full_update(
     return tree
 
 
-def generate_unique_node():
-    """
-    Generate a unique node label using the UUID specification.
-
-    Use UUIDv4 to generate random UUIDs instead of UUIDv1 which is used by
-    ``networkx.utils.generate_unique_node``.
-    """
-    return str(uuid.uuid4())
-
-
 def get_paths(
     tree: nx.DiGraph,
     root: str,
     root_uuid: str,
     max_depth: int = None,
     max_trees: int = None,
-    validate_paths: bool = True
+    validate_paths: bool = True,
 ) -> Iterator[nx.DiGraph]:
-    """
-    Generate all paths from the root node as `nx.DiGraph` objects.
-
-    All node attributes are copied to the output paths.
-
-    Returns:
-        generator of paths
-    """
-    uuid_to_smiles = {root_uuid: root}
-
-    def get_uuid(smiles: str):
-        if smiles == root:
-            return root_uuid
-        else:
-            return generate_unique_node()
-
-
-    def get_chem_paths(_node: str, chem_path: List[str]):
-        """
-        Return generator of paths with current node as the root.
-        """
-        _uuid = get_uuid(_node)
-        uuid_to_smiles[_uuid] = _node
-        if (
-            tree.out_degree(_node) == 0
-            or max_depth is not None
-            and len(chem_path) >= max_depth
-        ):
-            if tree.nodes[_node]["terminal"] or not validate_paths:
-                yield _uuid
-            else:
-                return
-        else:
-            _subpath_count = 0
-            for rxn in tree.successors(_node):
-                rxn_uuid = get_uuid(rxn)
-                uuid_to_smiles[rxn_uuid] = rxn
-                for sub_path in get_rxn_paths(rxn, chem_path + [_node]):
-                    if max_trees is not None and _subpath_count >= max_trees:
-                        break
-                    _subpath_count += 1
-                    _sub_path = f"{{{sub_path}}}{rxn_uuid}"
-                    yield f"{{{_sub_path}}}{_uuid}"
-            
-                else:
-                    continue
-                break
-            
-
-    def get_rxn_paths(_node: str, chem_path: List[str]):
-        """
-        Return generator of paths with current node as root.
-        """
-        precursors = list(tree.successors(_node))
-        if set(precursors) & set(chem_path):
-            # Adding this reaction would create a cycle
-            return
-        for j, path_combo in enumerate(itertools.product(
-            *(get_chem_paths(c, chem_path) for c in precursors)
-        )):
-            if max_trees is not None and j >= max_trees:
-                break
-            sub_path = ",".join(
-                sorted(path_combo, key=lambda x: len(x) - len(x.lstrip('{')), reverse=True)
-            )
-            yield sub_path
-
-    def postfix_recurse(postfix, path):
-
-        if '{' not in postfix and '}' not in postfix and ',' not in postfix:
-            # Terminal nodes
-            node = postfix
-            smiles = uuid_to_smiles[node]
-            path.add_node(
-                node, 
-                **tree.nodes[smiles],
-            )
-            return node
-        else:
-            end = len(postfix) - postfix[::-1].index('}')
-            node = postfix[end:]
-            postfix = postfix[1:end-1]
-            #smiles = postfix[len(postfix)-j:]
-            smiles = uuid_to_smiles[node]
-            path.add_node(
-                node, 
-                **tree.nodes[smiles],
-            )
-            for subpostfix in chunk_by_comma(postfix[:]):
-                if '{' not in subpostfix and '}' not in subpostfix:
-                    children = postfix_recurse(subpostfix, path)
-                    path.add_edge(node, children)
-                else:
-                    children = postfix_recurse(subpostfix, path)
-                    path.add_edge(node, children)    
-
-            return node
-
-    num_paths = 0
-    for postfix in get_chem_paths(root, []):
-        if max_trees is not None and num_paths >= max_trees:
-            break
-
-        path = nx.DiGraph()
-        postfix_recurse(postfix, path) # reconstruct networkx graph from postfix
-        # Calculate depth of this path, i.e. number of reactions in the longest branch
-        path.graph["depth"] = [
-            path.nodes[v]["type"] for v in nx.dag_longest_path(path)
-        ].count("reaction")
-        # Calculate starting material cost for this path, None if any starting materials aren't buyable
-        prices = [
-            path.nodes[v]["purchase_price"] for v, d in path.out_degree() if d == 0
-        ]
-        path.graph["precursor_cost"] = (
-            None if any(p == 0 for p in prices) else sum(prices)
-        )
-        # Initialize empty values for pathway score and cluster_id
-        path.graph["score"] = None
-        path.graph["cluster_id"] = None
-        num_paths += 1
-        yield path
+    return enumerate_route_graphs(tree, root, root_uuid, max_depth, max_trees, validate_paths)
 
 
 def score_paths(

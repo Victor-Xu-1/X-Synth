@@ -198,6 +198,13 @@ systemctl status "x-synth@$USER.service"
 不依赖终端持续读取。原生服务日志在 `logs/native`。数据库健康探针超时返回 503，
 不把失联库视为就绪。systemd 不能使已关闭的 WSL 自行启动；先启动 WSL，再检查服务。
 
+产品进程组默认 `MemoryHigh=7G`、`MemoryMax=8G`，适用于至少 12 GiB 的 WSL。
+小内存机器应减少模型并行度或扩容；大内存机器可由运维用 systemd override 调整，
+不要移除保护。`OOMPolicy=continue` 使单个搜索子进程被杀时不连带停止 API，
+监督器最多重启该服务三次；任务进入可恢复状态，不被标成完成。
+`/api/v1/runtime` 的 `resources.cgroup` 显示真实进程组当前/峰值/上限内存及 OOM 事件，
+与原生进程 RSS 区分。未知值为 null，不以 0 表示成功。
+
 ## 任务、恢复、历史
 
 UI 和诊断 CLI 都通过 /api/v1/unified-route/call-async。事务创建记录后，两种原生
@@ -211,6 +218,29 @@ UI 和诊断 CLI 都通过 /api/v1/unified-route/call-async。事务创建记录
 curl --fail -X POST http://127.0.0.1:8769/api/v1/unified-route/jobs/JOB_ID/resume
 curl --fail http://127.0.0.1:8769/api/v1/unified-route/jobs/JOB_ID
 ```
+
+路线整理在两种策略间共享有限 AND/OR 可达性检查：反应必须全部前体可达商业终点，
+无商业出口的循环不进入组合枚举；实际路线逐条生成，原始搜索图和候选仍保留。
+RetroStar 未解出目标时直接输出空路线，不能花费额外资源枚举不可能闭合的组合。
+
+升级后原生 checkpoint 的代码/模型/库存指纹必须相符。仅修复路线整理逻辑时，
+可显式使用 `scripts.operations.recover_native_projection`：逐文件比较搜索代码 AST，
+校验真实模型和库存哈希、原请求和未完成子任务，默认只读 dry-run。
+先保存一致性数据库备份并停止该产品服务，再带 `--apply` 执行；工具要求原生 worker
+锁可独占，备份原 checkpoint，并以搜索数据哈希证明图、时间、迭代均未改写。
+旧、新源码均须来自可信本地 checkout。任何断键/终止/搜索规则变化都拒绝迁移，
+不能直接编辑指纹绕过检查。
+
+```bash
+python -m scripts.operations.recover_native_projection \
+  --old-source /path/to/previous-checkout --new-source /srv/wsl/projects/x-synth \
+  --assets "$X_SYNTH_ASSETS" --stock "$X_SYNTH_STOCK_INDEX" \
+  --state "$X_SYNTH_STATE_DIR" --receipt-dir "$X_SYNTH_STATE_DIR/recovery" \
+  --job-id JOB_ID --strategy retro_star --pass-number 1
+```
+
+成功 dry-run 后使用同一命令追加 `--apply`，启动服务并通过上述 resume API 恢复。
+恢复不会清零已用搜索时间，也不会重新提交已完成策略；备份和恢复凭据留在外部私有状态目录。
 
 旧历史由 scripts.data_import.import_askcos_history 显式导入指定 owner，幂等且不改写
 原库。legacy_completed/legacy_incomplete 不自动重跑，不代表新的商业闭合审查。
