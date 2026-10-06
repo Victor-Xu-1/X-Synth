@@ -5,6 +5,13 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
+NATIVE_EXTERNAL_FILES = (
+    "packages/adapters/askcos/route_reachability.py",
+    "packages/adapters/askcos/route_enumeration.py",
+    "packages/adapters/askcos/retro_star_values.py",
+    "packages/chemistry/material_scope.py",
+)
+
 
 @lru_cache(maxsize=32)
 def _digest(path: str, size: int, modified: int) -> str:
@@ -49,10 +56,10 @@ def native_asset_identity(source: Path, assets: Path, stock, models: list[str]) 
         for path in sorted((source / "apps/askcos-v2" / directory).rglob("*.py")):
             code.update(str(path.relative_to(source)).encode())
             code.update(path.read_bytes())
-    for name in ("route_reachability", "route_enumeration", "retro_star_values"):
-        projection = source / f"packages/adapters/askcos/{name}.py"
-        code.update(str(projection.relative_to(source)).encode())
-        code.update(projection.read_bytes())
+    for name in NATIVE_EXTERNAL_FILES:
+        external = source / name
+        code.update(str(external.relative_to(source)).encode())
+        code.update(external.read_bytes())
     return hashlib.sha256(
         json.dumps(
             {
