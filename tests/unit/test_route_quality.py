@@ -63,10 +63,19 @@ def test_quality_policy_rejects_route_above_step_limit():
     assert decision.metrics["step_count"] == 25
 
 
-def test_quality_policy_default_rejects_routes_longer_than_twenty_steps():
+def test_quality_policy_does_not_confuse_total_step_count_with_chemical_failure():
     decision = RouteQualityPolicy().evaluate_route(_route(step_count=21))
 
-    assert "too_many_steps" in decision.reasons
+    assert "too_many_steps" not in decision.reasons
+    assert decision.accepted
+
+
+def test_cycle_check_is_iterative_on_a_long_dependency_chain():
+    from packages.validation.route_quality import _directed_cycle_count
+    chain = {f"p{index}": {f"p{index + 1}"} for index in range(1500)}
+    assert _directed_cycle_count(chain) == 0
+    chain["p1500"] = {"p0"}
+    assert _directed_cycle_count(chain) == 1
 
 
 def test_quality_policy_rejects_an_ultra_low_confidence_first_disconnection():

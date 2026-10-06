@@ -92,9 +92,12 @@ class ReactionEvidenceService:
         if self.has_library:
             try:
                 local, local_more = self.library.search(query, limit=body.limit)
+                status = self.library.status()
+                if not status.ready:
+                    raise ReactionLibraryError(status.reason)
                 results.extend(local)
                 more |= local_more
-                sources.append(self.library.status())
+                sources.append(status)
             except ReactionLibraryError as exc:
                 sources.append(
                     EvidenceSourceStatus(

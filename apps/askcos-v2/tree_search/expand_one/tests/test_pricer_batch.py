@@ -7,7 +7,7 @@ class RecordingPricer:
 
     def lookup_many(self, smiles_list, canonicalize=False):
         self.calls.append((smiles_list, canonicalize))
-        return {"CCO": (12.5, "catalog")}
+        return {"CCO": {"ppg": 12.5, "source": "catalog", "properties": [{"buyable": True}]}}
 
 
 def test_prefetch_exact_fragment_prices_deduplicates_one_batch():
@@ -23,8 +23,8 @@ def test_prefetch_exact_fragment_prices_deduplicates_one_batch():
 
     assert pricer.calls == [(["CCO", "CN"], False)]
     assert cache == {
-        "CCO": (12.5, "catalog", ""),
-        "CN": (0.0, "", ""),
+        "CCO": {"ppg": 12.5, "source": "catalog", "properties": [{"buyable": True}]},
+        "CN": {"ppg": None, "source": ""},
     }
 
 

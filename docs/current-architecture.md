@@ -19,7 +19,8 @@ flowchart TD
   STOCK["Pinned Unified Stock Snapshot"] --> SEARCH
   SEARCH --> POOL["Pure Route Pool: Closure / Cycles / Families / Ranking"]
   STOCK --> POOL
-  POOL --> REVIEW["Independent Forward Validation + Evidence Qualification"]
+  POOL --> QUEUE["Exact Chemical DAG / Duplicate Removal / Family-Round-Robin Qualification"]
+  QUEUE --> REVIEW["Independent Forward Validation + Source-Scoped Evidence"]
   REFERENCES["Immutable ORD + Source-Scoped USPTO Records"] --> REVIEW
   REVIEW --> GATE{"3-10 Qualified Routes?"}
   GATE -- "First Pass Insufficient: One Repair" --> RUN
@@ -114,6 +115,24 @@ another product version.
   native proposal mechanism is configured.
 - Quality evaluation and a bounded second search are coordinated once by the
   product pipeline. Layered repair loops must not multiply silently.
+- Qualification visits the finite normalized candidate pool rather than imposing
+  an output-count multiplier. Families are interleaved, and a failed representative
+  cannot hide later alternatives. Identical chemical routes across engines share
+  inference; covered families do not consume more model calls. Unchecked candidates
+  are pending, not scientific failures. Final selection still uses first-move
+  families; this is not a claim of globally independent whole-route strategies.
+- Final qualification verifies canonical structure, reaction-field agreement,
+  source-pathway agreement, a connected target DAG and exact external leaves.
+  Isotopes, stereochemistry, charges, salts and precursor multiplicity remain
+  identity-bearing. Source reaction counts do not establish purchasability. Total
+  route length is a ranking cost, not a default chemistry-failure cutoff.
+- Unknown-price catalog evidence remains available to native terminal and
+  heuristic decisions. Zero estimated remaining synthesis cost is not a zero
+  procurement price. Catalog evidence and its snapshot survive cached lookups.
+- Literature citations retain exact queries, source snapshots/readiness and
+  truncation. Returned no-match is not proof of absent literature. Reactant/product
+  identity excludes agents, conditions and outcomes; recorded conditions/yields
+  are counted only for that identity and are not copied onto a predicted step.
 - CPU-heavy route review runs in one owned, cancellable child process. Cancellation
   interrupts that child without a chemistry time limit or signalling unrelated
   processes; API handling and task observation remain available.

@@ -79,7 +79,14 @@ function referenceSummary(value, stepCount, stepIds) {
     value.unmatched_steps,
   ];
   const total = stepCount;
-  const covered = total - value.unmatched_steps;
+  const coverageKeys = ["unchecked_steps", "truncated_steps", "unavailable_source_steps", "unknown_coverage_steps"];
+  const hasCoverage = coverageKeys.some((key) => value[key] !== undefined);
+  const coverageCounts = coverageKeys.map((key) => value[key] ?? 0);
+  if (coverageKeys.some((key) => value[key] === null)) return state("invalid");
+  if (hasCoverage && coverageCounts.some((item) => !count(item) || item > total))
+    return state("invalid");
+  const [unchecked, truncated, unavailable, unknown] = coverageCounts;
+  const covered = total - value.unmatched_steps - unchecked;
   if (
     !count(total) ||
     covered < 0 ||
@@ -88,6 +95,9 @@ function referenceSummary(value, stepCount, stepIds) {
     value.reaction_matched_steps + value.product_matched_steps < covered ||
     !stepRecords(value.records, total, stepIds)
   )
+    return state("invalid");
+  if (hasCoverage && (unchecked !== total - value.records.length ||
+      [truncated, unavailable, unknown].some((item) => item > value.records.length)))
     return state("invalid");
   const recorded = [0, 0, 0];
   let overlap = 0;
@@ -130,6 +140,7 @@ function referenceSummary(value, stepCount, stepIds) {
     product: totals[1],
     unmatched: totals[2],
     total,
+    ...(hasCoverage ? { coverage: { unchecked, truncated, unavailable, unknown } } : {}),
   };
 }
 

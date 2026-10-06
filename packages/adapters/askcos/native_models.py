@@ -1,19 +1,22 @@
 """Bounded transport to operator-configured native scientific services."""
 
 import json
+import math
 from urllib import error, parse, request
 
 from .transport import NoRedirect
+from packages.platform.performance import PerformanceBudget
 
 
 class NativeModelError(RuntimeError):
-    def __init__(self, message, status=503):
+    def __init__(self, message, status=503, *, recoverable=None):
         super().__init__(message)
         self.status = status
+        self.recoverable = status in {408, 429, 500, 502, 503, 504} if recoverable is None else recoverable
 
 
 class NativeModelClient:
-    def __init__(self, base_url, *, timeout=45):
+    def __init__(self, base_url, *, timeout=None):
         parsed = parse.urlsplit(base_url)
         if (
             parsed.scheme not in {"http", "https"}
@@ -26,7 +29,9 @@ class NativeModelClient:
         ):
             raise ValueError("Invalid native model URL")
         self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
+        self.timeout = PerformanceBudget.from_environment().model_timeout_seconds if timeout is None else timeout
+        if not isinstance(self.timeout, (int, float)) or not math.isfinite(self.timeout) or self.timeout <= 0:
+            raise ValueError("Native model timeout must be finite and positive")
         self.opener = request.build_opener(request.ProxyHandler({}), NoRedirect())
 
     def post(self, path, body):
@@ -52,7 +57,9 @@ class NativeModelClient:
             return result
         except error.HTTPError as exc:
             raise NativeModelError(
-                "模型当前无法接受该请求。", 429 if exc.code == 429 else 503
+                "模型当前无法接受该请求。", exc.code,
             ) from exc
-        except (OSError, ValueError, TypeError, UnicodeError) as exc:
+        except OSError as exc:
             raise NativeModelError("模型连接失败或返回无效数据。") from exc
+        except (ValueError, TypeError, UnicodeError) as exc:
+            raise NativeModelError("模型返回的数据格式无效。", 502, recoverable=False) from exc

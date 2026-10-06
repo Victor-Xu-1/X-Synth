@@ -21,6 +21,7 @@ from packages.platform.atomic_file import write_json
 from packages.platform.performance import PerformanceBudget
 from packages.workspace.analysis_repository import AnalysisRepository
 from packages.route_pool.workflow import build_unified_route_pool
+from packages.route_schema.route_schema import RouteCandidate, RouteStep
 
 
 @pytest.fixture
@@ -119,3 +120,50 @@ def test_interruption_is_checked_at_the_publication_boundary(tmp_path):
         )
     assert not (tmp_path / "selected_routes.json").exists()
     assert not (tmp_path / "summary.json").exists()
+
+
+def test_complete_qualification_replays_real_prediction_and_real_public_sqlite(captured, tmp_path):
+    from datetime import UTC, datetime
+    from packages.adapters.askcos.references import canonical_reference_query
+    from packages.knowledge_base.reaction_library import ReactionLibrary, compile_reaction_library
+    from packages.knowledge_base.reaction_models import ReactionEvidence, ReactionLibraryResponse
+
+    evidence = ReactionEvidence.model_validate_json(
+        (Path(__file__).parents[1] / "fixtures/reactions/ord-astra-zeneca.json").read_text()
+    )
+    path = tmp_path / "reactions.sqlite"
+    compile_reaction_library([evidence], path, sources=[{
+        "path": evidence.provenance.source_path, "sha256": evidence.provenance.source_sha256,
+    }])
+    library = ReactionLibrary(path)
+
+    class LocalReferences:
+        def search(self, body, *, max_atoms):
+            query = canonical_reference_query(body, max_atoms=max_atoms)
+            rows, more = library.search(query, limit=body.limit)
+            return ReactionLibraryResponse(query=query, requested=query, source="ORD",
+                sources=[library.status()], results=rows, count=len(rows), has_more=more,
+                retrieved_at=datetime.now(UTC).isoformat())
+
+    analyses = AnalysisRepository(tmp_path / "analyses.sqlite")
+    identifier = analyses.start("owner", "forward", {"reactants": captured.reactants, "count": 10})
+    analyses.finish(identifier, "owner", result=captured.model_dump(mode="json"))
+    VerificationCache(tmp_path / "verification.json", "owner", "a" * 64).save(captured.reactants, identifier)
+    target = captured.products[0].product
+    route = RouteCandidate("captured-real", "askcos", target,
+        steps=[RouteStep("s1", f"{captured.reactants}>>{target}", captured.reactants.split("."), target, "askcos")],
+        starting_materials=captured.reactants.split("."), closed=True, family_key="captured",
+        metadata={"full_forward_prediction_validated": False})
+    report = build_unified_route_pool(id="replay", extra_routes=[route], min_routes=1, max_routes=3)
+    verifier = RouteVerifier(forward=ForwardAdapter("http://127.0.0.1:1", "http://127.0.0.1:1"),
+        analyses=analyses, run_analysis=analysis_runner(analyses), references=LocalReferences(),
+        epoch=lambda: "a" * 64, max_atoms=300)
+    result = verifier.review(report, owner="owner", minimum=1, maximum=3, plausibility=.75,
+        directory=tmp_path, interrupted=lambda: False, progress=lambda value: None)
+    assert len(result.selected_routes) == 1
+    assert result.summary["verification_budget"]["routes_checked"] == 1
+    selected = result.selected_routes[0]
+    assert selected.metadata["qualification_status"] == "qualified"
+    assert selected.metadata["automated_review"]["forward"]["records"][0]["record_id"] == identifier
+    # A genuine but unrelated ORD entry is not literature for this step.
+    assert selected.metadata["automated_review"]["references"]["unmatched_steps"] == 1

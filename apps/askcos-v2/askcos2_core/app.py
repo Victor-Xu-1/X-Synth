@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
-from packages.adapters.askcos.native_http import NativeProtocolError
+from packages.adapters.askcos.native_http import NativeProtocolError, native_failure_details
 from packages.adapters.askcos.references import (
     ReferenceError,
     ReferenceSearchInput,
@@ -98,7 +98,9 @@ def ready():
 @app.exception_handler(NativeProtocolError)
 @app.exception_handler(RequestException)
 async def native_error(request, exc):
-    return JSONResponse(status_code=503, content={"detail": "Native dependency unavailable"})
+    failure = native_failure_details(exc)
+    return JSONResponse(status_code=503 if failure["recoverable"] else 502,
+                        content={"detail": "Native dependency unavailable", "native_failure": failure})
 
 
 @app.exception_handler(RequestValidationError)

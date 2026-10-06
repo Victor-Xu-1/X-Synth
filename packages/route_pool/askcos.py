@@ -17,7 +17,7 @@ def normalize_askcos_tree_result(payload: dict[str, Any], *, engine: str = "askc
     result = _as_dict(payload.get("result") or payload)
     uds = _as_dict(result.get("uds") or payload.get("uds"))
     original_target = str(payload.get("target_smiles") or "")
-    target = _target_from_uds(uds) or original_target
+    target = original_target or _target_from_uds(uds)
     if not target:
         raise ValueError("ASKCOS payload is missing target smiles")
     frontier_candidates = _frontier_partial_routes(
@@ -65,6 +65,23 @@ def normalize_askcos_tree_result(payload: dict[str, Any], *, engine: str = "askc
                 "original_target_smiles": original_target,
                 "route_index": index,
                 "pathway_properties": path_metadata,
+                "pathway_edges": [dict(edge) for edge in edges],
+                "pathway_node_smiles": {
+                    str(edge[key]): uuid2smiles.get(str(edge[key]))
+                    for edge in edges
+                    for key in ("source", "target")
+                    if key in edge
+                },
+                "pathway_node_kinds": {
+                    str(edge[key]): _node_for_smiles(
+                        node_dict, str(uuid2smiles.get(str(edge[key])) or "")
+                    ).get("type")
+                    for edge in edges for key in ("source", "target") if key in edge
+                },
+                "starting_material_nodes": {
+                    smiles: dict(_node_for_smiles(node_dict, smiles))
+                    for smiles in starting_materials
+                },
                 "unclosed_precursors": unclosed,
                 "stats": {
                     key: stats[key]
@@ -115,24 +132,22 @@ def _frontier_partial_routes(
         raw_precursors, separator, raw_product = raw_reaction.partition(">>")
         if not separator:
             continue
-        canonical_product = _canonical_unmapped_smiles(
-            str(reaction_node.get("product_smiles") or raw_product)
-        )
+        canonical_product = _canonical_unmapped_smiles(raw_product)
         if canonical_product != canonical_target:
             continue
+        if "product_smiles" in reaction_node and (
+            _canonical_unmapped_smiles(reaction_node["product_smiles"]) != canonical_product
+        ):
+            continue
 
-        precursor_values = reaction_node.get("precursors")
-        if not isinstance(precursor_values, list):
-            precursor_values = raw_precursors.split(".")
-        precursors = _unique(
-            canonical
-            for value in precursor_values
-            if (canonical := _canonical_unmapped_smiles(str(value)))
-        )
+        precursors = _frontier_precursors(raw_precursors, reaction_node)
         if not precursors or canonical_target in precursors:
             continue
 
-        reaction_smiles = f"{'.'.join(precursors)}>>{canonical_target}"
+        canonical_reactants = _canonical_unmapped_smiles(raw_precursors)
+        if canonical_reactants == canonical_target:
+            continue
+        reaction_smiles = f"{canonical_reactants}>>{canonical_target}"
         if reaction_smiles in seen_reactions:
             continue
         seen_reactions.add(reaction_smiles)
@@ -142,12 +157,7 @@ def _frontier_partial_routes(
             precursors=precursors,
             product=canonical_target,
             source=f"{engine}:frontier",
-            confidence=_as_float(
-                reaction_node.get("plausibility")
-                or reaction_node.get("rxn_score_from_model")
-                or reaction_node.get("template_score")
-                or reaction_node.get("score")
-            ),
+            confidence=_reaction_confidence(reaction_node),
             metadata=reaction_node,
         )
         route = RouteCandidate(
@@ -155,7 +165,7 @@ def _frontier_partial_routes(
             engine=engine,
             target_smiles=target,
             steps=[step],
-            starting_materials=precursors,
+            starting_materials=_unique(precursors),
             closed=False,
             closure_sources=[],
             route_score=None,
@@ -165,7 +175,7 @@ def _frontier_partial_routes(
                 "source": "askcos_frontier",
                 "frontier_partial": True,
                 "storage_reason": storage.get("reason"),
-                "unclosed_precursors": precursors,
+                "unclosed_precursors": _unique(precursors),
                 "frontier_reaction": reaction_node,
             },
         )
@@ -173,8 +183,26 @@ def _frontier_partial_routes(
     return candidates
 
 
+def _frontier_precursors(raw_precursors: str, reaction_node: dict[str, Any]) -> list[str]:
+    canonical_reactants = _canonical_unmapped_smiles(raw_precursors)
+    if not canonical_reactants:
+        return []
+    precursor_values = reaction_node.get("precursors", raw_precursors.split("."))
+    if not isinstance(precursor_values, list):
+        return []
+    precursors: list[str] = []
+    for value in precursor_values:
+        canonical = _canonical_unmapped_smiles(value)
+        if not canonical:
+            return []
+        precursors.append(canonical)
+    if _canonical_unmapped_smiles(".".join(precursors)) != canonical_reactants:
+        return []
+    return sorted(precursors)
+
+
 def _canonical_unmapped_smiles(smiles: str) -> str | None:
-    if not smiles:
+    if not isinstance(smiles, str) or not smiles:
         return None
     try:
         mol = Chem.MolFromSmiles(smiles)
@@ -184,8 +212,7 @@ def _canonical_unmapped_smiles(smiles: str) -> str | None:
         return None
     for atom in mol.GetAtoms():
         atom.SetAtomMapNum(0)
-        atom.SetIsotope(0)
-    return Chem.MolToSmiles(mol, canonical=True)
+    return Chem.MolToSmiles(mol, canonical=True, isomericSmiles=True)
 
 
 def _path_steps(
@@ -217,14 +244,10 @@ def _path_steps(
             RouteStep(
                 step_id=f"s{len(steps) + 1}",
                 reaction_smiles=reaction_smiles,
-                precursors=_unique(precursor_smiles),
+                precursors=sorted(precursor_smiles),
                 product=product,
                 source=_reaction_source(reaction_node),
-                confidence=_as_float(
-                    reaction_node.get("plausibility")
-                    or reaction_node.get("rxn_score_from_model")
-                    or reaction_node.get("template_score")
-                ),
+                confidence=_reaction_confidence(reaction_node),
                 metadata=reaction_node,
             )
         )
@@ -249,7 +272,7 @@ def _path_starting_materials(
             continue
         if _node_for_smiles(node_dict, smiles).get("type") == "chemical":
             leaves.append(smiles)
-    return _unique(leaves)
+    return sorted(_unique(leaves))
 
 
 def _topological_reaction_uuids(
@@ -257,25 +280,32 @@ def _topological_reaction_uuids(
     uuid2smiles: dict[str, Any],
     node_dict: dict[str, Any],
 ) -> list[str]:
+    """Traverse root-first, retaining rootless components for downstream validation."""
     children = _children(edges)
     incoming = _parents(edges)
     node_ids = set(children)
     for edge in edges:
         node_ids.add(str(edge.get("target")))
-    roots = sorted(node_id for node_id in node_ids if not incoming.get(node_id))
-    queue: deque[str] = deque(roots)
+
+    def node_key(node_id: str) -> tuple[str, str]:
+        return str(uuid2smiles.get(node_id) or ""), node_id
+
+    roots = sorted((node_id for node_id in node_ids if not incoming.get(node_id)), key=node_key)
     seen: set[str] = set()
     reactions: list[str] = []
-    while queue:
-        node_id = queue.popleft()
-        if node_id in seen:
+    for root in [*roots, *sorted(node_ids, key=node_key)]:
+        if root in seen:
             continue
-        seen.add(node_id)
-        smiles = str(uuid2smiles.get(node_id) or "")
-        if _node_for_smiles(node_dict, smiles).get("type") == "reaction":
-            reactions.append(node_id)
-        for child in children.get(node_id, []):
-            queue.append(child)
+        queue: deque[str] = deque([root])
+        while queue:
+            node_id = queue.popleft()
+            if node_id in seen:
+                continue
+            seen.add(node_id)
+            smiles = str(uuid2smiles.get(node_id) or "")
+            if _node_for_smiles(node_dict, smiles).get("type") == "reaction":
+                reactions.append(node_id)
+            queue.extend(sorted(children.get(node_id, []), key=node_key))
     return reactions
 
 
@@ -325,12 +355,25 @@ def _reaction_source(reaction_node: dict[str, Any]) -> str:
 def _is_commercial_terminal(node: dict[str, Any]) -> bool:
     if not node:
         return False
-    if not bool(node.get("terminal")):
+    if node.get("terminal") is not True:
         return False
     price = _as_float(node.get("purchase_price"))
     if price is not None and price > 0:
         return True
-    return bool(node.get("as_reactant") or node.get("as_product"))
+    if node.get("buyable") is True or node.get("in_stock") is True:
+        return True
+    properties = node.get("properties")
+    return isinstance(properties, list) and any(
+        _as_dict(value).get("buyable") is True for value in properties
+    )
+
+
+def _reaction_confidence(reaction_node: dict[str, Any]) -> float | None:
+    for key in ("plausibility", "rxn_score_from_model", "template_score", "score"):
+        value = _as_float(reaction_node.get(key))
+        if value is not None:
+            return value
+    return None
 
 
 def _evidence_refs(steps: list[RouteStep], path_metadata: dict[str, Any]) -> list[str]:

@@ -44,8 +44,14 @@ RPC_FILES = {
     *{
         "apps/askcos-v2/" + name for name in (
             "fast_filter/fast_filter.py", "fast_filter/fast_filter_server.py",
+            "retro/template_relevance/template_relevance_server.py",
+            "askcos2_core/app.py",
             "pathway_ranker/pathway_ranker.py", "pathway_ranker/pathway_ranker_server.py",
             "tree_search/expand_one/api/fast_filter_batch_api.py",
+            "tree_search/expand_one/api/pricer_api.py",
+            "tree_search/expand_one/api/retro_api.py",
+            "tree_search/expand_one/tests/test_pricer_batch.py",
+            "tree_search/expand_one/tests/test_failure_and_stock_ranking.py",
             "tree_search/mcts/api/expand_one_api.py", "tree_search/mcts/mcts_server.py",
             "tree_search/mcts/mcts_controller.py",
             "tree_search/retro_star/api/expand_one_api.py",
@@ -89,6 +95,7 @@ def related_tests(paths):
         selected.update({
             "tests/unit/test_native_model_limits.py", "tests/unit/test_native_request_bounds.py",
             "tests/unit/test_native_search_protocol.py", "tests/unit/test_native_server_binding.py",
+            "tests/unit/test_native_failure_details.py", "tests/unit/test_native_timeout_contract.py",
             "tests/unit/test_native_lifecycle.py", "tests/unit/test_askcos_adapter.py",
         })
     return selected

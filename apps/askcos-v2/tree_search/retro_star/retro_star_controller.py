@@ -229,7 +229,7 @@ class RetroStar:
         self.tree.nodes[self.target]["terminal"] = False
         self.tree.nodes[self.target]["solved"] = False
         self.tree.nodes[self.target]["done"] = False
-        self.tree.nodes[self.target]["min_depth"] = 1
+        self.tree.nodes[self.target]["min_depth"] = 0
 
     def create_chemical_node(self, smiles: str) -> str:
         """

@@ -26,3 +26,9 @@ def test_invalid_structure_and_competing_engine_or_disk_path_are_rejected():
 def test_large_molecular_input_is_rejected_before_expensive_canonicalization():
     with pytest.raises(ValidationError, match="atom budget"):
         RouteJobRequest(smiles="C" * 1025)
+
+
+@pytest.mark.parametrize("smiles", ["*CCO", "CC(*)N", "[*:1]CO"])
+def test_query_groups_are_rejected_before_creating_expensive_route_tasks(smiles):
+    with pytest.raises(ValidationError, match="确定的化合物结构"):
+        RouteJobRequest(smiles=smiles)

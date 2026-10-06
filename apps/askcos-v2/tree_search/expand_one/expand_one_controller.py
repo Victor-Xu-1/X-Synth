@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field
 from rdchiral.template_extractor import extract_from_reaction
 from rdchiral_util import apply_one_template_to_precursors, get_reacting_atoms
 from rdkit import Chem
-from typing import Any, ClassVar, Dict, List, Optional, Tuple
+from typing import Any, ClassVar, Dict, List, Optional
+from packages.adapters.askcos.native_http import NativeProtocolError
 from packages.chemistry.material_scope import material_scope_exclusion
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://0.0.0.0:9100")
@@ -109,20 +110,23 @@ class RetroBackendOption(BaseModel):
 def _price_fragment(
     smiles: str,
     use_smarts: bool,
-    cache: Dict[str, Tuple[float, str, str]],
-) -> Tuple[float, str, str]:
+    cache: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
     if smiles in cache:
         return cache[smiles]
 
     if use_smarts and _has_abs_groups(smiles):
         ppg, source, smiles_match = pricer_smarts(smiles)
+        record = {"ppg": ppg, "source": source}
+        if smiles_match:
+            record["smiles_match"] = smiles_match
     else:
-        ppg = pricer(smiles=smiles, canonicalize=False)
-        source = ""
-        smiles_match = ""
+        record = pricer(smiles=smiles, canonicalize=False)
+        if record is None:
+            record = {"ppg": None, "source": ""}
 
-    cache[smiles] = (ppg, source, smiles_match)
-    return ppg, source, smiles_match
+    cache[smiles] = record
+    return record
 
 
 def _prefetch_exact_fragment_prices(
@@ -130,9 +134,9 @@ def _prefetch_exact_fragment_prices(
     *,
     use_smarts: bool,
     price_client: PricerAPI,
-    cache: Dict[str, Tuple[float, str, str]],
+    cache: Dict[str, Dict[str, Any]],
 ) -> None:
-    """Populate exact fragment prices with one batch database request."""
+    """Retain exact stock evidence and unknown prices in one batch lookup."""
 
     fragments = list(dict.fromkeys(
         fragment
@@ -144,21 +148,21 @@ def _prefetch_exact_fragment_prices(
         for fragment in fragments
         if not (use_smarts and _has_abs_groups(fragment))
     ]
-    prices = price_client.lookup_many(exact_fragments, canonicalize=False)
+    records = price_client.lookup_many(exact_fragments, canonicalize=False)
     for fragment in exact_fragments:
-        ppg, source = prices.get(fragment, (0.0, ""))
-        cache[fragment] = (ppg, source, "")
+        cache[fragment] = records.get(fragment, {"ppg": None, "source": ""})
 
 
 def _get_relevance(_args) -> float:
-    reactant_smiles, necessary_reagent, model_score, fragment_prices = _args
+    reactant_smiles, necessary_reagent, model_score, fragment_stock = _args
     necessary_reagent_atoms = necessary_reagent.count("[") / 2.0
     scores = []
     for smiles in reactant_smiles.split("."):
-        ppg = fragment_prices.get(smiles, 0.0)
-        # If buyable, basically free
-        if ppg:
-            scores.append(-ppg / 1000.0)
+        stock = fragment_stock.get(smiles, {})
+        ppg = stock.get("ppg")
+        if ppg or stock.get("buyable") is True:
+            # Unknown catalog prices do not imply synthesis complexity or a quote.
+            scores.append(-ppg / 1000.0 if ppg else 0.0)
             continue
 
         # Else, use heuristic
@@ -174,7 +178,10 @@ def _get_relevance(_args) -> float:
         )
 
     score = np.sum(scores) - 4.00 * np.power(necessary_reagent_atoms, 2.0)
-    score = score / model_score
+    if not np.isfinite(model_score) or model_score < 0:
+        raise NativeProtocolError("Invalid normalized model prior")
+    # Softmax can underflow to zero; preserve that reported prior but keep ranking finite.
+    score = score / max(model_score, np.finfo(np.float32).tiny)
 
     return score
 
@@ -255,6 +262,8 @@ class ExpandOneController:
         cano_smiles = canonicalize_smiles(smiles)
         if material_scope_exclusion(cano_smiles):
             return []
+        if not retro_backend_options:
+            raise NativeProtocolError("One-step expansion requires a configured retrosynthesis backend")
         for option in retro_backend_options:
             batch = self.retro_controller(
                 smiles=[cano_smiles],
@@ -267,12 +276,10 @@ class ExpandOneController:
                 top_k=option.top_k
             )
             if batch is None:
-                print_if_debug(
-                    f"retro call failed for {option.retro_backend}/"
-                    f"{option.retro_model_name}; skipping this backend",
-                    debug,
+                raise NativeProtocolError(
+                    "Configured retrosynthesis backend returned no result batch",
+                    code="native_dependency_unavailable", recoverable=True,
                 )
-                continue
             retro_result = batch[0]
 
             current_rank = 0
@@ -399,7 +406,7 @@ class ExpandOneController:
 
         # <pricing>
         start = time.time()
-        fragment_price_cache: Dict[str, Tuple[float, str, str]] = {}
+        fragment_price_cache: Dict[str, Dict[str, Any]] = {}
         _prefetch_exact_fragment_prices(
             [result["outcome"] for result in filtered_results],
             use_smarts=uses_higher_level,
@@ -410,13 +417,10 @@ class ExpandOneController:
             fragments = result["outcome"].split(".")
             per_frag = {}
             for frag in fragments:
-                ppg, source, smiles_match = _price_fragment(
+                entry = _price_fragment(
                     frag, use_smarts=uses_higher_level, cache=fragment_price_cache
                 )
-                entry: Dict[str, Any] = {"ppg": ppg, "source": source}
-                if smiles_match:
-                    entry["smiles_match"] = smiles_match
-                per_frag[frag] = entry
+                per_frag[frag] = dict(entry)
             result["precursor_prices"] = per_frag
         print_if_debug(f"pricing: {time.time() - start}", debug)
         # </pricing>
@@ -703,10 +707,19 @@ class ExpandOneController:
     def _rerank_by_relevance_heuristic(
         self,
         filtered_results: List[Dict[str, Any]],
-        fragment_prices: Dict[str, Tuple[float, str, str]],
+        fragment_prices: Dict[str, Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
-        # Build ppg-only lookup (fragment -> ppg) for the relevance function
-        frag_ppg = {frag: v[0] for frag, v in fragment_prices.items()}
+        # Keep worker messages compact without losing terminal evidence.
+        fragment_stock = {
+            frag: {
+                "ppg": record.get("ppg"),
+                "buyable": record.get("buyable") is True or any(
+                    isinstance(item, dict) and item.get("buyable") is True
+                    for item in (record.get("properties") or [])
+                ),
+            }
+            for frag, record in fragment_prices.items()
+        }
 
         tasks = []
         for result in filtered_results:
@@ -719,7 +732,7 @@ class ExpandOneController:
 
             tasks.append((
                 result["outcome"], necessary_reagent,
-                average_model_score, frag_ppg
+                average_model_score, fragment_stock
             ))
 
         scores = self.p.imap(_get_relevance, tasks)

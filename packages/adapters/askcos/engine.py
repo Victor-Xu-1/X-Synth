@@ -121,6 +121,8 @@ class AskcosEngine:
                     "invalid_native_search_record", recoverable=False
                 )
             observed = record.get("progress")
+            if isinstance(observed, dict) and isinstance(record.get("dependency_failure"), dict):
+                observed = {**observed, "dependency_failure": record["dependency_failure"]}
             if isinstance(observed, dict) and observed != last_progress:
                 progress(observed)
                 last_progress = observed

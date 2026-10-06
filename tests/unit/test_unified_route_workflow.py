@@ -10,6 +10,7 @@ from packages.route_pool.workflow import (
     build_unified_route_pool,
 )
 from packages.route_schema.route_schema import RouteCandidate, RouteStep
+from packages.validation.route_quality import RouteQualityPolicy
 
 
 FIXTURES = Path("tests/fixtures")
@@ -203,6 +204,7 @@ def test_workflow_keeps_rejected_candidates_but_not_selected_delivery_routes(tmp
     result = build_unified_route_pool(
         id="quality-gate",
         extra_routes=[long_route, good],
+        quality_policy=RouteQualityPolicy(max_steps=20),
         min_routes=1,
         max_routes=10,
     )

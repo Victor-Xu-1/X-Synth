@@ -4,6 +4,7 @@ import os
 
 from configs.module_config_full import module_config as upstream_config
 from packages.platform.native_endpoints import module_deployment_endpoints
+from packages.platform.performance import PerformanceBudget
 
 module_config = deepcopy(upstream_config)
 enabled = {
@@ -30,6 +31,9 @@ template = module_config["retro_template_relevance"]["deployment"]
 template["available_model_names"] = os.environ.get(
     "X_SYNTH_ASKCOS_MODELS", "pistachio,pistachio_ringbreaker"
 ).split(",")
-module_config["tree_search_expand_one"]["deployment"]["timeout"] = 300
+budget = PerformanceBudget.from_environment()
+for name in enabled - {"tree_search_expand_one"}:
+    module_config[name]["deployment"]["timeout"] = budget.model_timeout_seconds
+module_config["tree_search_expand_one"]["deployment"]["timeout"] = budget.expansion_timeout_seconds
 module_config["tree_search_mcts"]["deployment"]["timeout"] = 7800
 module_config["tree_search_retro_star"]["deployment"]["timeout"] = 7800

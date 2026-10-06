@@ -29,6 +29,7 @@ from .runtime_health import route_runtime_status
 from .search_progress import begin_search_round, remaining_search_rounds
 from .review_policy import REVIEW_POLICY, upgrade_review_checkpoint
 from .route_artifacts import RouteArtifactError, RouteArtifactStore
+from .qualification_queue import rejected_reactions
 from packages.chemistry.material_scope import POLICY as MATERIAL_SCOPE_POLICY
 
 
@@ -314,9 +315,7 @@ class RoutePipeline:
             )
             checkpoint["rejected_reactions"] = sorted(set(
                 checkpoint.get("rejected_reactions", [])
-                + [step.reaction_smiles for route in pool.all_routes for step in route.steps
-                   if any(row["step_id"] == step.step_id and not row["matched"]
-                          for row in route.metadata.get("automated_review", {}).get("forward", {}).get("records", []))]
+                + rejected_reactions(pool.all_routes)
             ))
             summary = {
                 **pool.summary,
