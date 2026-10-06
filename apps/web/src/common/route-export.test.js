@@ -1,7 +1,22 @@
 /** @jest-environment node */
 import { settledRouteImages, exportBounds } from "./route-export";
 import { ROUTE_NODE_SIZE, graphFromCandidate } from "./route-graph";
+import { readFileSync } from "node:fs";
 jest.mock("html-to-image", () => ({ toPng: jest.fn() }));
+test("reaction icon fonts are discoverable on the element, not only its pseudo-element", () => {
+  const source = readFileSync(
+    "src/components/routes/ReactionNode.vue",
+    "utf8",
+  );
+  const arrows = source.match(/<v-icon\b[^>]*icon="mdi-arrow-right"[^>]*\/>/g);
+  expect(arrows).toHaveLength(2);
+  for (const arrow of arrows) {
+    expect(arrow).toContain('class="reaction-direction-icon"');
+  }
+  expect(source).toMatch(
+    /\.reaction-direction-icon\s*\{\s*(?:\/\*[^]*?\*\/\s*)?font-family:\s*"Material Design Icons";/,
+  );
+});
 test("full export encloses the same chemical card geometry used by the live diagram", () => {
   const graph = graphFromCandidate({
     target_smiles: "CCO",
