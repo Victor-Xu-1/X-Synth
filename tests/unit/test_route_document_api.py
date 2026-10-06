@@ -160,6 +160,19 @@ def test_editable_copy_uses_display_title_without_rewriting_scientific_request(a
     )
 
 
+def test_editable_copy_checks_the_stable_route_id_not_only_a_stale_index(api):
+    job, _, candidates = captured_task(api)
+    response = api.client.post("/api/v1/route-documents/from-task", json={
+        "job_id": job["id"], "route_index": 0, "route_id": "not-the-displayed-route",
+    })
+    assert response.status_code == 409
+    response = api.client.post("/api/v1/route-documents/from-task", json={
+        "job_id": job["id"], "route_index": 0, "route_id": candidates[0].route_id,
+    })
+    assert response.status_code == 200
+    assert response.json()["source"]["route_id"] == candidates[0].route_id
+
+
 def test_http_crud_has_stable_fields_canonicalization_revisions_and_true_deletion(api):
     client = api.client
     response = client.post("/api/v1/route-documents", json=document_body())

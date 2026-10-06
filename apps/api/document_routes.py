@@ -33,6 +33,7 @@ class SourceRouteBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     job_id: str = Field(pattern=r"^[a-f0-9]{32}$")
     route_index: int = Field(ge=0, le=9, strict=True)
+    route_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 def document_router(*, documents, repository, transport, artifacts, budget):
@@ -81,6 +82,8 @@ def document_router(*, documents, repository, transport, artifacts, budget):
                 raise TypeError("Invalid selected route collection")
             if body.route_index >= len(candidates):
                 raise HTTPException(409, "该任务尚无对应路线结果")
+            if body.route_id is not None and candidates[body.route_index].get("route_id") != body.route_id:
+                raise HTTPException(409, "该路线结果已更新，请刷新后再创建编辑副本。")
             graph, source = graph_from_candidate(
                 candidates[body.route_index], max_atoms=budget.max_structure_atoms
             )
@@ -89,6 +92,9 @@ def document_router(*, documents, repository, transport, artifacts, budget):
                 409, "任务路线数据无效或不可用，无法创建路线文档。"
             ) from exc
         source.update(job_id=body.job_id, route_index=body.route_index)
+        pointer = (job.get("checkpoint") or {}).get("published_result")
+        if isinstance(pointer, dict):
+            source["result_snapshot"] = pointer["snapshot_id"]
         title = display_description(job)[:140]
         return guarded(
             lambda: documents.create(
