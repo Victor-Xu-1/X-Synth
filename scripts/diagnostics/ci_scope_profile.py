@@ -98,6 +98,8 @@ RUNTIME_FILES = {
     "apps/askcos-v2/context_recommender/app/common/services/model_assets.py",
     "apps/askcos-v2/context_recommender/condition_server.py",
     "apps/askcos-v2/forward_predictor/graph2smiles/forward_server.py",
+    "apps/askcos-v2/forward_predictor/graph2smiles/handler.py",
+    "apps/askcos-v2/forward_predictor/graph2smiles/utils/data_utils.py",
     "apps/askcos-v2/forward_predictor/graph2smiles/model_runtime.py",
     "apps/askcos-v2/forward_predictor/graph2smiles/utils/ctypes_calculator.py",
     "apps/askcos-v2/impurity_predictor/native_server.py",

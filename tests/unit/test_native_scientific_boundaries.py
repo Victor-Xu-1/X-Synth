@@ -152,3 +152,79 @@ def test_graph_distances_preserve_disconnection_without_shared_binary():
     assert distance.DistanceCalculator.calculate(adjacency, 4, 4).tolist() == [
         [0, 1, 2, 0], [1, 0, 1, 0], [2, 1, 0, 0], [0, 0, 0, 0],
     ]
+
+
+@pytest.mark.parametrize("reactants", [
+    "[H][H]",
+    "[13CH3][C@H](O)[NH3+].[Cl-].OCCBr.OCCBr",
+])
+def test_native_forward_preprocessing_preserves_real_features_without_logging_input(
+    reactants, monkeypatch, capfd, caplog
+):
+    import argparse
+    import logging
+    from multiprocessing.pool import ThreadPool
+
+    torch = pytest.importorskip("torch", reason="Also verified in the native inference environment")
+    pytest.importorskip("scipy", reason="Native graph distance calculation requires scipy")
+    directory = ROOT / "apps/askcos-v2/forward_predictor/graph2smiles"
+    monkeypatch.syspath_prepend(str(directory))
+    handler_module = load_source(str(directory.relative_to(ROOT) / "handler.py"), "private_forward_handler")
+    from utils.ctypes_calculator import DistanceCalculator
+    from utils.data_utils import canonicalize_smiles, collate_graph_features
+    from utils.preprocess_utils import get_graph_features_from_smi
+
+    expected = canonicalize_smiles(validate_forward_input(reactants), trim=False, suppress_warning=True)
+    features = get_graph_features_from_smi((0, expected))
+    graph = (features[0], features[2], features[4], features[6], features[8], features[9])
+    expected_nodes = collate_graph_features([graph])[0]
+    handler = handler_module.G2SHandler()
+    handler.args = argparse.Namespace(
+        mask_rel_chirality=0, predict_batch_size=16384,
+        task="reaction_prediction", rel_pos_buckets=11,
+    )
+    handler.distance_calculator = DistanceCalculator()
+    with ThreadPool(processes=1) as pool, caplog.at_level(logging.DEBUG):
+        handler.p = pool
+        batches = handler.preprocess([{"body": {"smiles": [reactants]}}])
+    assert len(batches) == 1 and torch.equal(batches[0].fnode, expected_nodes)
+    output = capfd.readouterr()
+    assert reactants not in output.out + output.err + caplog.text
+    assert expected not in output.out + output.err + caplog.text
+
+
+@pytest.mark.parametrize("reactants", ["", "Cl", "[Na+].[Cl-]", "*CC", "invalid_private_structure"])
+def test_native_forward_preprocessing_rejects_dummy_replacements_before_featurization(
+    reactants, capfd
+):
+    pytest.importorskip("torch", reason="Also verified in the native inference environment")
+    handler_module = load_source(
+        "apps/askcos-v2/forward_predictor/graph2smiles/handler.py", "strict_forward_handler"
+    )
+    handler = handler_module.G2SHandler()
+    with pytest.raises(ValueError):
+        handler.preprocess([{"body": {"smiles": [reactants]}}])
+    output = capfd.readouterr()
+    assert not output.out and not output.err
+
+
+def test_native_forward_prediction_parse_suppresses_structure_warnings(monkeypatch, capfd):
+    from rdkit import rdBase
+
+    pytest.importorskip("torch", reason="Also verified in the native inference environment")
+    monkeypatch.syspath_prepend(str(ROOT / "apps/askcos-v2/forward_predictor/graph2smiles"))
+    from utils.data_utils import canonicalize_smiles
+
+    private_prediction = "invalid_private_prediction"
+    errors_enabled = "rdApp.error:enabled" in rdBase.LogStatus()
+    rdBase.EnableLog("rdApp.error")
+    try:
+        assert canonicalize_smiles(private_prediction, trim=False, suppress_warning=True) == ""
+        output = capfd.readouterr()
+        assert not output.out and not output.err
+        assert "rdApp.error:enabled" in rdBase.LogStatus()
+        assert canonicalize_smiles(private_prediction, trim=False, suppress_warning=False) == ""
+        assert private_prediction in capfd.readouterr().err
+    finally:
+        if not errors_enabled:
+            rdBase.DisableLog("rdApp.error")

@@ -1,9 +1,10 @@
 import logging
+from contextlib import nullcontext
 import numpy as np
 import os
 import time
 import torch
-from rdkit import Chem
+from rdkit import Chem, rdBase
 from torch.utils.data import Dataset
 from typing import List, Tuple
 from utils.chem_utils import ATOM_FDIM, BOND_FDIM, get_atom_features_sparse
@@ -21,7 +22,8 @@ def len2idx(lens) -> np.ndarray:
 
 
 def canonicalize_smiles(smiles, remove_atom_number=True, trim=True, suppress_warning=False):
-    mol = Chem.MolFromSmiles(smiles)
+    with (rdBase.BlockLogs() if suppress_warning else nullcontext()):
+        mol = Chem.MolFromSmiles(smiles)
 
     if mol is None:
         cano_smiles = ""

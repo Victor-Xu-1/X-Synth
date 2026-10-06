@@ -145,6 +145,12 @@ another product version.
   Shared deployments require configured identity verification and private owners.
 - Native ASKCOS functions without installed models or required authorization must
   remain unavailable, not be presented as working features.
+- Forward HTTP and native-handler inputs share the strict molecular parser before
+  graph featurization. Invalid or unbonded inputs cannot reach upstream dummy
+  ethane substitutions; valid explicit hydrogen and repeated reactants retain
+  their actual features. Handler telemetry excludes submitted structures,
+  predictions and private asset paths. Training utilities remain upstream source,
+  not a second product-input authority.
 
 ### Native Lifecycle
 
