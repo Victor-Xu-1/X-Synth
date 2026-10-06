@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from http.client import IncompleteRead
 from urllib import error, parse, request
 
 from packages.platform.performance import PerformanceBudget
@@ -77,19 +78,30 @@ class AskcosTransport:
         native_request = request.Request(url, data=data, headers=headers, method=method)
         try:
             with self.opener.open(native_request, timeout=timeout) as response:
+                length = response.headers.get("Content-Length")
+                try:
+                    length = int(length) if length is not None else None
+                except ValueError:
+                    raise EngineUnavailable("native_invalid_response_headers", recoverable=False) from None
+                if length is not None and length < 0:
+                    raise EngineUnavailable("native_invalid_response_headers", recoverable=False)
                 raw = response.read(self.budget.response_bytes + 1)
                 if len(raw) > self.budget.response_bytes:
                     raise EngineUnavailable(
                         "native_response_too_large", recoverable=False
                     )
+                if length is not None and len(raw) < length:
+                    raise EngineUnavailable("native_response_truncated")
                 return json.loads(raw)
         except error.HTTPError as exc:
             raise EngineUnavailable(
                 f"native_http_{exc.code}",
                 recoverable=exc.code in {408, 429, 500, 502, 503, 504},
             ) from exc
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        except (OSError, IncompleteRead) as exc:
             raise EngineUnavailable("native_connection_or_protocol_error") from exc
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise EngineUnavailable("native_invalid_json", recoverable=False) from exc
 
     def current_user(self, token: str) -> dict:
         user = self.call("/api/user/get-current-user", token=token, timeout=5)

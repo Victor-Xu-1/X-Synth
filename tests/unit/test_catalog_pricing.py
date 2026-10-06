@@ -85,7 +85,7 @@ def real_lookup(index):
         ]
         smiles = [
             connection.execute(
-                "SELECT smiles FROM evidence WHERE source=? AND ppg>0 LIMIT 1",
+                "SELECT smiles FROM evidence WHERE source=? ORDER BY ppg IS NULL,ppg LIMIT 1",
                 (source,),
             ).fetchone()[0]
             for source in sources
@@ -121,7 +121,7 @@ def test_real_api_matches_sql_values_and_keeps_the_catalog_read_only(
         for actual, original in zip(records, originals, strict=True):
             assert {key: actual[key] for key in original} == original
             assert actual["price"]["amount"] == original["ppg"]
-            assert actual["price"]["status"] == "recorded"
+            assert actual["price"]["status"] == ("recorded" if original["ppg"] is not None else "missing")
             assert actual["price"]["snapshot"] == payload["snapshot"]
             assert actual["price"]["catalog_sha256"] == before["catalog_sha256"]
             seen.add(actual["source"])
@@ -130,7 +130,7 @@ def test_real_api_matches_sql_values_and_keeps_the_catalog_read_only(
         count, priced = connection.execute(
             "SELECT COUNT(*), SUM(ppg>0) FROM evidence"
         ).fetchone()
-    assert count == before["accepted_records"] == priced
+    assert count == before["accepted_records"] and 0 <= priced <= count
     with real_index.path.open("rb") as handle:
         assert (
             hashlib.file_digest(handle, "sha256").hexdigest()

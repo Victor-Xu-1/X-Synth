@@ -3,6 +3,10 @@
 STOCK_FILES = {
     "packages/adapters/stock/askcos_buyables.py",
     "packages/adapters/stock/commercial_stock.py",
+    "packages/adapters/stock/route_pruning.py",
+    "packages/adapters/stock/stock_merge.py",
+    "packages/chemistry/precursor_occurrences.py",
+    "scripts/data_import/compile_stock_index.py",
     "packages/adapters/stock/domestic_artifacts.py",
     "packages/adapters/stock/pubchem_suppliers.py",
     "packages/adapters/stock/stock_index.py",
@@ -36,7 +40,10 @@ RUNTIME_FILES = {
 }
 RPC_FILES = {
     "packages/adapters/askcos/engine.py",
+    "packages/adapters/askcos/search_connection.py",
+    "packages/adapters/askcos/transport.py",
     "packages/adapters/askcos/native_http.py",
+    "packages/adapters/askcos/native_failure_diagnostics.py",
     "packages/adapters/askcos/native_search_jobs.py",
     "packages/adapters/askcos/native_search_protocol.py",
     "packages/adapters/askcos/native_service_limits.py",
@@ -46,6 +53,8 @@ RPC_FILES = {
             "fast_filter/fast_filter.py", "fast_filter/fast_filter_server.py",
             "retro/template_relevance/template_relevance_server.py",
             "askcos2_core/app.py",
+            "askcos2_core/wrappers/retro/controller.py", "askcos2_core/utils/cache.py",
+            "tree_search/retro_star/api/value_fn_api.py",
             "pathway_ranker/pathway_ranker.py", "pathway_ranker/pathway_ranker_server.py",
             "tree_search/expand_one/api/fast_filter_batch_api.py",
             "tree_search/expand_one/api/pricer_api.py",
@@ -75,6 +84,7 @@ def related_tests(paths):
             "tests/unit/test_domestic_stock_artifacts.py", "tests/unit/test_pubchem_suppliers.py",
             "tests/unit/test_unified_aizynth_stock_artifacts.py",
             "tests/unit/test_unified_stock_service.py", "tests/unit/test_catalog_pricing.py",
+            "tests/unit/test_stock_snapshot_merge.py", "tests/unit/test_stock_route_projection.py",
         })
     if paths & (TEMPLATE_FILES | SQLITE_FILES):
         selected.update({
@@ -96,6 +106,8 @@ def related_tests(paths):
             "tests/unit/test_native_model_limits.py", "tests/unit/test_native_request_bounds.py",
             "tests/unit/test_native_search_protocol.py", "tests/unit/test_native_server_binding.py",
             "tests/unit/test_native_failure_details.py", "tests/unit/test_native_timeout_contract.py",
+            "tests/unit/test_native_operation_diagnostics.py", "tests/unit/test_retro_operation_boundaries.py",
+            "tests/unit/test_engine_reconnect.py",
             "tests/unit/test_native_lifecycle.py", "tests/unit/test_askcos_adapter.py",
         })
     return selected

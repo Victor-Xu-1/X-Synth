@@ -52,6 +52,7 @@ test("node reaction context follows actual graph edges and never source index al
   expect(feasibilityLocation(reaction).query).toEqual({
     reactants: reaction.reactants,
     product: reaction.product,
+    reaction_smiles: reaction.smiles,
   });
 });
 

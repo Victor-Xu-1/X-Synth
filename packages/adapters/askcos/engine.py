@@ -7,6 +7,7 @@ from packages.platform.native_endpoints import resolve_native_endpoints
 from packages.platform.native_search_contract import SEARCH_KEY_VARIABLE, NATIVE_SEARCH_HEADER, NATIVE_SEARCH_PREFIX
 
 from .transport import AskcosTransport, EngineUnavailable
+from .search_connection import NativeSearchConnection
 
 
 @dataclass(frozen=True)
@@ -103,19 +104,18 @@ class AskcosEngine:
             raise EngineUnavailable("native_search_key_missing", recoverable=False)
         native = AskcosTransport(url, budget=self.transport.budget)
         native.opener.addheaders.append((NATIVE_SEARCH_HEADER, key))
-        record = native.call(
-            NATIVE_SEARCH_PREFIX, body={"id": child_id, "input": options}, timeout=30
-        )
         child_path = NATIVE_SEARCH_PREFIX + "/" + child_id
         deadline = time.monotonic() + expansion + 900
+        connection = NativeSearchConnection(
+            native, deadline=deadline, cancelled=cancelled,
+            interrupted=interrupted, progress=progress,
+        )
+        record = connection.call(
+            child_path, NATIVE_SEARCH_PREFIX, body={"id": child_id, "input": options}, timeout=30
+        )
         last_progress = None
         while True:
-            if cancelled():
-                native.call(child_path, method="DELETE", timeout=5)
-                raise EngineUnavailable("search_cancelled", recoverable=False)
-            if interrupted is not None and interrupted.is_set():
-                # The native child remains alive; a resumed product worker attaches to its ID.
-                raise EngineUnavailable("product_worker_stopped")
+            connection.check_controls(child_path)
             if not isinstance(record, dict) or record.get("id") != child_id:
                 raise EngineUnavailable(
                     "invalid_native_search_record", recoverable=False
@@ -127,8 +127,8 @@ class AskcosEngine:
                 progress(observed)
                 last_progress = observed
             if record.get("status") == "completed":
-                payload = native.call(
-                    child_path + "/result", timeout=60
+                payload = connection.call(
+                    child_path, child_path + "/result", timeout=60
                 )
                 if not isinstance(payload, dict) or not isinstance(
                     payload.get("uds"), dict
@@ -140,14 +140,23 @@ class AskcosEngine:
                     strategy, {"result": payload, "target_smiles": request.smiles}
                 )
             if record.get("status") in {"failed", "cancelled", "interrupted"}:
-                raise EngineUnavailable(
+                dependency = record.get("dependency_failure")
+                failure = EngineUnavailable(
                     record.get("error_code", "native_search_" + record["status"]),
-                    recoverable=record["status"] == "interrupted",
+                    recoverable=record["status"] == "interrupted"
+                    and not (isinstance(dependency, dict) and dependency.get("recoverable") is False),
                 )
+                if record["status"] == "interrupted":
+                    connection.recover(child_path, failure, observed=record.get("progress"))
+                    # Reattach the original input and graph; never allocate another child.
+                    record = connection.call(child_path, NATIVE_SEARCH_PREFIX,
+                        body={"id": child_id, "input": options}, timeout=30)
+                    continue
+                raise failure
             if time.monotonic() >= deadline:
                 raise EngineUnavailable("native_search_deadline")
             if interrupted is not None:
                 interrupted.wait(1)
             else:
                 time.sleep(1)
-            record = native.call(child_path, timeout=10)
+            record = connection.call(child_path, child_path, timeout=10)

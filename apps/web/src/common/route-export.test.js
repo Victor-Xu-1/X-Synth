@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { settledRouteImages, exportBounds } from "./route-export";
+import { settledRouteImages, exportBounds, routeExportErrorMessage } from "./route-export";
 import { ROUTE_NODE_SIZE, graphFromCandidate } from "./route-graph";
 import { readFileSync } from "node:fs";
 jest.mock("html-to-image", () => ({ toPng: jest.fn() }));
@@ -111,4 +111,12 @@ test("an unrendered molecule cannot be exported as a blank node", async () => {
   viewport.querySelectorAll = (selector) =>
     selector === "img" ? [] : [{ querySelector: () => null }];
   await expect(settledRouteImages(viewport)).rejects.toThrow("尚未完整显示");
+});
+
+test("known export errors remain actionable without exposing arbitrary exception text", async () => {
+  const { viewport } = surface("0");
+  const error = await settledRouteImages(viewport).catch((cause) => cause);
+  expect(routeExportErrorMessage(error, "导出失败")).toContain("尚未完整显示");
+  expect(routeExportErrorMessage(new Error("private-url?token=secret"), "导出失败"))
+    .toBe("导出失败");
 });

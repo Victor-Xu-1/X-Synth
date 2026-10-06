@@ -11,6 +11,7 @@
       :smiles="data.smiles"
       :width="data.imageWidth"
       :height="data.imageHeight"
+      :eager="!data.overview"
       :show-error-image="false"
     />
     <div class="graph-node-footer">

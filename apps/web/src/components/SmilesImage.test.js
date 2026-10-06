@@ -80,3 +80,17 @@ test("offscreen lazy images do not time out before the browser starts loading", 
   expect(wrapper.vm.renderFailed).toBe(false);
   wrapper.unmount();
 });
+
+test("route canvas eager loading is forwarded while ordinary images remain lazy", () => {
+  const ordinary = mountImage({ smiles: "CCO" });
+  expect(ordinary.vm.imageProps.eager).toBeUndefined();
+  ordinary.unmount();
+  const route = shallowMount(SmilesImage, {
+    props: { smiles: "CCO" },
+    attrs: { eager: true },
+    global: { stubs: { VSkeletonLoader: true, VIcon: true, VBtn: true } },
+  });
+  expect(route.vm.imageProps.eager).toBe(true);
+  expect(route.vm.imageProps.src).toContain("/api/draw/?smiles=CCO");
+  route.unmount();
+});

@@ -132,5 +132,5 @@ class ExpandOneAPI:
                 deadline=min(deadline, call_deadline) if deadline is not None else call_deadline,
             )
         except NativeProtocolError as exc:
-            raise ExpandOneBackendError("Expand-one request failed", code=exc.code, recoverable=exc.recoverable) from exc
+            raise ExpandOneBackendError("Expand-one request failed", code=exc.code, recoverable=exc.recoverable, service=exc.service) from exc
         return response["result"]

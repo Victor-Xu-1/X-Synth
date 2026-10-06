@@ -1,3 +1,5 @@
+import { inputOccurrences } from "./route-input-occurrences";
+
 const DOCUMENT_ID = /^[a-f0-9]{32}$/;
 const LEAVE_MESSAGE = "存在未保存修改，仍要离开？";
 
@@ -74,7 +76,14 @@ function chemistry(graph) {
     nodes: graph.nodes
       .map((node) => [node.id, node.type, node.smiles || ""])
       .sort(),
-    edges: graph.edges.map((edge) => [edge.source, edge.target]).sort(),
+    edges: graph.edges
+      .map((edge) => {
+        const count = inputOccurrences(edge);
+        return count > 1
+          ? [edge.source, edge.target, count]
+          : [edge.source, edge.target];
+      })
+      .sort(),
   });
 }
 export function documentStateLabel(document, graph) {

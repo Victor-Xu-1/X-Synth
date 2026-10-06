@@ -44,10 +44,11 @@ class NativeProtocolError(RuntimeError):
 
 
 def native_failure_details(exc):
+    from .native_failure_diagnostics import native_failure_context
     code = getattr(exc, "code", "native_dependency_unavailable")
     if not _known_failure_code(code):
         code = "native_protocol_error"
-    service = getattr(exc, "service", None)
+    service = native_failure_context(exc).get("service")
     return {"code": code, "recoverable": bool(getattr(exc, "recoverable", True)),
             "service": service if isinstance(service, str) and service in ENDPOINTS else None}
 

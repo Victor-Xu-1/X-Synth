@@ -204,7 +204,7 @@ import {
   useRoute,
   useRouter,
 } from "vue-router";
-import { routeImage } from "@/common/route-export";
+import { routeImage, routeExportErrorMessage } from "@/common/route-export";
 import { useRouteDocument } from "@/composables/useRouteDocument";
 import RouteGraph from "@/components/routes/RouteGraph.vue";
 import RouteInspector from "@/components/routes/RouteInspector.vue";
@@ -515,7 +515,7 @@ async function exportImage() {
     link.download = "route.png";
     link.click();
   } catch (e) {
-    error.value = errorMessage(e, "图像导出失败，请确认结构图已加载。");
+    error.value = routeExportErrorMessage(e, "图像导出失败，请确认结构图已加载。");
   }
 }
 async function importDocument(event) {

@@ -14,6 +14,9 @@ from .structure_validation import MAX_SMILES_LENGTH, canonical_structure
 from packages.chemistry.material_scope import material_scope_exclusion
 
 
+MAX_REACTION_INPUT_OCCURRENCES = 499
+
+
 class Position(BaseModel):
     model_config = ConfigDict(
         extra="forbid", allow_inf_nan=False, revalidate_instances="always"
@@ -52,6 +55,14 @@ class RouteEdge(BaseModel):
     id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,128}$")
     source: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,64}$")
     target: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,64}$")
+    input_occurrences: int = Field(
+        default=1,
+        strict=True,
+        ge=1,
+        le=MAX_REACTION_INPUT_OCCURRENCES,
+        exclude_if=lambda count: type(count) is int and count == 1,
+        description="Input record occurrences, not measured equivalents or stoichiometry",
+    )
 
 
 class RouteGraph(BaseModel):
@@ -78,6 +89,7 @@ class RouteGraph(BaseModel):
         if self.target_id not in nodes or nodes[self.target_id].type != "molecule":
             raise ValueError("目标节点必须是有效分子")
         ids, connections = set(), set()
+        input_totals = {}
         graph = nx.DiGraph()
         graph.add_nodes_from(nodes)
         for edge in self.edges:
@@ -87,6 +99,14 @@ class RouteGraph(BaseModel):
                 raise ValueError("连接重复")
             if nodes[edge.source].type == nodes[edge.target].type:
                 raise ValueError("连接必须位于分子与反应节点之间")
+            if nodes[edge.source].type == "reaction":
+                if edge.input_occurrences != 1:
+                    raise ValueError("产物连接不能标注重复输入")
+            else:
+                total = input_totals.get(edge.target, 0) + edge.input_occurrences
+                if total > MAX_REACTION_INPUT_OCCURRENCES:
+                    raise ValueError("反应输入出现次数超出上限")
+                input_totals[edge.target] = total
             ids.add(edge.id)
             connections.add((edge.source, edge.target))
             graph.add_edge(edge.source, edge.target)
@@ -104,7 +124,13 @@ class RouteGraph(BaseModel):
     def semantic_signature(self) -> str:
         chemistry = {
             "nodes": sorted((node.id, node.type, node.smiles) for node in self.nodes),
-            "edges": sorted((edge.source, edge.target) for edge in self.edges),
+            # Default-one edges retain the exact legacy signature representation.
+            "edges": sorted(
+                (edge.source, edge.target, edge.input_occurrences)
+                if edge.input_occurrences > 1
+                else (edge.source, edge.target)
+                for edge in self.edges
+            ),
             "target": self.target_id,
         }
         return hashlib.sha256(
@@ -135,15 +161,17 @@ def graph_from_candidate(
         )
         product = molecule(step.product)
         edges.append(RouteEdge(id=f"e-{len(edges)}", source=identifier, target=product))
-        seen = set()
+        inputs = {}
         for precursor in step.precursors:
             precursor_id = molecule(precursor)
-            if precursor_id in seen:
+            if precursor_id in inputs:
+                inputs[precursor_id].input_occurrences += 1
                 continue
-            seen.add(precursor_id)
-            edges.append(
-                RouteEdge(id=f"e-{len(edges)}", source=precursor_id, target=identifier)
+            edge = RouteEdge(
+                id=f"e-{len(edges)}", source=precursor_id, target=identifier
             )
+            inputs[precursor_id] = edge
+            edges.append(edge)
             if len(nodes) > 500 or len(edges) > 2000:
                 raise ValueError("Source route exceeds the graph budget")
         score = step.confidence

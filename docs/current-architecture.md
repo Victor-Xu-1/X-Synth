@@ -171,6 +171,20 @@ redirects and compressed native payloads, and bound request/response bytes. Shar
 inference has admitted queues and chunked fingerprint/ranking batches. Resource
 limits are availability controls, not zero scores or chemical-success shortcuts.
 
+Native search submission, progress polling and result retrieval share one bounded
+reconnection budget. Recoverable interruptions resume the same child ID and exact
+input/checkpoint; completed sibling strategies are never re-executed. Permanent
+protocol/authentication errors are not retried. Exhaustion remains recoverable
+waiting, not a route success, discarded graph, or new task. Product-worker shutdown
+preserves native children; user cancellation prevents resubmission.
+
+Failure attribution traverses a bounded exception cause chain and retains only
+allowlisted service/operation identifiers and a request digest. Native child
+records retain that context separately from the strict three-field HTTP failure
+envelope. Request bodies, molecular structures, URLs, credentials and exception
+messages are not copied into diagnostic context. Checkpoint progress is sampled
+and must not be misrepresented as the exact failing expansion.
+
 ### Immutable Data
 
 Stock, template and reaction readers share an immutable SQLite guard with pinned
@@ -184,6 +198,17 @@ without replacing any existing snapshot or manifest. Statistics are compiled onc
 for bounded monitoring, rather than scanning large template tables on each poll.
 Imports use one supplier-evidence authority. Missing prices, CAS and current
 stock remain unknown; a catalog record is not a live procurement confirmation.
+
+Catalog composition streams existing immutable snapshots with bounded keyset
+reads and new supplier records through that same authority. Input files are never
+overwritten. Conflicting records require explicit resolution instead of silently
+keeping the first price; supplied InChIKeys must agree with the exact structure.
+Verified small catalogs complement, rather than replace, the large stock corpus.
+
+Route documents retain repeated reactant input records on unique graph edges.
+These integer occurrences are not measured equivalents or stoichiometry. Default
+one preserves legacy serialization and signatures; changes invalidate source
+evidence and survive JSON, editor, RXN and model-input round trips.
 
 ## Workspace Interaction and Documents
 

@@ -1,13 +1,17 @@
 import { defineComponent } from "vue";
 import { randomUUID } from "node:crypto";
+import { deserialize, serialize } from "node:v8";
 import { mount } from "@vue/test-utils";
 import { API } from "@/common/api";
 import { useRouteDocument } from "./useRouteDocument";
+import { graphFromCandidate } from "@/common/route-graph";
+import { reactionForNode } from "@/common/route-node-context";
 
 jest.mock("@/common/api", () => ({
   API: { get: jest.fn(), post: jest.fn(), put: jest.fn() },
 }));
 Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID });
+globalThis.structuredClone = (value) => deserialize(serialize(value));
 
 const wrappers = [];
 const documentValue = (id = "a".repeat(32)) => ({
@@ -54,6 +58,35 @@ async function setup() {
 }
 beforeEach(() => jest.clearAllMocks());
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
+
+test("selected reaction occurrences survive editing, undo, save-copy and reload", async () => {
+  const state = await setup();
+  const precursors = [
+    "OCCBr", "OCCBr", "[13CH3][C@H]([NH3+])C(=O)[O-].[Na+]",
+  ];
+  const graph = graphFromCandidate({
+    target_smiles: "[13CH3][C@H](N)CO",
+    steps: [{ product: "[13CH3][C@H](N)CO", precursors }],
+  });
+  state.replaceGraph(graph);
+  state.selected.value = "r-1";
+  expect(reactionForNode(state.graph.value, state.selectedNode.value).precursors)
+    .toEqual(precursors);
+  state.undo();
+  expect(state.graph.value.edges).toEqual([]);
+  state.redo();
+  API.post.mockImplementation(async (_, body) => ({
+    ...documentValue(), ...body, state: "draft", revision: 0,
+  }));
+  const saved = await state.save(true);
+  expect(API.post.mock.calls[0][1].graph.edges[0].input_occurrences).toBe(2);
+  expect(state.dirty.value).toBe(false);
+  API.get.mockResolvedValue(saved);
+  await state.load(saved.id);
+  state.selected.value = "r-1";
+  expect(reactionForNode(state.graph.value, state.selectedNode.value).precursors)
+    .toEqual(precursors);
+});
 
 test("adding a validated molecule is one undoable draft edit and preserves the revision lock", async () => {
   const state = await setup();
