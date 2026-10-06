@@ -137,9 +137,12 @@ export default defineComponent({
       this.clearLoadTimer();
       this.isLoading = false;
       this.renderFailed = !isValid;
+      this.loadedImageKey = isValid ? `${this.url}:${this.renderAttempt}` : null;
       this.$emit(isValid ? "load" : "error");
     },
     startLoadTimer() {
+      // A cached image can settle before a queued loadstart event is delivered.
+      if (this.loadedImageKey === `${this.url}:${this.renderAttempt}`) return;
       this.resetLoadState();
       if (!this.smiles) return;
       this.loadTimer = window.setTimeout(() => {
@@ -151,6 +154,7 @@ export default defineComponent({
     },
     resetLoadState() {
       this.clearLoadTimer();
+      this.loadedImageKey = null;
       this.isLoading = !!this.smiles;
       this.renderFailed = false;
     },
@@ -205,6 +209,7 @@ export default defineComponent({
       renderFailed: false,
       loadTimer: null,
       renderAttempt: 0,
+      loadedImageKey: null,
     };
   },
   beforeUnmount() {
