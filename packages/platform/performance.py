@@ -25,6 +25,9 @@ class PerformanceBudget:
     review_parallelism: int = 1
     stock_batch_size: int = 500
     native_queue_size: int = 8
+    native_queue_wait_seconds: float = 120.0
+    model_timeout_seconds: float = 180.0
+    expansion_timeout_seconds: float = 600.0
     max_structure_atoms: int = 1024
     health_cache_seconds: float = 10.0
     health_timeout_seconds: float = 2.0
@@ -38,6 +41,10 @@ class PerformanceBudget:
                 raise ValueError(f"Performance budget {name} must be positive")
         if self.model_parallelism > self.search_parallelism:
             raise ValueError("Model parallelism cannot exceed search parallelism")
+        if self.native_queue_wait_seconds >= self.model_timeout_seconds:
+            raise ValueError("Model timeout must include the admitted queue wait and execution")
+        if self.expansion_timeout_seconds <= 2 * self.model_timeout_seconds:
+            raise ValueError("Expansion timeout must include both configured model calls and postprocessing")
         if (
             self.active_jobs != 1
             or self.model_parallelism != 1

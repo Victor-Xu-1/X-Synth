@@ -45,6 +45,7 @@ class ReactionLibrary:
     def __init__(self, path: str | Path | None):
         self.path = Path(path).absolute() if path else None
         self._summary = None
+        self._source_hashes = {}
         self._reason = "reaction_library_not_configured"
         if self.path:
             try:
@@ -86,6 +87,9 @@ class ReactionLibrary:
                         raise ValueError("Reaction library is empty")
                 self._check_snapshot()
                 self._summary, self._reason = summary, None
+                self._source_hashes = {
+                    item["path"]: item["sha256"] for item in summary["sources"]
+                }
             except (OSError, sqlite3.Error, ValueError, TypeError, KeyError, ReactionLibraryError):
                 self._reason = "reaction_library_invalid"
 
@@ -141,6 +145,13 @@ class ReactionLibrary:
             records = []
             for (payload,) in rows[:limit]:
                 record = ReactionEvidence.model_validate_json(payload)
+                provenance = record.provenance
+                if (
+                    provenance.source != "ORD"
+                    or self._source_hashes.get(provenance.source_path)
+                    != provenance.source_sha256
+                ):
+                    raise ValueError("Reaction record is outside the declared snapshot sources")
                 record = record.model_copy(
                     update={
                         "match_scope": reaction_match_scope(query, record.reactants)

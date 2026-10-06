@@ -1,6 +1,8 @@
 """Public ORD evidence and real SQLite/RDKit, not a simulated chemistry provider."""
 
 import json
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -172,3 +174,31 @@ def test_absent_or_wrong_database_is_an_explicit_unavailable_source(tmp_path):
     invalid = tmp_path / "invalid.sqlite"
     invalid.write_bytes(b"not a database")
     assert ReactionLibrary(invalid).status().reason == "reaction_library_invalid"
+
+
+@pytest.mark.parametrize("mutation", ["source_path", "source_sha256", "source"])
+def test_indexed_records_must_belong_to_the_declared_ord_snapshot(tmp_path, mutation):
+    record = public_record()
+    path = tmp_path / "reactions.sqlite"
+    compile_reaction_library([record], path, sources=sources(record))
+    payload = record.model_dump(mode="json")
+    if mutation == "source":
+        payload["provenance"]["source"] = "USPTO_FULL"
+        payload["provenance"]["evidence_type"] = "patent_reaction_extraction"
+        payload["provenance"]["yield_extraction_fields"] = []
+        payload["conditions"] = None
+        payload["reported_yields"] = []
+    else:
+        payload["provenance"][mutation] = (
+            "data/00/undeclared.parquet" if mutation == "source_path" else "0" * 64
+        )
+    # A schema-valid payload is not enough to establish snapshot provenance.
+    ReactionEvidence.model_validate(payload)
+    path.chmod(0o644)
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute("UPDATE reactions SET payload=?", (json.dumps(payload),))
+        connection.commit()
+    library = ReactionLibrary(path)
+    assert library.status().ready  # Readiness does not scan the full library.
+    with pytest.raises(ReactionLibraryError, match="reaction_library_query_failed"):
+        library.search(query(record), limit=1)

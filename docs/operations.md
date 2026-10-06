@@ -56,6 +56,11 @@ python3.12 -m venv "$HOME/.local/share/x-synth/impurity-env"
 BayBE 使用一个受限 CPU 子进程执行一次计算；环境探针单独缓存，不在每次全局健康读取时导入 Torch。
 条件、正向和杂质模型进程只继承明确的路径与资源配置，不继承 Mongo、API 或 Hugging Face 凭据。
 它们使用各自的私有 HOME/cache，禁止用户 site-packages；这不是同 UID 文件系统或操作系统网络沙箱。
+托管原生调用的默认预算为：排队等待 120 秒、每次模型 RPC 180 秒、一次一步扩展
+600 秒。对应 `X_SYNTH_NATIVE_QUEUE_WAIT_SECONDS`、`X_SYNTH_MODEL_TIMEOUT_SECONDS`、
+`X_SYNTH_EXPANSION_TIMEOUT_SECONDS`；只允许正的有限值，并要求模型预算大于
+排队预算、扩展预算覆盖两次模型调用和后处理。它们是故障/资源边界，不减少
+模板数量、过滤阈值或科学审查。健康探针仍采用独立短预算，不等待推理完成。
 杂质分析使用一个驻留 CPU 映射进程，执行原 ASKCOS 五模式；FF、正向序列评分、
 原子映射置信值与结构相似度分别保留，已知主产物是用户参照，不是实验确认结果。
 

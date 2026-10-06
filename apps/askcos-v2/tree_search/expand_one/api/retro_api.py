@@ -1,6 +1,4 @@
-import requests
-from packages.adapters.askcos.native_http import NativeSession, post_json
-import traceback as tb
+from packages.adapters.askcos.native_http import NativeProtocolError, NativeSession, post_json
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
@@ -53,7 +51,7 @@ class RetroAPI:
         attribute_filter: List[Dict[str, Any]] = None,
         threshold: float = 0.3,
         top_k: int = 10
-    ) -> Optional[List[List[Dict[str, Any]]]]:
+    ) -> List[List[Dict[str, Any]]]:
         if not url:
             url = self.default_url
 
@@ -75,5 +73,12 @@ class RetroAPI:
         response = post_json(self.session, url, payload=input, response_model=RetroResponse)
 
         result = response["result"]
+        if result is None:
+            raise NativeProtocolError(
+                "Retrosynthesis backend returned no result batch",
+                code="native_dependency_unavailable", recoverable=True,
+            )
+        if len(result) != len(smiles):
+            raise NativeProtocolError("Retrosynthesis result batch does not match its inputs")
 
         return result

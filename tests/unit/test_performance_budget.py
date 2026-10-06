@@ -8,6 +8,8 @@ def test_resource_budgets_are_positive_and_consistent():
     assert budget.active_jobs == 1
     assert budget.search_parallelism == 2
     assert budget.model_parallelism == 1
+    assert budget.native_queue_wait_seconds < budget.model_timeout_seconds
+    assert 2 * budget.model_timeout_seconds < budget.expansion_timeout_seconds
     with pytest.raises(ValueError):
         PerformanceBudget(active_jobs=0)
     with pytest.raises(ValueError):

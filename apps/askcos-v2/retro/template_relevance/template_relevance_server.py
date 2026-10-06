@@ -3,7 +3,6 @@ from contextlib import asynccontextmanager
 import json
 import os
 from pathlib import Path
-from threading import BoundedSemaphore
 from types import SimpleNamespace
 
 from fastapi import FastAPI, HTTPException
@@ -12,6 +11,7 @@ from rdkit import Chem
 import torch
 
 from templ_rel_handler import TemplRelHandler
+from packages.adapters.askcos.native_service_limits import NativeExecutionSlot, NativeRequestLimits, bounded_response
 
 
 class PredictionRequest(BaseModel):
@@ -22,7 +22,7 @@ class PredictionRequest(BaseModel):
 
 
 handlers = {}
-inference_slots = BoundedSemaphore(1)
+execution = NativeExecutionSlot()
 
 
 @asynccontextmanager
@@ -41,6 +41,7 @@ async def lifespan(app):
 
 
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
+app.add_middleware(NativeRequestLimits, slot=execution)
 
 
 @app.get("/ping")
@@ -59,13 +60,11 @@ def predict(model_name: str, request: PredictionRequest):
     handler = handlers.get(model_name)
     if handler is None:
         raise HTTPException(404, "Model is not configured")
-    if any(len(smiles) > 20_000 or Chem.MolFromSmiles(smiles) is None for smiles in request.smiles):
+    if any(len(smiles) > 20_000 or (mol := Chem.MolFromSmiles(smiles)) is None
+           or mol.GetNumAtoms() > execution.budget.max_structure_atoms for smiles in request.smiles):
         raise HTTPException(422, "Invalid molecular structure")
-    if not inference_slots.acquire(timeout=30):
-        raise HTTPException(429, "Inference queue is full", headers={"Retry-After": "5"})
     try:
-        return handler.inference(handler.preprocess([{"body": request.model_dump()}]))
+        with execution.acquire():
+            return bounded_response(handler.inference(handler.preprocess([{"body": request.model_dump()}])))
     except (ValueError, TypeError) as exc:
         raise HTTPException(422, "Invalid template attribute filter") from exc
-    finally:
-        inference_slots.release()

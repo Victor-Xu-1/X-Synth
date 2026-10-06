@@ -52,6 +52,29 @@ test("the v1 summary preserves aggregate coverage even when records are abbrevia
   expect(JSON.stringify(value)).toBe(before);
 });
 
+test("partial searches and unchecked steps remain distinct from returned no-matches", () => {
+  const value = candidate();
+  Object.assign(value.metadata.automated_review.references, {
+    reaction_matched_steps: 1, product_matched_steps: 0, unmatched_steps: 0,
+    unchecked_steps: 3, truncated_steps: 1, unavailable_source_steps: 1,
+    unknown_coverage_steps: 0,
+  });
+  expect(readRouteReviewSummary(value).references).toEqual({
+    status: "ready", reaction: 1, product: 0, unmatched: 0, total: 4,
+    coverage: { unchecked: 3, truncated: 1, unavailable: 1, unknown: 0 },
+  });
+  value.metadata.automated_review.references.unchecked_steps = 2;
+  expect(readRouteReviewSummary(value).references).toEqual({ status: "invalid" });
+});
+
+test.each(["unchecked_steps", "truncated_steps", "unavailable_source_steps", "unknown_coverage_steps"])(
+  "new coverage counter %s cannot use coercion or negative values", (key) => {
+    const value = candidate();
+    value.metadata.automated_review.references[key] = "1";
+    expect(readRouteReviewSummary(value).references.status).toBe("invalid");
+  },
+);
+
 test.each([undefined, {}, { metadata: {} }, { metadata: { automated_review: null } }, {
   metadata: {
     forward_validation_passed: true,

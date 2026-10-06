@@ -30,15 +30,29 @@
           <template v-if="summary.references.total">
             同反应 {{ summary.references.reaction }} 步 ·
             同产物资料 {{ summary.references.product }} 步 ·
-            无匹配 {{ summary.references.unmatched }} 步
+            检索未匹配 {{ summary.references.unmatched }} 步
+            <template v-if="summary.references.coverage?.unchecked">
+              · 未检索 {{ summary.references.coverage.unchecked }} 步
+            </template>
           </template>
           <template v-else>无反应步骤</template>
         </template>
         <template v-else>{{ stateLabels[summary.references.status] }}</template>
       </span>
     </div>
+    <p v-if="summary.references.coverage && (summary.references.coverage.truncated || summary.references.coverage.unavailable || summary.references.coverage.unknown)" class="review-boundary" data-review="coverage">
+      <span v-if="summary.references.coverage.truncated">
+        {{ summary.references.coverage.truncated }} 步还有更多参考记录。
+      </span>
+      <span v-if="summary.references.coverage.unavailable">
+        {{ summary.references.coverage.unavailable }} 步部分资料源不可用。
+      </span>
+      <span v-if="summary.references.coverage.unknown">
+        {{ summary.references.coverage.unknown }} 步的检索范围未记录。
+      </span>
+    </p>
     <p class="review-boundary">
-      模型预测不等于实测；同产物资料不证明同反应。
+      模型预测不等于实测；同产物资料不证明同反应。结构匹配不验证条件与收率。
     </p>
   </section>
 </template>

@@ -1,5 +1,6 @@
 import time
 from packages.adapters.askcos.native_http import NativeProtocolError, NativeSession, post_json
+from packages.platform.performance import PerformanceBudget
 from options import ClusterSetting, ExpandOneOptions, RetroBackendOption
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional
@@ -70,10 +71,10 @@ class ExpandOneAPI:
     def __init__(
         self,
         default_url: str,
-        request_timeout: float = 330.0,
+        request_timeout: float | None = None,
     ):
         self.default_url = default_url
-        self.request_timeout = request_timeout
+        self.request_timeout = PerformanceBudget.from_environment().expansion_timeout_seconds if request_timeout is None else request_timeout
         self.session = NativeSession()
 
     def __call__(

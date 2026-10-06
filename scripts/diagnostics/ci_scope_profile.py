@@ -168,6 +168,8 @@ SEARCH_ROUND_FILES = {
     "packages/orchestrator/review_policy.py",
     "packages/orchestrator/route_verification.py",
     "packages/orchestrator/verification_cache.py",
+    "packages/orchestrator/qualification_queue.py",
+    "packages/orchestrator/reference_evidence.py",
     "packages/route_pool/workflow.py",
     "packages/orchestrator/pipeline.py",
     "packages/orchestrator/search_progress.py",
@@ -175,6 +177,8 @@ SEARCH_ROUND_FILES = {
     "packages/adapters/askcos/engine.py",
     "packages/chemistry/material_scope.py",
     "packages/validation/route_quality.py",
+    "packages/validation/route_topology.py",
+    "packages/route_pool/askcos.py",
 }
 ARCHITECTURE_FILES = {
     "packages/platform/atomic_file.py",
@@ -499,6 +503,9 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
             "tests/unit/test_askcos_adapter.py",
             "tests/unit/test_material_scope.py",
             "tests/unit/test_route_quality.py",
+            "tests/unit/test_route_topology.py",
+            "tests/unit/test_qualification_queue.py",
+            "tests/unit/test_reference_evidence.py",
         })
     if roots & ARCHITECTURE_FILES:
         selected.update({"tests/unit/test_architecture_boundaries.py", "tests/unit/test_route_artifacts.py"})

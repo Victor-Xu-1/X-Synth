@@ -16,13 +16,16 @@ FAST_FILTER_BATCH_SIZE = 500
 FINGERPRINT_BATCH_SIZE = 128
 RANKER_BATCH_NODES = 2048
 RANKER_MAX_TREES = 1000
+_DEFAULT_WAIT = object()
 
 
 class NativeExecutionSlot:
-    def __init__(self, *, budget=None, wait_seconds=120):
+    def __init__(self, *, budget=None, wait_seconds=_DEFAULT_WAIT):
+        self.budget = budget or PerformanceBudget.from_environment()
+        if wait_seconds is _DEFAULT_WAIT:
+            wait_seconds = self.budget.native_queue_wait_seconds
         if not isinstance(wait_seconds, (int, float)) or not math.isfinite(wait_seconds) or wait_seconds <= 0:
             raise ValueError("Native execution wait must be finite and positive")
-        self.budget = budget or PerformanceBudget.from_environment()
         self.admission = BoundedSemaphore(self.budget.native_queue_size)
         self.execution = Lock()
         # Admitted calls can wait for healthy model work within the native RPC timeout.

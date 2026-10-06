@@ -11,7 +11,7 @@
       </header>
       <v-progress-linear v-if="computing" indeterminate height="2" />
       <p v-if="job.status === 'waiting_for_engine'" class="search-wait">搜索断点已保留</p>
-      <p v-else-if="job.status === 'failed_unclosed'" class="search-wait">未找到闭合到可采购原料的完整路线</p>
+      <p v-else-if="job.status === 'failed_unclosed'" class="search-wait">未获得符合原料闭合与反应核验要求的完整路线</p>
       <details v-if="rows.length" class="search-counters">
         <summary>搜索进度</summary>
         <dl>

@@ -128,14 +128,18 @@ def build_route_pool_result(*, id, pool, source_summaries):
     quality_decisions = [
         effective_quality_policy.evaluate_route(route) for route in all_routes
     ]
+    pending = [set(decision.reasons) == {"full_forward_validation_required"}
+               for decision in quality_decisions]
     quality_rejection_counts = Counter(
         reason
-        for decision in quality_decisions
-        if not decision.accepted
+        for decision, deferred in zip(quality_decisions, pending)
+        if not decision.accepted and not deferred
         for reason in decision.reasons
+        if reason != "full_forward_validation_required"
     )
     quality_rejected_route_count = sum(
-        not decision.accepted for decision in quality_decisions
+        not decision.accepted and not deferred
+        for decision, deferred in zip(quality_decisions, pending)
     )
     selected_closed_route_count = sum(1 for route in selected_routes if route.closed)
     summary = {
@@ -146,7 +150,8 @@ def build_route_pool_result(*, id, pool, source_summaries):
         ],
         "total_route_count": len(all_routes),
         "closed_route_count": pool.closed_route_count(),
-        "quality_accepted_route_count": len(all_routes) - quality_rejected_route_count,
+        "quality_accepted_route_count": sum(decision.accepted for decision in quality_decisions),
+        "quality_pending_route_count": sum(pending),
         "quality_rejected_route_count": quality_rejected_route_count,
         "quality_rejection_counts": dict(sorted(quality_rejection_counts.items())),
         "selected_route_count": len(selected_routes),
@@ -156,6 +161,7 @@ def build_route_pool_result(*, id, pool, source_summaries):
         "engine_counts": pool.engine_counts(),
         "selected_engine_counts": _route_counts_by_engine(selected_routes),
         "selected_family_count": len(_route_family_keys(selected_routes)),
+        "diversity_basis": "first_retrosynthetic_move",
         "selected_first_step_source_count": len(_first_step_sources(selected_routes)),
         "selected_first_step_sources": sorted(_first_step_sources(selected_routes)),
         "min_routes": min_routes,

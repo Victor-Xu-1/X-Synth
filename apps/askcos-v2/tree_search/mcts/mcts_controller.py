@@ -226,11 +226,11 @@ class MCTS:
         Includes purchase price and *no* template info
         """
         if price_info is not None:
-            purchase_price = price_info.get("ppg", 0.0)
-            pricer_properties = None
-            node_properties = {}
+            purchase_price = price_info.get("ppg")
+            pricer_properties = price_info.get("properties")
+            node_properties = pricer_properties if pricer_properties is not None else {}
             if price_info.get("smiles_match"):
-                node_properties["smiles_match"] = price_info["smiles_match"]
+                node_properties = {"smiles_match": price_info["smiles_match"]}
         else:
             purchase_price, pricer_properties = self.pricer(
                 smiles=smiles,

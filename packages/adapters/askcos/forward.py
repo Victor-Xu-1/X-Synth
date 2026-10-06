@@ -102,4 +102,4 @@ class ForwardAdapter:
                 **output.model_dump(exclude={"products"}), products=ranked[:count]
             )
         except ValueError as exc:
-            raise NativeModelError("正向模型返回的候选结构或评分无效。") from exc
+            raise NativeModelError("正向模型返回的候选结构或评分无效。", 502, recoverable=False) from exc

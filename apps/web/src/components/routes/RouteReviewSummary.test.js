@@ -105,13 +105,26 @@ test("the compact summary separates prediction and reference coverage without yi
   const before = JSON.stringify(value);
   const wrapper = setup(RouteReviewSummary, { candidate: value });
   expect(textOf(wrapper, "forward")).toContain("4/4 步核验匹配");
-  expect(textOf(wrapper, "references")).toContain("同反应 1 步 · 同产物资料 2 步 · 无匹配 1 步");
+  expect(textOf(wrapper, "references")).toContain("同反应 1 步 · 同产物资料 2 步 · 检索未匹配 1 步");
   expect(wrapper.text()).toContain("模型预测不等于实测");
   expect(wrapper.text()).toContain("同产物资料不证明同反应");
-  expect(wrapper.text()).not.toMatch(/收率|成功率|已实测|核验通过|90%|0\.9/);
+  expect(wrapper.text()).not.toMatch(/成功率|已实测|核验通过|90%|0\.9/);
   expect(wrapper.find("button, a, .v-card").exists()).toBe(false);
   expect(wrapper.emitted()).toEqual({});
   expect(JSON.stringify(value)).toBe(before);
+});
+
+test("truncation and unavailable sources remain visible without claiming absent literature", () => {
+  const value = candidate();
+  Object.assign(value.metadata.automated_review.references, {
+    reaction_matched_steps: 1, product_matched_steps: 0, unmatched_steps: 0,
+    unchecked_steps: 3, truncated_steps: 1, unavailable_source_steps: 1,
+    unknown_coverage_steps: 0,
+  });
+  const wrapper = setup(RouteReviewSummary, { candidate: value });
+  expect(textOf(wrapper, "references")).toContain("未检索 3 步");
+  expect(textOf(wrapper, "coverage")).toContain("还有更多参考记录");
+  expect(textOf(wrapper, "coverage")).toContain("部分资料源不可用");
 });
 
 test("old template evidence is visibly unrecorded in the automated-review summary", () => {
@@ -131,7 +144,7 @@ test("partial and zero matches are shown literally, never as a pass", async () =
   zero.metadata.automated_review.forward.records[0].expected_rank = null;
   await wrapper.setProps({ candidate: zero });
   expect(textOf(wrapper, "forward")).toContain("0/4 步核验匹配");
-  expect(wrapper.text()).not.toMatch(/通过|成功率|收率/);
+  expect(wrapper.text()).not.toMatch(/通过|成功率/);
 });
 
 test("product-only reference coverage is not displayed as matching reactions", () => {
@@ -143,7 +156,7 @@ test("product-only reference coverage is not displayed as matching reactions", (
   refs.records[0].product_count = 2;
   refs.records[0].refs[0].match_scope = "product_identity";
   const wrapper = setup(RouteReviewSummary, { candidate: value });
-  expect(textOf(wrapper, "references")).toContain("同反应 0 步 · 同产物资料 3 步 · 无匹配 1 步");
+  expect(textOf(wrapper, "references")).toContain("同反应 0 步 · 同产物资料 3 步 · 检索未匹配 1 步");
 });
 
 test("overlapping reference scopes are separate counters, not a summed coverage rate", () => {
@@ -155,7 +168,7 @@ test("overlapping reference scopes are separate counters, not a summed coverage 
     id: "product", match_scope: "product_identity", source: "ORD",
   });
   const wrapper = setup(RouteReviewSummary, { candidate: value });
-  expect(textOf(wrapper, "references")).toContain("同反应 1 步 · 同产物资料 3 步 · 无匹配 1 步");
+  expect(textOf(wrapper, "references")).toContain("同反应 1 步 · 同产物资料 3 步 · 检索未匹配 1 步");
   expect(wrapper.text()).not.toMatch(/记录格式无效|5\/4|覆盖率|仅同产物/);
 });
 

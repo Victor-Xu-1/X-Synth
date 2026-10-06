@@ -3,18 +3,26 @@
 import asyncio
 import json
 import math
+import re
 import ssl
 import time
 from functools import lru_cache
 from contextlib import contextmanager
 from contextvars import ContextVar
+from urllib.parse import urlsplit
 
 import httpx
 import requests
 
 from packages.platform.performance import PerformanceBudget
+from packages.platform.native_endpoints import ENDPOINTS, resolve_native_endpoints
 
 RECOVERABLE_HTTP = frozenset({408, 429, 500, 502, 503, 504})
+FAILURE_CODES = frozenset({
+    "native_protocol_error", "native_dependency_unavailable", "native_call_timeout",
+    "native_call_deadline", "native_response_too_large", "native_request_too_large",
+    "native_failed_envelope",
+})
 _CALL_CONTEXT = ContextVar("native_call_context", default=(None, None))
 
 
@@ -28,10 +36,35 @@ def native_call_context(cancellation, deadline=None):
 
 
 class NativeProtocolError(RuntimeError):
-    def __init__(self, message, *, code="native_protocol_error", recoverable=False):
+    def __init__(self, message, *, code="native_protocol_error", recoverable=False, service=None):
         super().__init__(message)
         self.code = code
         self.recoverable = recoverable
+        self.service = service
+
+
+def native_failure_details(exc):
+    code = getattr(exc, "code", "native_dependency_unavailable")
+    if not _known_failure_code(code):
+        code = "native_protocol_error"
+    service = getattr(exc, "service", None)
+    return {"code": code, "recoverable": bool(getattr(exc, "recoverable", True)),
+            "service": service if isinstance(service, str) and service in ENDPOINTS else None}
+
+
+def _known_failure_code(code):
+    return isinstance(code, str) and (code in FAILURE_CODES or bool(re.fullmatch(r"native_http_[45][0-9]{2}", code)))
+
+
+def _service_name(url):
+    if not isinstance(url, str):
+        return None
+    try:
+        parsed = urlsplit(url)
+        return next((name for name, endpoint in resolve_native_endpoints(managed=True).items()
+                     if parsed.hostname in {"localhost", "127.0.0.1"} and parsed.port == endpoint.port), None)
+    except ValueError:
+        return None
 
 
 class NativeCallCancelled(RuntimeError):
@@ -90,6 +123,8 @@ async def _controlled_request(method, url, *, body, headers, timeout, deadline, 
         if not done:
             raise NativeProtocolError("Native call deadline expired", code="native_call_deadline", recoverable=True)
         return tasks[0].result()
+    except httpx.TimeoutException:
+        raise NativeProtocolError("Native call timed out", code="native_call_timeout", recoverable=True) from None
     except httpx.HTTPError:
         raise NativeProtocolError("Native connection failed", code="native_dependency_unavailable", recoverable=True) from None
     finally:
@@ -106,10 +141,18 @@ class NativeSession(requests.Session):
         self.headers["Accept-Encoding"] = "identity"
 
     def request(self, method, url, **kwargs):
+        try:
+            return self._request(method, url, **kwargs)
+        except NativeProtocolError as exc:
+            if exc.service is None:
+                exc.service = _service_name(url)
+            raise
+
+    def _request(self, method, url, **kwargs):
         context_cancel, context_deadline = _CALL_CONTEXT.get()
         cancellation = kwargs.pop("cancel_event", context_cancel)
         deadline = kwargs.pop("deadline", context_deadline)
-        kwargs.setdefault("timeout", (3, 120))
+        kwargs.setdefault("timeout", (3, self.budget.model_timeout_seconds))
         values = kwargs["timeout"] if isinstance(kwargs["timeout"], tuple) else (kwargs["timeout"],)
         if not values or any(not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0 for value in values):
             raise NativeProtocolError("Native timeout must be finite and positive")
@@ -153,11 +196,23 @@ class NativeSession(requests.Session):
                     response._content_consumed = True
                 finally:
                     response.close()
+            except requests.Timeout:
+                raise NativeProtocolError("Native call timed out", code="native_call_timeout", recoverable=True) from None
             except requests.RequestException:
                 raise NativeProtocolError("Native connection failed", code="native_dependency_unavailable", recoverable=True) from None
         if 300 <= response.status_code < 400:
             raise NativeProtocolError("Native redirects are not permitted")
         if response.status_code >= 400:
+            try:
+                failure = response.json().get("native_failure")
+            except (ValueError, AttributeError):
+                failure = None
+            if isinstance(failure, dict) and set(failure) == {"code", "recoverable", "service"} and (
+                _known_failure_code(failure["code"])
+                and type(failure["recoverable"]) is bool
+                and (failure["service"] is None or isinstance(failure["service"], str) and failure["service"] in ENDPOINTS)
+            ):
+                raise NativeProtocolError("Native dependency failed", **failure)
             raise NativeProtocolError("Native service rejected the request", code=f"native_http_{response.status_code}",
                                       recoverable=response.status_code in RECOVERABLE_HTTP)
         return response

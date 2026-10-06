@@ -225,6 +225,8 @@ class NativeSearchJobs:
                 recoverable = self.stopping or isinstance(cause.__cause__, requests.RequestException)
             if isinstance(cause, NativeProtocolError):
                 recoverable = self.stopping or cause.recoverable
+                from .native_http import native_failure_details
+                record["dependency_failure"] = native_failure_details(cause)
             record.update(
                 status="interrupted" if recoverable else "failed",
                 error_code="native_dependency_unavailable"

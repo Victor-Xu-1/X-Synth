@@ -4,7 +4,7 @@ from fastapi import HTTPException
 
 from packages.workspace.history_projection import historical_routes
 from packages.chemistry.material_scope import stored_route_scope_exclusions
-from packages.orchestrator.review_policy import REVIEW_POLICY
+from packages.orchestrator.review_policy import FORWARD_REVIEW_POLICIES
 from packages.orchestrator.route_artifacts import RouteArtifactError, RouteArtifactStore
 
 
@@ -99,7 +99,7 @@ def selected_route_data(path, *, budget, job=None):
         raise HTTPException(409, "路线结果结构损坏，需要重新计算。") from exc
     if outside_scope:
         raise HTTPException(409, "旧候选超出当前物料范围，需要重新审查或搜索。")
-    if job and (job.get("checkpoint") or {}).get("review_policy") == REVIEW_POLICY and any(
+    if job and (job.get("checkpoint") or {}).get("review_policy") in FORWARD_REVIEW_POLICIES and any(
         route.get("metadata", {}).get("full_forward_prediction_validated") is not True
         for route in selected
     ):
@@ -118,7 +118,7 @@ def selected_routes_for_job(job, *, artifacts, budget):
         return selected_route_data(artifacts / job["id"] / "selected_routes.json", budget=budget, job=job)
     if any(stored_route_scope_exclusions(route) for route in selected):
         raise HTTPException(409, "候选超出当前物料范围，需要重新审查或搜索。")
-    if (job.get("checkpoint") or {}).get("review_policy") == REVIEW_POLICY and any(
+    if (job.get("checkpoint") or {}).get("review_policy") in FORWARD_REVIEW_POLICIES and any(
         route.get("metadata", {}).get("full_forward_prediction_validated") is not True for route in selected
     ):
         raise HTTPException(409, "独立正向核验尚未完成，路线不能作为已核验结果发布。")

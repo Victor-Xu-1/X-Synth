@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from packages.route_schema.route_schema import RouteCandidate
 from packages.chemistry.material_scope import route_scope_exclusions
+from .route_topology import topology_reasons
 
 MetricValue = int | float
 
@@ -19,7 +20,7 @@ class RouteQualityDecision:
 @dataclass(frozen=True)
 class RouteQualityPolicy:
     require_full_forward_validation: bool = False
-    max_steps: int = 20
+    max_steps: int | None = None
     ultra_low_confidence_threshold: float = 0.05
     min_first_step_confidence: float = 0.05
     max_ultra_low_fraction: float = 0.20
@@ -27,7 +28,7 @@ class RouteQualityPolicy:
     max_recursive_atom_growth: int = 8
 
     def __post_init__(self) -> None:
-        if self.max_steps < 1:
+        if self.max_steps is not None and self.max_steps < 1:
             raise ValueError("max_steps must be at least 1")
         if not 0.0 <= self.ultra_low_confidence_threshold <= 1.0:
             raise ValueError("ultra_low_confidence_threshold must be between 0 and 1")
@@ -52,7 +53,7 @@ class RouteQualityPolicy:
         step_count = len(route.steps)
         if step_count == 0:
             reasons.append("empty_route")
-        elif step_count > self.max_steps:
+        elif self.max_steps is not None and step_count > self.max_steps:
             reasons.append("too_many_steps")
 
         signatures = [
@@ -104,6 +105,8 @@ class RouteQualityPolicy:
             reasons.append("forward_validation_failed")
         if self.require_full_forward_validation and route.metadata.get("full_forward_prediction_validated") is not True:
             reasons.append("full_forward_validation_required")
+        if self.require_full_forward_validation:
+            reasons.extend(topology_reasons(route))
 
         recursive_atom_growth = 0
         graft = route.metadata.get("recursive_graft")
@@ -135,7 +138,7 @@ class RouteQualityPolicy:
         }
         return RouteQualityDecision(
             accepted=not reasons,
-            reasons=tuple(reasons),
+            reasons=tuple(dict.fromkeys(reasons)),
             metrics=metrics,
         )
 
@@ -145,21 +148,23 @@ def _directed_cycle_count(dependencies: dict[str, set[str]]) -> int:
     active: set[str] = set()
     cycle_edges = 0
 
-    def visit(node: str) -> None:
-        nonlocal cycle_edges
-        if node in active:
-            cycle_edges += 1
-            return
-        if node in visited:
-            return
-        active.add(node)
-        for child in dependencies.get(node, set()):
-            visit(child)
-        active.remove(node)
-        visited.add(node)
-
-    for node in dependencies:
-        visit(node)
+    for root in dependencies:
+        if root in visited:
+            continue
+        active.add(root)
+        stack = [(root, iter(dependencies.get(root, ())))]
+        while stack:
+            node, children = stack[-1]
+            child = next(children, None)
+            if child is None:
+                active.remove(node)
+                visited.add(node)
+                stack.pop()
+            elif child in active:
+                cycle_edges += 1
+            elif child not in visited:
+                active.add(child)
+                stack.append((child, iter(dependencies.get(child, ()))))
     return cycle_edges
 
 

@@ -54,6 +54,9 @@ class RouteJobRequest(BaseModel):
         canonical = canonicalize_smiles(self.smiles)
         if not canonical:
             raise ValueError("Invalid molecular structure")
+        molecule = Chem.MolFromSmiles(canonical)
+        if any(atom.GetAtomicNum() == 0 or atom.HasQuery() for atom in molecule.GetAtoms()):
+            raise ValueError("路线任务需要确定的化合物结构，不支持 R 基或查询原子。")
         if material_scope_exclusion(canonical):
             raise ValueError("该目标物料超出当前普通研究合成规划范围。")
         if self.min_routes > self.max_routes:
