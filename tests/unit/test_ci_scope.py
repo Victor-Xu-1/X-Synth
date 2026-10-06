@@ -429,11 +429,20 @@ def test_unchanged_shared_helper_does_not_select_sibling_consumers(tmp_path, mon
     item = snapshot(tmp_path, files)
     records = {
         component: record(["@/common/api"]), sibling: record(["@/common/api"]),
-        direct_test: record(["./api"]), sibling_test: record(["./Optimization.vue"]),
+        direct_test: record(["./api"]),
+        sibling_test: record(["./Optimization.vue", "@/common/api"]),
     }
     monkeypatch.setattr(dependencies, "parse_frontend", lambda _: records)
     assert profile.frontend_tests(item, item, {component})[0] == [direct_test]
     assert profile.frontend_tests(item, item, {shared})[0] == sorted([direct_test, sibling_test])
+
+
+def test_frontend_real_python_consumers_prepare_product_dependencies():
+    assert {
+        profile.SOURCE + "views/assessment/Assessment.test.js",
+        profile.SOURCE + "views/process/Process.test.js",
+        profile.SOURCE + "composables/useTemplateSearch.test.js",
+    } <= profile.FRONTEND_API_TESTS
 
 
 def test_source_reader_literals_cover_auxiliary_views_and_nonpaired_store_tests():

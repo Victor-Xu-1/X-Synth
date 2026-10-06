@@ -225,7 +225,11 @@ CHEMICAL_FILE_TESTS = {
 }
 WEB_BUILD_FILES = {WEB + name for name in ("index.html", "vite.config.js")}
 WEB_TEST_TOOLING = {WEB + "jest.config.js"}
-FRONTEND_API_TESTS = {SOURCE + "composables/useTemplateSearch.test.js"}
+FRONTEND_API_TESTS = {
+    SOURCE + "composables/useTemplateSearch.test.js",
+    SOURCE + "views/assessment/Assessment.test.js",
+    SOURCE + "views/process/Process.test.js",
+}
 SOURCE_EXTENSIONS = analysis.SOURCE_EXTENSIONS
 ASSET_EXTENSIONS = {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico"}
 # These tests scan source without importing it; other literal file reads are
@@ -632,10 +636,10 @@ def frontend_tests(before, after, paths: set[str]) -> tuple[list[str], dict]:
     selected = {
         path for path in reached if path.endswith(".test.js") and path in after.files
     }
-    selected.update(
-        test for dependency in direct for test in inverse[dependency]
-        if test.endswith(".test.js") and test in after.files
-    )
+    for dependency in direct:
+        paired_test = str(PurePosixPath(dependency).with_suffix(".test.js"))
+        if paired_test in after.files and paired_test in inverse[dependency]:
+            selected.add(paired_test)
     for test, prefixes in SOURCE_READERS.items():
         if test in after.files and any(root.startswith(prefixes) for root in roots):
             selected.add(test)
