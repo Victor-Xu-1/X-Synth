@@ -11,22 +11,9 @@ from .environment_dependencies import (
 )
 from .native_capabilities import native_inventory, native_operations
 from .native_capability_catalog import configured_model_names
+from .native_endpoints import ENDPOINTS
 
-ENGINE_SERVICES = (
-    "gateway",
-    "expand_one",
-    "mcts",
-    "retro_star",
-    "template_relevance",
-    "fast_filter",
-    "scscore",
-    "pathway_ranker",
-    "value_network",
-    "cluster",
-    "condition_recommender",
-    "forward_predictor",
-    "impurity",
-)
+ENGINE_SERVICES = tuple(ENDPOINTS)
 
 
 def environment_snapshot(

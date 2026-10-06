@@ -72,7 +72,7 @@ def native_inventory(*, health: dict, runtime: dict, configured_models: str) -> 
     return {
         "catalog_status": catalog["status"],
         "catalog_authority": "apps/askcos-v2/askcos2_core/configs/module_config_full.py",
-        "configuration_authority": "configs.module_config_x_synth / packages.platform.native_runtime.SERVICES",
+        "configuration_authority": "configs.module_config_x_synth / packages.platform.native_endpoints / native_search_contract",
         "module_count": len(modules),
         "configured_module_count": sum(module["configured"] for module in modules),
         "configured_models": models,
@@ -140,7 +140,7 @@ def native_runtime_payload(
             "source": "apps/askcos-v2/" + service.directory,
             "profiles": ["configured"],
             "ports": [{"host": service.port}],
-            "port_basis": "supervisor_default",
+            "port_basis": "resolved_native_configuration",
             "health_endpoint": None,
             "health": {
                 "status": "healthy" if ready else "unavailable",

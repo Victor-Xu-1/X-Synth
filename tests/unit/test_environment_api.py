@@ -127,6 +127,10 @@ def test_inventory_separates_source_modules_and_inactive_integrations():
     assert native["module_count"] == 34
     assert native["configured_module_count"] == 12
     modules = {module["id"]: module for module in native["modules"]}
+    for identifier in ("tree_search_mcts", "tree_search_retro_star"):
+        assert modules[identifier]["configured"] is True
+        assert modules[identifier]["gateway_configured"] is False
+        assert modules[identifier]["invocation_mode"] == "product_child"
     assert modules["retro_template_relevance"]["ready"] is True
     assert modules["forward_graph2smiles"]["status"] == "unavailable"
     assert modules["context_recommender"]["status"] == "unavailable"

@@ -32,6 +32,7 @@ def test_completed_checkpoint_retains_duration_in_native_result(strategy, tmp_pa
         tree=graph, target="CCO", chemicals={"CCO"}, reactions=set(),
         iterations=7, time_to_solve=0, done=False,
         build_tree_options=SimpleNamespace(expansion_time=0),
+        expand_one=SimpleNamespace(request_timeout=120),
         print_stats=lambda: None,
     )
     checkpoint = SearchCheckpoint(tmp_path / "checkpoint.json")
