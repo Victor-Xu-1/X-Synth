@@ -13,7 +13,7 @@ STOCK_FILES = {
 TEMPLATE_FILES = {
     "packages/knowledge_base/" + name + ".py" for name in (
         "template_build", "template_export", "template_models", "template_query",
-        "template_schema", "template_sources", "template_statistics",
+        "template_schema", "template_sources", "template_statistics", "template_export_publication",
     )
 } | {"packages/knowledge_base/template_library.py", "scripts/data_import/compile_template_library.py"}
 REACTION_FILES = {
@@ -73,7 +73,8 @@ def related_tests(paths):
     if paths & (TEMPLATE_FILES | SQLITE_FILES):
         selected.update({
             "tests/unit/test_template_compilation.py", "tests/unit/test_template_library_api.py",
-            "tests/unit/test_template_contract_data.py",
+            "tests/unit/test_template_contract_data.py", "tests/unit/test_template_export.py",
+            "tests/unit/test_native_template_namespaces.py",
         })
     if paths & (REACTION_FILES | SQLITE_FILES):
         selected.update({"tests/unit/test_reaction_library.py", "tests/unit/test_evidence_snapshots.py"})
