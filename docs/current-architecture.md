@@ -127,6 +127,45 @@ another product version.
 - Native ASKCOS functions without installed models or required authorization must
   remain unavailable, not be presented as working features.
 
+### Native Lifecycle
+
+`native_endpoints` is the address authority for supervised launch, gateway
+configuration, private invocation and readiness. Managed services use distinct
+IPv4 loopback ports. The private search protocol is versioned independently of
+the product; readiness must prove both its expected response and rejection of an
+incorrect internal credential. Public documentation/health alone cannot certify
+this channel. The launcher generates an ephemeral internal key, never a user
+token, and does not publish or persist it. Unmanaged gateway search wrappers are
+disabled in the product profile; upstream source remains preserved.
+
+An inherited ownership lease prevents duplicate supervisors before allocation.
+Runtime manifests bind a generation, boot identity, PID, start time, session and
+UID. Cleanup uses verified pidfds and retained descendants, not an arbitrary
+process-group number. Log writers rotate bounded files and redact the internal
+key. Unknown or legacy ownership metadata is refused rather than used to kill
+processes. An operator archives legacy metadata only after stopping the canonical
+unit and proving its recorded processes are gone.
+
+Child cancellation is persistent: a recorded cancellation cannot become new work
+after restart. Controlled model calls propagate cancellation/deadlines, forbid
+redirects and compressed native payloads, and bound request/response bytes. Shared
+inference has admitted queues and chunked fingerprint/ranking batches. Resource
+limits are availability controls, not zero scores or chemical-success shortcuts.
+
+### Immutable Data
+
+Stock, template and reaction readers share an immutable SQLite guard with pinned
+device/inode/size/timestamp identity, required schemas/indexes, rejected sidecars
+and query deadlines. Cached evidence is copied defensively and revalidated after
+lookup. The orchestrator checks stock identity before search, review and publication;
+the review child separately matches the search-bound digest.
+
+Template compilation uses a private staging database, validates it, and publishes
+without replacing any existing snapshot or manifest. Statistics are compiled once
+for bounded monitoring, rather than scanning large template tables on each poll.
+Imports use one supplier-evidence authority. Missing prices, CAS and current
+stock remain unknown; a catalog record is not a live procurement confirmation.
+
 ## Workspace Interaction and Documents
 
 The layout shell owns navigation, theme and live readiness only. Task composition,

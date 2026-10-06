@@ -1,4 +1,7 @@
 import socket
+import importlib.util
+from pathlib import Path
+import sys
 
 import pytest
 
@@ -101,3 +104,24 @@ def test_search_channel_fails_closed_for_missing_or_invalid_key(key):
     with pytest.raises(ValueError, match="ephemeral key"):
         require_search_key({"X_SYNTH_NATIVE_SEARCH_KEY": key}, ["mcts"])
     require_search_key({}, ["fast_filter"])
+
+
+def test_product_overlay_uses_endpoint_authority_without_unmanaged_search(monkeypatch):
+    root = Path(__file__).resolve().parents[2]
+    monkeypatch.syspath_prepend(str(root / "apps/askcos-v2/askcos2_core"))
+    monkeypatch.setenv("X_SYNTH_CONDITION_URL", "http://127.0.0.1:19901")
+    monkeypatch.setenv("X_SYNTH_FORWARD_URL", "http://127.0.0.1:19911")
+    path = root / "apps/askcos-v2/askcos2_core/configs/module_config_x_synth.py"
+    spec = importlib.util.spec_from_file_location("x_synth_test_overlay", path)
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+        config = module.module_config
+        assert not config["compose_managed_modules"].get("tree_search_mcts", False)
+        assert not config["compose_managed_modules"].get("tree_search_retro_star", False)
+        assert not any(config["modules_to_start"].values())
+        for name, deployment in module_deployment_endpoints().items():
+            assert all(config[name]["deployment"][key] == value for key, value in deployment.items())
+        assert config["compose_managed_modules"]["tree_search_expand_one"]
+    finally:
+        sys.modules.pop("x_synth_test_overlay", None)
