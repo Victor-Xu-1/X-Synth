@@ -155,6 +155,19 @@ HISTORY_FILES = {
     "packages/orchestrator/job_history_schema.py",
 }
 PERFORMANCE_FILES = {"packages/platform/performance.py"}
+SEARCH_PROJECTION_FILES = {
+    "packages/adapters/askcos/route_reachability.py",
+    "packages/adapters/askcos/route_enumeration.py",
+    "packages/adapters/askcos/projection_compatibility.py",
+    "packages/adapters/askcos/projection_recovery.py",
+    "packages/platform/asset_identity.py",
+    "packages/platform/cgroup_metrics.py",
+    "scripts/operations/recover_native_projection.py",
+    "scripts/operations/systemd/x-synth@.service",
+    "apps/askcos-v2/tree_search/mcts/utils.py",
+    "apps/askcos-v2/tree_search/retro_star/utils.py",
+    "apps/askcos-v2/tree_search/retro_star/retro_star_controller.py",
+}
 REFERENCE_FILES = {
     "apps/api/reference_routes.py",
     "packages/adapters/askcos/references.py",
@@ -240,6 +253,7 @@ def guard_paths(paths: set[str]) -> None:
             | ORD_FILES
             | PRICING_FILES
             | PERFORMANCE_FILES
+            | SEARCH_PROJECTION_FILES
             | {
                 PYTHON_LOCK,
                 "VERSION",
@@ -407,6 +421,19 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
                 "tests/unit/test_route_request.py",
             }
         )
+    if roots & SEARCH_PROJECTION_FILES:
+        selected.update({
+            "tests/unit/test_route_reachability.py",
+            "tests/unit/test_route_enumeration.py",
+            "tests/unit/test_projection_recovery.py",
+            "tests/unit/test_cgroup_metrics.py",
+            "tests/unit/test_search_artifacts.py",
+            "tests/unit/test_resource_metrics.py",
+            "tests/unit/test_native_lifecycle.py",
+            "tests/unit/test_askcos_adapter.py",
+            "tests/unit/test_route_lifecycle.py",
+            "tests/unit/test_operations_scripts.py",
+        })
     if roots & CHEMICAL_FILE_FILES:
         selected.update(CHEMICAL_FILE_TESTS)
     if roots & CI_FILES:

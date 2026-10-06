@@ -639,6 +639,11 @@ class RetroStar:
         """
         Return list of paths to buyables starting from the target node.
         """
+        if not self.tree.nodes[self.target].get("solved"):
+            print("Target is not solved; skipping path enumeration.")
+            self.paths = []
+            return []
+
         if self.build_tree_options.return_first:
             self.enumerate_paths_options.score_trees = False
             self.enumerate_paths_options.cluster_trees = False
