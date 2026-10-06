@@ -70,6 +70,20 @@ def test_review_upgrade_preserves_native_checkpoint_and_rejects_stock_changes():
         upgrade_review_checkpoint(previous, {**identity, "catalog_sha256": "b" * 64})
 
 
+def test_new_job_publication_marker_does_not_masquerade_as_a_bound_search(tmp_path):
+    from packages.orchestrator.job_repository import JobRepository
+
+    job = JobRepository(tmp_path / "jobs.sqlite").create("owner", {"smiles": "CCO"})
+    identity = {"review_policy": REVIEW_POLICY, "catalog_sha256": "a" * 64,
+                "stock_snapshot": "b" * 64, "models": ["pistachio"]}
+    bound = upgrade_review_checkpoint(job["checkpoint"], identity)
+    assert bound == {**identity, "result_artifact_schema": 1}
+    for invalid in ({"result_artifact_schema": 2}, {"result_artifact_schema": True},
+                    {"result_artifact_schema": 1, "children": {"1:mcts": "orphan"}}):
+        with pytest.raises(ValueError):
+            upgrade_review_checkpoint(invalid, identity)
+
+
 def test_rejected_reactions_reach_native_repair_without_changing_legacy_input():
     request = RouteJobRequest(smiles="CCO")
     baseline = build_search_options(request, strategy="mcts", models=["pistachio"], pass_number=2)

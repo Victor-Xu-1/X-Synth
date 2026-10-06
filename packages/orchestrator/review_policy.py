@@ -8,6 +8,10 @@ def upgrade_review_checkpoint(checkpoint: dict, identity: dict) -> dict:
     previous = checkpoint.get("review_policy")
     if previous == PREVIOUS_REVIEW_POLICY:
         checkpoint = {**checkpoint, "review_policy": REVIEW_POLICY}
-    if checkpoint and any(checkpoint.get(key) != value for key, value in identity.items()):
+    bootstrap = set(checkpoint) == {"result_artifact_schema"} and (
+        type(checkpoint["result_artifact_schema"]) is int
+        and checkpoint["result_artifact_schema"] == 1
+    )
+    if checkpoint and not bootstrap and any(checkpoint.get(key) != value for key, value in identity.items()):
         raise ValueError("Checkpoint inputs or inventory changed")
     return {**identity, **checkpoint}
