@@ -20,6 +20,7 @@ import {
   originalRouteIndex,
   readSelectedRoutes,
   retainedRouteId,
+  requestedRouteId,
   stepDetails,
   taskIdentifier,
 } from "./route-details";
@@ -117,6 +118,34 @@ test("all viewing modes resolve an edit by stable route identity into current or
   expect(originalRouteIndex(routes, visible[0].route.route_id)).toBe(1);
   expect(originalRouteIndex([branch, candidate], branch.route_id)).toBe(0);
   expect(originalRouteIndex(routes, "missing")).toBe(-1);
+});
+test("route links resolve stable identity before a possibly stale original index", () => {
+  const routes = [candidate, branch];
+  expect(
+    requestedRouteId(routes, { route_id: branch.route_id, route_index: "0" }),
+  ).toBe(branch.route_id);
+  expect(requestedRouteId(routes, { route_index: "1" })).toBe(branch.route_id);
+  expect(
+    requestedRouteId([branch, candidate], {
+      route_id: branch.route_id,
+      route_index: "1",
+    }),
+  ).toBe(branch.route_id);
+  expect(requestedRouteId([], { route_id: branch.route_id })).toBe("");
+});
+test("ambiguous, absent and invalid route links cannot silently select a different route", () => {
+  const routes = [candidate, branch];
+  for (const query of [
+    {},
+    { route_id: "missing", route_index: "1" },
+    { route_id: [branch.route_id], route_index: "1" },
+    { route_index: ["1"] },
+    { route_index: "-1" },
+    { route_index: "1.0" },
+    { route_index: "1e0" },
+    { route_index: "999999999999999999999" },
+    { route_index: "2" },
+  ]) expect(requestedRouteId(routes, query)).toBe("");
 });
 test("poll completion and UI sorting retain selection without resetting existing filters", () => {
   const filters = {
