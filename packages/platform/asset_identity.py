@@ -49,7 +49,7 @@ def native_asset_identity(source: Path, assets: Path, stock, models: list[str]) 
         for path in sorted((source / "apps/askcos-v2" / directory).rglob("*.py")):
             code.update(str(path.relative_to(source)).encode())
             code.update(path.read_bytes())
-    for name in ("route_reachability", "route_enumeration"):
+    for name in ("route_reachability", "route_enumeration", "retro_star_values"):
         projection = source / f"packages/adapters/askcos/{name}.py"
         code.update(str(projection.relative_to(source)).encode())
         code.update(projection.read_bytes())

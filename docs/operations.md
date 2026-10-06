@@ -223,6 +223,14 @@ curl --fail http://127.0.0.1:8769/api/v1/unified-route/jobs/JOB_ID
 无商业出口的循环不进入组合枚举；实际路线逐条生成，原始搜索图和候选仍保留。
 RetroStar 未解出目标时直接输出空路线，不能花费额外资源枚举不可能闭合的组合。
 
+RetroStar 代价回传区分局部子树代价 `rn` 和全路线优先级 `Vt`：化合物取候选反应
+最小代价，反应需要所有前体代价之和。已搜索前体代价增加时也重新比较备选反应；
+成功状态不依赖代价是否变化。兄弟分支只更新优先级，不改写其子树代价。
+此修复改变搜索语义，旧搜索 checkpoint 必须拒绝迁移；完成已有任务后用新任务验证。
+算法依据 [RetroStar 官方回传实现](https://github.com/binghong-ml/retro_star/blob/master/retro_star/alg/mol_node.py)
+与 [反应优先级传播](https://github.com/binghong-ml/retro_star/blob/master/retro_star/alg/reaction_node.py)，
+并保留 ASKCOS 的模型、反应代价定义、筛选与商购门槛，不引入其他搜索后端。
+
 升级后原生 checkpoint 的代码/模型/库存指纹必须相符。仅修复路线整理逻辑时，
 可显式使用 `scripts.operations.recover_native_projection`：逐文件比较搜索代码 AST，
 校验真实模型和库存哈希、原请求和未完成子任务，默认只读 dry-run。
