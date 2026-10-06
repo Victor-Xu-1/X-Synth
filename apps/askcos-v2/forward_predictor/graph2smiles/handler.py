@@ -1,10 +1,15 @@
-import glob
+import logging
 import numpy as np
 import time
 import torch
 import zipfile
 from multiprocessing import Pool
 from typing import Any, Dict, List
+
+from packages.chemistry.forward_evaluation import validate_forward_input
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class G2SHandler:
@@ -42,7 +47,6 @@ class G2SHandler:
 
         properties = context.system_properties
         model_dir = properties.get("model_dir")
-        print(glob.glob(f"{model_dir}/*"))
         self.device = torch.device("cuda:" + str(properties.get("gpu_id")) if torch.cuda.is_available() else "cpu")
 
         with zipfile.ZipFile(model_dir + '/models.zip', 'r') as zip_ref:
@@ -89,7 +93,7 @@ class G2SHandler:
 
         pretrain_state_dict = {k.replace("module.", ""): v for k, v in pretrain_state_dict.items()}
         model.load_state_dict(pretrain_state_dict)
-        print(f"Loaded pretrained state_dict from {checkpoint}")
+        LOGGER.debug("Forward model weights loaded")
         model.eval()
         self.model = model
 
@@ -99,12 +103,14 @@ class G2SHandler:
         self.initialized = True
 
     def preprocess(self, data: List):
+        validated_smiles = [validate_forward_input(smi) for smi in data[0]["body"]["smiles"]]
         from utils.data_utils import canonicalize_smiles, collate_graph_distances, \
             collate_graph_features, G2SBatch, len2idx
         from utils.preprocess_utils import get_graph_features_from_smi
 
-        print(data)
-        canonical_smiles = [canonicalize_smiles(smi) for smi in data[0]["body"]["smiles"]]
+        canonical_smiles = [
+            canonicalize_smiles(smi, trim=False, suppress_warning=True) for smi in validated_smiles
+        ]
 
         # ----------<adapted from preprocess.py>----------
         start = time.time()
@@ -112,7 +118,8 @@ class G2SHandler:
             get_graph_features_from_smi, enumerate(canonical_smiles)
         )
         graph_features_and_lengths = list(graph_features_and_lengths)
-        print(f"Done graph featurization, time: {time.time() - start}. Collating and saving...")
+        LOGGER.debug("Forward graph features prepared: count=%d elapsed_seconds=%.3f",
+                     len(canonical_smiles), time.time() - start)
         a_scopes, a_scopes_lens, b_scopes, b_scopes_lens, a_features, a_features_lens, \
             b_features, b_features_lens, a_graphs, b_graphs = zip(*graph_features_and_lengths)
 
@@ -265,6 +272,6 @@ class G2SHandler:
         output = self.preprocess(data)
         output = self.inference(output)
         output = self.postprocess(output)
-        print(output)
+        LOGGER.debug("Forward inference completed")
 
         return output
