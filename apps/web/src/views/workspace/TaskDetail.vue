@@ -120,7 +120,11 @@ import {
   activeTaskStates,
 } from "@/common/task-state";
 import { loadTaskDetail } from "@/common/task-detail-data";
-import { originalRouteIndex, taskIdentifier } from "@/common/route-details";
+import {
+  originalRouteIndex,
+  requestedRouteId,
+  taskIdentifier,
+} from "@/common/route-details";
 import { buildTaskSearchLocation } from "@/common/task-history-view";
 import RouteReader from "@/components/routes/RouteReader.vue";
 import TaskInfoDialog from "@/components/workspace/TaskInfoDialog.vue";
@@ -171,7 +175,15 @@ const taskInfo = computed(() =>
 );
 let generation = 0,
   timer,
+  requestedSelectionPending = true,
   disposed = false;
+function selectRequestedRoute() {
+  if (!requestedSelectionPending || !candidates.value.length) return;
+  requestedSelectionPending = false;
+  const requested = requestedRouteId(candidates.value, route.query);
+  if (requested) selectedId.value = requested;
+  view.value = requested ? "graph" : "overview";
+}
 async function refresh() {
   const current = ++generation,
     id = identifier.value;
@@ -187,6 +199,7 @@ async function refresh() {
     if (values.job) job.value = values.job;
     if (JSON.stringify(values.candidates) !== JSON.stringify(candidates.value))
       candidates.value = values.candidates;
+    selectRequestedRoute();
     error.value = values.error;
   } catch (cause) {
     if (!disposed && current === generation)
@@ -253,6 +266,7 @@ watch(
   () => route.params.id,
   () => {
     generation++;
+    requestedSelectionPending = true;
     job.value = null;
     candidates.value = [];
     selectedId.value = "";
@@ -265,6 +279,13 @@ watch(
     refresh();
   },
   { immediate: true },
+);
+watch(
+  () => [route.query.route_id, route.query.route_index],
+  () => {
+    requestedSelectionPending = true;
+    selectRequestedRoute();
+  },
 );
 onMounted(() => {
   timer = window.setInterval(() => {

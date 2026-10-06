@@ -120,6 +120,24 @@ export function candidateChoices(
 export function originalRouteIndex(routes, routeId) {
   return list(routes).findIndex((route) => route.route_id === routeId);
 }
+export function requestedRouteId(routes, query = {}) {
+  if (!query || typeof query !== "object" || Array.isArray(query)) return "";
+  if (Object.hasOwn(query, "route_id")) {
+    return typeof query.route_id === "string" &&
+      originalRouteIndex(routes, query.route_id) >= 0
+      ? query.route_id
+      : "";
+  }
+  if (
+    typeof query.route_index !== "string" ||
+    !/^(0|[1-9]\d*)$/.test(query.route_index)
+  )
+    return "";
+  const index = Number(query.route_index);
+  return Number.isSafeInteger(index)
+    ? list(routes)[index]?.route_id || ""
+    : "";
+}
 export function retainedRouteId(choices, routeId) {
   return choices.some((choice) => choice.route.route_id === routeId)
     ? routeId
