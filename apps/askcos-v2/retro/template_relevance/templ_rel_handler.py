@@ -7,6 +7,7 @@ import templ_rel_parser
 import torch
 import torch.nn.functional as F
 from attribute_filters import filter_indices
+from template_recall import truncate_templates
 from utils import canonicalize_smiles
 from rdchiral.initialization import rdchiralReactants, rdchiralReaction
 from rdchiral.main import rdchiralRun
@@ -103,18 +104,9 @@ class TemplRelHandler:
                     indices = indices[bool_mask]
                     scores = scores[bool_mask]
 
-                # template_prioritizer.truncate()
-                if max_num_templates:
-                    indices = indices[:max_num_templates]
-                    scores = scores[:max_num_templates]
-
-                if max_cum_prob:
-                    exceeds = np.nonzero(np.cumsum(scores) >= max_cum_prob)[0]
-                    if exceeds.size:
-                        # Include the prediction which exceeds max_cum_prob
-                        max_index = exceeds[0] + 1
-                        scores = scores[:max_index]
-                        indices = indices[:max_index]
+                indices, scores = truncate_templates(
+                    indices, scores, max_num_templates, max_cum_prob
+                )
 
                 smiles_to_index = {}
                 result = {

@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from packages.orchestrator.job_repository import JobConflict, now_utc
 from packages.platform.performance import PerformanceBudget
+from packages.chemistry.material_scope import require_document_scope
 
 from .route_graph import RouteGraph
 from .route_summaries import SUMMARY_COLUMNS, initialize_summaries, list_summaries
@@ -160,7 +161,10 @@ class RouteDocumentRepository:
         if row is None:
             raise KeyError("Route document does not exist")
         identifier, _, title, graph, source, revision, created, modified = row
-        graph = RouteGraph.model_validate_json(graph, context=self.validation_context)
+        graph = RouteGraph.model_validate_json(
+            graph, context={**self.validation_context, "allow_archival_scope": True}
+        )
+        require_document_scope(graph)
         provenance = json.loads(source)
         original = (
             bool(provenance)
@@ -257,7 +261,7 @@ class RouteDocumentRepository:
                 raise JobConflict("文档已被其他页面修改，请重新载入或另存副本。")
             provenance = json.loads(row[4])
             previous = RouteGraph.model_validate_json(
-                row[3], context=self.validation_context
+                row[3], context={**self.validation_context, "allow_archival_scope": True}
             )
             if (
                 provenance

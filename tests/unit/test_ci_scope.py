@@ -147,12 +147,13 @@ def test_ord_import_checks_are_isolated_and_diff_selected():
 
 
 def test_python_workspace_maps_document_contracts_not_native_engine_suite(tmp_path):
-    files = {path: "pass" for path in profile.WORKSPACE_TESTS}
+    related = profile.WORKSPACE_TESTS | {"tests/unit/test_document_material_scope.py"}
+    files = {path: "pass" for path in related}
     before = snapshot(tmp_path, files)
     after = snapshot(tmp_path, {**files, "packages/workspace/route_graph.py": "pass"})
     assert profile.python_tests(
         before, after, {"packages/workspace/route_graph.py"}
-    ) == sorted(profile.WORKSPACE_TESTS)
+    ) == sorted(related)
 
 
 @pytest.mark.parametrize("path", sorted(profile.CHEMICAL_FILE_FILES))
