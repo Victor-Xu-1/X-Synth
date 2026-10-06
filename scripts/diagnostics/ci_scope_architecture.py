@@ -15,13 +15,19 @@ TEMPLATE_FILES = {
         "template_build", "template_export", "template_models", "template_query",
         "template_schema", "template_sources", "template_statistics",
     )
-} | {"scripts/data_import/compile_template_library.py"}
+} | {"packages/knowledge_base/template_library.py", "scripts/data_import/compile_template_library.py"}
 REACTION_FILES = {
+    "packages/knowledge_base/reaction_library.py",
     "packages/knowledge_base/reaction_compile.py",
     "packages/knowledge_base/reaction_snapshot.py",
 }
 SQLITE_FILES = {"packages/platform/immutable_sqlite.py"}
 RUNTIME_FILES = {
+    "packages/platform/native_runtime.py",
+    "packages/platform/resource_metrics.py",
+    "packages/orchestrator/runtime_health.py",
+    "scripts/operations/serve_platform.py",
+    "apps/askcos-v2/askcos2_core/configs/module_config_x_synth.py",
     "packages/platform/native_endpoints.py",
     "packages/platform/native_runtime_ownership.py",
     "packages/platform/native_search_contract.py",
@@ -29,6 +35,7 @@ RUNTIME_FILES = {
     "scripts/operations/serve_native.py",
 }
 RPC_FILES = {
+    "packages/adapters/askcos/engine.py",
     "packages/adapters/askcos/native_http.py",
     "packages/adapters/askcos/native_search_jobs.py",
     "packages/adapters/askcos/native_search_protocol.py",
@@ -40,8 +47,10 @@ RPC_FILES = {
             "pathway_ranker/pathway_ranker.py", "pathway_ranker/pathway_ranker_server.py",
             "tree_search/expand_one/api/fast_filter_batch_api.py",
             "tree_search/mcts/api/expand_one_api.py", "tree_search/mcts/mcts_server.py",
+            "tree_search/mcts/mcts_controller.py",
             "tree_search/retro_star/api/expand_one_api.py",
             "tree_search/retro_star/retro_star_server.py",
+            "tree_search/retro_star/retro_star_controller.py",
             "tree_search/mcts/tests/test_expand_one_api_retry.py",
             "tree_search/retro_star/tests/test_expand_one_api_retry.py",
         )
