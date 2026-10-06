@@ -3,6 +3,7 @@ import numpy as np
 import os
 import sklearn.cluster as cluster
 import torch
+from packages.adapters.askcos.native_service_limits import RANKER_BATCH_NODES
 from model import PathwayRankingModel
 from utils import (
     convert_askcos_trees,
@@ -85,10 +86,32 @@ class PathwayRanker:
 
     def predict(self, data):
         """Process data, run inference, and process results."""
-        data = self.preprocess(data)
-        data = self.inference(data)
-        data = self.postprocess(data)
-        return data
+        output = {"scores": [], "encoded_trees": []}
+        batch, batch_nodes = [], 0
+
+        def flush():
+            result = self.postprocess(self.inference(self.preprocess(batch)))
+            if len(result["scores"]) != len(batch) or len(result["encoded_trees"]) != len(batch):
+                raise ValueError("Pathway-ranker output does not match its input batch")
+            output["scores"].extend(result["scores"])
+            output["encoded_trees"].extend(result["encoded_trees"])
+
+        for tree in data:
+            queue, nodes = [tree], 0
+            while queue:
+                current = queue.pop()
+                nodes += 1
+                queue.extend(current.get("child", []))
+            if nodes > RANKER_BATCH_NODES:
+                raise ValueError("A pathway tree exceeds the native node budget")
+            if batch and batch_nodes + nodes > RANKER_BATCH_NODES:
+                flush()
+                batch, batch_nodes = [], 0
+            batch.append(tree)
+            batch_nodes += nodes
+        if batch:
+            flush()
+        return output
 
     def scorer(
         self,

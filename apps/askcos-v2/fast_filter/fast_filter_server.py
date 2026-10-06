@@ -1,35 +1,22 @@
 import argparse
-import copy
 import logging
 import os
 import sys
 import time
-import traceback
 import uvicorn
 from contextlib import asynccontextmanager
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
-from prometheus_client import CollectorRegistry, Histogram, multiprocess, make_asgi_app
-from pydantic import BaseModel
-from rdkit import RDLogger
+from prometheus_client import Histogram, make_asgi_app
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from rdkit import Chem, RDLogger
 from fast_filter import FastFilterScorer
-from typing import List
+from typing import Annotated
+from packages.platform.performance import PerformanceBudget
+from packages.adapters.askcos.native_service_limits import FAST_FILTER_BATCH_SIZE, NativeExecutionSlot, NativeRequestLimits, bounded_response
 import global_config as gc
 
-# Turn off multiproc for now.
-# Seems that we'll have to switch to gunicorn-based (vs. uvicorn) serving to make multiproc work
-
-# # Set the directory for multiprocess mode
-# multiproc_dir = "/tmp/prometheus_multiproc_dir"
-# os.environ["PROMETHEUS_MULTIPROC_DIR"] = multiproc_dir
-# os.makedirs(multiproc_dir, exist_ok=True)
-#
-#
-# def make_metrics_app():
-#     registry = CollectorRegistry()
-#     multiprocess.MultiProcessCollector(registry)
-#
-#     return make_asgi_app(registry=registry)
+execution = NativeExecutionSlot()
 
 @asynccontextmanager
 async def lifespan(app):
@@ -41,6 +28,7 @@ async def lifespan(app):
 
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(NativeRequestLimits, slot=execution)
 metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
 
@@ -51,12 +39,6 @@ def ready():
     if scorer is None or scorer.model is None:
         raise HTTPException(503, "Fast-filter checkpoint is not loaded")
     return {"status": "ready", "model": "askcos_fast_filter"}
-
-base_response = {
-    "status": "FAIL",
-    "error": "",
-    "results": []
-}
 
 INFERENCE_TIME = Histogram(
     "inference_duration_seconds",
@@ -74,96 +56,81 @@ def parse_args():
     return parser.parse_args()
 
 
+Structure = Annotated[str, Field(min_length=1, max_length=20000)]
+
+
+def validate_structure(smiles):
+    molecule = Chem.MolFromSmiles(smiles)
+    if molecule is None or molecule.GetNumAtoms() > PerformanceBudget.from_environment().max_structure_atoms:
+        raise ValueError("Invalid or oversized molecular structure")
+    return smiles
+
+
 class EvaluateBody(BaseModel):
-    smiles: List[str]
+    model_config = ConfigDict(extra="forbid")
+    smiles: list[Structure] = Field(min_length=2, max_length=2)
+
+    @field_validator("smiles")
+    @classmethod
+    def structures(cls, values):
+        return [validate_structure(value) for value in values]
 
 
-class EvaluateThresholdBody(BaseModel):
-    smiles: List[str]
-    threshold: float
+class EvaluateThresholdBody(EvaluateBody):
+    threshold: float = Field(ge=0, le=1, allow_inf_nan=False)
 
 
 class EvaluateBatchBody(BaseModel):
-    rxn_smiles: List[str]
+    model_config = ConfigDict(extra="forbid")
+    rxn_smiles: list[Structure] = Field(max_length=FAST_FILTER_BATCH_SIZE)
+
+    @field_validator("rxn_smiles")
+    @classmethod
+    def reactions(cls, values):
+        for value in values:
+            parts = value.split(">")
+            if len(parts) != 3:
+                raise ValueError("Invalid reaction structure")
+            validate_structure(parts[0])
+            validate_structure(parts[2])
+        return values
+
+
+def execute(operation):
+    with execution.acquire():
+        if globals().get("fast_filter") is None:
+            raise HTTPException(503, "Fast-filter checkpoint is not loaded")
+        start = time.perf_counter()
+        try:
+            output = operation()
+            response = bounded_response({"status": "SUCCESS", "error": "", "results": output})
+        except HTTPException:
+            raise
+        except (ValueError, TypeError, KeyError, IndexError):
+            raise HTTPException(422, "Invalid fast-filter input") from None
+        except Exception:
+            raise HTTPException(503, "Fast-filter execution failed") from None
+        INFERENCE_TIME.observe(time.perf_counter() - start)
+        return response
 
 
 @app.post("/fast_filter_evaluate")
 def fast_filter_service(request_json: EvaluateBody):
-    start_time = time.perf_counter()
-    response = copy.deepcopy(base_response)
-
-    try:
-        results = []
-        smis = request_json.smiles
-        reactant, target = smis[0], smis[1]
-        outcome = fast_filter.evaluate(reactant, target)
-        results.append(outcome)
-        response["results"] = results
-        response["status"] = "SUCCESS"
-
-        INFERENCE_TIME.observe(time.perf_counter() - start_time)
-
-        return response
-
-    except Exception:
-        response["error"] = f"Error during fast filter, traceback: " \
-                            f"{traceback.format_exc()}"
-        traceback.print_exc()
-
-        return response
+    return execute(lambda: [fast_filter.evaluate(*request_json.smiles)])
 
 
 @app.post("/filter_with_threshold")
 def filter_with_threshold(request_json: EvaluateThresholdBody):
-    start_time = time.perf_counter()
-    response = copy.deepcopy(base_response)
+    def operation():
+        flag, outcome = fast_filter.filter_with_threshold(*request_json.smiles, request_json.threshold)
+        return [{"flag": flag, "score": outcome}]
 
-    try:
-        smis = request_json.smiles
-        results = []
-        reactant, target = smis[0], smis[1]
-        flag, outcome = fast_filter.filter_with_threshold(
-            reactant,
-            target,
-            request_json.threshold
-        )
-        dict_ = {"flag": flag, "score": outcome}
-        results.append(dict_)
-        response["results"] = results
-        response["status"] = "SUCCESS"
-
-        INFERENCE_TIME.observe(time.perf_counter() - start_time)
-
-        return response
-
-    except Exception:
-        response["error"] = f"Error during filter with threshold, traceback: " \
-                            f"{traceback.format_exc()}"
-        traceback.print_exc()
-
-        return response
+    return execute(operation)
 
 
 @app.post("/fast_filter_evaluate_batch")
 def fast_filter_evaluate_batch(request_json: EvaluateBatchBody):
-    start_time = time.perf_counter()
-    response = copy.deepcopy(base_response)
-
-    try:
-        scores = fast_filter.evaluate_batch(request_json.rxn_smiles)
-        response["results"] = scores
-        response["status"] = "SUCCESS"
-
-        INFERENCE_TIME.observe(time.perf_counter() - start_time)
-
-        return response
-
-    except Exception:
-        response["error"] = f"Error during fast filter evaluate batch, traceback: " \
-                            f"{traceback.format_exc()}"
-        traceback.print_exc()
-
-        return response
+    return execute(lambda: fast_filter.evaluate_batch(request_json.rxn_smiles))
 
 
 if __name__ == "__main__":

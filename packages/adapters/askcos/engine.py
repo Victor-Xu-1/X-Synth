@@ -3,6 +3,9 @@ import time
 from dataclasses import dataclass
 from threading import Event
 
+from packages.platform.native_endpoints import resolve_native_endpoints
+from packages.platform.native_search_contract import SEARCH_KEY_VARIABLE, NATIVE_SEARCH_HEADER, NATIVE_SEARCH_PREFIX
+
 from .transport import AskcosTransport, EngineUnavailable
 
 
@@ -89,19 +92,26 @@ class AskcosEngine:
             rejected_reactions=rejected_reactions,
         )
         expansion = request.expansion_time
-        port = 9311 if strategy == "mcts" else 9321
-        url = os.environ.get(
-            f"X_SYNTH_{strategy.upper()}_URL", f"http://127.0.0.1:{port}"
-        )
+        try:
+            url = resolve_native_endpoints(managed=True)[strategy].url
+        except ValueError:
+            raise EngineUnavailable(
+                "native_search_endpoint_invalid", recoverable=False
+            ) from None
+        key = os.environ.get(SEARCH_KEY_VARIABLE)
+        if not key:
+            raise EngineUnavailable("native_search_key_missing", recoverable=False)
         native = AskcosTransport(url, budget=self.transport.budget)
+        native.opener.addheaders.append((NATIVE_SEARCH_HEADER, key))
         record = native.call(
-            "/api/search-jobs", body={"id": child_id, "input": options}, timeout=30
+            NATIVE_SEARCH_PREFIX, body={"id": child_id, "input": options}, timeout=30
         )
+        child_path = NATIVE_SEARCH_PREFIX + "/" + child_id
         deadline = time.monotonic() + expansion + 900
         last_progress = None
         while True:
             if cancelled():
-                native.call("/api/search-jobs/" + child_id, method="DELETE", timeout=5)
+                native.call(child_path, method="DELETE", timeout=5)
                 raise EngineUnavailable("search_cancelled", recoverable=False)
             if interrupted is not None and interrupted.is_set():
                 # The native child remains alive; a resumed product worker attaches to its ID.
@@ -116,7 +126,7 @@ class AskcosEngine:
                 last_progress = observed
             if record.get("status") == "completed":
                 payload = native.call(
-                    "/api/search-jobs/" + child_id + "/result", timeout=60
+                    child_path + "/result", timeout=60
                 )
                 if not isinstance(payload, dict) or not isinstance(
                     payload.get("uds"), dict
@@ -138,4 +148,4 @@ class AskcosEngine:
                 interrupted.wait(1)
             else:
                 time.sleep(1)
-            record = native.call("/api/search-jobs/" + child_id, timeout=10)
+            record = native.call(child_path, timeout=10)

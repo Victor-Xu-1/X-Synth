@@ -8,20 +8,26 @@ import logging
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
 from threading import Event, Lock
 
 import requests
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from packages.platform.atomic_file import write_json
 from packages.platform.leader_lock import LeaderLock
 from packages.platform.performance import PerformanceBudget
+from packages.platform.native_search_contract import (
+    NATIVE_SEARCH_PREFIX, NATIVE_SEARCH_READY_PATH, NATIVE_SEARCH_PROTOCOL, NATIVE_SEARCH_PROTOCOL_VERSION,
+)
 
-from .native_http import NativeProtocolError
+from .native_http import NativeCallCancelled, NativeProtocolError
 from .native_price_client import PriceServiceUnavailable
+from .native_service_limits import NativeRequestLimits
+from .native_search_protocol import NativeSearchAuthentication, managed_search_profile
 from .search_artifacts import SearchArtifacts
 
 
@@ -29,9 +35,29 @@ class SearchCancelled(RuntimeError):
     pass
 
 
+@contextmanager
+def acquire_search_slot(slot, cancellation):
+    while not slot.acquire(timeout=0.05):
+        if cancellation.is_set():
+            raise SearchCancelled()
+    try:
+        if cancellation.is_set():
+            raise SearchCancelled()
+        yield
+    finally:
+        slot.release()
+
+
 class ChildSearchBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     id: str = Field(pattern=r"^[a-f0-9]{32}$")
     input: dict
+
+    @field_validator("input")
+    @classmethod
+    def finite_input(cls, value):
+        json.dumps(value, allow_nan=False)
+        return value
 
 
 class NativeSearchJobs:
@@ -80,7 +106,11 @@ class NativeSearchJobs:
                 self.artifacts.save(record["id"], payload, target=target)
                 record["result_available"] = True
                 write_json(path, record)
-            if record["status"] in {"queued", "running", "cancelling"}:
+            if record.get("cancel_requested") or record["status"] == "cancelling":
+                record.update(status="cancelled", cancel_requested=True)
+                record.pop("error_code", None)
+                write_json(path, record)
+            elif record["status"] in {"queued", "running"}:
                 record.update(
                     status="interrupted", error_code="native_worker_restarted"
                 )
@@ -106,19 +136,28 @@ class NativeSearchJobs:
         except ValueError as exc:
             raise HTTPException(503, "Native route artifact is unavailable") from exc
 
+    def readiness(self):
+        with self.lock:
+            if self.stopping or len(self.events) >= self.budget.native_queue_size:
+                raise HTTPException(503, "Native child worker is not accepting work")
+            return {"status": "ready", "protocol": NATIVE_SEARCH_PROTOCOL,
+                    "protocol_version": NATIVE_SEARCH_PROTOCOL_VERSION, "strategy": self.root.name}
+
     def submit(self, request: ChildSearchBody):
         digest = hashlib.sha256(
             json.dumps(request.input, sort_keys=True, allow_nan=False).encode()
         ).hexdigest()
         path = self.path(request.id)
         with self.lock:
+            if self.stopping:
+                raise HTTPException(503, "Native search worker is stopping")
             if path.exists():
                 record = self.get(request.id)
                 if record["input_sha256"] != digest:
                     raise HTTPException(
                         409, "A child ID cannot identify different search input"
                     )
-                if record["status"] != "interrupted":
+                if record.get("cancel_requested") or record["status"] != "interrupted":
                     return record
             if len(self.events) >= self.budget.native_queue_size:
                 raise HTTPException(429, "Native search queue is full")
@@ -138,6 +177,8 @@ class NativeSearchJobs:
         try:
             with self.lock:
                 record = self.get(request.id)
+                if record.get("cancel_requested") or event.is_set():
+                    raise SearchCancelled()
                 record["status"] = "running"
                 write_json(self.path(request.id), record)
             if event.is_set():
@@ -159,8 +200,8 @@ class NativeSearchJobs:
                 raise SearchCancelled()
             self.artifacts.save(request.id, payload, target=request.input["smiles"])
             record.update(status="completed", result_available=True)
-        except SearchCancelled:
-            explicitly_cancelled = self.get(request.id)["status"] == "cancelling"
+        except (SearchCancelled, NativeCallCancelled):
+            explicitly_cancelled = self.get(request.id).get("cancel_requested", False)
             record.update(
                 status="cancelled"
                 if explicitly_cancelled
@@ -169,21 +210,21 @@ class NativeSearchJobs:
                 else "cancelled"
             )
         except Exception as cause:
-            logging.getLogger(__name__).exception(
-                "Native child search failed: %s", request.id
+            logging.getLogger(__name__).error(
+                "Native child search failed: %s (%s)", request.id, type(cause).__name__
             )
             recoverable = self.stopping or isinstance(
                 cause, (requests.ConnectionError, requests.Timeout, OSError)
             )
             if isinstance(cause, requests.HTTPError):
-                recoverable = (
+                recoverable = self.stopping or (
                     cause.response is not None
                     and cause.response.status_code in {408, 429, 500, 502, 503, 504}
                 )
             if isinstance(cause, PriceServiceUnavailable):
-                recoverable = isinstance(cause.__cause__, requests.RequestException)
+                recoverable = self.stopping or isinstance(cause.__cause__, requests.RequestException)
             if isinstance(cause, NativeProtocolError):
-                recoverable = True
+                recoverable = self.stopping or cause.recoverable
             record.update(
                 status="interrupted" if recoverable else "failed",
                 error_code="native_dependency_unavailable"
@@ -193,8 +234,9 @@ class NativeSearchJobs:
         finally:
             with self.lock:
                 latest = self.get(request.id)
-                if latest["status"] == "cancelling":
-                    record.update(status="cancelled")
+                if latest.get("cancel_requested"):
+                    record.update(status="cancelled", cancel_requested=True)
+                    record.pop("error_code", None)
                 record["progress"] = latest.get("progress", {})
                 write_json(self.path(request.id), record)
                 self.events.pop(request.id, None)
@@ -202,23 +244,33 @@ class NativeSearchJobs:
     def cancel(self, identifier):
         with self.lock:
             record = self.get(identifier)
+            if record["status"] in {"completed", "failed", "cancelled"}:
+                return record
             event = self.events.get(identifier)
+            record.update(cancel_requested=True, status="cancelling" if event is not None else "cancelled")
+            record.pop("error_code", None)
+            write_json(self.path(identifier), record)
             if event is not None:
                 event.set()
-                record["status"] = "cancelling"
-                write_json(self.path(identifier), record)
             return record
 
     def close(self):
-        self.stopping = True
-        for event in list(self.events.values()):
-            event.set()
+        with self.lock:
+            self.stopping = True
+            for event in self.events.values():
+                event.set()
         self.executor.shutdown(wait=True, cancel_futures=False)
         self.leader.close()
 
 
 def register_search_jobs(app, strategy: str, runner):
-    router = APIRouter(prefix="/api/search-jobs")
+    router = APIRouter(prefix=NATIVE_SEARCH_PREFIX)
+    app.add_middleware(NativeRequestLimits)
+    app.add_middleware(NativeSearchAuthentication)
+
+    @router.get(NATIVE_SEARCH_READY_PATH.removeprefix(NATIVE_SEARCH_PREFIX))
+    def ready():
+        return app.state.search_jobs.readiness()
 
     @router.post("")
     def submit(request: ChildSearchBody):
