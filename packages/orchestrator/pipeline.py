@@ -5,8 +5,7 @@ import json
 import logging
 import sqlite3
 from dataclasses import asdict
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-from multiprocessing import get_context
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from threading import Event, Lock, Thread
 
@@ -24,6 +23,7 @@ from packages.route_pool.workflow import (
 
 from .job_repository import ACTIVE_STATES, JobConflict, JobRepository
 from .review_worker import review_job
+from .review_execution import CancellableReview
 from .route_request import RouteJobRequest
 from .runtime_health import route_runtime_status
 from .search_progress import begin_search_round, remaining_search_rounds
@@ -68,9 +68,7 @@ class RoutePipeline:
             return
         self.stop_event.clear()
         self.repository.recover_interrupted()
-        self.review_executor = ProcessPoolExecutor(
-            max_workers=self.budget.review_parallelism, mp_context=get_context("spawn")
-        )
+        self.review_executor = CancellableReview()
         self.thread = Thread(
             target=self._schedule, name="x-synth-route-scheduler", daemon=True
         )
@@ -78,6 +76,8 @@ class RoutePipeline:
 
     def stop(self):
         self.stop_event.set()
+        if self.review_executor is not None:
+            self.review_executor.close()
         if self.thread is not None:
             self.thread.join(timeout=45)
             if self.thread.is_alive():
@@ -88,7 +88,6 @@ class RoutePipeline:
             self.leader.close()
             self.leader = None
         if self.review_executor is not None:
-            self.review_executor.shutdown(wait=True, cancel_futures=True)
             self.review_executor = None
 
     def _schedule(self):
@@ -282,7 +281,7 @@ class RoutePipeline:
             if current["status"] not in ACTIVE_STATES:
                 return
             current = self._transition(job["id"], "evaluating", checkpoint=checkpoint)
-            pool = self.review_executor.submit(
+            pool = self.review_executor.run(
                 review_job,
                 job["id"],
                 str(directory),
@@ -290,7 +289,8 @@ class RoutePipeline:
                 request.min_routes,
                 request.max_routes,
                 self.stock.summary["catalog_sha256"],
-            ).result()
+                interrupted=lambda: self.stop_event.is_set() or cancelled(),
+            )
             if self.verifier is None:
                 raise EngineUnavailable("route_verification_not_configured", recoverable=False)
             pool = self.verifier.review(
