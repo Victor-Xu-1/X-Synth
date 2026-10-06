@@ -154,6 +154,10 @@ HISTORY_FILES = {
     "packages/orchestrator/job_history.py",
     "packages/orchestrator/job_history_schema.py",
 }
+SEARCH_ROUND_FILES = {
+    "packages/orchestrator/pipeline.py",
+    "packages/orchestrator/search_progress.py",
+}
 PERFORMANCE_FILES = {"packages/platform/performance.py"}
 SEARCH_PROJECTION_FILES = {
     "packages/adapters/askcos/route_reachability.py",
@@ -221,7 +225,11 @@ CHEMICAL_FILE_TESTS = {
 }
 WEB_BUILD_FILES = {WEB + name for name in ("index.html", "vite.config.js")}
 WEB_TEST_TOOLING = {WEB + "jest.config.js"}
-FRONTEND_API_TESTS = {SOURCE + "composables/useTemplateSearch.test.js"}
+FRONTEND_API_TESTS = {
+    SOURCE + "composables/useTemplateSearch.test.js",
+    SOURCE + "views/assessment/Assessment.test.js",
+    SOURCE + "views/process/Process.test.js",
+}
 SOURCE_EXTENSIONS = analysis.SOURCE_EXTENSIONS
 ASSET_EXTENSIONS = {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico"}
 # These tests scan source without importing it; other literal file reads are
@@ -254,6 +262,7 @@ def guard_paths(paths: set[str]) -> None:
             | PRICING_FILES
             | PERFORMANCE_FILES
             | SEARCH_PROJECTION_FILES
+            | SEARCH_ROUND_FILES
             | {
                 PYTHON_LOCK,
                 "VERSION",
@@ -434,6 +443,13 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
             "tests/unit/test_route_lifecycle.py",
             "tests/unit/test_operations_scripts.py",
         })
+    if roots & SEARCH_ROUND_FILES:
+        selected.update({
+            "tests/unit/test_search_progress.py",
+            "tests/unit/test_job_repository.py",
+            "tests/unit/test_route_lifecycle.py",
+            "tests/unit/test_askcos_adapter.py",
+        })
     if roots & CHEMICAL_FILE_FILES:
         selected.update(CHEMICAL_FILE_TESTS)
     if roots & CI_FILES:
@@ -584,15 +600,14 @@ def frontend_tests(before, after, paths: set[str]) -> tuple[list[str], dict]:
                 name = analysis.npm_package(specifier)
                 if name in importers:
                     importers[name].add(owner)
-    # One direct production dependency layer, not the entire downstream tree.
-    # Reverse traversal below still covers indirect consumers of changed code.
+    # Test unchanged direct helpers without pulling in their sibling consumers.
+    # Reverse traversal below covers all indirect consumers of actual changes.
     direct = {
         dependency
         for owner in roots
         if not owner.endswith(".test.js")
         for dependency in current_graph.get(owner, ())
     }
-    roots.update(direct)
     old_manifest = (
         json.loads(before.text(WEB + "package.json"))["dependencies"]
         if dependencies
@@ -621,6 +636,10 @@ def frontend_tests(before, after, paths: set[str]) -> tuple[list[str], dict]:
     selected = {
         path for path in reached if path.endswith(".test.js") and path in after.files
     }
+    for dependency in direct:
+        paired_test = str(PurePosixPath(dependency).with_suffix(".test.js"))
+        if paired_test in after.files and paired_test in inverse[dependency]:
+            selected.add(paired_test)
     for test, prefixes in SOURCE_READERS.items():
         if test in after.files and any(root.startswith(prefixes) for root in roots):
             selected.add(test)

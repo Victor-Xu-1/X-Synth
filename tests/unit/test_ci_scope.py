@@ -107,7 +107,7 @@ def test_workspace_profile_accepts_explicitly_scoped_paths(path):
 @pytest.mark.parametrize(
     "path",
     [
-        "packages/orchestrator/pipeline.py",
+        "packages/orchestrator/unmapped_pipeline.py",
         "apps/askcos-v2/askcos2_core/api.py",
         ".github/workflows/deploy.yml",
         "tests/unit/conftest.py",
@@ -417,6 +417,32 @@ def test_deleted_component_does_not_expand_into_its_retired_helper_tree(
         dependencies, "parse_frontend", lambda item: old if item is before else new
     )
     assert profile.frontend_tests(before, after, {component})[0] == []
+
+
+def test_unchanged_shared_helper_does_not_select_sibling_consumers(tmp_path, monkeypatch):
+    component = profile.SOURCE + "views/workspace/TaskDetail.vue"
+    shared = profile.SOURCE + "common/api.js"
+    sibling = profile.SOURCE + "views/optimization/Optimization.vue"
+    direct_test = profile.SOURCE + "common/api.test.js"
+    sibling_test = profile.SOURCE + "views/optimization/Optimization.test.js"
+    files = {path: "pass" for path in (component, shared, sibling, direct_test, sibling_test)}
+    item = snapshot(tmp_path, files)
+    records = {
+        component: record(["@/common/api"]), sibling: record(["@/common/api"]),
+        direct_test: record(["./api"]),
+        sibling_test: record(["./Optimization.vue", "@/common/api"]),
+    }
+    monkeypatch.setattr(dependencies, "parse_frontend", lambda _: records)
+    assert profile.frontend_tests(item, item, {component})[0] == [direct_test]
+    assert profile.frontend_tests(item, item, {shared})[0] == sorted([direct_test, sibling_test])
+
+
+def test_frontend_real_python_consumers_prepare_product_dependencies():
+    assert {
+        profile.SOURCE + "views/assessment/Assessment.test.js",
+        profile.SOURCE + "views/process/Process.test.js",
+        profile.SOURCE + "composables/useTemplateSearch.test.js",
+    } <= profile.FRONTEND_API_TESTS
 
 
 def test_source_reader_literals_cover_auxiliary_views_and_nonpaired_store_tests():

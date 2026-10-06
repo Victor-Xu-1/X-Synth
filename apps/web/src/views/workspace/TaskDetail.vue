@@ -61,26 +61,11 @@
     >
       {{ error || actionError }}
     </div>
-    <div v-if="active" class="task-progress-band" role="status">
-      <v-progress-linear indeterminate height="2" />
-      <details class="task-search-progress">
-        <summary>{{ taskStateLabel(job.status) }} · 搜索进度</summary>
-        <p
-          v-for="(value, name) in job.progress?.native_progress || {}"
-          :key="name"
-        >
-          {{
-            name === "mcts"
-              ? "树搜索"
-              : name === "retro_star"
-                ? "启发式搜索"
-                : name
-          }}
-          · {{ value.iterations ?? 0 }} 次扩展 ·
-          {{ value.chemicals ?? 0 }} 个化合物
-        </p>
-      </details>
-    </div>
+    <TaskSearchProgress
+      v-if="job && (!candidates.length || active)"
+      :job="job"
+      :compact="candidates.length > 0"
+    />
     <RouteReader
       v-if="candidates.length"
       v-model:selected-route="selectedId"
@@ -92,7 +77,7 @@
       can-edit
       @edit="edit"
     />
-    <div v-else class="workspace-empty" role="status">
+    <div v-else-if="!job" class="workspace-empty" role="status">
       <v-progress-circular v-if="loading || active" indeterminate size="24" />
       <v-icon v-else icon="mdi-source-branch" size="32" />
       <h2>
@@ -109,14 +94,9 @@
       <span v-if="job" class="workspace-muted">{{
         taskStateLabel(job.status)
       }}</span>
-      <v-btn
-        v-if="job && !active"
-        prepend-icon="mdi-magnify"
-        variant="outlined"
-        :disabled="mutating"
-        @click="rerun"
-        >重新搜索</v-btn
-      >
+    </div>
+    <div v-if="job && !active && !candidates.length" class="task-detail-heading">
+      <v-btn prepend-icon="mdi-magnify" variant="outlined" :disabled="mutating" @click="rerun">重新搜索</v-btn>
     </div>
     <TaskInfoDialog
       v-model="infoOpen"
@@ -144,6 +124,7 @@ import { originalRouteIndex, taskIdentifier } from "@/common/route-details";
 import { buildTaskSearchLocation } from "@/common/task-history-view";
 import RouteReader from "@/components/routes/RouteReader.vue";
 import TaskInfoDialog from "@/components/workspace/TaskInfoDialog.vue";
+import TaskSearchProgress from "@/components/workspace/TaskSearchProgress.vue";
 const route = useRoute(),
   router = useRouter();
 const job = ref(null),
@@ -335,17 +316,6 @@ onBeforeUnmount(() => {
 .task-detail-message {
   padding: 10px 20px;
   overflow-wrap: anywhere;
-}
-.task-search-progress {
-  padding: 10px 20px;
-  font-size: 12px;
-  color: var(--ws-muted);
-}
-summary {
-  cursor: pointer;
-}
-p {
-  margin-top: 6px;
 }
 .workspace-empty {
   min-height: 420px;

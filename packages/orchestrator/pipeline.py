@@ -25,6 +25,7 @@ from .job_repository import ACTIVE_STATES, JobConflict, JobRepository
 from .review_worker import review_job
 from .route_request import RouteJobRequest
 from .runtime_health import route_runtime_status
+from .search_progress import begin_search_round
 
 
 class RoutePipeline:
@@ -159,7 +160,11 @@ class RoutePipeline:
             values.pop("expected_revision", None)
             if "checkpoint" in values:
                 values["checkpoint"] = {**current["checkpoint"], **values["checkpoint"]}
-                if "native_progress" in current["checkpoint"]:
+                if (
+                    "native_progress" in current["checkpoint"]
+                    and values["checkpoint"].get("pass_number", 1)
+                    == current["checkpoint"].get("pass_number", 1)
+                ):
                     values["checkpoint"]["native_progress"] = current["checkpoint"][
                         "native_progress"
                     ]
@@ -208,6 +213,9 @@ class RoutePipeline:
                 for strategy in request.strategies
                 if f"{pass_number}:{strategy}" not in completed
             ]
+            if not searches and pass_number < checkpoint.get("pass_number", 1):
+                continue
+            checkpoint = begin_search_round(checkpoint, pass_number)
             for strategy in searches:
                 key = f"{pass_number}:{strategy}"
                 children.setdefault(
