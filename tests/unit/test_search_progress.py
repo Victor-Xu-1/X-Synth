@@ -239,5 +239,8 @@ def test_resume_dispatches_current_round_without_retrying_failed_old_round(
     assert current["status"] == "searching"
     assert current["request"] == case.original_request
     assert current["summary"] == case.summary
-    assert current["checkpoint"] == case.checkpoint
+    from packages.orchestrator.review_policy import REVIEW_POLICY
+    assert current["checkpoint"] == {
+        **case.checkpoint, "review_policy": REVIEW_POLICY, "search_feedback": {"2": []},
+    }
     assert {path: path.read_bytes() for path in case.protected} == case.protected

@@ -1,0 +1,27 @@
+{
+  "provenance": {
+    "kind": "captured_real_model_output",
+    "captured_at": "2026-10-06T05:33:28.379018+00:00",
+    "model": "graph2smiles_uspto_stereo",
+    "source_revision": "41db4275b6ce0d372eceb00b45d1cee36ba284de",
+    "subset": "first two ranked products"
+  },
+  "result": {
+    "reactants": "CNC(=O)c1cc(Oc2ccc(N)cc2)ccn1.O=C=Nc1ccc(Cl)c(C(F)(F)F)c1",
+    "products": [
+      {
+        "product": "CNC(=O)c1cc(Oc2ccc(NC(=O)Nc3ccc(Cl)c(C(F)(F)F)c3)cc2)ccn1",
+        "log_probability": -0.004063321277499199,
+        "feasibility_score": 0.9999993443489075
+      },
+      {
+        "product": "NC(=O)c1cc(Oc2ccc(NC(=O)Nc3ccc(Cl)c(C(F)(F)F)c3)cc2)ccn1",
+        "log_probability": -5.732532024383545,
+        "feasibility_score": 0.9997866153717041
+      }
+    ],
+    "model": "graph2smiles_uspto_stereo",
+    "asset_identity": "e5bde90a4cb2485408358cc39f1b7405780f20f2336a3580fbb60d4100a1fdd1",
+    "evidence_type": "model_prediction"
+  }
+}

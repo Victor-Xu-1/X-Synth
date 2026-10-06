@@ -16,6 +16,10 @@ from packages.orchestrator.job_repository import JobRepository
 from packages.orchestrator.pipeline import RoutePipeline
 from packages.orchestrator.route_request import RouteJobRequest
 from packages.orchestrator.runtime_health import route_runtime_status
+from packages.orchestrator.route_verification import RouteVerifier
+from packages.orchestrator.verification_cache import model_epoch
+from packages.adapters.askcos.forward import ForwardAdapter
+from packages.knowledge_base.reaction_evidence import ReactionEvidenceService
 from packages.platform.performance import PerformanceBudget, PerformanceTargets
 from packages.platform.resource_metrics import runtime_resources
 from packages.platform.cgroup_metrics import memory_pressure_warning, product_cgroup_memory
@@ -72,6 +76,15 @@ def create_app(
         os.environ.get("X_SYNTH_ASKCOS_URL", "http://127.0.0.1:9100"), budget=budget
     )
     artifacts = state_root / "routes"
+    forward_url = os.environ.get("X_SYNTH_FORWARD_URL", "http://127.0.0.1:9911")
+    filter_url = os.environ.get("X_SYNTH_FAST_FILTER_URL", "http://127.0.0.1:9611")
+    verifier = RouteVerifier(
+        forward=ForwardAdapter(forward_url, filter_url), analyses=analyses,
+        run_analysis=run_analysis,
+        references=ReactionEvidenceService(transport, os.environ.get("X_SYNTH_REACTION_LIBRARY_DB")),
+        epoch=lambda: model_epoch(state_root / "native/runtime.json", build["revision"], forward_url, filter_url),
+        max_atoms=budget.max_structure_atoms,
+    )
     pipeline = None
     try:
         stock = StockIndex(os.environ["X_SYNTH_STOCK_INDEX"])
@@ -89,6 +102,7 @@ def create_app(
             artifact_root=artifacts,
             models=models,
             budget=budget,
+            verifier=verifier,
         )
     except (KeyError, StockIndexError):
         stock = None

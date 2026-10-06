@@ -13,7 +13,7 @@ class AskcosSearchResult:
 
 
 def build_search_options(
-    request, *, strategy: str, models: list[str], pass_number: int = 1
+    request, *, strategy: str, models: list[str], pass_number: int = 1, rejected_reactions=None
 ):
     if strategy not in {"mcts", "retro_star"} or not models:
         raise ValueError("A configured native search strategy and model are required")
@@ -60,6 +60,8 @@ def build_search_options(
     }
     if strategy == "retro_star":
         options["build_tree_options"]["use_value_network"] = True
+    if rejected_reactions:
+        options["expand_one_options"]["banned_reactions"] = sorted(set(rejected_reactions))
     return options
 
 
@@ -80,9 +82,11 @@ class AskcosEngine:
         cancelled=lambda: False,
         interrupted: Event | None = None,
         progress=lambda value: None,
+        rejected_reactions=None,
     ):
         options = build_search_options(
-            request, strategy=strategy, models=models, pass_number=pass_number
+            request, strategy=strategy, models=models, pass_number=pass_number,
+            rejected_reactions=rejected_reactions,
         )
         expansion = request.expansion_time
         port = 9311 if strategy == "mcts" else 9321
