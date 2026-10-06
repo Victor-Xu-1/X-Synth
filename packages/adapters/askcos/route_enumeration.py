@@ -1,6 +1,7 @@
 """Lazy native route projection without caching failed path combinations."""
 
-from itertools import islice
+from collections import deque
+from itertools import chain, islice
 from uuid import uuid4
 
 import networkx as nx
@@ -9,7 +10,25 @@ import networkx as nx
 def enumerate_route_graphs(
     tree, root, root_uuid, max_depth=None, max_trees=None, validate_paths=True,
 ):
-    """Retain native ordering and path limits; assign IDs only to yielded routes."""
+    """Balance root branches within native limits; assign IDs only on yield."""
+    def interleave(streams):
+        pending = deque(streams)
+        while pending:
+            stream = pending.popleft()
+            try:
+                branch = next(stream)
+            except StopIteration:
+                continue
+            yield branch
+            pending.append(stream)
+
+    def reaction_paths(node, reaction, ancestors):
+        precursors = tuple(tree.successors(reaction))
+        if not precursors or set(precursors) & {*ancestors, node}:
+            return
+        for combination in precursor_paths(precursors, ancestors + (node,)):
+            yield node, ((reaction, combination),)
+
     def chemical_paths(node, ancestors):
         terminal = tree.nodes[node].get("terminal") is True
         at_depth_limit = max_depth is not None and len(ancestors) >= max_depth
@@ -17,16 +36,15 @@ def enumerate_route_graphs(
             if terminal or not validate_paths:
                 yield node, ()
             return
-        count = 0
-        for reaction in tree.successors(node):
-            precursors = tuple(tree.successors(reaction))
-            if not precursors or set(precursors) & {*ancestors, node}:
-                continue
-            for combination in precursor_paths(precursors, ancestors + (node,)):
-                if max_trees is not None and count >= max_trees:
-                    return
-                count += 1
-                yield node, ((reaction, combination),)
+        streams = (
+            reaction_paths(node, reaction, ancestors)
+            for reaction in tree.successors(node)
+        )
+        alternatives = (
+            interleave(streams) if node == root and not ancestors
+            else chain.from_iterable(streams)
+        )
+        yield from islice(alternatives, max_trees)
 
     def precursor_paths(precursors, ancestors):
         if not precursors:

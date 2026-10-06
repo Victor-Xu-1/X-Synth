@@ -55,3 +55,36 @@ def test_quote_only_terminals_are_closed_without_fabricating_price():
     route = next(enumerate_route_graphs(tree, "target", "root"))
     assert route.graph["precursor_cost"] is None
     assert route.nodes[next(node for node, degree in route.out_degree() if degree == 0)]["terminal"] is True
+
+
+def test_root_branches_are_not_lost_to_first_branch_combinations():
+    tree = graph(
+        [("target", "r:first"), ("r:first", "a")]
+        + [("a", f"r:variant{i}") for i in range(100)]
+        + [(f"r:variant{i}", "stock") for i in range(100)]
+        + [("target", "r:second"), ("r:second", "stock")]
+        + [("target", "r:third"), ("r:third", "stock")],
+        {"stock"},
+    )
+    before = nx.node_link_data(tree, edges="links")
+    routes = list(enumerate_route_graphs(tree, "target", "root", max_trees=3))
+    steps = [route.nodes[next(route.successors("root"))]["smiles"] for route in routes]
+    assert steps == ["r:first", "r:second", "r:third"]
+    assert nx.node_link_data(tree, edges="links") == before
+    assert all(nx.is_directed_acyclic_graph(route) for route in routes)
+    assert len(list(enumerate_route_graphs(tree, "target", "root", max_trees=1))) == 1
+    longer = list(enumerate_route_graphs(tree, "target", "root", max_trees=5))
+    assert [route.nodes[next(route.successors("root"))]["smiles"] for route in longer] == [
+        "r:first", "r:second", "r:third", "r:first", "r:first",
+    ]
+
+
+def test_empty_first_root_branch_does_not_block_closed_alternatives():
+    tree = graph(
+        [("target", "r:empty"), ("r:empty", "unclosed")]
+        + [("target", "r:closed"), ("r:closed", "stock")],
+        {"stock"},
+    )
+    routes = list(enumerate_route_graphs(tree, "target", "root", max_trees=2))
+    assert len(routes) == 1
+    assert routes[0].nodes[next(routes[0].successors("root"))]["smiles"] == "r:closed"
