@@ -95,6 +95,11 @@
         >
       </div>
     </div>
+    <RouteReviewSummary
+      v-if="candidate && view !== 'overview'"
+      class="reader-review-summary"
+      :candidate="candidate"
+    />
     <p v-if="exportError" class="reader-error tool-error" role="alert">
       {{ exportError }}
     </p>
@@ -124,6 +129,7 @@
           @choose="openRoute"
           @edit="$emit('edit', $event)"
         />
+        <RouteReviewSummary :candidate="choice.route" />
       </div>
     </div>
     <div v-else-if="candidate" class="reader-detail-body">
@@ -257,6 +263,7 @@ import RouteStepList from "./RouteStepList.vue";
 import RouteConditions from "./RouteConditions.vue";
 import RouteMaterials from "./RouteMaterials.vue";
 import RouteEvidencePanel from "./RouteEvidencePanel.vue";
+import RouteReviewSummary from "./RouteReviewSummary.vue";
 import { useRouteCatalogPrices } from "@/composables/useRouteCatalogPrices";
 const readerTools = [
   { value: "graph", label: "路线图", icon: "mdi-graph-outline" },
@@ -497,6 +504,9 @@ onBeforeUnmount(() => {
 .reader-route-summary > .page-actions {
   margin-left: auto;
 }
+.route-reader > .reader-review-summary {
+  padding: 8px 20px;
+}
 .reader-route-overviews {
   padding: 16px 20px;
   background: var(--ws-canvas, #f3f5f6);
@@ -522,6 +532,9 @@ onBeforeUnmount(() => {
   grid-column: 2;
   min-width: 0;
   width: 100%;
+}
+.reader-overview-entry > :deep(.route-review-summary) {
+  grid-column: 1 / -1;
 }
 .reader-detail-body {
   display: grid;
@@ -613,6 +626,9 @@ summary {
   .reader-evidence {
     padding: 12px;
     gap: 10px;
+  }
+  .route-reader > .reader-review-summary {
+    padding: 8px 12px;
   }
   .reader-route-overviews {
     padding: 10px;

@@ -4,6 +4,7 @@ from fastapi import HTTPException
 
 from packages.workspace.history_projection import historical_routes
 from packages.chemistry.material_scope import stored_route_scope_exclusions
+from packages.orchestrator.review_policy import REVIEW_POLICY
 
 
 def history_metadata(job: dict) -> dict:
@@ -77,7 +78,7 @@ def public_summary(value):
     return value
 
 
-def selected_route_data(path, *, budget):
+def selected_route_data(path, *, budget, job=None):
     if not path.is_file():
         return []
     if path.stat().st_size > budget.response_bytes:
@@ -91,6 +92,11 @@ def selected_route_data(path, *, budget):
         raise HTTPException(409, "路线结果结构损坏，需要重新计算。") from exc
     if outside_scope:
         raise HTTPException(409, "旧候选超出当前物料范围，需要重新审查或搜索。")
+    if job and (job.get("checkpoint") or {}).get("review_policy") == REVIEW_POLICY and any(
+        route.get("metadata", {}).get("full_forward_prediction_validated") is not True
+        for route in selected
+    ):
+        raise HTTPException(409, "独立正向核验尚未完成，路线不能作为已核验结果发布。")
     return selected
 
 
@@ -131,7 +137,7 @@ def route_result(job, *, artifacts, budget):
             )
         return document
     path = artifacts / job["id"] / "selected_routes.json"
-    selected = selected_route_data(path, budget=budget)
+    selected = selected_route_data(path, budget=budget, job=job)
     return {
         "result_id": job["id"],
         "target_smiles": job["request"]["smiles"],

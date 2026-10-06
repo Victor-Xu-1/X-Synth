@@ -104,7 +104,7 @@ def job_router(*, repository, transport, readiness, artifacts: Path, budget):
         job = owned(request, job_id)
         path = artifacts / job["id"] / "selected_routes.json"
         return {
-            "routes": selected_route_data(path, budget=budget),
+            "routes": selected_route_data(path, budget=budget, job=job),
             "status": job["status"],
         }
 

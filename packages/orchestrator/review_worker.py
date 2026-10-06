@@ -36,4 +36,5 @@ def review_job(
         max_routes=maximum,
         stock_registry=IndexedCommercialStockRegistry(StockIndex(stock_path)),
         route_transform=validate_native_routes,
+        publish_artifacts=False,
     )

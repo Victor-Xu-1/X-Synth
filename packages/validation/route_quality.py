@@ -18,6 +18,7 @@ class RouteQualityDecision:
 
 @dataclass(frozen=True)
 class RouteQualityPolicy:
+    require_full_forward_validation: bool = False
     max_steps: int = 20
     ultra_low_confidence_threshold: float = 0.05
     min_first_step_confidence: float = 0.05
@@ -101,6 +102,8 @@ class RouteQualityPolicy:
             forward_validation_min_score = float(raw_forward_score)
         if route.metadata.get("forward_validation_passed") is False:
             reasons.append("forward_validation_failed")
+        if self.require_full_forward_validation and route.metadata.get("full_forward_prediction_validated") is not True:
+            reasons.append("full_forward_validation_required")
 
         recursive_atom_growth = 0
         graft = route.metadata.get("recursive_graft")

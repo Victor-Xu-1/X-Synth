@@ -58,6 +58,7 @@ def build_unified_route_pool_artifacts(
         list[RouteCandidate],
     ]
     | None = None,
+    publish_artifacts: bool = True,
 ) -> UnifiedRoutePoolBuildResult:
     output_dir.mkdir(parents=True, exist_ok=True)
     effective_quality_policy = quality_policy or RouteQualityPolicy()
@@ -122,6 +123,15 @@ def build_unified_route_pool_artifacts(
             }
         )
 
+    return publish_route_pool_artifacts(
+        id=id, output_dir=output_dir, pool=pool, source_summaries=source_summaries,
+        publish_artifacts=publish_artifacts,
+    )
+
+
+def publish_route_pool_artifacts(*, id, output_dir, pool, source_summaries, publish_artifacts=True):
+    effective_quality_policy = pool.quality_policy or RouteQualityPolicy()
+    min_routes, max_routes = pool.min_routes, pool.max_routes
     all_routes = pool.ranked_routes()
     selected_routes = pool.final_candidates()
     quality_decisions = [
@@ -141,8 +151,9 @@ def build_unified_route_pool_artifacts(
     selected_routes_path = output_dir / "selected_routes.json"
     summary_path = output_dir / "summary.json"
 
-    write_json(unified_routes_path, [asdict(route) for route in all_routes])
-    write_json(selected_routes_path, [asdict(route) for route in selected_routes])
+    if publish_artifacts:
+        write_json(unified_routes_path, [asdict(route) for route in all_routes])
+        write_json(selected_routes_path, [asdict(route) for route in selected_routes])
 
     summary = {
         "id": id,
@@ -177,7 +188,8 @@ def build_unified_route_pool_artifacts(
         "unified_routes_path": str(unified_routes_path),
         "selected_routes_path": str(selected_routes_path),
     }
-    write_json(summary_path, summary)
+    if publish_artifacts:
+        write_json(summary_path, summary)
 
     return UnifiedRoutePoolBuildResult(
         summary=summary,

@@ -156,6 +156,11 @@ HISTORY_FILES = {
     "packages/orchestrator/job_history_schema.py",
 }
 SEARCH_ROUND_FILES = {
+    "packages/orchestrator/review_worker.py",
+    "packages/orchestrator/review_policy.py",
+    "packages/orchestrator/route_verification.py",
+    "packages/orchestrator/verification_cache.py",
+    "packages/route_pool/workflow.py",
     "packages/orchestrator/pipeline.py",
     "packages/orchestrator/search_progress.py",
     "packages/orchestrator/route_request.py",
@@ -196,6 +201,7 @@ REFERENCE_FILES = {
     "apps/askcos-v2/askcos2_core/utils/draw_impl.py",
 }
 REACTION_FIXTURES = {
+    "tests/fixtures/askcos/forward_sorafenib_result.json",
     "tests/fixtures/reactions/ord-astra-zeneca.json",
     "tests/fixtures/reactions/ord-inchi-tautomer.json",
     "tests/fixtures/reactions/README.md",
@@ -461,6 +467,7 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
         })
     if roots & SEARCH_ROUND_FILES:
         selected.update({
+            "tests/unit/test_route_verification.py",
             "tests/unit/test_search_progress.py",
             "tests/unit/test_job_repository.py",
             "tests/unit/test_route_lifecycle.py",

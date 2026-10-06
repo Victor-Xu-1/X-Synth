@@ -26,6 +26,7 @@ from .review_worker import review_job
 from .route_request import RouteJobRequest
 from .runtime_health import route_runtime_status
 from .search_progress import begin_search_round, remaining_search_rounds
+from .review_policy import REVIEW_POLICY, upgrade_review_checkpoint
 from packages.chemistry.material_scope import POLICY as MATERIAL_SCOPE_POLICY
 
 
@@ -39,6 +40,7 @@ class RoutePipeline:
         artifact_root: Path,
         models: list[str],
         budget: PerformanceBudget,
+        verifier=None,
     ):
         self.repository, self.engine, self.stock = repository, engine, stock
         self.artifact_root, self.models, self.budget = (
@@ -51,6 +53,7 @@ class RoutePipeline:
         self.leader = None
         self.state_lock = Lock()
         self.review_executor = None
+        self.verifier = verifier
 
     def start(self):
         if self.thread is not None and self.thread.is_alive():
@@ -183,15 +186,14 @@ class RoutePipeline:
             "stock_snapshot": self.stock.summary["source_sha256"],
             "models": self.models,
             "catalog_sha256": self.stock.summary["catalog_sha256"],
-            "review_policy": "exact_stock_template_reconstruction_target_bond_families_v1",
+            "review_policy": REVIEW_POLICY,
         }
-        if checkpoint and any(
-            checkpoint.get(key) != value for key, value in identity.items()
-        ):
+        try:
+            checkpoint = upgrade_review_checkpoint(checkpoint, identity)
+        except ValueError as exc:
             raise EngineUnavailable(
                 "checkpoint_asset_identity_changed", recoverable=False
-            )
-        checkpoint = {**identity, **checkpoint}
+            ) from exc
         completed = set(checkpoint.get("completed_searches", []))
         for file in sorted(directory.glob("native-*.json")):
             data = json.loads(file.read_text(encoding="utf-8"))
@@ -208,6 +210,11 @@ class RoutePipeline:
             if current["status"] not in ACTIVE_STATES:
                 return
             children = checkpoint.setdefault("children", {})
+            feedback = checkpoint.setdefault("search_feedback", {})
+            key = str(pass_number)
+            if key not in feedback:
+                previously_submitted = any(f"{pass_number}:{strategy}" in children for strategy in request.strategies)
+                feedback[key] = [] if previously_submitted else checkpoint.get("rejected_reactions", [])
             failures = []
             searches = [
                 strategy
@@ -233,6 +240,7 @@ class RoutePipeline:
                         models=self.models,
                         child_id=children[f"{pass_number}:{strategy}"],
                         pass_number=pass_number,
+                        **({"rejected_reactions": feedback[str(pass_number)]} if feedback[str(pass_number)] else {}),
                         cancelled=cancelled,
                         interrupted=self.stop_event,
                         progress=lambda value, key=strategy: self._progress(
@@ -278,6 +286,22 @@ class RoutePipeline:
                 request.min_routes,
                 request.max_routes,
             ).result()
+            if self.verifier is None:
+                raise EngineUnavailable("route_verification_not_configured", recoverable=False)
+            pool = self.verifier.review(
+                pool, owner=job["owner"], minimum=request.min_routes,
+                maximum=request.max_routes, plausibility=request.tuning.minimum_plausibility,
+                directory=directory, interrupted=lambda: self.stop_event.is_set() or cancelled(),
+                progress=lambda value: self._transition(
+                    job["id"], "evaluating", checkpoint={"verification_progress": value}
+                ),
+            )
+            checkpoint["rejected_reactions"] = sorted(set(
+                checkpoint.get("rejected_reactions", [])
+                + [step.reaction_smiles for route in pool.all_routes for step in route.steps
+                   if any(row["step_id"] == step.step_id and not row["matched"]
+                          for row in route.metadata.get("automated_review", {}).get("forward", {}).get("records", []))]
+            ))
             summary = {
                 **pool.summary,
                 "stock_snapshot": self.stock.summary,
@@ -290,7 +314,7 @@ class RoutePipeline:
                     }
                     for source in sources
                 ],
-                "review_policy": "exact_stock_template_reconstruction_target_bond_families_v1",
+                "review_policy": REVIEW_POLICY,
                 "strategy_errors": [error.code for error in failures],
                 "material_scope_policy": MATERIAL_SCOPE_POLICY,
             }
