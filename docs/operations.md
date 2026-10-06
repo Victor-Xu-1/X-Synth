@@ -242,6 +242,11 @@ python -m scripts.operations.recover_native_projection \
 成功 dry-run 后使用同一命令追加 `--apply`，启动服务并通过上述 resume API 恢复。
 恢复不会清零已用搜索时间，也不会重新提交已完成策略；备份和恢复凭据留在外部私有状态目录。
 
+轮次在提交该轮子任务前保存。第二轮只清空即时进度计数，不丢弃第一轮原始输出；
+同轮恢复保留已观测进度，也不重新显示已完成的前一轮。任务详情在搜索、等待和空路线
+状态仍展示实际目标结构；“等待恢复”不显示正在计算的进度条。环境监测同时展示 RSS
+和产品进程组当前/峰值/上限内存，便于区分常驻模型与内存失控。
+
 旧历史由 scripts.data_import.import_askcos_history 显式导入指定 owner，幂等且不改写
 原库。legacy_completed/legacy_incomplete 不自动重跑，不代表新的商业闭合审查。
 私人结果默认不能分享。

@@ -154,6 +154,10 @@ HISTORY_FILES = {
     "packages/orchestrator/job_history.py",
     "packages/orchestrator/job_history_schema.py",
 }
+SEARCH_ROUND_FILES = {
+    "packages/orchestrator/pipeline.py",
+    "packages/orchestrator/search_progress.py",
+}
 PERFORMANCE_FILES = {"packages/platform/performance.py"}
 SEARCH_PROJECTION_FILES = {
     "packages/adapters/askcos/route_reachability.py",
@@ -254,6 +258,7 @@ def guard_paths(paths: set[str]) -> None:
             | PRICING_FILES
             | PERFORMANCE_FILES
             | SEARCH_PROJECTION_FILES
+            | SEARCH_ROUND_FILES
             | {
                 PYTHON_LOCK,
                 "VERSION",
@@ -434,6 +439,13 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
             "tests/unit/test_route_lifecycle.py",
             "tests/unit/test_operations_scripts.py",
         })
+    if roots & SEARCH_ROUND_FILES:
+        selected.update({
+            "tests/unit/test_search_progress.py",
+            "tests/unit/test_job_repository.py",
+            "tests/unit/test_route_lifecycle.py",
+            "tests/unit/test_askcos_adapter.py",
+        })
     if roots & CHEMICAL_FILE_FILES:
         selected.update(CHEMICAL_FILE_TESTS)
     if roots & CI_FILES:
@@ -584,15 +596,14 @@ def frontend_tests(before, after, paths: set[str]) -> tuple[list[str], dict]:
                 name = analysis.npm_package(specifier)
                 if name in importers:
                     importers[name].add(owner)
-    # One direct production dependency layer, not the entire downstream tree.
-    # Reverse traversal below still covers indirect consumers of changed code.
+    # Test unchanged direct helpers without pulling in their sibling consumers.
+    # Reverse traversal below covers all indirect consumers of actual changes.
     direct = {
         dependency
         for owner in roots
         if not owner.endswith(".test.js")
         for dependency in current_graph.get(owner, ())
     }
-    roots.update(direct)
     old_manifest = (
         json.loads(before.text(WEB + "package.json"))["dependencies"]
         if dependencies
@@ -621,6 +632,10 @@ def frontend_tests(before, after, paths: set[str]) -> tuple[list[str], dict]:
     selected = {
         path for path in reached if path.endswith(".test.js") and path in after.files
     }
+    selected.update(
+        test for dependency in direct for test in inverse[dependency]
+        if test.endswith(".test.js") and test in after.files
+    )
     for test, prefixes in SOURCE_READERS.items():
         if test in after.files and any(root.startswith(prefixes) for root in roots):
             selected.add(test)

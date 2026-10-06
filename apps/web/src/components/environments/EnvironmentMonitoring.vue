@@ -26,12 +26,18 @@
         </dd>
       </div>
     </dl>
+    <dl class="monitor-metrics" aria-label="产品进程组内存">
+      <div><dt>进程组当前内存</dt><dd>{{ memoryText(snapshot.runtime?.resources?.cgroup?.memory_current_bytes) }}</dd></div>
+      <div><dt>进程组峰值内存</dt><dd>{{ memoryText(snapshot.runtime?.resources?.cgroup?.memory_peak_bytes) }}</dd></div>
+      <div><dt>进程组内存上限</dt><dd>{{ memoryText(snapshot.runtime?.resources?.cgroup?.memory_max_bytes) }}</dd></div>
+      <div><dt>内存耗尽次数</dt><dd>{{ count(snapshot.runtime?.resources?.cgroup?.events?.oom_kill) }}</dd></div>
+    </dl>
     <div
       v-if="snapshot.runtime?.memory_warning"
       class="tool-error"
       role="status"
     >
-      原生进程内存超过运行预警预算。
+      产品进程组内存接近上限或原生进程内存超过运行预警预算。
     </div>
     <h2>引擎服务</h2>
     <div class="environment-services">
