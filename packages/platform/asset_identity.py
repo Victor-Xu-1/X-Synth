@@ -22,6 +22,7 @@ NATIVE_EXTERNAL_FILES = (
     "packages/adapters/askcos/native_search_protocol.py",
     "packages/adapters/askcos/native_service_limits.py",
     "packages/platform/native_search_contract.py",
+    "packages/platform/native_endpoints.py",
     "packages/chemistry/material_scope.py",
     "packages/adapters/askcos/catalog_pricer.py",
     "packages/adapters/stock/stock_index.py",

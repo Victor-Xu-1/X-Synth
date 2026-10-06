@@ -58,6 +58,7 @@ def test_asset_change_during_hashing_is_rejected(tmp_path, monkeypatch):
     "packages/adapters/askcos/native_search_protocol.py",
     "packages/adapters/askcos/native_service_limits.py",
     "packages/platform/native_search_contract.py",
+    "packages/platform/native_endpoints.py",
 ])
 def test_supporting_algorithm_source_changes_identity_without_rehashing_weights(tmp_path, monkeypatch, directory):
     """Tiny file identity controls; no model inference or provider is simulated."""
