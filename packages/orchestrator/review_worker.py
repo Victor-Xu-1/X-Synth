@@ -5,17 +5,19 @@ from pathlib import Path
 
 from packages.adapters.stock.stock_index import (
     IndexedCommercialStockRegistry,
-    StockIndex,
+    StockIndex, StockIndexError,
 )
+from packages.adapters.askcos.transport import EngineUnavailable
 from packages.route_pool.workflow import (
     AskcosRouteSource,
-    build_unified_route_pool_artifacts,
+    build_unified_route_pool,
 )
 from packages.validation.template_forward import validate_native_routes
 
 
 def review_job(
-    identifier: str, directory: str, stock_path: str, minimum: int, maximum: int
+    identifier: str, directory: str, stock_path: str, minimum: int, maximum: int,
+    expected_catalog_sha256: str,
 ):
     root = Path(directory)
     sources = []
@@ -28,13 +30,18 @@ def review_job(
                 engine="askcos_" + data["strategy"],
             )
         )
-    return build_unified_route_pool_artifacts(
-        id=identifier,
-        output_dir=root,
-        askcos_sources=sources,
-        min_routes=minimum,
-        max_routes=maximum,
-        stock_registry=IndexedCommercialStockRegistry(StockIndex(stock_path)),
-        route_transform=validate_native_routes,
-        publish_artifacts=False,
-    )
+    try:
+        stock = StockIndex(stock_path)
+        stock.assert_current(catalog_sha256=expected_catalog_sha256)
+        result = build_unified_route_pool(
+            id=identifier,
+            askcos_sources=sources,
+            min_routes=minimum,
+            max_routes=maximum,
+            stock_registry=IndexedCommercialStockRegistry(stock),
+            route_transform=validate_native_routes,
+        )
+        stock.assert_current(catalog_sha256=expected_catalog_sha256)
+        return result
+    except StockIndexError as exc:
+        raise EngineUnavailable("stock_snapshot_unavailable", recoverable=True) from exc

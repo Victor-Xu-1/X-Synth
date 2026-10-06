@@ -25,9 +25,10 @@ from packages.platform.resource_metrics import runtime_resources
 from packages.platform.cgroup_metrics import memory_pressure_warning, product_cgroup_memory
 from packages.platform.version import product_version, source_build
 from packages.workspace.analysis_repository import AnalysisRepository
+from packages.workspace.analysis_execution import analysis_runner
 from packages.workspace.route_repository import RouteDocumentRepository
 
-from .analysis_routes import analysis_router, analysis_runner
+from .analysis_routes import analysis_router
 from .assessment_routes import assessment_router, process_router
 from .condition_routes import condition_router
 from .data_routes import data_router
@@ -321,4 +322,3 @@ def create_app(
 
 
 UnifiedRouteRequestBody = RouteJobRequest
-app = create_app()

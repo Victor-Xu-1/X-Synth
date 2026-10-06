@@ -10,7 +10,7 @@ export const READING_NODE_SIZE = Object.freeze({
   reaction: Object.freeze({ width: 84, height: 96 }),
 });
 
-export function graphFromCandidate(route, nodeSize = ROUTE_NODE_SIZE) {
+export function topologyFromCandidate(route) {
   const sourceSteps = route.steps || [];
   const order = syntheticStepOrder(sourceSteps);
   const stepNumbers = new Map(
@@ -56,7 +56,24 @@ export function graphFromCandidate(route, nodeSize = ROUTE_NODE_SIZE) {
       target: molecule(step.product),
     });
   }
-  return layoutGraph({ nodes, edges, target_id }, nodeSize);
+  return { nodes, edges, target_id };
+}
+
+export function graphFromCandidate(route, nodeSize = ROUTE_NODE_SIZE) {
+  return layoutGraph(topologyFromCandidate(route), nodeSize);
+}
+
+export function prepareCandidateGraph(route, nodeSize = ROUTE_NODE_SIZE) {
+  const topology = topologyFromCandidate(route);
+  let graph;
+  return {
+    topology,
+    scores: predictionScores(route),
+    // Thumbnails defer layout until visible, then share it with the reader.
+    get graph() {
+      return (graph ??= layoutGraph(topology, nodeSize));
+    },
+  };
 }
 
 export function layoutGraph(value, nodeSize = ROUTE_NODE_SIZE) {

@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from packages.workspace.history_projection import historical_routes
 from packages.chemistry.material_scope import stored_route_scope_exclusions
 from packages.orchestrator.review_policy import REVIEW_POLICY
+from packages.orchestrator.route_artifacts import RouteArtifactError, RouteArtifactStore
 
 
 def history_metadata(job: dict) -> dict:
@@ -38,6 +39,7 @@ def job_response(job: dict) -> dict:
         "summary": summary,
         "progress": {"phase": job["status"], **job["checkpoint"]},
         "error_code": job["error_code"],
+        "result_snapshot": result_snapshot_identifier(job.get("checkpoint")),
         "public": False,
         "origin": summary.get("origin", "x_synth"),
         "stored_route_count": summary.get("stored_route_count", 0),
@@ -78,6 +80,11 @@ def public_summary(value):
     return value
 
 
+def result_snapshot_identifier(checkpoint):
+    pointer = (checkpoint or {}).get("published_result")
+    return pointer.get("snapshot_id") if isinstance(pointer, dict) else None
+
+
 def selected_route_data(path, *, budget, job=None):
     if not path.is_file():
         return []
@@ -95,6 +102,24 @@ def selected_route_data(path, *, budget, job=None):
     if job and (job.get("checkpoint") or {}).get("review_policy") == REVIEW_POLICY and any(
         route.get("metadata", {}).get("full_forward_prediction_validated") is not True
         for route in selected
+    ):
+        raise HTTPException(409, "独立正向核验尚未完成，路线不能作为已核验结果发布。")
+    return selected
+
+
+def selected_routes_for_job(job, *, artifacts, budget):
+    try:
+        selected = RouteArtifactStore(artifacts).read(job, limit=budget.response_bytes)
+    except RouteArtifactError as exc:
+        raise HTTPException(413 if exc.oversized else 409, "路线快照不可用或校验不一致，需要恢复原始结果。") from exc
+    except OSError as exc:
+        raise HTTPException(503, "路线快照暂时无法读取，请稍后重试。") from exc
+    if selected is None:
+        return selected_route_data(artifacts / job["id"] / "selected_routes.json", budget=budget, job=job)
+    if any(stored_route_scope_exclusions(route) for route in selected):
+        raise HTTPException(409, "候选超出当前物料范围，需要重新审查或搜索。")
+    if (job.get("checkpoint") or {}).get("review_policy") == REVIEW_POLICY and any(
+        route.get("metadata", {}).get("full_forward_prediction_validated") is not True for route in selected
     ):
         raise HTTPException(409, "独立正向核验尚未完成，路线不能作为已核验结果发布。")
     return selected
@@ -136,8 +161,7 @@ def route_result(job, *, artifacts, budget):
                 413, "Historical route projection exceeds the response budget"
             )
         return document
-    path = artifacts / job["id"] / "selected_routes.json"
-    selected = selected_route_data(path, budget=budget, job=job)
+    selected = selected_routes_for_job(job, artifacts=artifacts, budget=budget)
     return {
         "result_id": job["id"],
         "target_smiles": job["request"]["smiles"],

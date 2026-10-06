@@ -1,23 +1,18 @@
 import argparse
-import copy
 import logging
 import os
 import sys
-import traceback
 import uvicorn
 from contextlib import asynccontextmanager
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from rdkit import RDLogger
 from pathway_ranker import PathwayRanker
-from typing import List, Dict
+from typing import Literal
+from packages.adapters.askcos.native_service_limits import RANKER_BATCH_NODES, RANKER_MAX_TREES, NativeExecutionSlot, NativeRequestLimits, bounded_response
 
-base_response = {
-    "status": "FAIL",
-    "error": "",
-    "results": []
-}
+execution = NativeExecutionSlot()
 
 @asynccontextmanager
 async def lifespan(app):
@@ -29,6 +24,7 @@ async def lifespan(app):
 
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(NativeRequestLimits, slot=execution)
 
 
 @app.get("/health/ready")
@@ -39,11 +35,28 @@ def ready():
 
 
 class PathwayRankerInput(BaseModel):
-    trees: List[Dict]
+    model_config = ConfigDict(extra="forbid")
+    trees: list[dict] = Field(max_length=RANKER_MAX_TREES)
     clustering: bool = False
-    cluster_method: str = "hdbscan"
-    min_samples: int = 5
-    min_cluster_size: int = 5
+    cluster_method: Literal["hdbscan", "kmeans"] = "hdbscan"
+    min_samples: int = Field(default=5, ge=1, le=RANKER_MAX_TREES)
+    min_cluster_size: int = Field(default=5, ge=2, le=RANKER_MAX_TREES)
+
+    @field_validator("trees")
+    @classmethod
+    def bounded_trees(cls, trees):
+        for tree in trees:
+            pending, nodes = [(tree, 0)], 0
+            while pending:
+                node, depth = pending.pop()
+                nodes += 1
+                if not isinstance(node, dict) or depth > 128 or nodes > 2 * RANKER_BATCH_NODES:
+                    raise ValueError("Invalid or oversized pathway tree")
+                children = node.get("children")
+                if not isinstance(node.get("smiles"), str) or len(node["smiles"]) > 20000 or not isinstance(children, list):
+                    raise ValueError("Invalid pathway node")
+                pending.extend((child, depth + 1) for child in children)
+        return trees
 
 
 def parse_args():
@@ -56,30 +69,22 @@ def parse_args():
 
 
 @app.post("/pathway_ranker")
-# def pathway_ranker_service(json_data: List[dict] = Body(...)):
 def pathway_ranker_service(data: PathwayRankerInput):
-    response = copy.deepcopy(base_response)
-
-    try:
-        results = []
-        outcome = ranker.scorer(
-            trees=data.trees,
-            clustering=data.clustering,
-            cluster_method=data.cluster_method,
-            min_samples=data.min_samples,
-            min_cluster_size=data.min_cluster_size,
-        )
-        results.append(outcome)
-        response["results"] = results
-        response["status"] = "SUCCESS"
-        return response
-
-    except Exception:
-        response["error"] = f"Error during pathway ranking, traceback: " \
-                            f"{traceback.format_exc()}"
-        traceback.print_exc()
-
-        return response
+    with execution.acquire():
+        if globals().get("ranker") is None:
+            raise HTTPException(503, "Pathway-ranker checkpoint is not loaded")
+        try:
+            outcome = ranker.scorer(
+                trees=data.trees, clustering=data.clustering, cluster_method=data.cluster_method,
+                min_samples=data.min_samples, min_cluster_size=data.min_cluster_size,
+            )
+            return bounded_response({"status": "SUCCESS", "error": "", "results": [outcome]})
+        except HTTPException:
+            raise
+        except (ValueError, TypeError, KeyError, IndexError):
+            raise HTTPException(422, "Invalid pathway-ranker input") from None
+        except Exception:
+            raise HTTPException(503, "Pathway-ranker execution failed") from None
 
 
 if __name__ == "__main__":

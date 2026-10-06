@@ -11,19 +11,28 @@ export function selectedRouteChoices(choices, ids) {
 }
 
 export function materialRows(graph) {
-  const rows = new Map();
-  for (const node of graph?.nodes || []) {
+  const nodes = graph?.nodes || [];
+  const byId = new Map(nodes.map((node) => [node.id, node])),
+    incoming = new Set(),
+    usesBySource = new Map(),
+    rows = new Map();
+  for (const edge of graph?.edges || []) {
+    const target = edge.target;
+    incoming.add(target);
+    const step = byId.get(target);
+    if (step?.type !== "reaction") continue;
+    const uses = usesBySource.get(edge.source) || [];
+    uses.push(step.label || "反应步骤");
+    usesBySource.set(edge.source, uses);
+  }
+  for (const node of nodes) {
     if (
       node.type !== "molecule" ||
       node.id === graph.target_id ||
-      graph.edges.some((edge) => edge.target === node.id)
+      incoming.has(node.id)
     )
       continue;
-    const uses = graph.edges
-      .filter((edge) => edge.source === node.id)
-      .map((edge) => graph.nodes.find((value) => value.id === edge.target))
-      .filter((value) => value?.type === "reaction")
-      .map((value) => value.label || "反应步骤");
+    const uses = usesBySource.get(node.id) || [];
     const previous = rows.get(node.smiles);
     if (previous) previous.usedIn = [...new Set([...previous.usedIn, ...uses])];
     else

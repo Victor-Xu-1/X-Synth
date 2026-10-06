@@ -245,7 +245,6 @@ import {
   watch,
   onBeforeUnmount,
 } from "vue";
-import SmilesImage from "@/components/SmilesImage.vue";
 import * as Papa from "papaparse";
 import { useRoute } from "vue-router";
 import StructureInput from "@/components/workspace/StructureInput.vue";
@@ -262,6 +261,7 @@ const visualizationLoading = ref(false);
 const visualizationError = ref("");
 let visualizationRevision = 0;
 let viewerContainer = null;
+const pollingLifetime = new AbortController();
 
 const backgroundColor = computed(() => {
   return isDark.value ? "bg-black" : "bg-grey-lighten-4";
@@ -385,25 +385,27 @@ const apiKeyToField = ref({
 });
 
 const predict = async () => {
-  if (loading.value || inputPending.value || !workspace.can("qm") || !smiles.value?.trim()) return;
+  if (loading.value || inputPending.value || pollingLifetime.signal.aborted || !workspace.can("qm") || !smiles.value?.trim()) return;
   loading.value = true;
   requestError.value = "";
   try {
     const output = await API.runCeleryTask("/api/qm-descriptors/call-async", {
       smiles: [smiles.value.trim()],
-    });
+    }, undefined, { signal: pollingLifetime.signal });
+    if (pollingLifetime.signal.aborted) return;
     if (!Array.isArray(output?.result)) throw new Error("QM 结果格式异常");
     results.value.unshift(...output.result);
     if (results.value[0]) results.value[0].new = results.value.length;
     if (!output.result.length)
       requestError.value = "计算已返回，但没有可显示的描述符。";
   } catch (error) {
+    if (pollingLifetime.signal.aborted) return;
     requestError.value = API.toErrorObject(
       error,
       "QM 描述符计算失败，请检查输入与模型服务。",
     ).string_error;
   } finally {
-    loading.value = false;
+    if (!pollingLifetime.signal.aborted) loading.value = false;
   }
 };
 
@@ -526,6 +528,7 @@ watch(dialog, (value) => {
   }
 });
 onBeforeUnmount(() => {
+  pollingLifetime.abort();
   visualizationRevision++;
   viewer.value?.clear();
 });

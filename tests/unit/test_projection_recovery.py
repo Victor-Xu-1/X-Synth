@@ -122,7 +122,9 @@ def test_projection_proof_covers_every_fingerprinted_code_boundary():
         if isinstance(loop.iter, ast.Name) and loop.iter.id == "NATIVE_EXTERNAL_FILES":
             external.update(asset_identity.NATIVE_EXTERNAL_FILES)
         elif "apps/askcos-v2" in strings:
-            native.update(ast.literal_eval(loop.iter))
+            assert isinstance(loop.iter, ast.Name)
+            assert loop.iter.id == "NATIVE_CODE_DIRECTORIES"
+            native.update(asset_identity.NATIVE_CODE_DIRECTORIES)
     assert set(NATIVE_DIRECTORIES) == native
     assert EXTERNAL_SEARCH_FILES | EXTERNAL_PROJECTION_FILES == external
 

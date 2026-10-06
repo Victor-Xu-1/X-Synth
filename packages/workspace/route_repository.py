@@ -24,7 +24,7 @@ DOCUMENT_COLUMNS = (
     "created",
     "modified",
 )
-PUBLIC_SOURCE_FIELDS = frozenset({"engine", "route_id", "job_id", "route_index"})
+PUBLIC_SOURCE_FIELDS = frozenset({"engine", "route_id", "job_id", "route_index", "result_snapshot"})
 
 
 class UnsupportedRouteDocumentSchema(RuntimeError):

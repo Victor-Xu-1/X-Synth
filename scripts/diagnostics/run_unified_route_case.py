@@ -48,7 +48,7 @@ def main():
             if args.output:
                 write_json(args.output, call(f"/api/v1/unified-route/jobs/{identifier}/result"))
             print(json.dumps({"job_id": identifier, "status": job["status"],
-                              "result_url": args.server_url.rstrip("/") + "/network?tab=TE&id=" + identifier}), flush=True)
+                              "result_url": args.server_url.rstrip("/") + "/results/" + identifier}), flush=True)
             return 0 if job["status"] == "completed" else 2
         time.sleep(3)
     print(json.dumps({"job_id": identifier, "status": "still_running", "checkpoint_retained": True}))

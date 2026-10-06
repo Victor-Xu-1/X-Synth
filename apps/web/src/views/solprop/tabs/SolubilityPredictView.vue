@@ -297,7 +297,7 @@
 </template>
 
 <script>
-import { ref } from "vue";
+import { onBeforeUnmount, ref } from "vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import SolubilityModal from '@/components/solprop/SolubilityModal'
 import ErrorDialog from '@/components/ErrorDialog'
@@ -316,8 +316,11 @@ export default {
   },
   setup() {
     const createConfirm = useConfirm();
+    const pollingLifetime = new AbortController();
+    onBeforeUnmount(() => pollingLifetime.abort());
     return {
       createConfirm,
+      pollingSignal: pollingLifetime.signal,
       soluteInput: ref(null),
       solventInput: ref(null),
       referenceInput: ref(null),
@@ -597,7 +600,7 @@ export default {
       return body
     },
     predict() {
-      if (this.loading || this.structurePending || !this.selectedModel || !this.solute.trim() || !this.solvent.trim()) return
+      if (this.loading || this.structurePending || this.pollingSignal.aborted || !this.selectedModel || !this.solute.trim() || !this.solvent.trim()) return
       this.pendingTasks += 1
       this.loading = true
       this.batch = false
@@ -606,8 +609,9 @@ export default {
         : this.selectedModel === 'fastsolv'
           ? '/api/fastsolv/call-async'
           : '/api/solubility/batch/call-async';
-      API.runCeleryTask(url, this.buildRequestBody(this.selectedModel))
+      return API.runCeleryTask(url, this.buildRequestBody(this.selectedModel), undefined, { signal: this.pollingSignal })
         .then(output => {
+          if (this.pollingSignal.aborted) return
           const inputDensity = this.density != null && this.density !== '' ? Number(this.density) : null
           if (this.selectedModel === 'solprop' ){
             this.results.unshift(...output.map(item => {
@@ -625,17 +629,20 @@ export default {
           this.results[0].new = this.results.length
         })
         .catch(async error => {
+          if (this.pollingSignal.aborted) return
           const errorObj = API.toErrorObject(error, '溶解度预测失败，请检查输入、模型服务和后端任务状态。')
           const isConfirmed = await this.createConfirm({ title: "请求失败", contentComponent: ErrorDialog, contentComponentProps: { errorObj: errorObj }, dialogProps: { width: "auto" } })
           if (!isConfirmed)
             return
         })
         .finally(() => {
+          if (this.pollingSignal.aborted) return
           this.loading = false;
           this.pendingTasks -= 1;
         })
     },
     predictBatch(data) {
+      if (this.pollingSignal.aborted) return
       this.pendingTasks += 1
       this.loading = true
       this.batch = true
@@ -670,8 +677,9 @@ export default {
           body.density = densities
         }
       }
-      API.runCeleryTask(url, body)
+      return API.runCeleryTask(url, body, undefined, { signal: this.pollingSignal })
         .then(output => {
+          if (this.pollingSignal.aborted) return
           if (this.selectedModel === 'solprop' ){
             this.results.unshift(...output.map((item, idx) => {
                const result = { ...item, model: 'Fusion Cycle', new: this.results.length + output.length }
@@ -688,12 +696,14 @@ export default {
           }
         })
         .catch(async error => {
+          if (this.pollingSignal.aborted) return
           const errorObj = API.toErrorObject(error, '批量溶解度预测失败，请检查输入文件、模型服务和后端任务状态。')
           const isConfirmed = await this.createConfirm({ title: "请求失败", contentComponent: ErrorDialog, contentComponentProps: { errorObj: errorObj }, dialogProps: { width: "auto" } })
           if (!isConfirmed)
             return
         })
         .finally(() => {
+          if (this.pollingSignal.aborted) return
           this.loading = false
           this.pendingTasks -= 1
         })

@@ -8,6 +8,7 @@ from collections import defaultdict
 from pathlib import PurePosixPath
 
 from . import ci_scope_dependencies as analysis
+from . import ci_scope_architecture as architecture
 
 WEB = analysis.WEB
 SOURCE = analysis.SOURCE
@@ -25,6 +26,7 @@ CI_FILES = {
     "scripts/diagnostics/ci_scope.py",
     "scripts/diagnostics/ci_scope_profile.py",
     "scripts/diagnostics/ci_scope_dependencies.py",
+    "scripts/diagnostics/ci_scope_architecture.py",
     SCOPE_TEST,
 }
 CI_SAFETY_TESTS = {
@@ -41,6 +43,7 @@ DOCS = {
     "NOTICE",
 }
 API_FILES = {
+    "apps/api/stock_routes.py",
     "apps/api/app.py",
     "apps/api/document_routes.py",
     "apps/api/structure_routes.py",
@@ -156,6 +159,11 @@ HISTORY_FILES = {
     "packages/orchestrator/job_history_schema.py",
 }
 SEARCH_ROUND_FILES = {
+    "packages/route_pool/__init__.py",
+    "packages/orchestrator/job_commands.py",
+    "packages/orchestrator/route_artifacts.py",
+    "packages/orchestrator/route_artifact_manifest.py",
+    "packages/orchestrator/review_execution.py",
     "packages/orchestrator/review_worker.py",
     "packages/orchestrator/review_policy.py",
     "packages/orchestrator/route_verification.py",
@@ -168,6 +176,15 @@ SEARCH_ROUND_FILES = {
     "packages/chemistry/material_scope.py",
     "packages/validation/route_quality.py",
 }
+ARCHITECTURE_FILES = {
+    "packages/platform/atomic_file.py",
+    "scripts/diagnostics/run_unified_route_case.py",
+    "scripts/diagnostics/run_real_route_case.py",
+    "scripts/diagnostics/build_unified_route_pool.py",
+    "scripts/diagnostics/run_unified_route_batch.py",
+    "scripts/diagnostics/run_aizynthfinder_case.py",
+}
+ANALYSIS_EXECUTION_FILES = {"packages/workspace/analysis_execution.py"}
 PERFORMANCE_FILES = {"packages/platform/performance.py"}
 SEARCH_PROJECTION_FILES = {
     "packages/adapters/askcos/route_reachability.py",
@@ -279,6 +296,8 @@ def guard_paths(paths: set[str]) -> None:
             | PERFORMANCE_FILES
             | SEARCH_PROJECTION_FILES
             | SEARCH_ROUND_FILES
+            | ARCHITECTURE_FILES
+            | architecture.FILES
             | {
                 PYTHON_LOCK,
                 "VERSION",
@@ -369,6 +388,7 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
         and path.endswith(".py")
         and path in after.files
     }
+    selected.update(architecture.related_tests(roots))
     if roots & ENVIRONMENT_FILES:
         selected.add("tests/unit/test_environment_api.py")
     if roots & SCIENTIFIC_FILES or any(
@@ -467,6 +487,11 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
         })
     if roots & SEARCH_ROUND_FILES:
         selected.update({
+            "tests/unit/test_review_execution.py",
+            "tests/unit/test_review_worker.py",
+            "tests/unit/test_unified_route_workflow.py",
+            "tests/unit/test_route_artifacts.py",
+            "tests/unit/test_job_commands.py",
             "tests/unit/test_route_verification.py",
             "tests/unit/test_search_progress.py",
             "tests/unit/test_job_repository.py",
@@ -474,6 +499,13 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
             "tests/unit/test_askcos_adapter.py",
             "tests/unit/test_material_scope.py",
             "tests/unit/test_route_quality.py",
+        })
+    if roots & ARCHITECTURE_FILES:
+        selected.update({"tests/unit/test_architecture_boundaries.py", "tests/unit/test_route_artifacts.py"})
+    if roots & ANALYSIS_EXECUTION_FILES:
+        selected.update({
+            "tests/unit/test_analysis_records.py", "tests/unit/test_route_verification.py",
+            "tests/unit/test_assessment_routes.py", "tests/unit/test_optimization_api.py",
         })
     if roots & CHEMICAL_FILE_FILES:
         selected.update(CHEMICAL_FILE_TESTS)

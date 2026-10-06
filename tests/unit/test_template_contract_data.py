@@ -5,10 +5,9 @@ from pathlib import Path
 
 from packages.knowledge_base.template_library import (
     TemplateLibraryService,
-    _create_template_schema,
-    _insert_template_record,
-    _normalise_template_record,
 )
+from packages.knowledge_base.template_schema import _create_template_schema, _insert_template_record
+from packages.knowledge_base.template_models import _normalise_template_record
 
 # Public reaction syntax examples: https://www.rdkit.org/docs/RDKit_Book.html#reaction-smarts
 PUBLIC_SMARTS = (

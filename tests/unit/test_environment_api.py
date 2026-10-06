@@ -127,6 +127,10 @@ def test_inventory_separates_source_modules_and_inactive_integrations():
     assert native["module_count"] == 34
     assert native["configured_module_count"] == 12
     modules = {module["id"]: module for module in native["modules"]}
+    for identifier in ("tree_search_mcts", "tree_search_retro_star"):
+        assert modules[identifier]["configured"] is True
+        assert modules[identifier]["gateway_configured"] is False
+        assert modules[identifier]["invocation_mode"] == "product_child"
     assert modules["retro_template_relevance"]["ready"] is True
     assert modules["forward_graph2smiles"]["status"] == "unavailable"
     assert modules["context_recommender"]["status"] == "unavailable"
@@ -236,14 +240,23 @@ def test_source_catalog_is_cached_without_executing_native_config(monkeypatch):
 def test_template_asset_uses_real_read_only_index_and_caches_summary(
     tmp_path, monkeypatch
 ):
+    from pathlib import Path
+
     path = tmp_path / "templates.sqlite"
+    from packages.knowledge_base.template_schema import _create_template_schema
+    from packages.knowledge_base.template_models import _normalise_template_record
+    from packages.knowledge_base.template_schema import _insert_template_record
+
     with sqlite3.connect(path) as connection:
-        connection.executescript(
-            "CREATE TABLE template_sources(source TEXT);"
-            "CREATE TABLE templates(source TEXT, domain TEXT, direction TEXT, template_count INTEGER);"
-            "INSERT INTO template_sources VALUES('pistachio');"
-            "INSERT INTO templates VALUES('pistachio', 'strict_synthesis', 'retro', 3);"
-        )
+        _create_template_schema(connection)
+        connection.execute("INSERT INTO template_sources VALUES (?,?,?,?,?,?)", (
+            "pistachio", "interface-fixture", 1, "0" * 64, "retro", "strict_synthesis",
+        ))
+        _insert_template_record(connection, _normalise_template_record(
+            raw={"_id": "interface-example", "reaction_smarts": "[C:1]=[O:2]>>[C:1][O:2]", "count": 3},
+            source="pistachio", source_path=Path("interface-fixture"),
+            direction="retro", domain="strict_synthesis",
+        ))
     original = environment_dependencies.TemplateLibraryService.summary
     calls = []
 

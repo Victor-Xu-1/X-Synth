@@ -94,6 +94,7 @@ async function edit(routeId) {
     const value = await API.post("/api/v1/route-documents/from-task", {
       job_id: jobId,
       route_index: originalIndex,
+      route_id: routeId,
     });
     if (
       disposed ||

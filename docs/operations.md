@@ -142,6 +142,11 @@ python -m scripts.operations.serve_platform \
 
 启动前选空闲端口。监督器只管理自己创建的进程，故障服务最多重启三次，不使用全局
 pkill。每模型一个 worker、统一 CPU 线程预算。WSL 长任务应留在持久终端或管理服务中。
+原生地址由 `packages/platform/native_endpoints.py` 统一定义；覆盖端口时使用对应的
+`X_SYNTH_*_URL`，启动、网关模块配置和就绪探针同步采用该地址。受监督部署只接受
+不同端口的 IPv4 回环 HTTP 地址，不允许地址携带凭据或路径。
+产品启动器自动生成只在本次运行中使用的内部搜索密钥；它不是用户登录凭据，
+不写入配置、日志或 API 响应。不要通过浏览器直接调用原生搜索子任务接口。
 工作台和历史分别在 http://127.0.0.1:8769/ 和 http://127.0.0.1:8769/results。
 
 ```bash
@@ -195,7 +200,9 @@ systemctl status "x-synth@$USER.service"
 核验回环连接与命名网络；
 该产品服务不创建或改动其他数据库容器。人工停止任务仍由产品取消操作处理。
 产品日志写到外部状态目录 `logs/product.log`，每文件最多 5 MiB，保留三个轮转文件，
-不依赖终端持续读取。原生服务日志在 `logs/native`。数据库健康探针超时返回 503，
+不依赖终端持续读取。原生服务日志在 `logs/native`，同样采用有界轮转。
+运行代际、启动身份和继承锁共同确定进程归属；未知旧记录不能用作杀进程依据。
+数据库健康探针超时返回 503，
 不把失联库视为就绪。systemd 不能使已关闭的 WSL 自行启动；先启动 WSL，再检查服务。
 
 产品进程组默认 `MemoryHigh=7G`、`MemoryMax=8G`，适用于至少 12 GiB 的 WSL。
@@ -218,6 +225,19 @@ UI 和诊断 CLI 都通过 /api/v1/unified-route/call-async。事务创建记录
 curl --fail -X POST http://127.0.0.1:8769/api/v1/unified-route/jobs/JOB_ID/resume
 curl --fail http://127.0.0.1:8769/api/v1/unified-route/jobs/JOB_ID
 ```
+
+新任务的结果保存在 `artifacts/JOB_ID/results/SHA256/` 不可变代际目录，
+任务 checkpoint 中的 `published_result` 是唯一发布依据。文件先封存，摘要与指针
+再由一个数据库事务提交；未提交、取消或不完整的文件不能作为结果读取。
+读取时核验文件哈希、目标身份和已提交摘要，错误返回明确状态，不回退到旧文件
+冒充新结果。既有历史使用显式兼容读取，不在升级时重写或删除。
+接受过的幂等请求在模型临时失联时仍可取回原任务；新任务仍须通过实际就绪检查。
+
+升级前备份 `jobs.sqlite`、`analyses.sqlite`、`workspace.sqlite` 及当前源码 revision，
+保留资产路径和哈希。停止本产品 unit 后确认其记录的 PID/启动身份均已退出，再将
+没有 boot/generation 身份的旧 `native/runtime.json` 归档到私有升级目录。
+新启动器拒绝自动清理这种旧记录；不能以删除锁、全局 pkill 或重启 WSL 代替归属核验。
+当前模型/代码/库存语义不匹配的旧搜索图继续拒绝恢复，不编辑指纹绕过检查。
 
 路线整理在两种策略间共享有限 AND/OR 可达性检查：反应必须全部前体可达商业终点，
 无商业出口的循环不进入组合枚举；实际路线逐条生成，原始搜索图和候选仍保留。

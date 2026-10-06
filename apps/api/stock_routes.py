@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from packages.adapters.stock.catalog_pricing import priced_lookup
 from packages.adapters.stock.commercial_stock import canonicalize_smiles
+from packages.adapters.stock.stock_index import StockIndexError
 
 from .security import authenticate
 
@@ -28,7 +29,10 @@ def stock_router(*, stock, transport):
         authenticate(request, transport)
         if stock is None:
             raise HTTPException(503, "Commercial inventory snapshot is not configured")
-        response = priced_lookup(stock.lookup_many(body.smiles), stock.summary)
+        try:
+            response = priced_lookup(stock.lookup_many(body.smiles), stock.summary)
+        except StockIndexError as exc:
+            raise HTTPException(503, "商业库存快照已变化或暂不可用，请恢复已配置的数据源。") from exc
         response["requested"] = [
             {"smiles": smiles, "canonical_smiles": canonicalize_smiles(smiles)}
             for smiles in body.smiles

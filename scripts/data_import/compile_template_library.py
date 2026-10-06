@@ -40,7 +40,7 @@ def main() -> int:
     parser.add_argument(
         "--export-runtime-assets",
         action="store_true",
-        help="Export ASKCOS-compatible runtime template files from the compiled database.",
+        help="Export separate template knowledge assets, not a trained model index.",
     )
     args = parser.parse_args()
 
@@ -62,10 +62,6 @@ def main() -> int:
         manifest["runtime_assets"] = export_template_runtime_assets(
             database_path=manifest["database"]["path"],
             output_dir=args.output_dir / "runtime_assets",
-        )
-        (args.output_dir / "template_library_manifest.json").write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )
     print(json.dumps(manifest, ensure_ascii=False))
     return 0

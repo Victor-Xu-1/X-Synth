@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import asdict, replace
 import json
 from pathlib import Path
 
 from packages.route_pool.workflow import (
     AizynthFinderRouteSource,
     AskcosRouteSource,
-    build_unified_route_pool_artifacts,
+    build_unified_route_pool,
 )
 from packages.route_schema.route_schema import RouteCandidate, RouteStep
 
@@ -15,7 +15,7 @@ from packages.route_schema.route_schema import RouteCandidate, RouteStep
 FIXTURES = Path("tests/fixtures")
 
 
-def test_builds_unified_route_pool_artifacts_from_real_engine_outputs(tmp_path):
+def test_builds_pure_unified_route_pool_from_real_engine_outputs(tmp_path):
     askcos_payload = json.loads(
         (FIXTURES / "askcos" / "diphenhydramine_retrostar_result.json").read_text(encoding="utf-8")
     )
@@ -23,9 +23,8 @@ def test_builds_unified_route_pool_artifacts_from_real_engine_outputs(tmp_path):
         (FIXTURES / "aizynthfinder" / "diphenhydramine_result.json").read_text(encoding="utf-8")
     )
 
-    result = build_unified_route_pool_artifacts(
+    result = build_unified_route_pool(
         id="fixture_merge",
-        output_dir=tmp_path,
         askcos_sources=[
             AskcosRouteSource(
                 source="askcos_fixture",
@@ -55,10 +54,9 @@ def test_builds_unified_route_pool_artifacts_from_real_engine_outputs(tmp_path):
     assert result.summary["selected_engine_counts"]["askcos_retro_star"] >= 1
     assert result.summary["selected_family_count"] == result.summary["selected_route_count"]
     assert result.summary["selected_first_step_source_count"] >= 1
-    assert result.unified_routes_path.is_file()
-    assert result.selected_routes_path.is_file()
+    assert not list(tmp_path.iterdir())
 
-    selected = json.loads(result.selected_routes_path.read_text(encoding="utf-8"))
+    selected = [asdict(route) for route in result.selected_routes]
     assert 3 <= len(selected) <= 10
     assert "askcos_retro_star" in {route["engine"] for route in selected}
 
@@ -82,9 +80,8 @@ def test_unclosed_draft_routes_do_not_satisfy_min_routes(tmp_path):
     for route in payload["routes"]:
         mark_unclosed(route)
 
-    result = build_unified_route_pool_artifacts(
+    result = build_unified_route_pool(
         id="unclosed_draft",
-        output_dir=tmp_path,
         aizynthfinder_sources=[
             AizynthFinderRouteSource(
                 source="aizynthfinder_unclosed_fixture",
@@ -134,9 +131,8 @@ def test_askcos_frontier_summary_is_preserved_when_no_closed_paths(tmp_path):
         },
     }
 
-    result = build_unified_route_pool_artifacts(
+    result = build_unified_route_pool(
         id="askcos_frontier",
-        output_dir=tmp_path,
         askcos_sources=[
             AskcosRouteSource(
                 source="askcos_mcts",
@@ -204,9 +200,8 @@ def test_workflow_keeps_rejected_candidates_but_not_selected_delivery_routes(tmp
         family_key="long-family",
     )
 
-    result = build_unified_route_pool_artifacts(
+    result = build_unified_route_pool(
         id="quality-gate",
-        output_dir=tmp_path,
         extra_routes=[long_route, good],
         min_routes=1,
         max_routes=10,
@@ -255,9 +250,8 @@ def test_workflow_applies_route_transform_before_quality_selection(tmp_path):
             for route in routes
         ]
 
-    result = build_unified_route_pool_artifacts(
+    result = build_unified_route_pool(
         id="forward-quality-gate",
-        output_dir=tmp_path,
         extra_routes=[
             candidate("bad", "bad-family"),
             candidate("good", "good-family"),

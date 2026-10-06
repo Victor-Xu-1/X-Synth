@@ -117,10 +117,15 @@ export function querySeed(query) {
     settings: body ? searchDraft(body) : defaultSearchSettings(),
   };
 }
+const oneStepPreviews = new WeakMap();
+let previewSequence = 0;
 export function oneStepCandidate(result, index) {
   const item = result.outcomes[index];
   if (!item) throw new Error("候选已失效，请重新选择。");
+  if (!oneStepPreviews.has(result))
+    oneStepPreviews.set(result, ++previewSequence);
   return {
+    route_id: `preview:one-step:${oneStepPreviews.get(result)}:${index}`,
     target_smiles: result.canonical,
     engine: `ASKCOS / ${result.model}`,
     steps: [

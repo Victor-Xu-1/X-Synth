@@ -10,8 +10,7 @@ from packages.adapters.askcos.transport import EngineUnavailable
 from packages.chemistry.forward_evaluation import validate_forward_input
 from packages.knowledge_base.reaction_library import ReactionLibraryError
 from packages.route_pool.pool import UnifiedRoutePool
-from packages.route_pool.workflow import publish_route_pool_artifacts
-from packages.platform.atomic_file import write_json
+from packages.route_pool.workflow import build_route_pool_result
 from packages.validation.route_quality import RouteQualityPolicy
 
 from .verification_cache import VerificationCache
@@ -140,15 +139,14 @@ class RouteVerifier:
             raise EngineUnavailable("route_verification_interrupted", recoverable=True)
         qualified = UnifiedRoutePool(min_routes=minimum, max_routes=maximum, quality_policy=policy)
         qualified.add_routes(routes.values())
-        result = publish_route_pool_artifacts(
-            id=report.summary["id"], output_dir=Path(directory), pool=qualified,
+        result = build_route_pool_result(
+            id=report.summary["id"], pool=qualified,
             source_summaries=report.summary["source_summaries"],
         )
         result.summary["verification_budget"] = {
             "routes_checked": len(checked), "route_limit": route_limit,
             "forward_inputs": len(cache.records),
         }
-        write_json(result.summary_path, result.summary)
         return result
 
     def review(self, report, **kwargs):

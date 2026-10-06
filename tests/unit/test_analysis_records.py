@@ -3,7 +3,7 @@ import tracemalloc
 
 import pytest
 
-from apps.api.analysis_routes import analysis_runner
+from packages.workspace.analysis_execution import analysis_runner
 from packages.workspace.analysis_repository import AnalysisRepository
 
 

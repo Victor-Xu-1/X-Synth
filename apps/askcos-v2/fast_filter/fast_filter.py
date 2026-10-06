@@ -6,6 +6,7 @@ from fingerprinting import reac_prod_smi_to_morgan_fp
 from logger import MyLogger
 from scorer import Scorer
 from typing import List
+from packages.adapters.askcos.native_service_limits import FINGERPRINT_BATCH_SIZE
 
 fast_filter_loc = "fast_filter"
 
@@ -124,26 +125,19 @@ class FastFilterScorer(Scorer):
     def evaluate_batch(self, rxn_smis: List[str]) -> List[float]:
         if not rxn_smis:
             return []
-        pfps = []
-        rxnfps = []
-
-        # start = time.time()
-        for rxn_smi in rxn_smis:
-            reactant_smiles, _, target = rxn_smi.split(">")
-            pfp, rxnfp = self.smiles_to_fp(reactant_smiles, target)
-            pfps.append(pfp)
-            rxnfps.append(rxnfp)
-
-        pfps = tf.concat(pfps, axis=0)
-        rxnfps = tf.concat(rxnfps, axis=0)
-
-        # print(f"fingerprinting: {time.time() - start}")
-
-        # start = time.time()
-        scores = self._predict_fingerprints(pfps, rxnfps).numpy()
-        scores = np.array(scores).reshape(-1).tolist()
-        # print(f"model call: {time.time() - start}")
-
+        scores = []
+        for offset in range(0, len(rxn_smis), FINGERPRINT_BATCH_SIZE):
+            pfps, rxnfps = [], []
+            for rxn_smi in rxn_smis[offset:offset + FINGERPRINT_BATCH_SIZE]:
+                reactant_smiles, _, target = rxn_smi.split(">")
+                pfp, rxnfp = self.smiles_to_fp(reactant_smiles, target)
+                pfps.append(pfp)
+                rxnfps.append(rxnfp)
+            batch = self._predict_fingerprints(tf.concat(pfps, axis=0), tf.concat(rxnfps, axis=0)).numpy()
+            values = np.array(batch).reshape(-1).tolist()
+            if len(values) != len(pfps):
+                raise ValueError("Fast-filter scores do not match the requested reactions")
+            scores.extend(values)
         return scores
 
     def _predict_fingerprints(self, product_fp, reaction_fp):

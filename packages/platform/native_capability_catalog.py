@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 
 from .native_runtime import SERVICES
+from .native_search_contract import NATIVE_SEARCH_STRATEGIES
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CORE = REPO_ROOT / "apps/askcos-v2/askcos2_core"
@@ -117,7 +118,14 @@ def source_catalog() -> dict:
                     ).is_dir(),
                     "api_prefixes": prefixes,
                     "wrapper_present": bool(prefixes),
-                    "configured": name in enabled and service_id is not None,
+                    "configured": service_id is not None and (
+                        name in enabled or service_id in NATIVE_SEARCH_STRATEGIES
+                    ),
+                    "gateway_configured": name in enabled and service_id is not None,
+                    "invocation_mode": "product_child"
+                    if service_id in NATIVE_SEARCH_STRATEGIES
+                    else "gateway" if name in enabled and service_id is not None
+                    else "unavailable",
                     "service_id": service_id,
                     "supported_model_names": config["deployment"][
                         "available_model_names"

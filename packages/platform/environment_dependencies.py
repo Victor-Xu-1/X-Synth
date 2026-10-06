@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import sqlite3
+from collections import OrderedDict
 from copy import deepcopy
 from pathlib import Path
 from threading import Lock
 from time import monotonic
 
 from packages.knowledge_base.template_library import TemplateLibraryService
+from packages.platform.immutable_sqlite import ImmutableSQLiteError, file_identity
 
 from .native_capability_catalog import REPO_ROOT
 
 _template_cache = None
 _template_lock = Lock()
+_template_services = OrderedDict()
 
 
 def inactive_integrations() -> list[dict]:
@@ -60,14 +63,28 @@ def template_asset_status(path: str | None, *, cache_seconds: float) -> dict:
         return {"status": "unavailable", "reason": "invalid_index_path"}
     with _template_lock:
         now = monotonic()
-        if (
-            _template_cache
-            and _template_cache[0] == path
-            and now - _template_cache[1] < cache_seconds
-        ):
-            return deepcopy(_template_cache[2])
         try:
-            summary = TemplateLibraryService(path).summary()
+            resolved = Path(path).absolute()
+            identity = file_identity(resolved)
+            key = (str(resolved), identity)
+            service = _template_services.get(key)
+            if service is None:
+                service = TemplateLibraryService(resolved)
+                _template_services[key] = service
+                while len(_template_services) > 4:
+                    _template_services.popitem(last=False)
+            _template_services.move_to_end(key)
+            service.check_snapshot()
+            if (
+                _template_cache and _template_cache[0] == key
+                and now - _template_cache[1] < cache_seconds
+            ):
+                if file_identity(resolved) != identity:
+                    raise ImmutableSQLiteError("Template snapshot changed during polling")
+                return deepcopy(_template_cache[2])
+            summary = service.summary()
+            if file_identity(resolved) != identity:
+                raise ImmutableSQLiteError("Template snapshot changed during polling")
             result = {
                 "status": "ready",
                 "authority": "/api/v1/template-library/health",
@@ -86,7 +103,8 @@ def template_asset_status(path: str | None, *, cache_seconds: float) -> dict:
                 result["strategy_availability"] = summary["strategy_availability"]
         except (OSError, ValueError, sqlite3.Error, KeyError):
             result = {"status": "unavailable", "reason": "template_index_unavailable"}
-        _template_cache = (path, monotonic(), result)
+            return result
+        _template_cache = (key, monotonic(), result)
         return deepcopy(result)
 
 

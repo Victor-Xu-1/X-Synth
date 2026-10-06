@@ -68,8 +68,8 @@
           :aria-label="`${routeLabel(choice.originalIndex)} 完整路线缩略图`"
         >
           <RouteGraph
-            :graph="graphFromCandidate(choice.route, READING_NODE_SIZE)"
-            :scores="predictionScores(choice.route)"
+            :graph="choice.prepared.graph"
+            :scores="choice.prepared.scores"
             :overview="true"
             reading
             @select="$emit('choose', choice.route.route_id)"
@@ -205,8 +205,7 @@ import SmilesImage from "@/components/SmilesImage.vue";
 import RouteEvidencePanel from "./RouteEvidencePanel.vue";
 import RouteGraph from "./RouteGraph.vue";
 import {
-  graphFromCandidate,
-  predictionScores,
+  prepareCandidateGraph,
   READING_NODE_SIZE,
 } from "@/common/route-graph";
 import { routeLabel } from "@/common/route-reading";
@@ -237,13 +236,18 @@ const orderedSteps = computed(() => {
 const steps = computed(() => orderedSteps.value.steps);
 const orderError = computed(() => orderedSteps.value.error);
 const overviews = computed(() =>
-  props.choices.map((choice) => ({
-    ...choice,
-    linearSteps: longestLinearSteps(choice.route),
-    materials: Array.isArray(choice.route.starting_materials)
-      ? [...new Set(choice.route.starting_materials)]
-      : [],
-  })),
+  props.choices.map((choice) => {
+    const prepared =
+      choice.prepared || prepareCandidateGraph(choice.route, READING_NODE_SIZE);
+    return {
+      ...choice,
+      prepared,
+      linearSteps: longestLinearSteps(choice.route, prepared.topology),
+      materials: Array.isArray(choice.route.starting_materials)
+        ? [...new Set(choice.route.starting_materials)]
+        : [],
+    };
+  }),
 );
 const scoreText = (value) =>
   typeof value === "number" && Number.isFinite(value)

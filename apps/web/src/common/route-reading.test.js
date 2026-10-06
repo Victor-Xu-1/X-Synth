@@ -30,6 +30,48 @@ test("materials are actual graph leaves, not intermediate or stale declarations"
   expect(rows.every((row) => row.nodeId && row.usedIn.length)).toBe(true);
 });
 
+test("material preparation indexes incoming edges once and retains graph and use order", () => {
+  const graph = {
+    target_id: "p",
+    nodes: [
+      { id: "p", type: "molecule", smiles: "CCO" },
+      { id: "r-1", type: "reaction", label: "步骤 2" },
+      { id: "r-2", type: "reaction", label: "步骤 1" },
+      ...Array.from({ length: 30 }, (_, index) => ({
+        id: `a-${index}`,
+        type: "molecule",
+        smiles: `[${index + 1}CH4]`,
+      })),
+    ],
+    edges: [
+      ...Array.from({ length: 30 }, (_, index) => ({
+        source: `a-${index}`,
+        target: "r-1",
+      })),
+      { source: "a-0", target: "r-2" },
+      { source: "r-1", target: "p" },
+    ],
+  };
+  let targetReads = 0;
+  graph.edges = graph.edges.map(({ source, target }) => ({
+    source,
+    get target() {
+      targetReads++;
+      return target;
+    },
+  }));
+  const rows = materialRows(graph);
+  expect(rows).toHaveLength(30);
+  expect(rows[0]).toEqual({
+    nodeId: "a-0",
+    smiles: "[1CH4]",
+    label: "原料 1",
+    usedIn: ["步骤 2", "步骤 1"],
+  });
+  expect(rows[29].smiles).toBe("[30CH4]");
+  expect(targetReads).toBeLessThanOrEqual(graph.edges.length * 2);
+});
+
 test("material identity keeps stereochemistry, isotopes and salt components", () => {
   const graph = {
     target_id: "p",

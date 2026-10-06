@@ -42,10 +42,9 @@ jest.mock("@/components/routes/RouteGraph.vue", () => ({
   emits: ["update:graph", "select"],
   template: '<div class="editor-graph" />',
 }));
-jest.mock("@/components/routes/RouteInspector.vue", () => ({
-  name: "RouteInspector",
-  props: ["node", "graph"],
-  template: '<div class="inspector" />',
+jest.mock("@/components/routes/RouteNodeContext.vue", () => ({
+  name: "RouteNodeContext",
+  template: '<div class="node-context" />',
 }));
 jest.mock("@/components/routes/ExpandMolecule.vue", () => ({
   name: "ExpandMolecule",
@@ -102,6 +101,8 @@ const stubs = {
   },
 };
 const wrappers = [];
+const buttonWithText = (wrapper, text) =>
+  wrapper.findAll("button").find((button) => button.text() === text);
 async function setup(state = "source_copy", identifier = documentId) {
   const router = { replace: jest.fn().mockResolvedValue(undefined) };
   const route = reactive({ params: { id: identifier } });
@@ -153,6 +154,169 @@ beforeEach(() => {
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
   window.confirm.mockRestore();
+});
+
+test("a pending real inspector Apply locks conflicting edits and save until the new structure is applied", async () => {
+  const { wrapper } = await setup();
+  const canvas = wrapper.getComponent({ name: "RouteGraph" });
+  const edited = {
+    ...graph,
+    nodes: [...graph.nodes, { ...graph.nodes[0], id: "material", smiles: "N" }],
+  };
+  canvas.vm.$emit("update:graph", edited);
+  canvas.vm.$emit("select", "material");
+  await flushPromises();
+  const inspector = wrapper.getComponent({ name: "RouteInspector" });
+  const chemistry = "[13CH3][C@H]([NH3+])CO.[Cl-]";
+  await inspector
+    .get('textarea[aria-label="中间体或原料结构"]')
+    .setValue(chemistry);
+  let resolve;
+  API.post.mockReturnValue(
+    new Promise((yes) => { resolve = yes; }),
+  );
+  const saveButton = buttonWithText(wrapper, "保存");
+  const applyButton = buttonWithText(inspector, "应用修改");
+  expect(saveButton.element.disabled).toBe(false);
+  await applyButton.trigger("click");
+  expect(inspector.props("editable")).toBe(true);
+  expect(canvas.props("editable")).toBe(false);
+  expect(saveButton.element.disabled).toBe(true);
+  expect(wrapper.get('input[aria-label="路线名称"]').element.disabled).toBe(
+    true,
+  );
+  for (const label of [
+    "撤销", "重做", "删除所选结构或反应步骤", "自动布局", "打开路线文档",
+  ])
+    expect(
+      wrapper.get(`button[aria-label="${label}"]`).element.disabled,
+    ).toBe(true);
+  await saveButton.trigger("click");
+  await wrapper.vm.saveDocument(false);
+  await wrapper.vm.saveDocument(true);
+  const imported = await selectFile(wrapper);
+  expect(imported.text).not.toHaveBeenCalled();
+  canvas.vm.$emit("update:graph", graph);
+  canvas.vm.$emit("select", "target");
+  inspector.vm.$emit("remove");
+  wrapper.vm.runEditAction(
+    wrapper.vm.editActions.find((action) => action.label === "撤销"),
+  );
+  await flushPromises();
+  expect(inspector.props("node").id).toBe("material");
+  expect(canvas.props("graph")).toEqual(edited);
+  expect(API.put).not.toHaveBeenCalled();
+  expect(API.post).toHaveBeenCalledTimes(1);
+  resolve({ smiles: chemistry });
+  await flushPromises();
+  const applied = canvas.props("graph");
+  expect(applied.nodes.find((node) => node.id === "material").smiles).toBe(
+    chemistry,
+  );
+  expect(inspector.emitted("pending").map(([value]) => value)).toEqual([
+    true, false,
+  ]);
+  expect(saveButton.element.disabled).toBe(false);
+  expect(canvas.props("editable")).toBe(true);
+  expect(wrapper.text()).toContain("草稿");
+  API.put.mockImplementation(async (_, body) => ({
+    id: documentId,
+    ...body,
+    revision: 2,
+    state: "draft",
+  }));
+  await saveButton.trigger("click");
+  await flushPromises();
+  expect(API.put).toHaveBeenCalledWith(`/api/v1/route-documents/${documentId}`, {
+    title: "Document",
+    graph: applied,
+    revision: 1,
+  });
+  expect(wrapper.text()).toContain("已保存");
+});
+
+test.each(["failure", "invalid"])(
+  "a real inspector %s unlocks the document without losing the unapplied draft",
+  async (outcome) => {
+    const { wrapper } = await setup();
+    const canvas = wrapper.getComponent({ name: "RouteGraph" });
+    await wrapper
+      .get('input[aria-label="路线名称"]')
+      .setValue("Unsaved title");
+    canvas.vm.$emit("select", "target");
+    await flushPromises();
+    const inspector = wrapper.getComponent({ name: "RouteInspector" });
+    await inspector
+      .get('textarea[aria-label="目标化合物结构"]')
+      .setValue("N");
+    let resolve, reject;
+    API.post.mockReturnValue(
+      new Promise((yes, no) => {
+        resolve = yes;
+        reject = no;
+      }),
+    );
+    await buttonWithText(inspector, "应用修改").trigger("click");
+    expect(canvas.props("editable")).toBe(false);
+    if (outcome === "failure") reject(new Error("validation failed"));
+    else resolve({ smiles: "" });
+    await flushPromises();
+    expect(canvas.props("editable")).toBe(true);
+    expect(canvas.props("graph")).toEqual(graph);
+    expect(
+      inspector.get('textarea[aria-label="目标化合物结构"]').element.value,
+    ).toBe("N");
+    expect(inspector.get('[role="alert"]').text()).toBeTruthy();
+    expect(wrapper.get('input[aria-label="路线名称"]').element.value).toBe(
+      "Unsaved title",
+    );
+    expect(wrapper.text()).toContain("未保存");
+    expect(buttonWithText(wrapper, "保存").element.disabled).toBe(false);
+    expect(API.put).not.toHaveBeenCalled();
+  },
+);
+
+test("pending Apply protects navigation and a confirmed document switch releases its lock without accepting late chemistry", async () => {
+  const { wrapper, route } = await setup();
+  const canvas = wrapper.getComponent({ name: "RouteGraph" });
+  canvas.vm.$emit("select", "target");
+  await flushPromises();
+  let resolve;
+  API.post.mockReturnValue(
+    new Promise((yes) => { resolve = yes; }),
+  );
+  const inspector = wrapper.getComponent({ name: "RouteInspector" });
+  await buttonWithText(inspector, "应用修改").trigger("click");
+  window.confirm.mockReturnValue(false);
+  expect(onBeforeRouteLeave.mock.calls[0][0]({ path: "/documents" })).toBe(
+    false,
+  );
+  const unload = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(unload);
+  expect(unload.defaultPrevented).toBe(true);
+  window.confirm.mockReturnValue(true);
+  expect(
+    onBeforeRouteUpdate.mock.calls[0][0]({ path: "/editor/" + importedId }),
+  ).toBe(true);
+  API.get.mockResolvedValue({
+    id: importedId,
+    title: "Other document",
+    graph,
+    revision: 1,
+    state: "draft",
+  });
+  route.params.id = importedId;
+  await flushPromises();
+  const nextCanvas = wrapper.getComponent({ name: "RouteGraph" });
+  expect(nextCanvas.props("editable")).toBe(true);
+  resolve({ smiles: "N" });
+  await flushPromises();
+  expect(nextCanvas.props("graph")).toEqual(graph);
+  expect(wrapper.get('input[aria-label="路线名称"]').element.value).toBe(
+    "Other document",
+  );
+  expect(wrapper.text()).toContain("已保存");
+  expect(API.put).not.toHaveBeenCalled();
 });
 test("saved source copies and saved drafts have independent scientific badges", async () => {
   const copy = await setup();

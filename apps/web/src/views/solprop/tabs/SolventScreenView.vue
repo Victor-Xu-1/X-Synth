@@ -219,7 +219,7 @@
 </template>
 
 <script>
-import { ref } from "vue";
+import { onBeforeUnmount, ref } from "vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import SmilesImage from "@/components/SmilesImage";
 import SolubilityModal from '@/components/solprop/SolubilityModal'
@@ -281,8 +281,11 @@ export default {
   },
   setup() {
     const createConfirm = useConfirm();
+    const pollingLifetime = new AbortController();
+    onBeforeUnmount(() => pollingLifetime.abort());
     return {
       createConfirm,
+      pollingSignal: pollingLifetime.signal,
       soluteInput: ref(null),
       selectedSolventInput: ref(null),
       referenceInput: ref(null),
@@ -507,21 +510,24 @@ export default {
         })
         promises.push(this.predictBatch(tasks))
       }
-      Promise.all(promises)
+      return Promise.all(promises)
         .catch(async error => {
+          if (this.pollingSignal.aborted) return
           const errorObj = API.toErrorObject(error, '溶剂筛选失败，请检查输入、模型服务和后端任务状态。')
           const isConfirmed = await this.createConfirm({ title: "提示", contentComponent: ErrorDialog, contentComponentProps: { errorObj: errorObj }, dialogProps: { width: "auto" } })
           if (!isConfirmed)
             return
         })
-        .finally(() => this.loading = false)
+        .finally(() => { if (!this.pollingSignal.aborted) this.loading = false })
     },
     async predictBatch(data) {
+      if (this.pollingSignal.aborted) return;
       const url = '/api/solubility/batch/call-async'
       const body = {
         task_list: data,
       }
-      const output = await API.runCeleryTask(url, body);
+      const output = await API.runCeleryTask(url, body, undefined, { signal: this.pollingSignal });
+      if (this.pollingSignal.aborted) return;
       this.results.push(...output);
     },
     downloadCSV() {

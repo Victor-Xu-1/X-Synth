@@ -14,11 +14,13 @@ const views = [
   "solprop/SolProp.vue",
   "qm/QM.vue",
   "banlist/Banlist.vue",
-  "error/Error.vue",
   "notfound/NotFound.vue",
 ];
 const read = (file) =>
   fs.readFileSync(path.resolve(__dirname, "..", file), "utf8");
+test("retired unreachable error view stays removed", () => {
+  expect(fs.existsSync(path.resolve(__dirname, "../error/Error.vue"))).toBe(false);
+});
 test.each(views)("compiles owned UI %s without legacy ornaments", (file) => {
   const source = read(file);
   const { descriptor, errors } = parse(source, { filename: file });

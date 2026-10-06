@@ -121,6 +121,12 @@ def test_unknown_changes_fail_instead_of_skip_or_global_fallback(path):
         profile.guard_paths({path})
 
 
+@pytest.mark.parametrize("path", sorted(profile.architecture.FILES))
+def test_native_and_asset_boundaries_have_explicit_related_scope(path):
+    profile.guard_paths({path})
+    assert profile.architecture.related_tests({path})
+
+
 def test_ord_import_checks_are_isolated_and_diff_selected():
     assert profile.reaction_data_tests(
         {"packages/knowledge_base/ord_extract.py"}
@@ -188,6 +194,10 @@ def test_native_template_and_history_changes_use_explicit_related_contracts(tmp_
             "tests/unit/test_native_drawing_proxy.py",
             "tests/unit/test_product_api_security.py",
             "tests/unit/test_template_library_api.py",
+            "tests/unit/test_template_compilation.py",
+            "tests/unit/test_template_contract_data.py",
+            "tests/unit/test_template_export.py",
+            "tests/unit/test_native_template_namespaces.py",
             "tests/unit/test_history_projection.py",
             "tests/unit/test_route_document_api.py",
             "tests/unit/test_job_history.py",
@@ -202,6 +212,10 @@ def test_native_template_and_history_changes_use_explicit_related_contracts(tmp_
         [
             "tests/unit/test_template_library_api.py",
             "tests/unit/test_product_api_security.py",
+            "tests/unit/test_template_compilation.py",
+            "tests/unit/test_template_contract_data.py",
+            "tests/unit/test_template_export.py",
+            "tests/unit/test_native_template_namespaces.py",
         ]
     )
     assert "tests/unit/test_native_capability_boundary.py" in profile.python_tests(

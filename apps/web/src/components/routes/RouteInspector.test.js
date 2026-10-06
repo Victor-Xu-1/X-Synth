@@ -30,12 +30,14 @@ const node = () => ({
 });
 const wrappers = [];
 function setup(props = {}) {
+  const pendingEvents = jest.fn();
   const wrapper = mount(RouteInspector, {
     props: {
       node: node(),
       target: true,
       editable: true,
       contextId: "document-a",
+      onPending: pendingEvents,
       ...props,
     },
     global: {
@@ -48,6 +50,7 @@ function setup(props = {}) {
       },
     },
   });
+  wrapper.pendingEvents = pendingEvents;
   wrappers.push(wrapper);
   return wrapper;
 }
@@ -116,6 +119,8 @@ test.each(["selection", "document", "read-only", "unmount"])(
     await apply(wrapper);
     await apply(wrapper);
     expect(API.post).toHaveBeenCalledTimes(1);
+    expect(wrapper.vm.pending).toBe(true);
+    expect(wrapper.emitted("pending")).toEqual([[true]]);
     if (transition === "selection")
       await wrapper.setProps({ node: { ...node(), id: "other" } });
     if (transition === "document")
@@ -128,6 +133,7 @@ test.each(["selection", "document", "read-only", "unmount"])(
     request.resolve({ smiles: "O" });
     await flushPromises();
     expect(wrapper.emitted("update")).toBeUndefined();
+    expect(wrapper.pendingEvents.mock.calls).toEqual([[true], [false]]);
   },
 );
 
@@ -176,6 +182,35 @@ test("an invalid validation response preserves the draft instead of applying emp
   await flushPromises();
   expect(wrapper.emitted("update")).toBeUndefined();
   expect(wrapper.get('[role="alert"]').text()).toContain("有效结构");
+  expect(wrapper.vm.pending).toBe(false);
+  expect(wrapper.emitted("pending")).toEqual([[true], [false]]);
+});
+
+test("an old Apply response cannot unlock a new application after selection changes", async () => {
+  const wrapper = setup();
+  const first = deferred(),
+    second = deferred();
+  API.post
+    .mockReturnValueOnce(first.promise)
+    .mockReturnValueOnce(second.promise);
+  await apply(wrapper);
+  await wrapper.setProps({ node: { ...node(), id: "other", smiles: "N" } });
+  await apply(wrapper);
+  first.resolve({ smiles: "O" });
+  await flushPromises();
+  expect(wrapper.vm.pending).toBe(true);
+  expect(wrapper.emitted("update")).toBeUndefined();
+  expect(wrapper.emitted("pending")).toEqual([[true], [false], [true]]);
+  second.reject(new Error("validation failed"));
+  await flushPromises();
+  expect(wrapper.vm.pending).toBe(false);
+  expect(wrapper.emitted("pending")).toEqual([
+    [true],
+    [false],
+    [true],
+    [false],
+  ]);
+  expect(wrapper.get('[role="alert"]').text()).toBeTruthy();
 });
 
 test("a late structure-input change cannot be overwritten by an older validation", async () => {

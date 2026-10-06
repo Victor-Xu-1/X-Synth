@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 
-def write_json(path: Path, value) -> None:
+def write_json(path: Path, value, *, sort_keys: bool = False) -> None:
     """Replace generated runtime state atomically, including crash durability."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
@@ -20,7 +20,7 @@ def write_json(path: Path, value) -> None:
             delete=False,
         ) as stream:
             temporary = Path(stream.name)
-            json.dump(value, stream, ensure_ascii=False, allow_nan=False)
+            json.dump(value, stream, ensure_ascii=False, allow_nan=False, sort_keys=sort_keys)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)

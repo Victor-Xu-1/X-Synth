@@ -15,6 +15,7 @@
         size="x-small"
         variant="text"
         aria-label="关闭详情"
+        :disabled="busy"
         @click="$emit('close')"
       />
     </header>
@@ -115,7 +116,7 @@ const props = defineProps({
   snapshot: String,
   contextId: String,
 });
-const emit = defineEmits(["update", "close", "remove", "navigate"]);
+const emit = defineEmits(["update", "pending", "close", "remove", "navigate"]);
 const structureInput = ref(null);
 const label = ref(""),
   smiles = ref(""),
@@ -124,6 +125,8 @@ const label = ref(""),
   message = ref("");
 let generation = 0,
   disposed = false;
+watch(busy, (value) => emit("pending", value), { flush: "sync" });
+defineExpose({ pending: busy });
 watch(
   () => [
     props.node?.id,
@@ -205,6 +208,7 @@ async function apply() {
 onBeforeUnmount(() => {
   disposed = true;
   generation++;
+  busy.value = false;
 });
 </script>
 <style scoped>

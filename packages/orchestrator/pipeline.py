@@ -4,15 +4,15 @@ import hashlib
 import json
 import logging
 import sqlite3
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-from multiprocessing import get_context
+from dataclasses import asdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from threading import Event, Lock, Thread
 
 from packages.adapters.askcos.engine import AskcosEngine
 from packages.adapters.askcos.transport import EngineUnavailable
 from packages.adapters.stock.stock_index import (
-    StockIndex,
+    StockIndex, StockIndexError,
 )
 from packages.platform.atomic_file import write_json
 from packages.platform.leader_lock import LeaderLock
@@ -23,10 +23,12 @@ from packages.route_pool.workflow import (
 
 from .job_repository import ACTIVE_STATES, JobConflict, JobRepository
 from .review_worker import review_job
+from .review_execution import CancellableReview
 from .route_request import RouteJobRequest
 from .runtime_health import route_runtime_status
 from .search_progress import begin_search_round, remaining_search_rounds
 from .review_policy import REVIEW_POLICY, upgrade_review_checkpoint
+from .route_artifacts import RouteArtifactError, RouteArtifactStore
 from packages.chemistry.material_scope import POLICY as MATERIAL_SCOPE_POLICY
 
 
@@ -54,6 +56,7 @@ class RoutePipeline:
         self.state_lock = Lock()
         self.review_executor = None
         self.verifier = verifier
+        self.artifacts = RouteArtifactStore(self.artifact_root)
 
     def start(self):
         if self.thread is not None and self.thread.is_alive():
@@ -65,9 +68,7 @@ class RoutePipeline:
             return
         self.stop_event.clear()
         self.repository.recover_interrupted()
-        self.review_executor = ProcessPoolExecutor(
-            max_workers=self.budget.review_parallelism, mp_context=get_context("spawn")
-        )
+        self.review_executor = CancellableReview()
         self.thread = Thread(
             target=self._schedule, name="x-synth-route-scheduler", daemon=True
         )
@@ -75,6 +76,8 @@ class RoutePipeline:
 
     def stop(self):
         self.stop_event.set()
+        if self.review_executor is not None:
+            self.review_executor.close()
         if self.thread is not None:
             self.thread.join(timeout=45)
             if self.thread.is_alive():
@@ -85,7 +88,6 @@ class RoutePipeline:
             self.leader.close()
             self.leader = None
         if self.review_executor is not None:
-            self.review_executor.shutdown(wait=True, cancel_futures=True)
             self.review_executor = None
 
     def _schedule(self):
@@ -176,16 +178,25 @@ class RoutePipeline:
                 job_id, status, expected_revision=current["revision"], **values
             )
 
+    def _stock_summary(self, bound=None):
+        try:
+            self.stock.assert_current(**(bound or {}))
+            return self.stock.summary
+        except StockIndexError as exc:
+            raise EngineUnavailable("stock_snapshot_unavailable", recoverable=True) from exc
+
     def run(self, job: dict):
         request = RouteJobRequest.from_persisted(job["request"])
         directory = self.artifact_root / job["id"]
         directory.mkdir(parents=True, exist_ok=True)
         sources = []
         checkpoint = job["checkpoint"] or {}
+        stock_summary = self._stock_summary()
+        stock_bound = {key: stock_summary[key] for key in ("catalog_sha256", "source_sha256")}
         identity = {
-            "stock_snapshot": self.stock.summary["source_sha256"],
+            "stock_snapshot": stock_summary["source_sha256"],
             "models": self.models,
-            "catalog_sha256": self.stock.summary["catalog_sha256"],
+            "catalog_sha256": stock_summary["catalog_sha256"],
             "review_policy": REVIEW_POLICY,
         }
         try:
@@ -195,6 +206,7 @@ class RoutePipeline:
                 "checkpoint_asset_identity_changed", recoverable=False
             ) from exc
         completed = set(checkpoint.get("completed_searches", []))
+        checkpoint["result_artifact_schema"] = 1
         for file in sorted(directory.glob("native-*.json")):
             data = json.loads(file.read_text(encoding="utf-8"))
             sources.append(
@@ -206,6 +218,7 @@ class RoutePipeline:
             )
             completed.add(file.stem.removeprefix("native-").replace("-", ":", 1))
         for pass_number in remaining_search_rounds(checkpoint, request.repair_attempts):
+            self._stock_summary(stock_bound)
             current = self.repository.get(job["id"])
             if current["status"] not in ACTIVE_STATES:
                 return
@@ -278,14 +291,17 @@ class RoutePipeline:
             if current["status"] not in ACTIVE_STATES:
                 return
             current = self._transition(job["id"], "evaluating", checkpoint=checkpoint)
-            pool = self.review_executor.submit(
+            self._stock_summary(stock_bound)
+            pool = self.review_executor.run(
                 review_job,
                 job["id"],
                 str(directory),
                 str(self.stock.path),
                 request.min_routes,
                 request.max_routes,
-            ).result()
+                stock_summary["catalog_sha256"],
+                interrupted=lambda: self.stop_event.is_set() or cancelled(),
+            )
             if self.verifier is None:
                 raise EngineUnavailable("route_verification_not_configured", recoverable=False)
             pool = self.verifier.review(
@@ -304,7 +320,8 @@ class RoutePipeline:
             ))
             summary = {
                 **pool.summary,
-                "stock_snapshot": self.stock.summary,
+                "target_key": request.smiles,
+                "stock_snapshot": self._stock_summary(stock_bound),
                 "pass_number": pass_number,
                 "native_runs": [
                     {
@@ -318,6 +335,21 @@ class RoutePipeline:
                 "strategy_errors": [error.code for error in failures],
                 "material_scope_policy": MATERIAL_SCOPE_POLICY,
             }
+            if self.stop_event.is_set() or cancelled():
+                raise EngineUnavailable("route_publication_interrupted", recoverable=True)
+            try:
+                checkpoint["published_result"] = self.artifacts.stage(
+                    job["id"], all_routes=[asdict(route) for route in pool.all_routes],
+                    selected_routes=[asdict(route) for route in pool.selected_routes],
+                    summary=summary,
+                )
+            except OSError as exc:
+                raise EngineUnavailable("result_storage_unavailable", recoverable=True) from exc
+            except RouteArtifactError as exc:
+                raise EngineUnavailable("result_snapshot_inconsistent", recoverable=False) from exc
+            if self.stop_event.is_set() or cancelled():
+                raise EngineUnavailable("route_publication_interrupted", recoverable=True)
+            self._stock_summary(stock_bound)
             self._transition(
                 job["id"], "evaluating", summary=summary, checkpoint=checkpoint
             )

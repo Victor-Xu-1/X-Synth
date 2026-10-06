@@ -6,6 +6,9 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
+from .supplier_evidence import supplier_record
+from .commercial_stock import canonicalize_smiles
+
 FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "smiles": ("smiles", "SMILES", "canonical_smiles", "Canonical SMILES", "结构SMILES"),
     "cas": ("cas", "CAS", "cas_no", "cas_number", "CAS No.", "CAS号", "CAS 号"),
@@ -39,6 +42,8 @@ def build_domestic_stock_artifacts(
     default_ppg: float | None = None,
 ) -> DomesticStockArtifacts:
     """Compile one domestic supplier export set into ASKCOS, Synon, and AiZynthFinder stock artifacts."""
+    if default_ppg is not None:
+        raise ValueError("A default price is not recorded supplier evidence")
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
 
@@ -54,7 +59,6 @@ def build_domestic_stock_artifacts(
                 source_path=path,
                 row_number=row_number,
                 default_source=default_source,
-                default_ppg=default_ppg,
             )
             if compiled["decision"] != "accepted":
                 rejected_rows.append(compiled)
@@ -127,12 +131,11 @@ def _compile_row(
     source_path: Path,
     row_number: int,
     default_source: str,
-    default_ppg: float | None,
 ) -> dict[str, Any]:
     raw_smiles = _first_text(row, FIELD_ALIASES["smiles"])
     if not raw_smiles:
         return _rejected(row, source_path, row_number, "missing_smiles")
-    smiles = _canonicalize_valid_smiles(raw_smiles)
+    smiles = canonicalize_smiles(raw_smiles)
     if not smiles:
         return _rejected(row, source_path, row_number, "invalid_smiles", smiles=raw_smiles)
 
@@ -146,28 +149,34 @@ def _compile_row(
     if row.get("evidence_role") == "structure_metadata" or catalog_id.startswith("PubChemCID:"):
         return _rejected(row, source_path, row_number, "compound_metadata_is_not_a_supplier_catalog", smiles=smiles, source=source)
 
-    if not any([cas, supplier, catalog_id, url, availability]):
+    raw_price = _first_text(row, ("ppg", "price_per_gram"))
+    record = supplier_record({
+        **row, "smiles": smiles, "source": source, "catalog_id": catalog_id,
+        "cas": cas, "url": url, "lead_time": availability,
+        "ppg": _parse_ppg(raw_price),
+    })
+    if record is None:
         return _rejected(
             row,
             source_path,
             row_number,
-            "missing_supplier_cas_catalog_evidence",
+            "missing_exact_supplier_catalog_evidence",
             smiles=smiles,
             source=source,
         )
 
     return {
         "decision": "accepted",
-        "reason": "exact canonical smiles with supplier/CAS/catalog/availability evidence",
-        "smiles": smiles,
-        "inchi_key": _inchi_key(smiles),
-        "source": source,
+        "reason": record["reason"],
+        "smiles": record["smiles"],
+        "inchi_key": _inchi_key(record["smiles"]),
+        "source": record["source"],
         "supplier": supplier,
-        "catalog_id": catalog_id,
-        "cas": cas,
-        "url": url,
+        "catalog_id": record["catalog_id"],
+        "cas": record["cas"],
+        "url": record["url"],
         "availability": availability,
-        "ppg": _parse_ppg(_first_text(row, FIELD_ALIASES["ppg"]), default_ppg),
+        "ppg": record["ppg"],
         "source_file": str(source_path),
         "row": row_number,
     }
@@ -241,21 +250,6 @@ def _inchi_key(smiles: str) -> str:
         return ""
 
 
-def _canonicalize_valid_smiles(smiles: str) -> str:
-    value = (smiles or "").strip()
-    if not value:
-        return ""
-    try:
-        from rdkit import Chem
-
-        mol = Chem.MolFromSmiles(value)
-        if mol is None:
-            return ""
-        return Chem.MolToSmiles(mol, canonical=True)
-    except Exception:
-        return ""
-
-
 def _rejected(
     row: dict[str, Any],
     source_path: Path,
@@ -298,9 +292,9 @@ def _clean_text(value: Any) -> str:
     return "" if text.lower() in {"nan", "none", "null"} else text
 
 
-def _parse_ppg(value: str, default_ppg: float | None) -> float | None:
+def _parse_ppg(value: str) -> float | None:
     if not value:
-        return default_ppg
+        return None
     import math
 
     try:

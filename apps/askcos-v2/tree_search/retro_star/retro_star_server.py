@@ -9,8 +9,9 @@ import uvicorn
 from contextlib import asynccontextmanager
 from threading import BoundedSemaphore, Event
 from starlette.concurrency import run_in_threadpool
-from packages.adapters.askcos.native_search_jobs import register_search_jobs
+from packages.adapters.askcos.native_search_jobs import acquire_search_slot, managed_search_profile, register_search_jobs
 from packages.adapters.askcos.search_checkpoint import SearchCheckpoint
+from packages.adapters.askcos.native_http import native_call_context
 from datetime import datetime
 from fastapi import FastAPI
 from retro_star_controller import RetroStar
@@ -72,7 +73,7 @@ class RequestBody(BaseModel):
 
 def run_native(payload, cancel_event, checkpoint_path=None, progress=lambda value: None):
     request = RequestBody(**payload)
-    with search_slots:
+    with acquire_search_slot(search_slots, cancel_event), native_call_context(cancel_event):
         controller = RetroStar()
         controller.cancel_event = cancel_event
         controller.checkpoint = SearchCheckpoint(checkpoint_path, progress) if checkpoint_path is not None else None
@@ -87,7 +88,6 @@ def run_native(payload, cancel_event, checkpoint_path=None, progress=lambda valu
 make_jobs = register_search_jobs(app, "retro_star", run_native)
 
 
-@app.post("/get_buyable_paths")
 def retro_star_service(request: RequestBody):
     start_time = time.perf_counter()
     response = copy.deepcopy(base_response)
@@ -105,6 +105,10 @@ def retro_star_service(request: RequestBody):
         traceback.print_exc()
 
     return response
+
+
+if not managed_search_profile():
+    app.post("/get_buyable_paths")(retro_star_service)
 
 
 if __name__ == "__main__":

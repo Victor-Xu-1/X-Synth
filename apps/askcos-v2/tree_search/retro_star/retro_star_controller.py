@@ -62,6 +62,7 @@ class RetroStar:
         from threading import Event
         self.cancel_event = Event()
         self.checkpoint = None
+        self.rpc_deadline = None
         self.expand_one_options = None
         self.build_tree_options = None
         self.enumerate_paths_options = None
@@ -359,6 +360,7 @@ class RetroStar:
         print("Starting tree expansion...")
         start_time = time.time() - (restored or 0.0)
         elapsed_time = time.time() - start_time
+        self.rpc_deadline = time.monotonic() + max(0, self.build_tree_options.expansion_time - elapsed_time) + self.expand_one.request_timeout
 
         while elapsed_time < self.build_tree_options.expansion_time and not self.done:
             self.check_cancelled()
@@ -453,7 +455,9 @@ class RetroStar:
 
         retro_results = self.expand_one(
             smiles=smiles,
-            expand_one_options=self.expand_one_options
+            expand_one_options=self.expand_one_options,
+            cancel_event=self.cancel_event,
+            deadline=self.rpc_deadline,
         )
 
         if not retro_results:

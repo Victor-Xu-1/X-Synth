@@ -2,9 +2,9 @@
 
 import ast
 from pathlib import Path
-from packages.platform.asset_identity import NATIVE_EXTERNAL_FILES
+from packages.platform.asset_identity import NATIVE_CODE_DIRECTORIES, NATIVE_EXTERNAL_FILES
 
-NATIVE_DIRECTORIES = ("askcos2_core", "tree_search", "retro/template_relevance")
+NATIVE_DIRECTORIES = NATIVE_CODE_DIRECTORIES
 PROJECTION_FILES = {
     "tree_search/mcts/utils.py": {"prune", "get_paths", "chunk_by_comma", "generate_unique_node"},
     "tree_search/retro_star/utils.py": {"prune", "get_paths", "chunk_by_comma", "generate_unique_node"},

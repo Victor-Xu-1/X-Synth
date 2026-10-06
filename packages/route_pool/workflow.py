@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
-from pathlib import Path
+from dataclasses import dataclass
 from typing import Any
 
 from packages.adapters.stock.commercial_stock import CommercialStockRegistry
-from packages.platform.atomic_file import write_json
 from packages.route_schema.route_schema import RouteCandidate
 from packages.validation.route_quality import RouteQualityPolicy
 
@@ -37,15 +35,11 @@ class UnifiedRoutePoolBuildResult:
     summary: dict[str, Any]
     all_routes: list[RouteCandidate]
     selected_routes: list[RouteCandidate]
-    unified_routes_path: Path
-    selected_routes_path: Path
-    summary_path: Path
 
 
-def build_unified_route_pool_artifacts(
+def build_unified_route_pool(
     *,
     id: str,
-    output_dir: Path,
     askcos_sources: list[AskcosRouteSource] | None = None,
     aizynthfinder_sources: list[AizynthFinderRouteSource] | None = None,
     extra_routes: list[RouteCandidate] | None = None,
@@ -58,9 +52,7 @@ def build_unified_route_pool_artifacts(
         list[RouteCandidate],
     ]
     | None = None,
-    publish_artifacts: bool = True,
 ) -> UnifiedRoutePoolBuildResult:
-    output_dir.mkdir(parents=True, exist_ok=True)
     effective_quality_policy = quality_policy or RouteQualityPolicy()
     pool = UnifiedRoutePool(
         min_routes=min_routes,
@@ -123,13 +115,12 @@ def build_unified_route_pool_artifacts(
             }
         )
 
-    return publish_route_pool_artifacts(
-        id=id, output_dir=output_dir, pool=pool, source_summaries=source_summaries,
-        publish_artifacts=publish_artifacts,
+    return build_route_pool_result(
+        id=id, pool=pool, source_summaries=source_summaries,
     )
 
 
-def publish_route_pool_artifacts(*, id, output_dir, pool, source_summaries, publish_artifacts=True):
+def build_route_pool_result(*, id, pool, source_summaries):
     effective_quality_policy = pool.quality_policy or RouteQualityPolicy()
     min_routes, max_routes = pool.min_routes, pool.max_routes
     all_routes = pool.ranked_routes()
@@ -147,14 +138,6 @@ def publish_route_pool_artifacts(*, id, output_dir, pool, source_summaries, publ
         not decision.accepted for decision in quality_decisions
     )
     selected_closed_route_count = sum(1 for route in selected_routes if route.closed)
-    unified_routes_path = output_dir / "unified_routes.json"
-    selected_routes_path = output_dir / "selected_routes.json"
-    summary_path = output_dir / "summary.json"
-
-    if publish_artifacts:
-        write_json(unified_routes_path, [asdict(route) for route in all_routes])
-        write_json(selected_routes_path, [asdict(route) for route in selected_routes])
-
     summary = {
         "id": id,
         "target_key": pool.target_key(),
@@ -185,19 +168,12 @@ def publish_route_pool_artifacts(*, id, output_dir, pool, source_summaries, publ
             min_routes=min_routes,
             quality_rejection_counts=quality_rejection_counts,
         ),
-        "unified_routes_path": str(unified_routes_path),
-        "selected_routes_path": str(selected_routes_path),
     }
-    if publish_artifacts:
-        write_json(summary_path, summary)
 
     return UnifiedRoutePoolBuildResult(
         summary=summary,
         all_routes=all_routes,
         selected_routes=selected_routes,
-        unified_routes_path=unified_routes_path,
-        selected_routes_path=selected_routes_path,
-        summary_path=summary_path,
     )
 
 

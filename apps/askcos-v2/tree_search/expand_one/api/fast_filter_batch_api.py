@@ -1,5 +1,5 @@
-import requests
 from packages.adapters.askcos.native_http import NativeSession, post_json
+from packages.adapters.askcos.native_service_limits import FAST_FILTER_BATCH_SIZE
 from pydantic import BaseModel
 from typing import List, Optional
 
@@ -27,12 +27,13 @@ class FastFilterBatchAPI:
         if not url:
             url = self.default_url
 
-        input = {"rxn_smiles": rxn_smiles}
-
-        FastFilterBatchInput(**input)               # merely validate the input
-        response = post_json(self.session, url, payload=input, response_model=FastFilterBatchResponse)
-        scores = response["result"]
-        if scores is None or len(scores) != len(rxn_smiles):
-            raise ValueError("Fast-filter scores do not match the requested reactions")
-
+        FastFilterBatchInput(rxn_smiles=rxn_smiles)
+        scores = []
+        for offset in range(0, len(rxn_smiles), FAST_FILTER_BATCH_SIZE):
+            batch = rxn_smiles[offset:offset + FAST_FILTER_BATCH_SIZE]
+            response = post_json(self.session, url, payload={"rxn_smiles": batch}, response_model=FastFilterBatchResponse)
+            values = response["result"]
+            if values is None or len(values) != len(batch):
+                raise ValueError("Fast-filter scores do not match the requested reactions")
+            scores.extend(values)
         return scores

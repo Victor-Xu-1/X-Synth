@@ -6,6 +6,84 @@ import json
 from pathlib import Path
 
 
+IDENTITY_FIELDS = ("pid", "start_ticks", "pgid", "session_id", "uid")
+
+
+def process_identity(pid: int) -> dict:
+    if type(pid) is not int or pid <= 0:
+        raise ValueError("Invalid process identifier")
+    root = Path("/proc") / str(pid)
+    fields = (root / "stat").read_text().rsplit(")", 1)[1].split()
+    uid = root.stat().st_uid
+    verified = (root / "stat").read_text().rsplit(")", 1)[1].split()
+    if any(fields[index] != verified[index] for index in (1, 2, 3, 19)):
+        raise ValueError("Process identity changed during sampling")
+    return {
+        "pid": pid, "start_ticks": int(fields[19]),
+        "parent_pid": int(fields[1]), "pgid": int(fields[2]),
+        "session_id": int(fields[3]), "uid": uid, "state": fields[0],
+    }
+
+
+def matching_process(identity: dict) -> dict | None:
+    try:
+        sample = process_identity(identity["pid"])
+        if all(sample[key] == identity[key] for key in IDENTITY_FIELDS):
+            return sample
+    except (OSError, ValueError, KeyError, TypeError, IndexError):
+        pass
+    return None
+
+
+def owned_process_members(members: list[dict]) -> list[dict]:
+    """Discover descendants only while a recorded PID/start identity anchors them."""
+    verified = {member["pid"]: sample for member in members if (sample := matching_process(member))}
+    if not verified:
+        return []
+    snapshot = {}
+    for root in Path("/proc").iterdir():
+        if not root.name.isdecimal():
+            continue
+        try:
+            sample = process_identity(int(root.name))
+            snapshot[sample["pid"]] = sample
+        except (OSError, ValueError, IndexError):
+            continue
+    # A surviving (or unreaped zombie) member pins the original session identity.
+    anchors = [sample for sample in verified.values() if matching_process(sample)]
+    sessions = {(sample["session_id"], sample["uid"]) for sample in anchors}
+    starts = {
+        session: min(member["start_ticks"] for member in members
+                     if (member["session_id"], member["uid"]) == session)
+        for session in sessions
+    }
+    result = dict(verified)
+    for sample in snapshot.values():
+        session = (sample["session_id"], sample["uid"])
+        if session in sessions and sample["start_ticks"] >= starts[session]:
+            result[sample["pid"]] = sample
+    for _ in range(256):
+        added = False
+        for sample in snapshot.values():
+            parent = result.get(sample["parent_pid"])
+            if (sample["pid"] not in result and parent
+                    and sample["uid"] == parent["uid"]
+                    and sample["start_ticks"] >= parent["start_ticks"]
+                    and matching_process(parent)):
+                result[sample["pid"]] = sample
+                added = True
+        if len(result) > 256:
+            raise ValueError("Owned process tree exceeds the sampling budget")
+        if not added:
+            break
+    # Do not adopt an unrecorded session member after the last anchor disappears.
+    live_sessions = {(sample["session_id"], sample["uid"]) for sample in anchors if matching_process(sample)}
+    recorded = {member["pid"] for member in members}
+    return [sample for sample in result.values()
+            if sample["pid"] in recorded or (sample["session_id"], sample["uid"]) in live_sessions
+            or sample["parent_pid"] in result and matching_process(result[sample["parent_pid"]])]
+
+
 def process_sample(pid: int) -> dict:
     if not isinstance(pid, int) or pid <= 0:
         raise ValueError("Invalid process identifier")
