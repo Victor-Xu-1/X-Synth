@@ -3,6 +3,7 @@ import numpy as np
 import os
 import random
 import time
+from packages.adapters.askcos.retro_star_values import backup_search_values
 from api.expand_one_api import ExpandOneAPI
 from api.historian_api import HistorianAPI
 from api.pathway_ranker_api import PathwayRankerAPI
@@ -540,100 +541,16 @@ class RetroStar:
         )
 
     def _update(self, m_next: str) -> None:
-        """
-        Update status and reward for nodes in this path.
-
-        Reaction nodes are guaranteed to only have a single parent. Thus, the
-        status of its parent chemical will always be updated appropriately in
-        ``_update`` and will not change until the next time the chemical is
-        in the selected path. Thus, the done state of the chemical can be saved.
-
-        However, chemical nodes can have multiple parents (i.e. can be reached
-        via multiple reactions), so a given update cycle may only pass through
-        one of multiple parent reactions. Thus, the done state of a reaction
-        must be determined dynamically and cannot be saved.
-        """
-        # <Algorithm 2 line 6>
-        try:
-            new_rn = min(
-                self.tree.nodes[r]["rn"] for r in self.tree.successors(m_next)
-            )
-        except ValueError:
-            # special treatment when self.tree.successors(m_next) is empty
-            # e.g., when nothing got added due to loop prevention
-            # simply set the "done" flag to True, and no other updates
-            self.tree.nodes[m_next]["done"] = True
-
-            return
-
-        # <Algorithm 2 line 7>
-        delta = new_rn - self.tree.nodes[m_next]["rn"]
-        # <Algorithm 2 line 8>
-        self.tree.nodes[m_next]["rn"] = new_rn
-        # <Algorithm 2 line 9>
-        m_current = m_next
-
-        # <Algorithm 2 line 10>
-        while not delta == 0 and not m_current == self.target:
-            # <Algorithm 2 line 11>
-            R_current = next(self.tree.predecessors(m_current))
-            # Solution check for parent reaction node
-            self.tree.nodes[R_current]["solved"] = all(
-                self.tree.nodes[c]["solved"]
-                for c in self.tree.successors(R_current)
-            )
-            # <Algorithm 2 line 12>
-            self.tree.nodes[R_current]["rn"] += delta
-            # <Algorithm 2 line 13>
-            self.tree.nodes[R_current]["Vt"] += delta
-            # <Algorithm 2 line 14>
-            for m in self.tree.successors(R_current):
-                # <Algorithm 2 line 15>
-                if not m == m_current:
-                    # <Algorithm 2 line 16>
-                    self._update_sibling(m, delta)
-
-            # <Algorithm 2 line 17>
-            m_current = next(self.tree.predecessors(R_current))
-            # Solution check for parent chemical node
-            chem_data = self.tree.nodes[m_current]
-            chem_data["solved"] = any(
-                self.tree.nodes[r]["solved"]
-                for r in self.tree.successors(m_current)
-            )
-
-            # simplified update logic from is_chemical_done()
-            if chem_data["done"]:
-                done = True
-            elif chem_data["min_depth"] >= self.build_tree_options.max_depth:
-                done = True
-            elif (
-                sum(self.is_reaction_done(r) for r in self.tree.successors(m_current))
+        """Back up local costs, route success and ancestor completion separately."""
+        ancestors = backup_search_values(self.tree, m_next, self.target)
+        for chemical in ancestors:
+            data = self.tree.nodes[chemical]
+            data["done"] = (
+                data["done"]
+                or data["min_depth"] >= self.build_tree_options.max_depth
+                or sum(self.is_reaction_done(r) for r in self.tree.successors(chemical))
                 >= self.build_tree_options.max_branching
-            ):
-                done = True
-            else:
-                done = False
-            chem_data["done"] = done
-
-            # <Algorithm 2 line 18>
-            delta = 0
-            # <Algorithm 2 line 19>
-            if self.tree.nodes[R_current]["rn"] < self.tree.nodes[m_current]["rn"]:
-                # <Algorithm 2 line 20>
-                delta = self.tree.nodes[R_current]["rn"] - self.tree.nodes[m_current]["rn"]
-                # <Algorithm 2 line 21>
-                self.tree.nodes[m_current]["rn"] = self.tree.nodes[R_current]["rn"]
-
-    def _update_sibling(self, m: str, delta: float) -> None:
-        # <Algorithm 3 line 1>
-        self.tree.nodes[m]["rn"] += delta
-        # <Algorithm 3 line 2>
-        for R in self.tree.successors(m):
-            # <Algorithm 3 line 3>
-            for m_ in self.tree.successors(R):
-                # <Algorithm 3 line 4>
-                self._update_sibling(m_, delta)
+            )
 
     def enumerate_paths(self) -> List:
         """

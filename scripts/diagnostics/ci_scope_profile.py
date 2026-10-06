@@ -162,6 +162,7 @@ PERFORMANCE_FILES = {"packages/platform/performance.py"}
 SEARCH_PROJECTION_FILES = {
     "packages/adapters/askcos/route_reachability.py",
     "packages/adapters/askcos/route_enumeration.py",
+    "packages/adapters/askcos/retro_star_values.py",
     "packages/adapters/askcos/projection_compatibility.py",
     "packages/adapters/askcos/projection_recovery.py",
     "packages/platform/asset_identity.py",
@@ -434,6 +435,7 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
         selected.update({
             "tests/unit/test_route_reachability.py",
             "tests/unit/test_route_enumeration.py",
+            "tests/unit/test_retrostar_values.py",
             "tests/unit/test_projection_recovery.py",
             "tests/unit/test_cgroup_metrics.py",
             "tests/unit/test_search_artifacts.py",
