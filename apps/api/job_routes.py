@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -6,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from packages.orchestrator.job_repository import JobConflict
 from packages.orchestrator.route_request import RouteJobRequest
 
-from .job_views import job_response, route_result
+from .job_views import job_response, route_result, selected_route_data
 from .security import authenticate
 
 
@@ -104,12 +103,8 @@ def job_router(*, repository, transport, readiness, artifacts: Path, budget):
     def routes(job_id: str, request: Request):
         job = owned(request, job_id)
         path = artifacts / job["id"] / "selected_routes.json"
-        if not path.is_file():
-            return {"routes": [], "status": job["status"]}
-        if path.stat().st_size > budget.response_bytes:
-            raise HTTPException(413, "Route data exceeds the response budget")
         return {
-            "routes": json.loads(path.read_text(encoding="utf-8")),
+            "routes": selected_route_data(path, budget=budget),
             "status": job["status"],
         }
 

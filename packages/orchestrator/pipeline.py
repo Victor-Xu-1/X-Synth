@@ -26,6 +26,7 @@ from .review_worker import review_job
 from .route_request import RouteJobRequest
 from .runtime_health import route_runtime_status
 from .search_progress import begin_search_round
+from packages.chemistry.material_scope import POLICY as MATERIAL_SCOPE_POLICY
 
 
 class RoutePipeline:
@@ -173,7 +174,7 @@ class RoutePipeline:
             )
 
     def run(self, job: dict):
-        request = RouteJobRequest(**job["request"])
+        request = RouteJobRequest.from_persisted(job["request"])
         directory = self.artifact_root / job["id"]
         directory.mkdir(parents=True, exist_ok=True)
         sources = []
@@ -293,7 +294,11 @@ class RoutePipeline:
                 ],
                 "review_policy": "exact_stock_template_reconstruction_target_bond_families_v1",
                 "strategy_errors": [error.code for error in failures],
+                "material_scope_policy": MATERIAL_SCOPE_POLICY,
             }
+            self._transition(
+                job["id"], "evaluating", summary=summary, checkpoint=checkpoint
+            )
             if summary["meets_min_routes"]:
                 return self._transition(
                     job["id"], "completed", summary=summary, checkpoint=checkpoint

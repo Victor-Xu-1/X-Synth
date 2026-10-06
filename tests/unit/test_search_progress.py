@@ -56,3 +56,25 @@ def test_real_job_transitions_clear_prior_round_and_keep_fresh_same_round_counte
     current = repository.get(job["id"])["checkpoint"]
     assert current["pass_number"] == 2
     assert current["native_progress"]["mcts"]["iterations"] == 11
+
+
+def test_evaluated_summary_is_retained_during_the_next_search_round(tmp_path):
+    from packages.orchestrator.job_repository import JobRepository
+
+    repository = JobRepository(tmp_path / "jobs.sqlite")
+    job = repository.create("owner", {"smiles": "CCO"})
+    claimed = repository.claim_next(active_limit=1)
+    searching = repository.transition(job["id"], "searching", expected_revision=claimed["revision"])
+    evaluated = repository.transition(job["id"], "evaluating", expected_revision=searching["revision"], summary={"selected_route_count": 1, "meets_min_routes": False})
+    current = repository.transition(job["id"], "searching", expected_revision=evaluated["revision"], checkpoint={"pass_number": 2})
+    assert current["summary"]["selected_route_count"] == 1
+    assert current["summary"]["meets_min_routes"] is False
+
+
+def test_pipeline_publishes_each_evaluated_summary_before_repair_or_completion():
+    import ast
+    from pathlib import Path
+
+    module = ast.parse((Path(__file__).resolve().parents[2] / "packages/orchestrator/pipeline.py").read_text())
+    calls = [node for node in ast.walk(module) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "_transition"]
+    assert any(len(node.args) > 1 and isinstance(node.args[1], ast.Constant) and node.args[1].value == "evaluating" and any(argument.arg == "summary" for argument in node.keywords) for node in calls)

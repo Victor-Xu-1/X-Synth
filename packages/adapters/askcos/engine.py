@@ -19,6 +19,10 @@ def build_search_options(
         raise ValueError("A configured native search strategy and model are required")
     expansion = request.expansion_time
     tuning = request.tuning
+    cumulative = (
+        1.0 if pass_number > 1 and request.search_policy_version >= 2
+        else tuning.cumulative_probability
+    )
     options = {
         "smiles": request.smiles,
         "expand_one_options": {
@@ -27,7 +31,7 @@ def build_search_options(
                     "retro_backend": "template_relevance",
                     "retro_model_name": name,
                     "max_num_templates": min(5000, tuning.template_count * pass_number),
-                    "max_cum_prob": tuning.cumulative_probability,
+                    "max_cum_prob": cumulative,
                 }
                 for name in models
             ],
