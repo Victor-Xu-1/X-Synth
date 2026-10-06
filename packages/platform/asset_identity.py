@@ -8,6 +8,11 @@ from pathlib import Path
 
 from .immutable_sqlite import file_identity, stat_identity
 
+NATIVE_CODE_DIRECTORIES = (
+    "askcos2_core", "tree_search", "retro/template_relevance",
+    "fast_filter", "pathway_ranker", "value_network", "scscore",
+)
+
 NATIVE_EXTERNAL_FILES = (
     "packages/adapters/askcos/route_reachability.py",
     "packages/adapters/askcos/route_enumeration.py",
@@ -71,10 +76,7 @@ def native_asset_identity(source: Path, assets: Path, stock, models: list[str]) 
         path: content_digest(assets / path) for path in other
     }
     code = hashlib.sha256()
-    for directory in (
-        "askcos2_core", "tree_search", "retro/template_relevance",
-        "fast_filter", "pathway_ranker", "value_network", "scscore",
-    ):
+    for directory in NATIVE_CODE_DIRECTORIES:
         for path in sorted((source / "apps/askcos-v2" / directory).rglob("*.py")):
             code.update(str(path.relative_to(source)).encode())
             code.update(path.read_bytes())

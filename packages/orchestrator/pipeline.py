@@ -12,7 +12,7 @@ from threading import Event, Lock, Thread
 from packages.adapters.askcos.engine import AskcosEngine
 from packages.adapters.askcos.transport import EngineUnavailable
 from packages.adapters.stock.stock_index import (
-    StockIndex,
+    StockIndex, StockIndexError,
 )
 from packages.platform.atomic_file import write_json
 from packages.platform.leader_lock import LeaderLock
@@ -178,16 +178,25 @@ class RoutePipeline:
                 job_id, status, expected_revision=current["revision"], **values
             )
 
+    def _stock_summary(self, bound=None):
+        try:
+            self.stock.assert_current(**(bound or {}))
+            return self.stock.summary
+        except StockIndexError as exc:
+            raise EngineUnavailable("stock_snapshot_unavailable", recoverable=True) from exc
+
     def run(self, job: dict):
         request = RouteJobRequest.from_persisted(job["request"])
         directory = self.artifact_root / job["id"]
         directory.mkdir(parents=True, exist_ok=True)
         sources = []
         checkpoint = job["checkpoint"] or {}
+        stock_summary = self._stock_summary()
+        stock_bound = {key: stock_summary[key] for key in ("catalog_sha256", "source_sha256")}
         identity = {
-            "stock_snapshot": self.stock.summary["source_sha256"],
+            "stock_snapshot": stock_summary["source_sha256"],
             "models": self.models,
-            "catalog_sha256": self.stock.summary["catalog_sha256"],
+            "catalog_sha256": stock_summary["catalog_sha256"],
             "review_policy": REVIEW_POLICY,
         }
         try:
@@ -209,6 +218,7 @@ class RoutePipeline:
             )
             completed.add(file.stem.removeprefix("native-").replace("-", ":", 1))
         for pass_number in remaining_search_rounds(checkpoint, request.repair_attempts):
+            self._stock_summary(stock_bound)
             current = self.repository.get(job["id"])
             if current["status"] not in ACTIVE_STATES:
                 return
@@ -281,6 +291,7 @@ class RoutePipeline:
             if current["status"] not in ACTIVE_STATES:
                 return
             current = self._transition(job["id"], "evaluating", checkpoint=checkpoint)
+            self._stock_summary(stock_bound)
             pool = self.review_executor.run(
                 review_job,
                 job["id"],
@@ -288,7 +299,7 @@ class RoutePipeline:
                 str(self.stock.path),
                 request.min_routes,
                 request.max_routes,
-                self.stock.summary["catalog_sha256"],
+                stock_summary["catalog_sha256"],
                 interrupted=lambda: self.stop_event.is_set() or cancelled(),
             )
             if self.verifier is None:
@@ -310,7 +321,7 @@ class RoutePipeline:
             summary = {
                 **pool.summary,
                 "target_key": request.smiles,
-                "stock_snapshot": self.stock.summary,
+                "stock_snapshot": self._stock_summary(stock_bound),
                 "pass_number": pass_number,
                 "native_runs": [
                     {
@@ -338,6 +349,7 @@ class RoutePipeline:
                 raise EngineUnavailable("result_snapshot_inconsistent", recoverable=False) from exc
             if self.stop_event.is_set() or cancelled():
                 raise EngineUnavailable("route_publication_interrupted", recoverable=True)
+            self._stock_summary(stock_bound)
             self._transition(
                 job["id"], "evaluating", summary=summary, checkpoint=checkpoint
             )

@@ -118,6 +118,31 @@ def indexed_resume_stock(tmp_path):
     return StockIndex(path)
 
 
+def test_pipeline_rejects_replaced_stock_before_native_dispatch(tmp_path, indexed_resume_stock):
+    from packages.adapters.askcos.transport import EngineUnavailable
+    from packages.adapters.stock.stock_index import compile_stock_index
+    from packages.orchestrator.pipeline import RoutePipeline
+    from packages.platform.performance import PerformanceBudget
+
+    stock = indexed_resume_stock
+    pipeline = RoutePipeline(
+        repository=None, engine=None, stock=stock, artifact_root=tmp_path / "routes",
+        models=["pistachio"], budget=PerformanceBudget(),
+    )
+    bound = {key: stock.summary[key] for key in ("catalog_sha256", "source_sha256")}
+    replacement = tmp_path / "replacement.sqlite"
+    compile_stock_index(
+        [{"smiles": "CCN", "source": "MC", "ppg": None,
+          "properties": [{"link": "https://mcule.com/MCULE-7654109565"}]}],
+        output=replacement, source_id="replacement", source_sha256="b" * 64,
+    )
+    replacement.replace(stock.path)
+    with pytest.raises(EngineUnavailable) as failure:
+        pipeline._stock_summary(bound)
+    assert failure.value.code == "stock_snapshot_unavailable"
+    assert failure.value.recoverable
+
+
 def resume_test_job(repository, job_id, checkpoint, summary):
     claimed = repository.claim_next(active_limit=1)
     searching = repository.transition(
@@ -242,5 +267,6 @@ def test_resume_dispatches_current_round_without_retrying_failed_old_round(
     from packages.orchestrator.review_policy import REVIEW_POLICY
     assert current["checkpoint"] == {
         **case.checkpoint, "review_policy": REVIEW_POLICY, "search_feedback": {"2": []},
+        "result_artifact_schema": 1,
     }
     assert {path: path.read_bytes() for path in case.protected} == case.protected

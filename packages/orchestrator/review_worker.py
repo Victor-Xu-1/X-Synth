@@ -30,8 +30,7 @@ def review_job(
             )
         )
     stock = StockIndex(stock_path)
-    if stock.summary["catalog_sha256"] != expected_catalog_sha256:
-        raise ValueError("The review stock differs from the bound search snapshot")
+    stock.assert_current(catalog_sha256=expected_catalog_sha256)
     return build_unified_route_pool(
         id=identifier,
         askcos_sources=sources,
