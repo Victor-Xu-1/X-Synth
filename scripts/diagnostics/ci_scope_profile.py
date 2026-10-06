@@ -167,6 +167,8 @@ PERFORMANCE_FILES = {"packages/platform/performance.py"}
 SEARCH_PROJECTION_FILES = {
     "packages/adapters/askcos/route_reachability.py",
     "packages/adapters/askcos/route_enumeration.py",
+    "apps/askcos-v2/retro/template_relevance/templ_rel_handler.py",
+    "apps/askcos-v2/retro/template_relevance/template_recall.py",
     "packages/adapters/askcos/retro_star_values.py",
     "packages/adapters/askcos/projection_compatibility.py",
     "packages/adapters/askcos/projection_recovery.py",
@@ -175,6 +177,7 @@ SEARCH_PROJECTION_FILES = {
     "scripts/operations/recover_native_projection.py",
     "scripts/operations/systemd/x-synth@.service",
     "apps/askcos-v2/tree_search/mcts/utils.py",
+    "apps/askcos-v2/tree_search/mcts/mcts_controller.py",
     "apps/askcos-v2/tree_search/retro_star/utils.py",
     "apps/askcos-v2/tree_search/retro_star/retro_star_controller.py",
 }
@@ -440,6 +443,8 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
         selected.update({
             "tests/unit/test_route_reachability.py",
             "tests/unit/test_route_enumeration.py",
+            "tests/unit/test_template_recall.py",
+            "tests/unit/test_search_elapsed.py",
             "tests/unit/test_retrostar_values.py",
             "tests/unit/test_projection_recovery.py",
             "tests/unit/test_cgroup_metrics.py",
@@ -468,6 +473,13 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
         {"apps/api/document_routes.py", "apps/api/structure_routes.py"}
     ):
         selected.update(WORKSPACE_TESTS)
+    if roots & {
+        "packages/workspace/route_graph.py",
+        "packages/workspace/route_repository.py",
+        "packages/chemistry/material_scope.py",
+        "apps/api/document_routes.py",
+    }:
+        selected.add("tests/unit/test_document_material_scope.py")
     if "apps/api/app.py" in roots:
         # Direct API consumers only, not the API's entire transitive engine tree.
         for snapshot in (before, after):

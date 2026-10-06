@@ -13,6 +13,11 @@ PROJECTION_IMPORTS = {
     "packages.adapters.askcos.route_reachability",
     "packages.adapters.askcos.route_enumeration",
 }
+EXTERNAL_PROJECTION_FILES = {
+    module.replace(".", "/") + ".py" for module in PROJECTION_IMPORTS
+}
+# Coverage of native_asset_identity's external files is contract-tested.
+EXTERNAL_SEARCH_FILES = {"packages/adapters/askcos/retro_star_values.py"}
 
 
 def search_semantics(source: str, allowed: set[str]) -> str:
@@ -41,22 +46,34 @@ def search_semantics(source: str, allowed: set[str]) -> str:
 
 
 def verify_projection_only(old_source: Path, new_source: Path) -> list[str]:
-    """Compare every fingerprinted native file, not just Git's changed list."""
+    """Compare fingerprinted code, allowing only reviewed projection boundaries."""
     def files(root):
         native = root / "apps/askcos-v2"
-        return {
+        result = {
             str(path.relative_to(native)): path
             for directory in NATIVE_DIRECTORIES
             for path in (native / directory).rglob("*.py")
         }
+        if not result:
+            raise ValueError("Native search sources are unavailable")
+        result.update({
+            name: root / name
+            for name in EXTERNAL_PROJECTION_FILES | EXTERNAL_SEARCH_FILES
+            if (root / name).is_file()
+        })
+        return result
 
     old, new = files(old_source), files(new_source)
-    if not old or old.keys() != new.keys():
-        raise ValueError("Native search files were added or removed; checkpoint cannot be migrated")
+    if (old.keys() ^ new.keys()) - EXTERNAL_PROJECTION_FILES:
+        raise ValueError("Fingerprinted search files were added or removed; checkpoint cannot be migrated")
     changed = []
-    for name in sorted(old):
-        before, after = old[name].read_bytes(), new[name].read_bytes()
+    for name in sorted(old.keys() | new.keys()):
+        before = old[name].read_bytes() if name in old else None
+        after = new[name].read_bytes() if name in new else None
         if before == after:
+            continue
+        if name in EXTERNAL_PROJECTION_FILES:
+            changed.append(name)
             continue
         if name not in PROJECTION_FILES or (
             search_semantics(before.decode(), PROJECTION_FILES[name])

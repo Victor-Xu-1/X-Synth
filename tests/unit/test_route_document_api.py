@@ -42,6 +42,36 @@ def test_cross_site_is_rejected_before_expensive_graph_validation(api):
     assert api.app.state.documents.list("local_workspace") == []
 
 
+def test_material_scope_is_enforced_for_independent_document_http(api):
+    body = document_body()
+    body["graph"]["nodes"][0]["smiles"] = "CN(CCCl)CCCl"
+    response = api.client.post("/api/v1/route-documents", json=body)
+    assert response.status_code == 422
+    assert api.app.state.documents.list("local_workspace") == []
+
+    # Preserve historical evidence privately; do not republish its old claims.
+    graph = RouteGraph.model_validate(
+        body["graph"], context={"allow_archival_scope": True}
+    )
+    identifier = "d" * 32
+    source = {"signature": graph.semantic_signature(), "closed": True}
+    with api.app.state.documents.connect() as connection:
+        connection.execute(
+            "INSERT INTO route_documents VALUES(?,?,?,?,?,?,?,?)",
+            (identifier, "local_workspace", "Archived evidence",
+             graph.model_dump_json(), json.dumps(source), 0,
+             "2026-01-01", "2026-01-01"),
+        )
+        connection.commit()
+    response = api.client.get(f"/api/v1/route-documents/{identifier}")
+    assert response.status_code == 409
+    assert "graph" not in response.json() and "source_closed" not in response.json()
+    with api.app.state.documents.connect() as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM route_documents WHERE id=?", (identifier,)
+        ).fetchone()[0] == 1
+
+
 @pytest.fixture
 def api(tmp_path, monkeypatch, request):
     monkeypatch.setenv("X_SYNTH_STATE_DIR", str(tmp_path / "import-state"))

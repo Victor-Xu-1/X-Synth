@@ -15,6 +15,19 @@ KNOWN_LISTED_STRUCTURES = {
 }
 
 
+class MaterialScopeError(ValueError):
+    """An archival document cannot be published under the current workbench scope."""
+
+
+def require_document_scope(graph):
+    if any(
+        material_scope_exclusion(node.smiles)
+        for node in graph.nodes
+        if node.type == "molecule"
+    ):
+        raise MaterialScopeError("该路线文档超出当前普通研究物料范围，需要重新审查。")
+
+
 @lru_cache(maxsize=4096)
 def material_scope_exclusion(smiles: str) -> str | None:
     """Match known parent material, including salts; never change stored input."""

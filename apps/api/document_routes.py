@@ -5,6 +5,7 @@ from packages.orchestrator.job_repository import JobConflict
 from packages.workspace.http_validation import WorkspaceRoute
 from packages.workspace.route_graph import RouteGraph, graph_from_candidate
 from packages.workspace.route_repository import UnsupportedRouteDocumentSchema
+from packages.chemistry.material_scope import MaterialScopeError
 
 from .job_views import display_description, route_result
 from .security import authenticate
@@ -49,6 +50,8 @@ def document_router(*, documents, repository, transport, artifacts, budget):
             raise HTTPException(409, str(exc)) from exc
         except UnsupportedRouteDocumentSchema as exc:
             raise HTTPException(503, "路线文档存储格式不受支持。") from exc
+        except MaterialScopeError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @router.get("")
     def list_documents(

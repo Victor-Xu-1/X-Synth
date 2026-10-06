@@ -25,7 +25,7 @@ from .job_repository import ACTIVE_STATES, JobConflict, JobRepository
 from .review_worker import review_job
 from .route_request import RouteJobRequest
 from .runtime_health import route_runtime_status
-from .search_progress import begin_search_round
+from .search_progress import begin_search_round, remaining_search_rounds
 from packages.chemistry.material_scope import POLICY as MATERIAL_SCOPE_POLICY
 
 
@@ -203,7 +203,7 @@ class RoutePipeline:
                 )
             )
             completed.add(file.stem.removeprefix("native-").replace("-", ":", 1))
-        for pass_number in range(1, request.repair_attempts + 2):
+        for pass_number in remaining_search_rounds(checkpoint, request.repair_attempts):
             current = self.repository.get(job["id"])
             if current["status"] not in ACTIVE_STATES:
                 return
@@ -214,8 +214,6 @@ class RoutePipeline:
                 for strategy in request.strategies
                 if f"{pass_number}:{strategy}" not in completed
             ]
-            if not searches and pass_number < checkpoint.get("pass_number", 1):
-                continue
             checkpoint = begin_search_round(checkpoint, pass_number)
             for strategy in searches:
                 key = f"{pass_number}:{strategy}"

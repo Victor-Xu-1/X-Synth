@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, model_validat
 
 from .source_evidence import SourceCandidate
 from .structure_validation import MAX_SMILES_LENGTH, canonical_structure
+from packages.chemistry.material_scope import material_scope_exclusion
 
 
 class Position(BaseModel):
@@ -36,6 +37,11 @@ class RouteNode(BaseModel):
             self.smiles, _ = canonical_structure(
                 self.smiles, max_atoms=(info.context or {}).get("max_structure_atoms")
             )
+            if (
+                not (info.context or {}).get("allow_archival_scope")
+                and material_scope_exclusion(self.smiles)
+            ):
+                raise ValueError("该分子超出当前普通研究路线文档范围。")
         elif self.smiles:
             raise ValueError("反应节点不接受分子 SMILES")
         return self

@@ -135,10 +135,8 @@ class MCTS:
         self.build_tree_options = build_tree_options
         self.enumerate_paths_options = enumerate_paths_options
 
-        start = time.time()
-        self.build_tree(target=target)
+        build_time = self.build_tree(target=target)
         self.check_cancelled()
-        build_time = time.time() - start
 
         start = time.time()
         paths = self.enumerate_paths()
@@ -328,7 +326,7 @@ class MCTS:
     def build_tree(
         self,
         target: str
-    ) -> None:
+    ) -> float:
         """
         Build retrosynthesis tree by iterative expansion of precursor nodes.
         """
@@ -371,6 +369,7 @@ class MCTS:
             self.checkpoint.save(self, elapsed_time, force=True)
         print("Tree expansion complete.")
         self.print_stats()
+        return elapsed_time
 
     def _select(self) -> tuple[list[str], list[str]]:
         """
