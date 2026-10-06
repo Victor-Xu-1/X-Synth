@@ -90,8 +90,15 @@ def supplier_record(row: dict) -> dict | None:
     ):
         return None
     smiles = canonicalize_smiles(str(row.get("smiles") or ""))
-    if not smiles:
+    if not smiles or "*" in smiles:
         return None
+    declared_keys = [row[key] for key in ("inchi_key", "inchikey")
+                     if row.get(key) is not None]
+    if declared_keys:
+        from rdkit import Chem
+        expected_key = Chem.MolToInchiKey(Chem.MolFromSmiles(smiles))
+        if any(not isinstance(value, str) or value != expected_key for value in declared_keys):
+            return None
     price = row.get("ppg")
     try:
         price = float(price) if price is not None and not isinstance(price, bool) else None

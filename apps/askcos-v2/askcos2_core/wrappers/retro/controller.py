@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field
+from packages.adapters.askcos.native_failure_diagnostics import native_operation
 from schemas.base import LowerCamelAliasModel
 from scipy.special import softmax
 from typing import Any, Literal
@@ -117,30 +118,29 @@ class RetroController(BaseWrapper):
         """
         cache_controller = get_util_registry().get_util(module="cache_controller")
         try:
-            response = cache_controller.get(module_name=self.name, input=input)
-            if isinstance(response, dict):
-                response = RetroResponse(**response)
+            with native_operation("retro_cache_lookup", request=input, ignore=(KeyError,)):
+                response = cache_controller.get(module_name=self.name, input=input)
+            with native_operation("retro_cache_decode", request=input):
+                if isinstance(response, dict):
+                    response = RetroResponse(**response)
         except KeyError:
-            module = self.backend_wrapper_names[input.backend]
-            wrapper = get_wrapper_registry().get_wrapper(module=module)
-
-            wrapper_input = self.convert_input(
-                input=input, backend=input.backend)
-            wrapper_response = wrapper.call_sync(wrapper_input)
-            # print(wrapper_input)
-            # print(input.backend)
-            # print(wrapper)
-            # print(wrapper_response)
-            response = self.convert_response(
-                wrapper_response=wrapper_response, backend=input.backend)
+            with native_operation("retro_backend_call", request=input):
+                module = self.backend_wrapper_names[input.backend]
+                wrapper = get_wrapper_registry().get_wrapper(module=module)
+                wrapper_input = self.convert_input(input=input, backend=input.backend)
+                wrapper_response = wrapper.call_sync(wrapper_input)
+            with native_operation("retro_response_conversion", request=input):
+                response = self.convert_response(
+                    wrapper_response=wrapper_response, backend=input.backend)
 
             # only add successful response into cache
             if response.status_code == 200:
-                cache_controller.add(
-                    module_name=self.name,
-                    input=input,
-                    response=response
-                )
+                with native_operation("retro_cache_write", request=input):
+                    cache_controller.add(
+                        module_name=self.name,
+                        input=input,
+                        response=response
+                    )
 
         return response
 

@@ -1,5 +1,10 @@
 import dagre from "@dagrejs/dagre";
 import { syntheticStepOrder } from "./synthetic-step-order";
+import {
+  inputOccurrences,
+  precursorOccurrenceCounts,
+  validateInputOccurrences,
+} from "./route-input-occurrences";
 
 export const ROUTE_NODE_SIZE = Object.freeze({
   molecule: Object.freeze({ width: 190, height: 156 }),
@@ -44,11 +49,14 @@ export function topologyFromCandidate(route) {
       smiles: "",
       position: { x: 0, y: 0 },
     });
-    for (const precursor of new Set(step.precursors || []))
+    for (const [precursor, input_occurrences] of precursorOccurrenceCounts(
+      step.precursors || [],
+    ))
       edges.push({
         id: `e-${edges.length}`,
         source: molecule(precursor),
         target: id,
+        ...(input_occurrences > 1 ? { input_occurrences } : {}),
       });
     edges.push({
       id: `e-${edges.length}`,
@@ -141,6 +149,7 @@ export function canConnect(value, source, target) {
 }
 
 export function cleanGraph(graph) {
+  validateInputOccurrences(graph);
   return {
     target_id: graph.target_id,
     nodes: graph.nodes.map((node) => ({
@@ -151,11 +160,15 @@ export function cleanGraph(graph) {
       note: node.note || "",
       position: { x: node.position.x, y: node.position.y },
     })),
-    edges: graph.edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-    })),
+    edges: graph.edges.map((edge) => {
+      const input_occurrences = inputOccurrences(edge);
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        ...(input_occurrences > 1 ? { input_occurrences } : {}),
+      };
+    }),
   };
 }
 
@@ -175,8 +188,9 @@ export function attachPrecursors(
   precursors,
   makeId = () => crypto.randomUUID(),
 ) {
+  const inputs = precursorOccurrenceCounts(precursors);
   if (
-    !precursors.length ||
+    !inputs.size ||
     !value.nodes.some(
       (node) => node.id === productId && node.type === "molecule",
     )
@@ -199,7 +213,7 @@ export function attachPrecursors(
     source: reactionId,
     target: productId,
   });
-  for (const smiles of new Set(precursors)) {
+  for (const [smiles, input_occurrences] of inputs) {
     let node = graph.nodes.find(
       (item) => item.type === "molecule" && item.smiles === smiles,
     );
@@ -220,6 +234,7 @@ export function attachPrecursors(
       id: `e-${makeId()}`,
       source: node.id,
       target: reactionId,
+      ...(input_occurrences > 1 ? { input_occurrences } : {}),
     });
   }
   return layoutGraph(graph);

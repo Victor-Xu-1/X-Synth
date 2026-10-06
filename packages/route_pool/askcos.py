@@ -8,6 +8,10 @@ from typing import Any
 
 from rdkit import Chem
 
+from packages.chemistry.precursor_occurrences import (
+    PrecursorMultiplicityError, reconcile_precursor_occurrences,
+)
+
 from packages.route_schema.route_schema import RouteCandidate, RouteStep
 from packages.scoring.route_scoring import score_route
 
@@ -227,11 +231,26 @@ def _path_steps(
     for reaction_uuid in ordered_reactions:
         reaction_smiles = str(uuid2smiles.get(reaction_uuid) or "")
         reaction_node = _node_for_smiles(node_dict, reaction_smiles)
+        precursor_ids = [child_uuid for child_uuid in children.get(reaction_uuid, [])
+                         if _node_for_smiles(node_dict, str(uuid2smiles.get(child_uuid) or "")).get("type") == "chemical"]
         precursor_smiles = [
             str(uuid2smiles.get(child_uuid) or "")
-            for child_uuid in children.get(reaction_uuid, [])
-            if _node_for_smiles(node_dict, str(uuid2smiles.get(child_uuid) or "")).get("type") == "chemical"
+            for child_uuid in precursor_ids
         ]
+        step_metadata = reaction_node
+        sides = reaction_smiles.split(">")
+        if len(sides) == 3:
+            try:
+                occurrences = reconcile_precursor_occurrences(
+                    precursor_smiles, sides[0], canonical=_canonical_unmapped_smiles,
+                )
+                if any(count != 1 for count in occurrences.multiplicities):
+                    step_metadata = {**reaction_node, "precursor_occurrences": occurrences.evidence(
+                        precursor_smiles, precursor_ids, sides[0],
+                    )}
+                    precursor_smiles = list(occurrences.precursors)
+            except PrecursorMultiplicityError as exc:
+                step_metadata = {**reaction_node, "precursor_occurrence_error": str(exc)}
         product = ""
         for parent_uuid in parents.get(reaction_uuid, []):
             candidate = str(uuid2smiles.get(parent_uuid) or "")
@@ -248,7 +267,7 @@ def _path_steps(
                 product=product,
                 source=_reaction_source(reaction_node),
                 confidence=_reaction_confidence(reaction_node),
-                metadata=reaction_node,
+                metadata=step_metadata,
             )
         )
     return steps

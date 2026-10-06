@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from configs import db_config
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
+from packages.adapters.askcos.native_failure_diagnostics import native_operation
 from pymongo import errors, MongoClient
 from typing import Any
 from utils import register_util
@@ -28,14 +29,17 @@ class CacheController:
         return hashlib.sha256(json.dumps(payload, sort_keys=True, allow_nan=False).encode()).hexdigest()
 
     def get(self, module_name: str, input: BaseModel) -> dict:
-        record = self.collection.find_one({"_id": self.key(module_name, input), "expires": {"$gt": datetime.now(timezone.utc)}})
+        with native_operation("cache_lookup", request=input):
+            record = self.collection.find_one({"_id": self.key(module_name, input), "expires": {"$gt": datetime.now(timezone.utc)}})
         if record is None:
             raise KeyError("Cache miss")
-        return record["response"]
+        with native_operation("cache_decode", request=input):
+            return record["response"]
 
     def add(self, module_name: str, input: BaseModel, response: BaseModel) -> None:
-        self.collection.update_one(
-            {"_id": self.key(module_name, input)},
-            {"$set": {"response": response.model_dump(), "expires": datetime.now(timezone.utc) + timedelta(days=7)}},
-            upsert=True,
-        )
+        with native_operation("cache_write", request=input):
+            self.collection.update_one(
+                {"_id": self.key(module_name, input)},
+                {"$set": {"response": response.model_dump(), "expires": datetime.now(timezone.utc) + timedelta(days=7)}},
+                upsert=True,
+            )

@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
-from dataclasses import dataclass, replace
+from copy import deepcopy
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Literal
 
-from packages.route_schema.route_schema import RouteCandidate, RouteStep
+from packages.route_schema.route_schema import RouteCandidate
+
+from .route_pruning import (
+    projected_occurrences, pruning_plan, source_occurrences, source_path_digest,
+    source_stock_snapshots,
+)
 
 Decision = Literal["accepted", "rejected", "ambiguous"]
 
@@ -40,6 +47,7 @@ class CommercialStockRegistry:
                 for decision in decisions
             ]
         self._decision_index: dict[str, list[EvidenceDecision]] = {}
+        self._pruning_snapshot_cache = None
         for decision in self._decisions:
             self._decision_index.setdefault(decision.smiles, []).append(decision)
 
@@ -155,77 +163,81 @@ class CommercialStockRegistry:
     def _prune_route_at_buyable_intermediates(
         self, route: RouteCandidate
     ) -> RouteCandidate:
-        """Stop traversing a route branch once its product has exact stock evidence."""
+        """Project identical occurrences and stock cuts without rewriting raw provenance."""
+        digest = source_path_digest(route.metadata)
+        bound = source_stock_snapshots(route.metadata, route.steps)
+        if digest is None or bound is None:
+            return route
+        previous = route.metadata.get("stock_route_projection")
+        if previous is not None:
+            if not isinstance(previous, dict):
+                return route
+            if previous.get("stock_cuts") and (
+                route.metadata.get("stock_pruning_snapshot") != self._pruning_snapshot()
+            ):
+                raise ValueError("Stock pruning snapshot changed")
+            return route
         if len(route.steps) < 2:
             return route
-
-        target_key = canonicalize_smiles(route.target_smiles)
-        step_by_product: dict[str, RouteStep] = {}
-        for step in route.steps:
-            product_key = canonicalize_smiles(step.product)
-            if product_key and product_key not in step_by_product:
-                step_by_product[product_key] = step
-        root_step = step_by_product.get(target_key)
-        if root_step is None:
+        plan = pruning_plan(route.steps, route.target_smiles, canonical=canonicalize_smiles,
+                            buyable=self.is_buyable)
+        if plan is None or len(plan.retained_ids) == len(route.steps):
             return route
-
-        retained_step_ids: set[str] = set()
-        active_products: set[str] = set()
-        starting_materials: list[str] = []
-        pruned_intermediates: list[str] = []
-
-        def append_starting_material(smiles: str) -> None:
-            key = canonicalize_smiles(smiles)
-            if not key:
-                return
-            if any(canonicalize_smiles(item) == key for item in starting_materials):
-                return
-            starting_materials.append(smiles)
-
-        def visit(product_key: str) -> None:
-            if product_key in active_products:
-                return
-            step = step_by_product.get(product_key)
-            if step is None:
-                return
-            active_products.add(product_key)
-            retained_step_ids.add(step.step_id)
-            for precursor in step.precursors:
-                precursor_key = canonicalize_smiles(precursor)
-                producer = step_by_product.get(precursor_key)
-                if precursor_key != target_key and self.is_buyable(precursor):
-                    append_starting_material(precursor)
-                    if producer is not None and precursor not in pruned_intermediates:
-                        pruned_intermediates.append(precursor)
-                    continue
-                if producer is not None:
-                    visit(precursor_key)
-                else:
-                    append_starting_material(precursor)
-            active_products.remove(product_key)
-
-        visit(target_key)
-        retained_steps = [
-            step for step in route.steps if step.step_id in retained_step_ids
-        ]
-        if len(retained_steps) == len(route.steps):
+        occurrences = source_occurrences(route.steps, route.metadata, canonicalize_smiles)
+        if occurrences is None:
             return route
-
-        metadata = dict(route.metadata)
-        metadata["stock_pruned_intermediates"] = _unique(
-            [*metadata.get("stock_pruned_intermediates", []), *pruned_intermediates]
-        )
-        metadata["stock_pruned_step_count"] = len(route.steps) - len(retained_steps)
+        snapshot = self._pruning_snapshot() if plan.cut_products else None
+        if snapshot is not None:
+            if bound and (snapshot["kind"] != "catalog" or bound != {snapshot["source_sha256"]}):
+                raise ValueError("Stock pruning does not match the source snapshot")
+        cuts = []
+        for product in plan.cut_products:
+            decisions = [asdict(row) for row in self.decisions_for(product)
+                         if row.decision == "accepted" and canonicalize_smiles(row.smiles) == product]
+            if not decisions:
+                raise ValueError("Stock pruning requires exact accepted evidence")
+            cuts.append({"smiles": product, "snapshot": deepcopy(snapshot), "decisions": decisions})
+        if snapshot is not None and snapshot != self._pruning_snapshot():
+            raise ValueError("Stock pruning snapshot changed")
+        retained_ids = set(plan.retained_ids)
+        metadata = deepcopy(route.metadata)
+        metadata["stock_route_projection"] = {
+            "version": 1, "source_path_sha256": digest,
+            "source_steps": [asdict(step) for step in route.steps],
+            "occurrences": projected_occurrences(occurrences, plan), "stock_cuts": cuts,
+        }
+        if snapshot is not None:
+            metadata["stock_pruning_snapshot"] = snapshot
+        metadata["stock_pruned_intermediates"] = list(plan.cut_products)
+        metadata["stock_pruned_step_count"] = len(route.steps) - len(plan.retained_ids)
         metadata["unclosed_precursors"] = [
-            smiles for smiles in starting_materials if not self.is_buyable(smiles)
+            smiles for smiles in plan.materials if not self.is_buyable(smiles)
         ]
         return replace(
             route,
-            steps=retained_steps,
-            starting_materials=starting_materials,
+            steps=[step for step in route.steps if step.step_id in retained_ids],
+            starting_materials=plan.materials,
             route_score=None,
             metadata=metadata,
         )
+
+    def _pruning_snapshot(self) -> dict:
+        index = getattr(self, "index", None)
+        if index is not None:
+            summary = index.summary
+            return {"kind": "catalog", "source_sha256": summary["source_sha256"],
+                    "catalog_sha256": summary["catalog_sha256"]}
+        registries = getattr(self, "registries", None)
+        if registries is not None:
+            members = [registry._pruning_snapshot() for registry in registries]
+            content = json.dumps(members, sort_keys=True, separators=(",", ":"))
+            return {"kind": "decisions", "sha256": hashlib.sha256(content.encode()).hexdigest()}
+        if self._pruning_snapshot_cache is None:
+            rows = sorted((asdict(row) for row in self._decisions),
+                          key=lambda row: json.dumps(row, sort_keys=True))
+            content = json.dumps(rows, sort_keys=True, separators=(",", ":"))
+            self._pruning_snapshot_cache = {"kind": "decisions", "sha256": hashlib.sha256(content.encode()).hexdigest()}
+        return dict(self._pruning_snapshot_cache)
 
 
 def merge_commercial_stock_registries(

@@ -1,14 +1,12 @@
 import { templateDetailLocation } from "./template-detail";
+import { reactionPrecursors } from "./route-input-occurrences";
+import { reactionInputText } from "./reaction-input";
 
 export function reactionForNode(graph, node) {
   if (node?.type !== "reaction") return null;
-  const incoming =
-    graph?.edges?.filter((edge) => edge.target === node.id) || [];
   const output = graph?.edges?.find((edge) => edge.source === node.id);
   const nodes = new Map((graph?.nodes || []).map((value) => [value.id, value]));
-  const precursors = incoming
-    .map((edge) => nodes.get(edge.source)?.smiles)
-    .filter(Boolean);
+  const precursors = reactionPrecursors(graph || {}, node.id);
   const product = nodes.get(output?.target)?.smiles;
   return precursors.length && product
     ? {
@@ -67,7 +65,14 @@ export function feasibilityLocation(reaction) {
   return reaction
     ? {
         path: "/feasibility",
-        query: { reactants: reaction.reactants, product: reaction.product },
+        query: {
+          reactants: reaction.reactants,
+          product: reaction.product,
+          reaction_smiles: reactionInputText({
+            reactants: reaction.precursors || reaction.reactants,
+            product: reaction.product,
+          }),
+        },
       }
     : null;
 }

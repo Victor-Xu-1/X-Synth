@@ -1,6 +1,12 @@
 import { toPng } from "html-to-image";
 import { ROUTE_NODE_SIZE, READING_NODE_SIZE } from "./route-graph";
 
+class RouteExportError extends Error {}
+
+export function routeExportErrorMessage(error, fallback) {
+  return error instanceof RouteExportError ? error.message : fallback;
+}
+
 export function exportBounds(graph, nodeSize = ROUTE_NODE_SIZE) {
   const boxes = graph.nodes.map((node) => ({
     x: node.position.x,
@@ -22,7 +28,7 @@ export function exportBounds(graph, nodeSize = ROUTE_NODE_SIZE) {
     height > 8192 ||
     width * height > 16_000_000
   ) {
-    throw new Error("路线图超出图像导出尺寸，请使用路线 JSON。");
+    throw new RouteExportError("路线图超出图像导出尺寸，请使用路线 JSON。");
   }
   return { x, y, width, height };
 }
@@ -33,7 +39,7 @@ export async function settledRouteImages(viewport, timeoutMs = 3000) {
       (node) => !node.querySelector("img"),
     )
   )
-    throw new Error("结构图尚未完整显示，请加载完成后重新导出。");
+    throw new RouteExportError("结构图尚未完整显示，请加载完成后重新导出。");
   const images = [...viewport.querySelectorAll("img")];
   const sources = images.map((image) => image.currentSrc || image.src);
   let timer;
@@ -53,12 +59,12 @@ export async function settledRouteImages(viewport, timeoutMs = 3000) {
             !image.naturalWidth ||
             Number(getComputedStyle(image).opacity) !== 1
           )
-            throw new Error("结构图尚未完整显示，请加载完成后重新导出。");
+            throw new RouteExportError("结构图尚未完整显示，请加载完成后重新导出。");
         }),
       ),
       new Promise((_, reject) => {
         timer = setTimeout(
-          () => reject(new Error("结构图加载超时，未导出不完整图像。")),
+          () => reject(new RouteExportError("结构图加载超时，未导出不完整图像。")),
           timeoutMs,
         );
       }),
@@ -71,7 +77,7 @@ export async function settledRouteImages(viewport, timeoutMs = 3000) {
           (image.currentSrc || image.src) !== sources[index],
       )
     )
-      throw new Error("路线结构已变化，请重新导出。");
+      throw new RouteExportError("路线结构已变化，请重新导出。");
   } finally {
     clearTimeout(timer);
   }

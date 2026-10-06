@@ -251,10 +251,9 @@ import {
   materialsCsv,
   downloadRouteBlob,
 } from "@/common/route-reading";
-import { routeImage } from "@/common/route-export";
+import { routeImage, routeExportErrorMessage } from "@/common/route-export";
 import { routeDocumentPayload } from "@/common/route-document-file";
 import { stepForNode } from "@/common/route-node-context";
-import { errorMessage } from "@/common/workspace-errors";
 import RouteFilters from "./RouteFilters.vue";
 import RouteGraph from "./RouteGraph.vue";
 import RouteInspector from "./RouteInspector.vue";
@@ -434,7 +433,7 @@ async function exportPng() {
     }
   } catch (cause) {
     if (!disposed && current === generation)
-      exportError.value = errorMessage(cause, "路线图导出失败。");
+      exportError.value = routeExportErrorMessage(cause, "路线图导出失败。");
   } finally {
     if (!disposed && current === generation) exporting.value = false;
   }

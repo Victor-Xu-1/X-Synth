@@ -67,6 +67,7 @@ def compile_stock_index(
     output: Path,
     source_id: str,
     source_sha256: str,
+    publication_guard=None,
 ) -> dict:
     """Stream a catalog into a new immutable snapshot, never overwrite live stock."""
     output = Path(output)
@@ -104,6 +105,12 @@ def compile_stock_index(
                 if cursor.rowcount:
                     accepted += 1
                 else:
+                    stored = connection.execute(
+                        "SELECT url,cas,ppg,lead_time FROM evidence "
+                        "WHERE smiles=:smiles AND source=:source AND catalog_id=:catalog_id", record,
+                    ).fetchone()
+                    if stored != tuple(record[key] for key in ("url", "cas", "ppg", "lead_time")):
+                        raise StockIndexError("Conflicting catalog records require an explicitly resolved source")
                     duplicates += 1
                 if index % 10_000 == 0:
                     connection.commit()
@@ -141,6 +148,8 @@ def compile_stock_index(
             if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                 raise StockIndexError("Stock index integrity check failed")
         os.chmod(staging, 0o444)
+        if publication_guard is not None:
+            publication_guard()
         os.link(staging, output)
         staging.unlink()
         return summary
