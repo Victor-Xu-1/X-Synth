@@ -33,13 +33,15 @@ def review_job(
     try:
         stock = StockIndex(stock_path)
         stock.assert_current(catalog_sha256=expected_catalog_sha256)
+        result = build_unified_route_pool(
+            id=identifier,
+            askcos_sources=sources,
+            min_routes=minimum,
+            max_routes=maximum,
+            stock_registry=IndexedCommercialStockRegistry(stock),
+            route_transform=validate_native_routes,
+        )
+        stock.assert_current(catalog_sha256=expected_catalog_sha256)
+        return result
     except StockIndexError as exc:
         raise EngineUnavailable("stock_snapshot_unavailable", recoverable=True) from exc
-    return build_unified_route_pool(
-        id=identifier,
-        askcos_sources=sources,
-        min_routes=minimum,
-        max_routes=maximum,
-        stock_registry=IndexedCommercialStockRegistry(stock),
-        route_transform=validate_native_routes,
-    )

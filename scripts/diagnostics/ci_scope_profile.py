@@ -488,6 +488,7 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
     if roots & SEARCH_ROUND_FILES:
         selected.update({
             "tests/unit/test_review_execution.py",
+            "tests/unit/test_review_worker.py",
             "tests/unit/test_unified_route_workflow.py",
             "tests/unit/test_route_artifacts.py",
             "tests/unit/test_job_commands.py",
