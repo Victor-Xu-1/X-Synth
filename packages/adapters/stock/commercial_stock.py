@@ -307,7 +307,6 @@ def load_commercial_stock_file(path: Path | str) -> CommercialStockRegistry:
         ]
         return CommercialStockRegistry(
             [decision for decision in decisions if decision is not None],
-            canonicalize_decisions=not _looks_like_large_precise_stock(rows),
         )
     else:
         raise ValueError(f"unsupported stock file format: {source_path}")
@@ -353,6 +352,21 @@ def _decision_from_row(row: dict, *, default_source: str) -> EvidenceDecision | 
     reason = str(
         row.get("reason") or "operator supplied exact structure stock evidence"
     ).strip()
+    from .supplier_evidence import supplier_record
+
+    if decision == "accepted":
+        record = supplier_record({
+            **row, "smiles": smiles, "source": source,
+            "catalog_id": row.get("catalog_id") or row.get("catalog") or row.get("sku"),
+            "url": row.get("url") or row.get("URL"),
+        })
+        if record is None:
+            decision = "ambiguous"
+            reason = "Imported metadata did not pass the exact supplier-catalog gate"
+        else:
+            smiles, source = record["smiles"], record["source"]
+            row = {**row, **record}
+            reason = record["reason"]
     return EvidenceDecision(
         smiles=smiles,
         source=source,
@@ -366,23 +380,6 @@ def _decision_from_row(row: dict, *, default_source: str) -> EvidenceDecision | 
     )
 
 
-def _looks_like_large_precise_stock(rows: object) -> bool:
-    if not isinstance(rows, list) or len(rows) < 10000:
-        return False
-    sample = [row for row in rows[:50] if isinstance(row, dict)]
-    if not sample:
-        return False
-    accepted_rows = [
-        row
-        for row in sample
-        if str(row.get("decision") or "accepted").strip().lower() == "accepted"
-        and str(
-            row.get("smiles") or row.get("SMILES") or row.get("canonical_smiles") or ""
-        ).strip()
-    ]
-    return len(accepted_rows) >= max(1, len(sample) // 2)
-
-
 def _decision_from_smi_line(
     line: str, *, default_source: str
 ) -> EvidenceDecision | None:
@@ -393,13 +390,10 @@ def _decision_from_smi_line(
     smiles = parts[0]
     catalog_id = parts[1] if len(parts) > 1 else None
     source = parts[2] if len(parts) > 2 else default_source
-    return EvidenceDecision(
-        smiles=smiles,
-        source=source,
-        decision="accepted",
-        reason="operator supplied exact structure stock evidence",
-        catalog_id=catalog_id,
-    )
+    return _decision_from_row({
+        "smiles": smiles, "source": source, "catalog_id": catalog_id,
+        "url": parts[3] if len(parts) > 3 else None,
+    }, default_source=default_source)
 
 
 def _source_label(decision: EvidenceDecision) -> str:

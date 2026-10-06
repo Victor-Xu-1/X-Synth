@@ -37,7 +37,7 @@ def test_stock_registry_loads_external_stock_file_and_closes_exact_leaf(tmp_path
     stock_file = tmp_path / "domestic_stock.csv"
     stock_file.write_text(
         "smiles,source,catalog_id,cas,url\n"
-        "O=C(O)c1ccccc1,chemicalbook_cn,CB000123,65-85-0,https://www.chemicalbook.com/CAS_65-85-0.htm\n",
+        "O=C(O)c1ccccc1,chemspace,CSSB00000000009,65-85-0,https://chem-space.com/CSSB00000000009\n",
         encoding="utf-8",
     )
     registry = load_commercial_stock_file(stock_file)
@@ -63,7 +63,7 @@ def test_stock_registry_loads_external_stock_file_and_closes_exact_leaf(tmp_path
 
     assert registry.is_buyable("c1ccc(C(=O)O)cc1") is True
     assert closed_route.closed is True
-    assert closed_route.closure_sources == ["chemicalbook_cn:CB000123"]
+    assert closed_route.closure_sources == ["chemspace:CSSB00000000009"]
     assert closed_route.metadata["unclosed_precursors"] == []
 
 

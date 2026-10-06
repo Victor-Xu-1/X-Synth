@@ -24,18 +24,18 @@ def _load_askcos_buyables_import():
 
 
 def test_domestic_stock_artifacts_compile_once_for_all_route_engines(tmp_path):
-    source_file = tmp_path / "chemicalbook_export.csv"
+    source_file = tmp_path / "supplier_export.csv"
     source_file.write_text(
         "SMILES,CAS号,供应商,货号,链接,库存,价格\n"
-        "OC(C)=O,64-19-7,ChemicalBook,CB7854064,"
-        "https://www.chemicalbook.com/ChemicalProductProperty_CN_CB7854064.htm,现货,12 元/g\n",
+        "CCO,64-17-5,ChemSpace,CSSB00000000009,"
+        "https://chem-space.com/CSSB00000000009,现货,12 元/g\n",
         encoding="utf-8",
     )
 
     result = build_domestic_stock_artifacts(
         source_paths=[source_file],
         output_dir=tmp_path / "compiled",
-        default_source="chemicalbook_cn",
+        default_source="chemspace",
     )
 
     assert result.summary["accepted_records"] == 1
@@ -50,15 +50,16 @@ def test_domestic_stock_artifacts_compile_once_for_all_route_engines(tmp_path):
     aizynth_lines = result.aizynth_smiles_audit_path.read_text(encoding="utf-8").splitlines()
     aizynth_stock_config = result.aizynth_stock_config_path.read_text(encoding="utf-8")
 
-    assert askcos_rows[0]["smiles"] == "CC(=O)O"
-    assert askcos_rows[0]["source"] == "chemicalbook_cn"
+    assert askcos_rows[0]["smiles"] == "CCO"
+    assert askcos_rows[0]["source"] == "chemspace"
+    assert askcos_rows[0]["ppg"] is None
     assert synon_rows[0]["decision"] == "accepted"
-    assert synon_rows[0]["smiles"] == "CC(=O)O"
-    assert synon_rows[0]["catalog_id"] == "CB7854064"
-    assert synon_rows[0]["cas"] == "64-19-7"
-    assert synon_rows[0]["url"].startswith("https://www.chemicalbook.com/")
-    assert aizynth_lines == ["CC(=O)O CB7854064 chemicalbook_cn"]
-    assert result.aizynth_stock_path.read_text(encoding="utf-8").strip() == "QTBSBXVTEAMEQO-UHFFFAOYSA-N"
+    assert synon_rows[0]["smiles"] == "CCO"
+    assert synon_rows[0]["catalog_id"] == "CSSB00000000009"
+    assert synon_rows[0]["cas"] == "64-17-5"
+    assert synon_rows[0]["url"].startswith("https://chem-space.com/")
+    assert aizynth_lines == ["CCO CSSB00000000009 chemspace"]
+    assert result.aizynth_stock_path.read_text(encoding="utf-8").strip() == "LFQSCWFLJHTTHZ-UHFFFAOYSA-N"
     assert "domestic:" in aizynth_stock_config
     assert str(result.aizynth_stock_path) in aizynth_stock_config
 

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from .commercial_stock import canonicalize_smiles
+from .supplier_evidence import supplier_record
 
 
 @dataclass(frozen=True)
@@ -22,6 +22,7 @@ def build_askcos_buyables_stock(
     source_paths: Iterable[Path | str],
     output_dir: Path | str,
 ) -> AskcosBuyablesStockResult:
+    source_paths = tuple(Path(path) for path in source_paths)
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
     seen: set[tuple[str, str, str]] = set()
@@ -91,49 +92,16 @@ def _open_text(path: Path):
 
 
 def _synon_stock_record(row: dict[str, Any], *, source_path: Path) -> dict[str, Any] | None:
-    smiles = canonicalize_smiles(str(row.get("smiles") or "").strip())
-    if not smiles:
-        return None
-    source = _supplier_source(row)
-    url = _property_value(row, "link")
-    availability = _property_value(row, "availability") or str(row.get("lead_time") or "").strip()
-    catalog_id = _catalog_id_from_url(url) or str(row.get("_id") or "").strip() or None
-    if not any([catalog_id, url, availability]):
+    record = supplier_record(row)
+    if record is None:
         return None
     return {
-        "smiles": smiles,
-        "source": source,
+        "smiles": record["smiles"],
+        "source": record["source"],
         "decision": "accepted",
         "reason": "ASKCOS buyables exact structure with supplier catalog evidence",
-        "catalog_id": catalog_id,
-        "cas": None,
-        "url": url or None,
+        "catalog_id": record["catalog_id"],
+        "cas": record["cas"],
+        "url": record["url"],
         "source_file": str(source_path),
     }
-
-
-def _supplier_source(row: dict[str, Any]) -> str:
-    source = str(row.get("source") or "").strip()
-    aliases = {
-        "CB": "chembridge",
-        "CS": "chemspace",
-        "MC": "mcule",
-    }
-    return aliases.get(source, source.lower() or "askcos_buyables")
-
-
-def _property_value(row: dict[str, Any], key: str) -> str:
-    properties = row.get("properties")
-    if not isinstance(properties, list):
-        return ""
-    for item in properties:
-        if isinstance(item, dict) and item.get(key):
-            return str(item[key]).strip()
-    return ""
-
-
-def _catalog_id_from_url(url: str) -> str | None:
-    if not url:
-        return None
-    value = url.rstrip("/").split("/")[-1].strip()
-    return value or None

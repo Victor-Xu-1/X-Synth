@@ -8,6 +8,7 @@ from typing import Any
 from urllib import error, parse, request
 
 from .commercial_stock import CommercialStockRegistry, EvidenceDecision, canonicalize_smiles
+from .supplier_evidence import supplier_record
 
 
 PUBCHEM_BASE_URL = "https://pubchem.ncbi.nlm.nih.gov"
@@ -89,17 +90,11 @@ class PubChemSupplierClient:
             ]
 
         sources = self._chemical_vendor_sources(cid)
-        accepted = [
-            EvidenceDecision(
-                smiles=canonical,
-                source=f"pubchem:{source['SourceName']}",
-                decision="accepted",
-                reason=f"exact structure matched PubChem CID {cid} with Chemical Vendors source",
-                catalog_id=_optional_text(source.get("RegistryID") or source.get("SID")),
-                url=_optional_text(source.get("SourceRecordURL") or source.get("SourceURL")),
-            )
-            for source in sources
-        ]
+        accepted = []
+        for source in sources:
+            decision = _supplier_decision(canonical, source)
+            if decision is not None:
+                accepted.append(decision)
         if accepted:
             return accepted
         return [
@@ -107,7 +102,7 @@ class PubChemSupplierClient:
                 smiles=canonical,
                 source="pubchem",
                 decision="ambiguous",
-                reason=f"PubChem CID {cid} matched exactly but no Chemical Vendors source was returned",
+                reason=f"PubChem CID {cid} matched exactly but vendor metadata did not pass the supplier-catalog gate",
             )
         ]
 
@@ -207,6 +202,21 @@ def build_pubchem_supplier_registry(
         verify_tls=verify_tls,
     )
     return client.registry_for_smiles(smiles_values)
+
+
+def _supplier_decision(canonical: str, source: dict) -> EvidenceDecision | None:
+    """A parsed vendor membership row is not procurement evidence by itself."""
+    record = supplier_record({
+        "smiles": canonical, "source": source.get("SourceName"),
+        "catalog_id": _optional_text(source.get("RegistryID")),
+        "url": _optional_text(source.get("SourceRecordURL") or source.get("SourceURL")),
+    })
+    if record is None:
+        return None
+    return EvidenceDecision(
+        smiles=record["smiles"], source=record["source"], decision="accepted",
+        reason=record["reason"], catalog_id=record["catalog_id"], url=record["url"],
+    )
 
 
 def _matches_query_structure(query_canonical_smiles: str, properties: dict[str, Any]) -> bool:

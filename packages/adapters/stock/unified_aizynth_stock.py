@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
+from .supplier_evidence import supplier_record
+
 
 @dataclass(frozen=True)
 class UnifiedAiZynthStockArtifacts:
@@ -31,6 +33,7 @@ def build_unified_aizynth_stock(
     inchikeys: set[str] = set()
     accepted_input_records = 0
     invalid_smiles_records = 0
+    rejected_evidence_records = 0
 
     for source_path in sources:
         with source_path.open("r", encoding="utf-8-sig") as handle:
@@ -46,6 +49,9 @@ def build_unified_aizynth_stock(
             molecule = Chem.MolFromSmiles(smiles)
             if molecule is None:
                 invalid_smiles_records += 1
+                continue
+            if supplier_record(record) is None:
+                rejected_evidence_records += 1
                 continue
             inchikey = Chem.MolToInchiKey(molecule)
             if inchikey:
@@ -69,6 +75,7 @@ def build_unified_aizynth_stock(
     summary = {
         "accepted_input_records": accepted_input_records,
         "invalid_smiles_records": invalid_smiles_records,
+        "rejected_evidence_records": rejected_evidence_records,
         "unique_structures": len(ordered_keys),
         "source_paths": [str(path) for path in sources],
         "stock_name": stock_name,

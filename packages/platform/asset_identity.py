@@ -2,28 +2,47 @@
 
 import hashlib
 import json
+import os
 from functools import lru_cache
 from pathlib import Path
+
+from .immutable_sqlite import file_identity, stat_identity
 
 NATIVE_EXTERNAL_FILES = (
     "packages/adapters/askcos/route_reachability.py",
     "packages/adapters/askcos/route_enumeration.py",
     "packages/adapters/askcos/retro_star_values.py",
     "packages/chemistry/material_scope.py",
+    "packages/adapters/askcos/catalog_pricer.py",
+    "packages/adapters/stock/stock_index.py",
+    "packages/adapters/stock/commercial_stock.py",
+    "packages/adapters/stock/supplier_evidence.py",
+    "packages/adapters/stock/stock_snapshot.py",
+    "packages/adapters/stock/catalog_pricing.py",
+    "packages/platform/immutable_sqlite.py",
 )
 
 
 @lru_cache(maxsize=32)
-def _digest(path: str, size: int, modified: int) -> str:
+def _digest(path: str, identity: tuple[int, ...]) -> str:
     with Path(path).open("rb") as source:
-        return hashlib.file_digest(source, "sha256").hexdigest()
+        if stat_identity(os.fstat(source.fileno())) != identity:
+            raise ValueError("Runtime asset changed before hashing")
+        result = hashlib.file_digest(source, "sha256").hexdigest()
+        if stat_identity(os.fstat(source.fileno())) != identity:
+            raise ValueError("Runtime asset changed while hashing")
+    if file_identity(Path(path)) != identity:
+        raise ValueError("Runtime asset changed while hashing")
+    return result
 
 
 def content_digest(path: Path) -> str:
-    metadata = path.stat()
-    if not path.is_file() or metadata.st_size == 0:
-        raise ValueError("Runtime assets must be nonempty regular files")
-    return _digest(str(path.resolve()), metadata.st_size, metadata.st_mtime_ns)
+    path = path.resolve()
+    identity = file_identity(path)
+    result = _digest(str(path), identity)
+    if file_identity(path) != identity:
+        raise ValueError("Runtime asset changed while hashing")
+    return result
 
 
 def native_asset_identity(source: Path, assets: Path, stock, models: list[str]) -> str:
@@ -52,7 +71,10 @@ def native_asset_identity(source: Path, assets: Path, stock, models: list[str]) 
         path: content_digest(assets / path) for path in other
     }
     code = hashlib.sha256()
-    for directory in ("askcos2_core", "tree_search", "retro/template_relevance"):
+    for directory in (
+        "askcos2_core", "tree_search", "retro/template_relevance",
+        "fast_filter", "pathway_ranker", "value_network", "scscore",
+    ):
         for path in sorted((source / "apps/askcos-v2" / directory).rglob("*.py")):
             code.update(str(path.relative_to(source)).encode())
             code.update(path.read_bytes())

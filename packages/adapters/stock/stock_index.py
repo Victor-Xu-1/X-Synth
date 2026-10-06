@@ -1,250 +1,120 @@
 from __future__ import annotations
 
 import json
-import math
-import re
 import sqlite3
 from collections.abc import Iterable, Iterator
-from contextlib import closing
+from contextlib import contextmanager
 from pathlib import Path
-from urllib.parse import urlsplit
+from threading import RLock
+from copy import deepcopy
 
 from packages.platform.asset_identity import content_digest
+from packages.platform.immutable_sqlite import ImmutableSQLite
 from packages.platform.performance import PerformanceBudget
+from .commercial_stock import CommercialStockRegistry, EvidenceDecision, canonicalize_smiles
+from .stock_snapshot import StockIndexError, compile_stock_index, validate_stock_schema, validate_stock_summary
+from .supplier_evidence import SCHEMA_VERSION, SUPPLIER_DOMAINS, SUPPLIER_ALIASES, supplier_record
+from .catalog_pricing import price_value
 
-from .commercial_stock import (
-    CommercialStockRegistry,
-    EvidenceDecision,
-    canonicalize_smiles,
+__all__ = [
+    "StockIndex", "IndexedCommercialStockRegistry", "StockIndexError",
+    "compile_stock_index", "supplier_record", "SCHEMA_VERSION",
+    "SUPPLIER_DOMAINS", "SUPPLIER_ALIASES",
+]
+
+LOOKUP_SQL = (
+    "SELECT * FROM evidence WHERE smiles=? "
+    "ORDER BY ppg IS NULL,ppg,source,catalog_id LIMIT ?"
 )
-
-SCHEMA_VERSION = 1
-SUPPLIER_DOMAINS = {
-    "mcule": ("mcule.com",),
-    "chembridge": ("chembridge.com", "hit2lead.com"),
-    "chemspace": ("chem-space.com", "chemspace.com"),
-    "aladdin": ("aladdin-e.com", "aladdin-e.com.cn"),
-    "ambeed": ("ambeed.com",),
-    "chemscene": ("chemscene.com", "chemscene.cn"),
-    "combi_blocks": ("combi-blocks.com",),
-    "sigma_aldrich": ("sigmaaldrich.com",),
-    "targetmol": ("targetmol.com", "targetmol.cn"),
-}
-SUPPLIER_ALIASES = {"MC": "mcule", "CB": "chembridge", "CS": "chemspace"}
-
-
-class StockIndexError(RuntimeError):
-    """A missing or damaged stock index is not an empty supplier catalog."""
-
-
-def supplier_record(row: dict) -> dict | None:
-    source = str(row.get("source") or "").strip()
-    source = SUPPLIER_ALIASES.get(source, source.lower())
-    properties = row.get("properties") or []
-    url = row.get("url") or next(
-        (
-            item.get("link")
-            for item in properties
-            if isinstance(item, dict) and item.get("link")
-        ),
-        "",
-    )
-    if source not in SUPPLIER_DOMAINS or not isinstance(url, str):
-        return None
-    try:
-        parsed = urlsplit(url)
-    except ValueError:
-        return None
-    host = (parsed.hostname or "").lower()
-    domains = SUPPLIER_DOMAINS[source]
-    if (
-        parsed.scheme != "https"
-        or parsed.username
-        or parsed.password
-        or parsed.fragment
-        or parsed.query
-        or not any(host == domain or host.endswith("." + domain) for domain in domains)
-        or parsed.path in {"", "/"}
-    ):
-        return None
-    if parsed.path.rstrip("/").rsplit("/", 1)[-1].lower() in {
-        "search",
-        "catalog",
-        "products",
-        "product",
-        "login",
-        "about",
-        "contact",
-        "home",
-    }:
-        return None
-    if source == "mcule" and not re.fullmatch(r"/MCULE-[0-9]+/?", parsed.path):
-        return None
-    if source == "chemspace" and not re.fullmatch(r"/CS[A-Za-z]*[0-9]+/?", parsed.path):
-        return None
-    if (
-        source == "chembridge"
-        and host.endswith("hit2lead.com")
-        and not re.fullmatch(
-            r"/(?:building-blocks|screening-compounds)/[0-9]+/?", parsed.path
-        )
-    ):
-        return None
-    catalog_id = row.get("catalog_id") or parsed.path.rstrip("/").rsplit("/", 1)[-1]
-    if not isinstance(catalog_id, str) or not catalog_id.strip():
-        return None
-    if (
-        source in {"mcule", "chemspace", "chembridge"}
-        and catalog_id.strip() != parsed.path.rstrip("/").rsplit("/", 1)[-1]
-    ):
-        return None
-    smiles = canonicalize_smiles(str(row.get("smiles") or ""))
-    if not smiles:
-        return None
-    price = row.get("ppg")
-    try:
-        price = float(price) if price is not None else None
-    except (TypeError, ValueError):
-        price = None
-    if price is not None and (not math.isfinite(price) or price <= 0):
-        price = None
-    return {
-        "smiles": smiles,
-        "source": source,
-        "catalog_id": catalog_id.strip(),
-        "url": url,
-        "cas": row.get("cas") or None,
-        "ppg": price,
-        "lead_time": str(row.get("lead_time") or ""),
-        "reason": "Exact ASKCOS supplier-catalog structure; availability refers to this snapshot",
-    }
-
-
-def compile_stock_index(
-    rows: Iterable[dict],
-    *,
-    output: Path,
-    source_id: str,
-    source_sha256: str,
-) -> dict:
-    """Stream a catalog into a new immutable snapshot, never overwrite live stock."""
-    if output.exists():
-        raise FileExistsError("Stock snapshots are immutable; choose a new output path")
-    output.parent.mkdir(parents=True, exist_ok=True)
-    staging = output.with_name(output.name + ".building")
-    if staging.exists():
-        raise FileExistsError("A stock import is already staged at this path")
-    staging.touch(exist_ok=False)
-    accepted = rejected = duplicates = 0
-    try:
-        with closing(sqlite3.connect(staging)) as connection:
-            connection.executescript("""
-                PRAGMA journal_mode = DELETE;
-                PRAGMA synchronous = FULL;
-                CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-                CREATE TABLE evidence (
-                    smiles TEXT NOT NULL, source TEXT NOT NULL, catalog_id TEXT NOT NULL,
-                    url TEXT NOT NULL, cas TEXT, ppg REAL, lead_time TEXT NOT NULL,
-                    reason TEXT NOT NULL, PRIMARY KEY(smiles, source, catalog_id)
-                ) WITHOUT ROWID;
-            """)
-            for index, row in enumerate(rows, 1):
-                record = supplier_record(row)
-                if record is None:
-                    rejected += 1
-                    continue
-                cursor = connection.execute(
-                    "INSERT OR IGNORE INTO evidence VALUES (:smiles,:source,:catalog_id,:url,:cas,:ppg,:lead_time,:reason)",
-                    record,
-                )
-                if cursor.rowcount:
-                    accepted += 1
-                else:
-                    duplicates += 1
-                if index % 10_000 == 0:
-                    connection.commit()
-            if not accepted:
-                raise StockIndexError("No exact supplier-catalog evidence was accepted")
-            counts = dict(
-                connection.execute(
-                    "SELECT source, COUNT(*) FROM evidence GROUP BY source"
-                )
-            )
-            summary = {
-                "schema_version": SCHEMA_VERSION,
-                "source_id": source_id,
-                "source_sha256": source_sha256,
-                "accepted_records": accepted,
-                "rejected_records": rejected,
-                "duplicate_records": duplicates,
-                "source_counts": counts,
-                "unique_structures": connection.execute(
-                    "SELECT COUNT(DISTINCT smiles) FROM evidence"
-                ).fetchone()[0],
-                "availability_basis": "supplier_catalog_snapshot",
-            }
-            connection.executemany(
-                "INSERT INTO metadata VALUES (?,?)",
-                [
-                    (key, json.dumps(value, ensure_ascii=False))
-                    for key, value in summary.items()
-                ],
-            )
-            connection.commit()
-            if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
-                raise StockIndexError("Stock index integrity check failed")
-        staging.replace(output)
-        return summary
-    except BaseException:
-        # The staging file is this importer's output, never a live snapshot.
-        staging.unlink(missing_ok=True)
-        raise
+LEGACY_FANOUT_ROWS = 1000
 
 
 class StockIndex:
     def __init__(self, path: Path | str) -> None:
-        self.path = Path(path).resolve()
-        if not self.path.is_file():
-            raise StockIndexError("Commercial stock index is missing")
         try:
+            self._snapshot = ImmutableSQLite(path)
+            self.path = self._snapshot.path
             with self.connect() as connection:
-                self.summary = {
+                validate_stock_schema(connection)
+                plan = connection.execute(
+                    "EXPLAIN QUERY PLAN " + LOOKUP_SQL, ("", 1)
+                ).fetchall()
+                self._ordered_lookup = not any("TEMP B-TREE" in row[3] for row in plan)
+                self._summary = {
                     key: json.loads(value)
                     for key, value in connection.execute(
-                        "SELECT key,value FROM metadata"
+                        "SELECT key,substr(value,1,65537) FROM metadata LIMIT 64"
                     )
                 }
-            if self.summary.get(
-                "schema_version"
-            ) != SCHEMA_VERSION or not self.summary.get("accepted_records"):
-                raise StockIndexError("Unsupported or empty commercial stock index")
-            self.summary["catalog_sha256"] = content_digest(self.path)
-        except (sqlite3.Error, json.JSONDecodeError) as exc:
+            validate_stock_summary(self._summary)
+            self._summary["catalog_sha256"] = content_digest(self.path)
+            self.check_snapshot()
+        except (sqlite3.Error, OSError, ValueError) as exc:
             raise StockIndexError("Commercial stock index is invalid") from exc
 
+    def check_snapshot(self):
+        self.assert_current()
+
+    def assert_current(self, *, catalog_sha256=None, source_sha256=None):
+        """Assert pinned identity and optional task digests without rehashing."""
+        try:
+            self._snapshot.check()
+        except sqlite3.Error as exc:
+            raise StockIndexError("Commercial stock snapshot changed or is invalid") from exc
+        for key, expected in (
+            ("catalog_sha256", catalog_sha256), ("source_sha256", source_sha256),
+        ):
+            if expected is not None and self._summary.get(key) != expected:
+                raise StockIndexError("Commercial stock does not match the bound task snapshot")
+        try:
+            self._snapshot.check()
+        except sqlite3.Error as exc:
+            raise StockIndexError("Commercial stock snapshot changed or is invalid") from exc
+
+    @property
+    def summary(self):
+        self.check_snapshot()
+        result = deepcopy(self._summary)
+        self.check_snapshot()
+        return result
+
+    @contextmanager
     def connect(self):
-        return closing(
-            sqlite3.connect(self.path.as_uri() + "?mode=ro&immutable=1", uri=True)
-        )
+        try:
+            with self._snapshot.connect() as connection:
+                yield connection
+        except sqlite3.Error as exc:
+            raise StockIndexError("Commercial stock snapshot is invalid") from exc
 
     def lookup(self, smiles: str, *, limit: int = 100) -> list[dict]:
-        if not 1 <= limit <= 100:
+        self.assert_current()
+        if type(limit) is not int or not 1 <= limit <= 100:
             raise ValueError("Stock lookup limit must be between 1 and 100")
         canonical = canonicalize_smiles(smiles)
         if not canonical:
+            self.assert_current()
             return []
         try:
             with self.connect() as connection:
                 connection.row_factory = sqlite3.Row
-                return [
-                    dict(row)
-                    for row in connection.execute(
-                        "SELECT * FROM evidence WHERE smiles=? ORDER BY ppg IS NULL,ppg,source,catalog_id LIMIT ?",
-                        (canonical, limit),
-                    )
-                ]
+                return self._lookup_records(connection, canonical, limit)
         except sqlite3.Error as exc:
             raise StockIndexError("Commercial stock lookup failed") from exc
+
+    def _lookup_records(self, connection, smiles, limit):
+        if self._ordered_lookup:
+            return [dict(row) for row in connection.execute(LOOKUP_SQL, (smiles, limit))]
+        rows = [dict(row) for row in connection.execute(
+            "SELECT * FROM evidence WHERE smiles=? LIMIT ?", (smiles, LEGACY_FANOUT_ROWS + 1)
+        )]
+        if len(rows) > LEGACY_FANOUT_ROWS:
+            raise StockIndexError("Legacy catalog fan-out exceeds the read budget; compile a new indexed snapshot")
+
+        def order(record):
+            price, _ = price_value(record["ppg"])
+            return price is None, price or 0, record["source"], record["catalog_id"]
+
+        return sorted(rows, key=order)[:limit]
 
     def iter_records(self, *, limit: int | None = None) -> Iterator[dict]:
         if limit is not None and limit < 1:
@@ -258,12 +128,15 @@ class StockIndex:
                 yield dict(row)
 
     def lookup_many(self, smiles_list: Iterable[str]) -> dict[str, list[dict]]:
-        keys = list(
-            dict.fromkeys(canonicalize_smiles(smiles) for smiles in smiles_list)
-        )
-        keys = [key for key in keys if key]
-        if len(keys) > 5000:
-            raise ValueError("A stock batch may contain at most 5000 structures")
+        self.assert_current()
+        keys = {}
+        for number, smiles in enumerate(smiles_list, 1):
+            if number > 5000:
+                raise ValueError("A stock batch may contain at most 5000 structures")
+            canonical = canonicalize_smiles(smiles)
+            if canonical:
+                keys[canonical] = None
+        keys = list(keys)
         result = {key: [] for key in keys}
         try:
             with self.connect() as connection:
@@ -271,13 +144,8 @@ class StockIndex:
                 batch_size = PerformanceBudget.from_environment().stock_batch_size
                 for start in range(0, len(keys), batch_size):
                     chunk = keys[start : start + batch_size]
-                    placeholders = ",".join("?" for _ in chunk)
-                    for row in connection.execute(
-                        f"SELECT * FROM evidence WHERE smiles IN ({placeholders}) ORDER BY ppg IS NULL,ppg,source,catalog_id",
-                        chunk,
-                    ):
-                        if len(result[row["smiles"]]) < 100:
-                            result[row["smiles"]].append(dict(row))
+                    for key in chunk:
+                        result[key] = self._lookup_records(connection, key, 100)
         except sqlite3.Error as exc:
             raise StockIndexError("Commercial stock batch lookup failed") from exc
         return result
@@ -288,6 +156,7 @@ class IndexedCommercialStockRegistry(CommercialStockRegistry):
         super().__init__([], canonicalize_decisions=False)
         self.index = index
         self._lookup_cache = {}
+        self._cache_lock = RLock()
 
     @staticmethod
     def _decision(record: dict) -> EvidenceDecision:
@@ -304,29 +173,39 @@ class IndexedCommercialStockRegistry(CommercialStockRegistry):
         return [self._decision(record) for record in self.index.iter_records()]
 
     def decisions_for(self, smiles: str) -> list[EvidenceDecision]:
+        self.index.check_snapshot()
         smiles = canonicalize_smiles(smiles)
         if not smiles:
+            self.index.assert_current()
             return []
-        if smiles not in self._lookup_cache:
+        with self._cache_lock:
+            missing = smiles not in self._lookup_cache
+        if missing:
             self.prefetch([smiles])
-        return self._lookup_cache[smiles]
+        with self._cache_lock:
+            result = list(self._lookup_cache[smiles])
+        self.index.check_snapshot()
+        return result
 
     def prefetch(self, smiles):
-        values = [
-            value
-            for value in dict.fromkeys(canonicalize_smiles(item) for item in smiles)
-            if value and value not in self._lookup_cache
-        ]
+        self.index.check_snapshot()
+        with self._cache_lock:
+            values = [
+                value for value in dict.fromkeys(canonicalize_smiles(item) for item in smiles)
+                if value and value not in self._lookup_cache
+            ]
         for offset in range(0, len(values), 500):
-            batch = self.index.lookup_many(values[offset : offset + 500])
-            self._lookup_cache.update(
-                {
+            batch = self.index.lookup_many(values[offset:offset + 500])
+            with self._cache_lock:
+                self.index.check_snapshot()
+                self._lookup_cache.update({
                     key: [self._decision(record) for record in records]
                     for key, records in batch.items()
-                }
-            )
+                })
+        self.index.check_snapshot()
 
     def accepted_decision_count(self, *, limit: int | None = None) -> int:
+        self.index.check_snapshot()
         count = self.index.summary["accepted_records"]
         return min(count, limit) if limit is not None else count
 

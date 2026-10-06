@@ -13,8 +13,10 @@ def test_unified_aizynth_stock_merges_and_deduplicates_exact_sources(tmp_path):
     first.write_text(
         json.dumps(
             [
-                {"smiles": "CCO", "source": "chemspace", "decision": "accepted"},
-                {"smiles": "CCN", "source": "mcule", "decision": "accepted"},
+                {"smiles": "CCO", "source": "chemspace", "decision": "accepted",
+                 "url": "https://chem-space.com/CSSB00000000009"},
+                {"smiles": "CCN", "source": "mcule", "decision": "accepted",
+                 "url": "https://mcule.com/MCULE-100"},
             ]
         ),
         encoding="utf-8",
@@ -22,8 +24,10 @@ def test_unified_aizynth_stock_merges_and_deduplicates_exact_sources(tmp_path):
     second.write_text(
         json.dumps(
             [
-                {"smiles": "OCC", "source": "aladdin", "decision": "accepted"},
-                {"smiles": "CCCl", "source": "ambeed", "decision": "accepted"},
+                {"smiles": "OCC", "source": "aladdin", "decision": "accepted",
+                 "url": "https://www.aladdin-e.com/zh_cn/entry-1.html"},
+                {"smiles": "CCCl", "source": "ambeed", "decision": "accepted",
+                 "url": "https://www.ambeed.com/products/entry-2.html"},
                 {"smiles": "invalid", "source": "ambeed", "decision": "accepted"},
                 {"smiles": "CCC", "source": "ambeed", "decision": "rejected"},
             ]
@@ -45,6 +49,7 @@ def test_unified_aizynth_stock_merges_and_deduplicates_exact_sources(tmp_path):
     assert artifacts.summary == {
         "accepted_input_records": 5,
         "invalid_smiles_records": 1,
+        "rejected_evidence_records": 0,
         "unique_structures": 3,
         "source_paths": [str(first), str(second)],
         "stock_name": "unified",

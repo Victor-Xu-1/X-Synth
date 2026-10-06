@@ -18,9 +18,10 @@ from packages.adapters.askcos.transport import AskcosTransport
 from packages.knowledge_base.template_library import (
     DEFAULT_TEMPLATE_STRATEGIES,
     TemplateLibraryService,
-    _create_template_schema,
-    _template_filters,
 )
+from packages.knowledge_base.template_schema import _create_template_schema
+from packages.knowledge_base.template_query import _template_filters
+from packages.platform.immutable_sqlite import ImmutableSQLiteError
 
 
 def installed_database():
@@ -375,7 +376,7 @@ def test_cached_summary_is_defensive_and_refreshes_on_asset_replacement(database
     assert service.summary()["template_count"] == 0
     assert service.summary()["strategy_availability"]["all"]["available"] is False
     database.unlink()
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(ImmutableSQLiteError):
         service.summary()
 
 
