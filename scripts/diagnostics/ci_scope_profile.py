@@ -178,6 +178,7 @@ SEARCH_PROJECTION_FILES = {
     "scripts/operations/systemd/x-synth@.service",
     "apps/askcos-v2/tree_search/mcts/utils.py",
     "apps/askcos-v2/tree_search/mcts/mcts_controller.py",
+    "apps/askcos-v2/tree_search/expand_one/expand_one_controller.py",
     "apps/askcos-v2/tree_search/retro_star/utils.py",
     "apps/askcos-v2/tree_search/retro_star/retro_star_controller.py",
 }
@@ -444,6 +445,8 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
             "tests/unit/test_route_reachability.py",
             "tests/unit/test_route_enumeration.py",
             "tests/unit/test_template_recall.py",
+            "tests/unit/test_candidate_scope.py",
+            "tests/unit/test_material_scope.py",
             "tests/unit/test_search_elapsed.py",
             "tests/unit/test_retrostar_values.py",
             "tests/unit/test_projection_recovery.py",

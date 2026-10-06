@@ -2,6 +2,7 @@
 
 import ast
 from pathlib import Path
+from packages.platform.asset_identity import NATIVE_EXTERNAL_FILES
 
 NATIVE_DIRECTORIES = ("askcos2_core", "tree_search", "retro/template_relevance")
 PROJECTION_FILES = {
@@ -16,8 +17,7 @@ PROJECTION_IMPORTS = {
 EXTERNAL_PROJECTION_FILES = {
     module.replace(".", "/") + ".py" for module in PROJECTION_IMPORTS
 }
-# Coverage of native_asset_identity's external files is contract-tested.
-EXTERNAL_SEARCH_FILES = {"packages/adapters/askcos/retro_star_values.py"}
+EXTERNAL_SEARCH_FILES = set(NATIVE_EXTERNAL_FILES) - EXTERNAL_PROJECTION_FILES
 
 
 def search_semantics(source: str, allowed: set[str]) -> str:

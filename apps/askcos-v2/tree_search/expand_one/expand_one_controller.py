@@ -19,6 +19,7 @@ from rdchiral.template_extractor import extract_from_reaction
 from rdchiral_util import apply_one_template_to_precursors, get_reacting_atoms
 from rdkit import Chem
 from typing import Any, ClassVar, Dict, List, Optional, Tuple
+from packages.chemistry.material_scope import material_scope_exclusion
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://0.0.0.0:9100")
 atom_mapper = AtomMapAPI(
@@ -252,6 +253,8 @@ class ExpandOneController:
         start = time.time()
         retro_results = []
         cano_smiles = canonicalize_smiles(smiles)
+        if material_scope_exclusion(cano_smiles):
+            return []
         for option in retro_backend_options:
             batch = self.retro_controller(
                 smiles=[cano_smiles],
@@ -309,6 +312,8 @@ class ExpandOneController:
             
             # canonicalize the outcome
             cano_outcome = canonicalize_smiles(result["outcome"])
+            if material_scope_exclusion(cano_outcome):
+                continue
 
             result.pop("outcome")
 

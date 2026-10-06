@@ -61,6 +61,8 @@ def projection_sources(tmp_path):
             "def enumerate_route_graphs(tree): return iter(tree)\n",
         "packages/adapters/askcos/retro_star_values.py":
             "def backup_search_values(tree, chemical, target): return []\n",
+        "packages/chemistry/material_scope.py":
+            "def material_scope_exclusion(smiles): return None\n",
     }
     for root in (old, new):
         for name, source in sources.items():
@@ -71,13 +73,16 @@ def projection_sources(tmp_path):
 
 
 @pytest.mark.parametrize("change", ["modify", "add", "remove"])
+@pytest.mark.parametrize("name", [
+    "packages/adapters/askcos/retro_star_values.py",
+    "packages/chemistry/material_scope.py",
+])
 def test_projection_proof_rejects_external_search_semantics_changes(
-    projection_sources, change,
+    projection_sources, change, name,
 ):
     old, new = projection_sources
     native = new / "apps/askcos-v2/tree_search/mcts/utils.py"
     native.write_text(native.read_text().replace("return tree", "return tree.copy()"))
-    name = "packages/adapters/askcos/retro_star_values.py"
     if change == "modify":
         (new / name).write_text((new / name).read_text() + "\n")
     elif change == "add":
@@ -114,9 +119,8 @@ def test_projection_proof_covers_every_fingerprinted_code_boundary():
     for loop in (node for node in identity.body if isinstance(node, ast.For)):
         strings = {node.value for node in ast.walk(loop)
                    if isinstance(node, ast.Constant) and isinstance(node.value, str)}
-        if "packages/adapters/askcos/" in strings:
-            external.update(f"packages/adapters/askcos/{name}.py"
-                            for name in ast.literal_eval(loop.iter))
+        if isinstance(loop.iter, ast.Name) and loop.iter.id == "NATIVE_EXTERNAL_FILES":
+            external.update(asset_identity.NATIVE_EXTERNAL_FILES)
         elif "apps/askcos-v2" in strings:
             native.update(ast.literal_eval(loop.iter))
     assert set(NATIVE_DIRECTORIES) == native
