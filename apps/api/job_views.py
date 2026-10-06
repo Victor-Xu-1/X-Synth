@@ -3,6 +3,7 @@ import json
 from fastapi import HTTPException
 
 from packages.workspace.history_projection import historical_routes
+from packages.chemistry.material_scope import stored_route_scope_exclusions
 
 
 def history_metadata(job: dict) -> dict:
@@ -76,6 +77,23 @@ def public_summary(value):
     return value
 
 
+def selected_route_data(path, *, budget):
+    if not path.is_file():
+        return []
+    if path.stat().st_size > budget.response_bytes:
+        raise HTTPException(413, "Route data exceeds the response budget")
+    try:
+        selected = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(selected, list):
+            raise ValueError("Invalid selected route collection")
+        outside_scope = any(stored_route_scope_exclusions(route) for route in selected)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(409, "路线结果结构损坏，需要重新计算。") from exc
+    if outside_scope:
+        raise HTTPException(409, "旧候选超出当前物料范围，需要重新审查或搜索。")
+    return selected
+
+
 def route_result(job, *, artifacts, budget):
     if (job.get("summary") or {}).get("origin") == "askcos_history":
         path = artifacts / job["id"] / "native-history.json"
@@ -91,6 +109,8 @@ def route_result(job, *, artifacts, budget):
             raise HTTPException(
                 409, "Historical route records cannot be projected"
             ) from exc
+        if any(stored_route_scope_exclusions(route) for route in routes):
+            raise HTTPException(409, "旧候选超出当前物料范围，需要重新审查或搜索。")
         result = document.get("result")
         if not isinstance(result, dict):
             raise HTTPException(409, "Historical result format is invalid")
@@ -111,11 +131,7 @@ def route_result(job, *, artifacts, budget):
             )
         return document
     path = artifacts / job["id"] / "selected_routes.json"
-    selected = []
-    if path.is_file():
-        if path.stat().st_size > budget.response_bytes:
-            raise HTTPException(413, "Route data exceeds the response budget")
-        selected = json.loads(path.read_text(encoding="utf-8"))
+    selected = selected_route_data(path, budget=budget)
     return {
         "result_id": job["id"],
         "target_smiles": job["request"]["smiles"],

@@ -5,6 +5,7 @@ from rdkit import Chem
 
 from packages.adapters.stock.commercial_stock import canonicalize_smiles
 from packages.platform.performance import PerformanceBudget
+from packages.chemistry.material_scope import material_scope_exclusion
 
 
 class SearchTuning(BaseModel):
@@ -22,6 +23,7 @@ class RouteJobRequest(BaseModel):
     smiles: str = Field(min_length=1, max_length=20_000)
     description: str | None = Field(default=None, max_length=1000)
     backend: Literal["askcos"] = "askcos"
+    search_policy_version: int = Field(default=2, strict=True, ge=1, le=2)
     strategies: list[Literal["mcts", "retro_star"]] = Field(
         default_factory=lambda: ["mcts", "retro_star"], min_length=1, max_length=2
     )
@@ -32,6 +34,13 @@ class RouteJobRequest(BaseModel):
     repair_attempts: int = Field(default=1, ge=0, le=1)
     tuning: SearchTuning = Field(default_factory=SearchTuning)
     public: Literal[False] = False
+
+    @classmethod
+    def from_persisted(cls, value: dict):
+        # Pre-versioned jobs retain their original child-input hashes on resume.
+        return cls(**{
+            **value, "search_policy_version": value.get("search_policy_version", 1),
+        })
 
     @model_validator(mode="after")
     def validate_structure_and_range(self):
@@ -45,6 +54,8 @@ class RouteJobRequest(BaseModel):
         canonical = canonicalize_smiles(self.smiles)
         if not canonical:
             raise ValueError("Invalid molecular structure")
+        if material_scope_exclusion(canonical):
+            raise ValueError("该目标物料超出当前普通研究合成规划范围。")
         if self.min_routes > self.max_routes:
             raise ValueError("Minimum route count exceeds maximum route count")
         self.smiles = canonical

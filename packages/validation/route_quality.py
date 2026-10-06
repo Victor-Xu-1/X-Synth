@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 
 from packages.route_schema.route_schema import RouteCandidate
+from packages.chemistry.material_scope import route_scope_exclusions
 
 MetricValue = int | float
 
@@ -40,6 +41,9 @@ class RouteQualityPolicy:
 
     def evaluate_route(self, route: RouteCandidate) -> RouteQualityDecision:
         reasons: list[str] = []
+        restricted_material_count = len(route_scope_exclusions(route))
+        if restricted_material_count:
+            reasons.append("material_outside_ordinary_research_scope")
         unclosed = list(route.metadata.get("unclosed_precursors") or [])
         if not route.closed or unclosed:
             reasons.append("route_not_closed")
@@ -115,6 +119,7 @@ class RouteQualityPolicy:
 
         metrics: dict[str, MetricValue] = {
             "step_count": step_count,
+            "restricted_material_count": restricted_material_count,
             "unclosed_precursor_count": len(unclosed),
             "repeated_reaction_count": repeated_reaction_count,
             "reaction_cycle_count": cycle_count,

@@ -76,7 +76,7 @@ def recover_projection(
         if apply and not worker.acquire():
             raise ValueError("Stop the native worker before applying checkpoint recovery")
         record = json.loads((root / (child_id + ".json")).read_text())
-        request = RouteJobRequest(**job["request"])
+        request = RouteJobRequest.from_persisted(job["request"])
         expected = build_search_options(
             request, strategy=strategy, models=models, pass_number=pass_number,
         )

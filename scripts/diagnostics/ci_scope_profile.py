@@ -48,6 +48,7 @@ API_FILES = {
     "apps/api/native_routes.py",
     "apps/api/data_routes.py",
     "apps/api/job_views.py",
+    "apps/api/job_routes.py",
     "apps/api/analysis_routes.py",
     "apps/api/assessment_routes.py",
     "apps/api/condition_routes.py",
@@ -157,6 +158,10 @@ HISTORY_FILES = {
 SEARCH_ROUND_FILES = {
     "packages/orchestrator/pipeline.py",
     "packages/orchestrator/search_progress.py",
+    "packages/orchestrator/route_request.py",
+    "packages/adapters/askcos/engine.py",
+    "packages/chemistry/material_scope.py",
+    "packages/validation/route_quality.py",
 }
 PERFORMANCE_FILES = {"packages/platform/performance.py"}
 SEARCH_PROJECTION_FILES = {
@@ -442,6 +447,7 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
             "tests/unit/test_resource_metrics.py",
             "tests/unit/test_native_lifecycle.py",
             "tests/unit/test_askcos_adapter.py",
+            "tests/unit/test_route_request.py",
             "tests/unit/test_route_lifecycle.py",
             "tests/unit/test_operations_scripts.py",
         })
@@ -451,6 +457,8 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
             "tests/unit/test_job_repository.py",
             "tests/unit/test_route_lifecycle.py",
             "tests/unit/test_askcos_adapter.py",
+            "tests/unit/test_material_scope.py",
+            "tests/unit/test_route_quality.py",
         })
     if roots & CHEMICAL_FILE_FILES:
         selected.update(CHEMICAL_FILE_TESTS)
