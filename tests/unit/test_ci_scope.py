@@ -121,6 +121,12 @@ def test_unknown_changes_fail_instead_of_skip_or_global_fallback(path):
         profile.guard_paths({path})
 
 
+@pytest.mark.parametrize("path", sorted(profile.architecture.FILES))
+def test_native_and_asset_boundaries_have_explicit_related_scope(path):
+    profile.guard_paths({path})
+    assert profile.architecture.related_tests({path})
+
+
 def test_ord_import_checks_are_isolated_and_diff_selected():
     assert profile.reaction_data_tests(
         {"packages/knowledge_base/ord_extract.py"}

@@ -8,6 +8,7 @@ from collections import defaultdict
 from pathlib import PurePosixPath
 
 from . import ci_scope_dependencies as analysis
+from . import ci_scope_architecture as architecture
 
 WEB = analysis.WEB
 SOURCE = analysis.SOURCE
@@ -25,6 +26,7 @@ CI_FILES = {
     "scripts/diagnostics/ci_scope.py",
     "scripts/diagnostics/ci_scope_profile.py",
     "scripts/diagnostics/ci_scope_dependencies.py",
+    "scripts/diagnostics/ci_scope_architecture.py",
     SCOPE_TEST,
 }
 CI_SAFETY_TESTS = {
@@ -295,6 +297,7 @@ def guard_paths(paths: set[str]) -> None:
             | SEARCH_PROJECTION_FILES
             | SEARCH_ROUND_FILES
             | ARCHITECTURE_FILES
+            | architecture.FILES
             | {
                 PYTHON_LOCK,
                 "VERSION",
@@ -385,6 +388,7 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
         and path.endswith(".py")
         and path in after.files
     }
+    selected.update(architecture.related_tests(roots))
     if roots & ENVIRONMENT_FILES:
         selected.add("tests/unit/test_environment_api.py")
     if roots & SCIENTIFIC_FILES or any(

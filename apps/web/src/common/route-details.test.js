@@ -466,10 +466,10 @@ test("generation guard, URL reset, timer cleanup and nonoverlapping inspector re
   const detail = compactSource("views/workspace/TaskDetail.vue"),
     reader = compactSource("components/routes/RouteReader.vue");
   expect(detail).toContain("disposed || current !== generation");
-  expect(detail).toContain("disposed || id !== identifier.value");
+  expect(detail).toContain("disposed || context !== taskGeneration || id !== identifier.value");
   expect(detail).toMatch(/watch\(\s*\(\) => route\.params\.id/);
   expect(detail).toContain("job.value = null; candidates.value = []");
-  expect(detail).toContain("generation++; window.clearInterval(timer)");
+  expect(detail).toMatch(/onBeforeUnmount\(\(\) => \{[^}]*generation\+\+;[^}]*detailRequest\?\.abort\(\);[^}]*window\.clearInterval\(timer\)/);
   expect(reader).toContain("retainedRouteId(values, selectedId.value)");
   expect(reader).toContain(
     ".reader-detail-body > :deep(.route-inspector) { position: static;",
