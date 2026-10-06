@@ -2,9 +2,49 @@ import { useFastapiStore } from "@/store/fastapi";
 import { recordRequest } from "./request-observability";
 import { hasWorkspaceAccess } from "./workspace-session";
 
+function requestScope(signal, timeoutMs) {
+  const controller = new AbortController();
+  const abort = () => controller.abort(signal.reason);
+  if (signal?.aborted) abort();
+  else signal?.addEventListener("abort", abort, { once: true });
+  const timer = timeoutMs
+    ? setTimeout(() => controller.abort(new DOMException("服务请求超时，请刷新或重试。", "TimeoutError")), timeoutMs)
+    : null;
+  return {
+    signal: controller.signal,
+    dispose() {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+    },
+  };
+}
+
+function abortable(promise, signal) {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    Promise.resolve(promise).then(resolve, reject).finally(() => {
+      signal.removeEventListener("abort", abort);
+    });
+  });
+}
+
+async function pollDelay(delay, signal) {
+  let timer;
+  try {
+    await abortable(new Promise((resolve) => { timer = setTimeout(resolve, delay); }), signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const API = {
   pollInterval: 1000,
   pollIntervalLong: 2000,
+  pollTimeoutMs: 30 * 60 * 1000,
+  pollRequestTimeoutMs: 15000,
+  maxPollConnectionErrors: 3,
 
   getHeaders(data) {
     const headers = {};
@@ -50,7 +90,7 @@ const API = {
     throw new Error(JSON.stringify(json));
   },
 
-  async request(method, endpoint, data, query = false) {
+  async request(method, endpoint, data, query = false, { signal, timeoutMs } = {}) {
     const fastapiStore = useFastapiStore();
     const url = query ? `${endpoint}?${new URLSearchParams(data)}` : endpoint;
     const options = {
@@ -63,59 +103,51 @@ const API = {
       options.body = data instanceof FormData ? data : JSON.stringify(data);
     }
 
-    const response = await fetch(url, options);
-    let json;
+    const scope = requestScope(signal, timeoutMs);
+    options.signal = scope.signal;
     try {
-      json = await this.fetchHandler(response);
-    } catch (error) {
-      if (
-        response.status === 401 &&
-        endpoint !== "/api/admin/token" &&
-        !(await hasWorkspaceAccess())
-      ) {
-        localStorage.removeItem("guestPassword");
-        this.clearAuthState();
-        this.redirectToLogin();
+      if (scope.signal.aborted) throw scope.signal.reason;
+      const response = await abortable(fetch(url, options), scope.signal);
+      let json;
+      try {
+        json = await abortable(this.fetchHandler(response), scope.signal);
+      } catch (error) {
+        if (
+          response.status === 401 &&
+          endpoint !== "/api/admin/token" &&
+          !(await hasWorkspaceAccess())
+        ) {
+          localStorage.removeItem("guestPassword");
+          this.clearAuthState();
+          this.redirectToLogin();
+        }
+        throw error;
       }
-      throw error;
+      recordRequest(fastapiStore, {
+        endpoint,
+        method,
+        request: data,
+        response: json,
+      });
+      return json;
+    } finally {
+      scope.dispose();
     }
-
-    recordRequest(fastapiStore, {
-      endpoint,
-      method,
-      request: data,
-      response: json,
-    });
-
-    return json;
   },
 
-  get: (endpoint, params, query = true) =>
-    API.request("GET", endpoint, params, query),
-  post: (endpoint, data, query) => API.request("POST", endpoint, data, query),
+  get: (endpoint, params, query = true, options) =>
+    API.request("GET", endpoint, params, query, options),
+  post: (endpoint, data, query, options) => API.request("POST", endpoint, data, query, options),
   put: (endpoint, data) => API.request("PUT", endpoint, data),
   delete: (endpoint, data, query) =>
     API.request("DELETE", endpoint, data, query),
 
-  async jsonRpc(endpoint, method, params = {}, extraHeaders = {}) {
-    const headers = { ...this.getHeaders({}), ...extraHeaders };
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method,
-        params,
-        id: Date.now(),
-      }),
+  async runCeleryTask(endpoint, data, progress, options = {}) {
+    const json = await this.post(endpoint, data, false, {
+      signal: options.signal,
+      timeoutMs: this.pollRequestTimeoutMs,
     });
-    const data = response.ok ? await response.json() : null;
-    return { response, data };
-  },
-
-  async runCeleryTask(endpoint, data, progress) {
-    const json = await this.post(endpoint, data);
-    return this.pollCeleryResult(json.task_id || json, progress);
+    return this.pollCeleryResult(json.task_id || json, progress, options);
   },
 
   toErrorObject(
@@ -154,42 +186,40 @@ const API = {
     return { string_error: rawMessage || fallback };
   },
 
-  pollCeleryResult(taskId, progress) {
-    return new Promise((resolve, reject) => {
-      const check = () => {
-        this.get(`/api/legacy/celery/task/${taskId}/`, null, false)
-          .then((json) => {
-            if (json.complete) return resolve(json.output);
-            if (json.failed) {
-              return reject(
-                new Error(
-                  JSON.stringify(
-                    json.output || {
-                      string_error: json.message || "后端异步任务执行失败。",
-                    },
-                  ),
-                ),
-              );
-            }
-            if (progress) progress(json);
-            setTimeout(check, this.pollInterval);
-          })
-          .catch((error) => {
-            if (
-              error instanceof TypeError &&
-              error.message === "Failed to fetch"
-            ) {
-              console.error(
-                "Unable to fetch celery results due to connection error. Will keep trying.",
-              );
-              setTimeout(check, this.pollIntervalLong);
-            } else {
-              reject(error);
-            }
-          });
-      };
-      check();
-    });
+  async pollCeleryResult(taskId, progress, { signal, timeoutMs = this.pollTimeoutMs } = {}) {
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0)
+      throw new RangeError("轮询时限必须为有效正数。");
+    const scope = requestScope(signal, timeoutMs);
+    let connectionErrors = 0;
+    try {
+      while (!scope.signal.aborted) {
+        let json;
+        try {
+          json = await abortable(this.get(`/api/legacy/celery/task/${taskId}/`, null, false, {
+            signal: scope.signal,
+            timeoutMs: this.pollRequestTimeoutMs,
+          }), scope.signal);
+          connectionErrors = 0;
+        } catch (error) {
+          if (scope.signal.aborted) throw scope.signal.reason;
+          if (!(error instanceof TypeError) || ++connectionErrors >= this.maxPollConnectionErrors)
+            throw error;
+          await pollDelay(this.pollIntervalLong, scope.signal);
+          continue;
+        }
+        if (scope.signal.aborted) throw scope.signal.reason;
+        if (json.failed)
+          throw new Error(JSON.stringify(json.output || {
+            string_error: json.message || "后端异步任务执行失败。",
+          }));
+        if (json.complete) return json.output;
+        if (progress) progress(json);
+        await pollDelay(this.pollInterval, scope.signal);
+      }
+      throw scope.signal.reason;
+    } finally {
+      scope.dispose();
+    }
   },
 };
 

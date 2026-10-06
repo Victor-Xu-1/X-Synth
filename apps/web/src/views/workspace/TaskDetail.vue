@@ -50,16 +50,16 @@
           aria-label="刷新详情"
           :loading="loading"
           :disabled="loading"
-          @click="refresh"
+          @click="refresh(true)"
         />
       </div>
     </header>
     <div
-      v-if="error || actionError"
+      v-if="error || copyError || actionError"
       class="task-detail-message tool-error"
       role="alert"
     >
-      {{ error || actionError }}
+      {{ error || copyError || actionError }}
     </div>
     <TaskSearchProgress
       v-if="job && (!candidates.length || active)"
@@ -74,7 +74,7 @@
       :loading="loading"
       :busy="editing || mutating"
       :stock-snapshot="job?.summary?.stock_snapshot?.source_sha256"
-      can-edit
+      :can-edit="artifactCurrent && !error && !copyError && !loading"
       @edit="edit"
     />
     <div v-else-if="!job" class="workspace-empty" role="status">
@@ -96,7 +96,7 @@
       }}</span>
     </div>
     <div v-if="job && !active && !candidates.length" class="task-detail-heading">
-      <v-btn prepend-icon="mdi-magnify" variant="outlined" :disabled="mutating" @click="rerun">重新搜索</v-btn>
+      <v-btn prepend-icon="mdi-magnify" variant="outlined" :disabled="mutating || rerunning" :loading="rerunning" @click="rerun">重新搜索</v-btn>
     </div>
     <TaskInfoDialog
       v-model="infoOpen"
@@ -105,7 +105,7 @@
       :error="error"
       @preview="infoOpen = false"
       @rerun="rerun"
-      @retry="refresh"
+      @retry="refresh(true)"
     />
   </section>
 </template>
@@ -119,7 +119,7 @@ import {
   taskStateClass,
   activeTaskStates,
 } from "@/common/task-state";
-import { loadTaskDetail } from "@/common/task-detail-data";
+import { createTaskDetailLoader } from "@/common/task-detail-data";
 import {
   originalRouteIndex,
   requestedRouteId,
@@ -137,10 +137,14 @@ const job = ref(null),
   view = ref("overview"),
   infoOpen = ref(false);
 const error = ref(""),
+  copyError = ref(""),
   actionError = ref(""),
+  artifactCurrent = ref(false),
   loading = ref(false),
   editing = ref(false),
+  rerunning = ref(false),
   mutating = ref(false);
+const detailLoader = createTaskDetailLoader(API);
 const identifier = computed(() => taskIdentifier(route.params.id));
 const active = computed(
   () => job.value && activeTaskStates.includes(job.value.status),
@@ -169,11 +173,15 @@ const taskInfo = computed(() =>
         result_id: job.value.job_id,
         result_state: job.value.status,
         created: job.value.created_at,
-        num_trees: candidates.value.length,
+        num_trees: error.value ? null : candidates.value.length,
       }
     : null,
 );
 let generation = 0,
+  taskGeneration = 0,
+  rerunGeneration = 0,
+  detailRequest,
+  rerunRequest,
   timer,
   requestedSelectionPending = true,
   disposed = false;
@@ -184,21 +192,26 @@ function selectRequestedRoute() {
   if (requested) selectedId.value = requested;
   view.value = requested ? "graph" : "overview";
 }
-async function refresh() {
+async function refresh(force = false) {
+  if (disposed || (!force && loading.value)) return;
   const current = ++generation,
     id = identifier.value;
+  detailRequest?.abort();
   if (!id) {
     error.value = "任务链接无效。";
     loading.value = false;
     return;
   }
+  const request = new AbortController();
+  detailRequest = request;
   loading.value = true;
   try {
-    const values = await loadTaskDetail(API, id);
-    if (disposed || current !== generation) return;
+    const values = await detailLoader.load(id, { force, signal: request.signal });
+    if (!values || disposed || current !== generation || id !== identifier.value) return;
     if (values.job) job.value = values.job;
-    if (JSON.stringify(values.candidates) !== JSON.stringify(candidates.value))
-      candidates.value = values.candidates;
+    candidates.value = values.candidates;
+    artifactCurrent.value = values.artifactCurrent;
+    if (values.artifactRefreshed) copyError.value = "";
     selectRequestedRoute();
     error.value = values.error;
   } catch (cause) {
@@ -206,33 +219,36 @@ async function refresh() {
       error.value = errorMessage(cause, "任务详情加载失败。");
   } finally {
     if (!disposed && current === generation) loading.value = false;
+    if (detailRequest === request) detailRequest = null;
   }
 }
 async function edit(routeId) {
-  if (editing.value || mutating.value || loading.value) return;
+  if (editing.value || mutating.value || loading.value || !artifactCurrent.value || error.value || copyError.value) return;
   const id = identifier.value,
+    context = taskGeneration,
     index = originalRouteIndex(candidates.value, routeId);
   if (!id || index < 0) return;
   editing.value = true;
-  actionError.value = "";
+  copyError.value = "";
   try {
     const result = await API.post("/api/v1/route-documents/from-task", {
       job_id: id,
       route_index: index,
+      route_id: routeId,
     });
-    if (disposed || id !== identifier.value) return;
+    if (disposed || context !== taskGeneration || id !== identifier.value) return;
     const documentId = taskIdentifier(result.id);
     if (!documentId) throw new Error("编辑副本的文档标识无效。");
     await router.push("/editor/" + documentId);
   } catch (cause) {
-    if (!disposed && id === identifier.value)
-      actionError.value = errorMessage(cause, "无法创建编辑副本。");
+    if (!disposed && context === taskGeneration && id === identifier.value)
+      copyError.value = errorMessage(cause, "无法创建编辑副本，请刷新路线后重试。");
   } finally {
-    if (!disposed && id === identifier.value) editing.value = false;
+    if (!disposed && context === taskGeneration && id === identifier.value) editing.value = false;
   }
 }
 async function changeTask(action) {
-  const id = identifier.value;
+  const id = identifier.value, context = taskGeneration;
   if (
     !id ||
     mutating.value ||
@@ -243,29 +259,45 @@ async function changeTask(action) {
   actionError.value = "";
   try {
     await API.post(`/api/v1/unified-route/jobs/${id}/${action}`);
-    if (!disposed && id === identifier.value) await refresh();
+    if (!disposed && context === taskGeneration && id === identifier.value) await refresh(true);
   } catch (cause) {
-    if (!disposed && id === identifier.value)
+    if (!disposed && context === taskGeneration && id === identifier.value)
       actionError.value = errorMessage(cause, "任务状态更新失败。");
   } finally {
-    if (!disposed && id === identifier.value) mutating.value = false;
+    if (!disposed && context === taskGeneration && id === identifier.value) mutating.value = false;
   }
 }
 async function rerun() {
-  if (!job.value) return;
+  if (!job.value || rerunning.value || disposed) return;
+  const current = ++rerunGeneration,
+    id = identifier.value,
+    request = new AbortController();
+  const isCurrent = () => !disposed && current === rerunGeneration && id === identifier.value;
+  rerunRequest = request;
+  rerunning.value = true;
+  actionError.value = "";
   try {
     const values = await API.get(
-      "/api/v1/unified-route/jobs/" + identifier.value,
+      "/api/v1/unified-route/jobs/" + id, null, false,
+      { signal: request.signal, timeoutMs: 15000 },
     );
-    await router.push(buildTaskSearchLocation(values));
+    if (isCurrent()) await router.push(buildTaskSearchLocation(values));
   } catch (cause) {
-    actionError.value = errorMessage(cause, "重新搜索参数读取失败。");
+    if (isCurrent()) actionError.value = errorMessage(cause, "重新搜索参数读取失败。");
+  } finally {
+    if (isCurrent()) rerunning.value = false;
+    if (rerunRequest === request) rerunRequest = null;
   }
 }
 watch(
   () => route.params.id,
   () => {
     generation++;
+    taskGeneration++;
+    rerunGeneration++;
+    detailRequest?.abort();
+    rerunRequest?.abort();
+    detailLoader.reset();
     requestedSelectionPending = true;
     job.value = null;
     candidates.value = [];
@@ -273,12 +305,16 @@ watch(
     view.value = "overview";
     infoOpen.value = false;
     error.value = "";
+    copyError.value = "";
+    artifactCurrent.value = false;
     actionError.value = "";
+    loading.value = false;
     editing.value = false;
     mutating.value = false;
+    rerunning.value = false;
     refresh();
   },
-  { immediate: true },
+  { immediate: true, flush: "sync" },
 );
 watch(
   () => [route.query.route_id, route.query.route_index],
@@ -295,6 +331,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   disposed = true;
   generation++;
+  rerunGeneration++;
+  detailRequest?.abort();
+  rerunRequest?.abort();
+  detailLoader.reset();
   window.clearInterval(timer);
 });
 </script>
