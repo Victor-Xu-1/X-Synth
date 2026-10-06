@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import sqlite3
+from dataclasses import asdict
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from multiprocessing import get_context
 from pathlib import Path
@@ -27,6 +28,7 @@ from .route_request import RouteJobRequest
 from .runtime_health import route_runtime_status
 from .search_progress import begin_search_round, remaining_search_rounds
 from .review_policy import REVIEW_POLICY, upgrade_review_checkpoint
+from .route_artifacts import RouteArtifactError, RouteArtifactStore
 from packages.chemistry.material_scope import POLICY as MATERIAL_SCOPE_POLICY
 
 
@@ -54,6 +56,7 @@ class RoutePipeline:
         self.state_lock = Lock()
         self.review_executor = None
         self.verifier = verifier
+        self.artifacts = RouteArtifactStore(self.artifact_root)
 
     def start(self):
         if self.thread is not None and self.thread.is_alive():
@@ -195,6 +198,7 @@ class RoutePipeline:
                 "checkpoint_asset_identity_changed", recoverable=False
             ) from exc
         completed = set(checkpoint.get("completed_searches", []))
+        checkpoint["result_artifact_schema"] = 1
         for file in sorted(directory.glob("native-*.json")):
             data = json.loads(file.read_text(encoding="utf-8"))
             sources.append(
@@ -285,6 +289,7 @@ class RoutePipeline:
                 str(self.stock.path),
                 request.min_routes,
                 request.max_routes,
+                self.stock.summary["catalog_sha256"],
             ).result()
             if self.verifier is None:
                 raise EngineUnavailable("route_verification_not_configured", recoverable=False)
@@ -304,6 +309,7 @@ class RoutePipeline:
             ))
             summary = {
                 **pool.summary,
+                "target_key": request.smiles,
                 "stock_snapshot": self.stock.summary,
                 "pass_number": pass_number,
                 "native_runs": [
@@ -318,6 +324,20 @@ class RoutePipeline:
                 "strategy_errors": [error.code for error in failures],
                 "material_scope_policy": MATERIAL_SCOPE_POLICY,
             }
+            if self.stop_event.is_set() or cancelled():
+                raise EngineUnavailable("route_publication_interrupted", recoverable=True)
+            try:
+                checkpoint["published_result"] = self.artifacts.stage(
+                    job["id"], all_routes=[asdict(route) for route in pool.all_routes],
+                    selected_routes=[asdict(route) for route in pool.selected_routes],
+                    summary=summary,
+                )
+            except OSError as exc:
+                raise EngineUnavailable("result_storage_unavailable", recoverable=True) from exc
+            except RouteArtifactError as exc:
+                raise EngineUnavailable("result_snapshot_inconsistent", recoverable=False) from exc
+            if self.stop_event.is_set() or cancelled():
+                raise EngineUnavailable("route_publication_interrupted", recoverable=True)
             self._transition(
                 job["id"], "evaluating", summary=summary, checkpoint=checkpoint
             )

@@ -3,14 +3,28 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from packages.orchestrator.job_repository import JobConflict
+from packages.orchestrator.job_commands import RouteDependenciesUnavailable, RouteJobCommands
 from packages.orchestrator.route_request import RouteJobRequest
 
-from .job_views import job_response, route_result, selected_route_data
+from .job_views import job_response, route_result, selected_routes_for_job
 from .security import authenticate
 
 
 def job_router(*, repository, transport, readiness, artifacts: Path, budget):
     router = APIRouter()
+    commands = RouteJobCommands(repository=repository, readiness=readiness, budget=budget)
+
+    def guarded(operation):
+        try:
+            return operation()
+        except KeyError as exc:
+            raise HTTPException(404, str(exc.args[0])) from exc
+        except JobConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except RouteDependenciesUnavailable as exc:
+            raise HTTPException(503, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     def owned(request, job_id):
         principal = authenticate(request, transport)
@@ -22,25 +36,9 @@ def job_router(*, repository, transport, readiness, artifacts: Path, budget):
     @router.post("/unified-route/call-async")
     def submit(body: RouteJobRequest, request: Request):
         principal = authenticate(request, transport)
-        health = readiness()
-        if not health["route_search_ready"] or not set(body.strategies).intersection(
-            health.get("available_strategies", [])
-        ):
-            raise HTTPException(
-                503, "ASKCOS 模型、搜索或商业库存尚未就绪，未创建任务。"
-            )
-        key = request.headers.get("idempotency-key")
-        if key is not None and not 1 <= len(key) <= 128:
-            raise HTTPException(422, "Invalid idempotency key")
-        try:
-            job = repository.create(
-                principal.owner,
-                body.model_dump(),
-                request_key=key,
-                queue_limit=budget.queued_jobs,
-            )
-        except JobConflict as exc:
-            raise HTTPException(409, str(exc)) from exc
+        job = guarded(lambda: commands.submit(
+            principal.owner, body.model_dump(), request_key=request.headers.get("idempotency-key"),
+        ))
         return {
             "job_id": job["id"],
             "task_id": job["id"],
@@ -71,40 +69,21 @@ def job_router(*, repository, transport, readiness, artifacts: Path, budget):
 
     @router.post("/unified-route/jobs/{job_id}/resume")
     def resume(job_id: str, request: Request):
-        job = owned(request, job_id)
-        if job["status"] == "queued":
-            return job_response(job)
-        if job["status"] != "waiting_for_engine":
-            raise HTTPException(409, "Task is not awaiting engine recovery")
-        if not readiness()["route_search_ready"]:
-            raise HTTPException(503, "搜索依赖尚未恢复。")
-        try:
-            updated = repository.transition(
-                job_id, "queued", expected_revision=job["revision"]
-            )
-        except JobConflict as exc:
-            raise HTTPException(409, str(exc)) from exc
+        principal = authenticate(request, transport)
+        updated = guarded(lambda: commands.resume(job_id, principal.owner))
         return job_response(updated)
 
     @router.post("/unified-route/jobs/{job_id}/cancel")
     def cancel(job_id: str, request: Request):
-        job = owned(request, job_id)
-        if job["status"] == "cancelled":
-            return job_response(job)
-        try:
-            updated = repository.transition(
-                job_id, "cancelled", expected_revision=job["revision"]
-            )
-        except JobConflict as exc:
-            raise HTTPException(409, str(exc)) from exc
+        principal = authenticate(request, transport)
+        updated = guarded(lambda: commands.cancel(job_id, principal.owner))
         return job_response(updated)
 
     @router.get("/unified-route/jobs/{job_id}/routes")
     def routes(job_id: str, request: Request):
         job = owned(request, job_id)
-        path = artifacts / job["id"] / "selected_routes.json"
         return {
-            "routes": selected_route_data(path, budget=budget, job=job),
+            "routes": selected_routes_for_job(job, artifacts=artifacts, budget=budget),
             "status": job["status"],
         }
 

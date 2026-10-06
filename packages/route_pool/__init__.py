@@ -5,7 +5,7 @@ from .workflow import (
     AizynthFinderRouteSource,
     AskcosRouteSource,
     UnifiedRoutePoolBuildResult,
-    build_unified_route_pool_artifacts,
+    build_unified_route_pool,
 )
 
 __all__ = [
@@ -13,7 +13,7 @@ __all__ = [
     "AskcosRouteSource",
     "UnifiedRoutePool",
     "UnifiedRoutePoolBuildResult",
-    "build_unified_route_pool_artifacts",
+    "build_unified_route_pool",
     "normalize_aizynthfinder_payload",
     "normalize_askcos_tree_result",
 ]

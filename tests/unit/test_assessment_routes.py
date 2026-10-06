@@ -7,7 +7,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from apps.api.assessment_routes import assessment_router, process_router
-from apps.api.analysis_routes import analysis_router, analysis_runner
+from apps.api.analysis_routes import analysis_router
+from packages.workspace.analysis_execution import analysis_runner
 from apps.api.request_limits import RequestLimitMiddleware
 from packages.adapters.askcos.transport import EngineUnavailable
 from packages.chemistry.assessment import AssessmentUnavailable, MolecularAssessment, assess_molecule

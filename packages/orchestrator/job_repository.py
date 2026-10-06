@@ -113,7 +113,7 @@ class JobRepository:
                 raise JobConflict("The task queue is full")
             job_id, timestamp = uuid4().hex, now_utc()
             connection.execute(
-                "INSERT INTO jobs(id,owner,status,request,request_key,created,modified) VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO jobs(id,owner,status,request,request_key,created,modified,checkpoint) VALUES (?,?,?,?,?,?,?,?)",
                 (
                     job_id,
                     owner,
@@ -122,6 +122,7 @@ class JobRepository:
                     request_key,
                     timestamp,
                     timestamp,
+                    '{"result_artifact_schema": 1}',
                 ),
             )
             connection.execute(
@@ -137,6 +138,18 @@ class JobRepository:
                 query += " AND owner=?"
                 values.append(owner)
             return self._decode(connection.execute(query, values).fetchone())
+
+    def find_request(self, owner, request_key, request):
+        if request_key is None:
+            return None
+        with self.connect() as connection:
+            job = self._decode(connection.execute(
+                "SELECT * FROM jobs WHERE owner=? AND request_key=?",
+                (owner, request_key),
+            ).fetchone())
+        if job is not None and job["request"] != request:
+            raise JobConflict("An idempotency key cannot identify different input")
+        return job
 
     def list(self, owner: str, *, limit: int = 100, offset: int = 0):
         return self.history_page(owner, limit=limit, offset=offset)["results"]

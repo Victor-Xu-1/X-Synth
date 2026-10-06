@@ -127,6 +127,11 @@ def captured_task(api, *, owner="local_workspace"):
             "description": "Captured schema evidence",
         },
     )
+    # Captured pre-publication-protocol results retain explicit legacy readability.
+    with api.app.state.repository.connect() as connection:
+        connection.execute("UPDATE jobs SET checkpoint='{}' WHERE id=?", (job["id"],))
+        connection.commit()
+    job = api.app.state.repository.get(job["id"])
     artifact = api.root / "routes" / job["id"] / "selected_routes.json"
     artifact.parent.mkdir(parents=True)
     artifact.write_text(json.dumps([asdict(value) for value in candidates]))

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 
-from apps.api.analysis_routes import analysis_runner
+from packages.workspace.analysis_execution import analysis_runner
 from apps.api.job_views import selected_route_data
 from packages.adapters.askcos.engine import build_search_options
 from packages.adapters.askcos.forward import ForwardAdapter, RankedResult
@@ -20,7 +20,7 @@ from packages.orchestrator.verification_cache import VerificationCache
 from packages.platform.atomic_file import write_json
 from packages.platform.performance import PerformanceBudget
 from packages.workspace.analysis_repository import AnalysisRepository
-from packages.route_pool.workflow import build_unified_route_pool_artifacts
+from packages.route_pool.workflow import build_unified_route_pool
 
 
 @pytest.fixture
@@ -91,9 +91,7 @@ def test_all_public_selected_readers_refuse_template_only_new_results(tmp_path, 
 
 
 def test_interruption_is_checked_at_the_publication_boundary(tmp_path):
-    report = build_unified_route_pool_artifacts(
-        id="cancelled", output_dir=tmp_path, publish_artifacts=False,
-    )
+    report = build_unified_route_pool(id="cancelled")
     analyses = AnalysisRepository(tmp_path / "analyses.sqlite")
     verifier = RouteVerifier(
         forward=ForwardAdapter("http://127.0.0.1:1", "http://127.0.0.1:1"),
@@ -105,5 +103,5 @@ def test_interruption_is_checked_at_the_publication_boundary(tmp_path):
             report, owner="owner", minimum=3, maximum=10, plausibility=.75,
             directory=tmp_path, interrupted=lambda: True, progress=lambda value: None,
         )
-    assert not report.selected_routes_path.exists()
-    assert not report.summary_path.exists()
+    assert not (tmp_path / "selected_routes.json").exists()
+    assert not (tmp_path / "summary.json").exists()
