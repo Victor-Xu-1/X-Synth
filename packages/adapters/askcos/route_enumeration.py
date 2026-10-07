@@ -1,7 +1,7 @@
 """Native route projection and explicit budgeted candidate ordering."""
 
 from collections import deque
-from itertools import chain, islice
+from itertools import islice
 from math import prod
 from uuid import uuid4
 
@@ -43,7 +43,7 @@ def rank_paths_by_plausibility(paths, *, cluster_trees, error_type):
 def enumerate_route_graphs(
     tree, root, root_uuid, max_depth=None, max_trees=None, validate_paths=True,
 ):
-    """Balance root branches within native limits; assign IDs only on yield."""
+    """Balance every chemical's OR branches; assign IDs only on yield."""
     def interleave(streams):
         pending = deque(streams)
         while pending:
@@ -73,11 +73,7 @@ def enumerate_route_graphs(
             reaction_paths(node, reaction, ancestors)
             for reaction in tree.successors(node)
         )
-        alternatives = (
-            interleave(streams) if node == root and not ancestors
-            else chain.from_iterable(streams)
-        )
-        yield from islice(alternatives, max_trees)
+        yield from islice(interleave(streams), max_trees)
 
     def precursor_paths(precursors, ancestors):
         if not precursors:

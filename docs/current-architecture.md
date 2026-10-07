@@ -146,6 +146,15 @@ another product version.
   inference; covered families do not consume more model calls. Unchecked candidates
   are pending, not scientific failures. Final selection still uses first-move
   families; this is not a claim of globally independent whole-route strategies.
+- Native route enumeration interleaves the OR reaction streams at every
+  nonterminal chemical, not just the target root. Each chemical retains the
+  existing `max_trees` cap, `max_depth` cutoff and ancestor exclusion. Reactions
+  still require all precursors in the original nested AND Cartesian order; no
+  enumeration cache is added. Exact terminal/stock decisions, unknown purchase
+  prices, the source graph and existing path/UDS metadata are unchanged. This is
+  budgeted representative coverage and ordering, not a chemical-quality claim
+  or a guarantee of more qualified routes. FF, independent forward validation,
+  procurement and source-scoped reference gates remain unchanged.
 - Native cluster labels prioritize candidate representatives only. They cannot
   impose a family quota before independent qualification: all enumerated paths
   within the candidate budget remain eligible. Native statistics distinguish
