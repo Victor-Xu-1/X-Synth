@@ -1,7 +1,6 @@
 import networkx as nx
 import numpy as np
 import operator
-import os
 import time
 from api.pathway_ranker_api import PathwayRankerAPI
 from api.scscorer_api import SCScorerAPI
@@ -11,12 +10,12 @@ from rdkit import Chem
 from typing import Any, Dict, List, Tuple
 
 from packages.adapters.askcos.route_reachability import grounded_route_graph
-from packages.adapters.askcos.route_enumeration import enumerate_route_graphs
+from packages.adapters.askcos.route_enumeration import (
+    enumerate_route_graphs, prioritize_candidate_paths, rank_paths_by_plausibility,
+)
 
 
 NIL_UUID = "00000000-0000-0000-0000-000000000000"
-MIN_ROUTE_OUTPUT_COUNT = int(os.environ.get("ASKCOS_MIN_ROUTE_OUTPUT_COUNT", "3"))
-MAX_ROUTE_VARIANTS_PER_FAMILY = int(os.environ.get("ASKCOS_MAX_ROUTE_VARIANTS_PER_FAMILY", "1"))
 NODE_LINK_ATTRS = {
     "source": "from",
     "target": "to",
@@ -393,22 +392,14 @@ def score_paths(
             min_cluster_size=min_cluster_size
         )
     except Exception as exc:
-        print(f"Pathway ranker failed; using plausibility fallback scores: {exc}")
-        for path in graph_paths:
-            plausibility = np.prod(
-                [
-                    data["plausibility"]
-                    for _, data in path.nodes(data=True)
-                    if data["type"] == "reaction" and data.get("plausibility") is not None
-                ]
-            )
-            path.graph["score"] = -float(plausibility)
-            if cluster_trees:
-                path.graph["cluster_id"] = None
-        return graph_paths
+        print(f"WARNING: pathway_ranker_failed: {type(exc).__name__}")
+        return rank_paths_by_plausibility(
+            graph_paths, cluster_trees=cluster_trees, error_type=type(exc).__name__,
+        )
 
     for i, path in enumerate(graph_paths):
         path.graph["score"] = results["scores"][i]
+        path.graph["score_fallback"] = None
         if cluster_trees:
             path.graph["cluster_id"] = results["clusters"][i]
 
@@ -561,48 +552,8 @@ def _route_family_key(path: nx.DiGraph) -> Tuple:
 
 
 def select_diverse_paths(paths: List[nx.DiGraph], max_paths: int) -> List[nx.DiGraph]:
-    """
-    Select final pathways while preserving route-family diversity.
-
-    The input must already be sorted by the desired quality metric. The selector
-    first keeps the best member from each route family, then fills remaining
-    slots using the original ranking order. This avoids returning many near-
-    duplicate pathways from the same cluster when other families are available.
-    """
-    if max_paths is None:
-        return paths
-
-    selected = []
-    selected_ids = set()
-    family_counts = {}
-    seen_families = set()
-    indexed_families = [(path, _route_family_key(path)) for path in paths]
-    min_output_count = min(max_paths, MIN_ROUTE_OUTPUT_COUNT)
-
-    for path, family_key in indexed_families:
-        if family_key in seen_families:
-            continue
-        selected.append(path)
-        selected_ids.add(id(path))
-        family_counts[family_key] = 1
-        seen_families.add(family_key)
-        if len(selected) >= max_paths:
-            return selected
-
-    for path, family_key in indexed_families:
-        if id(path) in selected_ids:
-            continue
-        if (
-            len(selected) >= min_output_count
-            and family_counts.get(family_key, 0) >= MAX_ROUTE_VARIANTS_PER_FAMILY
-        ):
-            continue
-        selected.append(path)
-        family_counts[family_key] = family_counts.get(family_key, 0) + 1
-        if len(selected) >= max_paths:
-            break
-
-    return selected
+    """Order native candidates; delivery diversity belongs to independent review."""
+    return prioritize_candidate_paths(paths, max_paths, family_key=_route_family_key)
 
 
 def nx_graph_to_paths(

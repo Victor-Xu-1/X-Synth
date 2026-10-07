@@ -95,6 +95,9 @@ def normalize_askcos_tree_result(payload: dict[str, Any], *, engine: str = "askc
                         "total_reactions",
                         "total_templates",
                         "total_paths",
+                        "enumerated_paths",
+                        "candidate_path_limit",
+                        "candidate_selection",
                         "first_path_time",
                         "build_time",
                     )
