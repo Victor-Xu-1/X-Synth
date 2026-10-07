@@ -1,10 +1,43 @@
-"""Lazy native route projection without caching failed path combinations."""
+"""Native route projection and explicit budgeted candidate ordering."""
 
 from collections import deque
 from itertools import chain, islice
+from math import prod
 from uuid import uuid4
 
 import networkx as nx
+
+
+def prioritize_candidate_paths(paths, max_paths, *, family_key):
+    """Prioritize representatives without hiding budgeted variants from review."""
+    if max_paths is None:
+        return paths
+    if max_paths <= 0:
+        return []
+    representatives, alternatives, seen = [], [], set()
+    for path in paths:
+        family = family_key(path)
+        if family in seen:
+            alternatives.append(path)
+        else:
+            seen.add(family)
+            representatives.append(path)
+    return (representatives + alternatives)[:max_paths]
+
+
+def rank_paths_by_plausibility(paths, *, cluster_trees, error_type):
+    """Explicit non-neural ranking after a ranker failure; higher remains better."""
+    warning = f"pathway_ranker_failed: {error_type}"
+    for path in paths:
+        plausibilities = (data["plausibility"] for _, data in path.nodes(data=True)
+                          if data.get("type") == "reaction" and data.get("plausibility") is not None)
+        path.graph.update(
+            score=float(prod(plausibilities)),
+            score_fallback="overall_plausibility", ranking_warning=warning,
+        )
+        if cluster_trees:
+            path.graph["cluster_id"] = None
+    return paths
 
 
 def enumerate_route_graphs(

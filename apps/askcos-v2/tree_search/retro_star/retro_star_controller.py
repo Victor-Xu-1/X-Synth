@@ -213,6 +213,9 @@ class RetroStar:
             "total_reactions": self.num_unique_reactions,
             "total_templates": self.num_total_reactions,
             "total_paths": len(paths),
+            "enumerated_paths": self.enumerated_path_count,
+            "candidate_path_limit": enumerate_paths_options.max_paths,
+            "candidate_selection": "cluster_priority_then_ranked_variants",
             "first_path_time": self.time_to_solve,
             "build_time": build_time,
             "path_time": path_time,
@@ -559,6 +562,7 @@ class RetroStar:
         """
         Return list of paths to buyables starting from the target node.
         """
+        self.enumerated_path_count = 0
         if not self.tree.nodes[self.target].get("solved"):
             print("Target is not solved; skipping path enumeration.")
             self.paths = []
@@ -583,6 +587,7 @@ class RetroStar:
             min_cluster_size=self.enumerate_paths_options.min_cluster_size
         )
 
+        self.enumerated_path_count = len(self.paths)
         print(f"Found {len(self.paths)} paths to buyable chemicals.")
         max_paths = self.enumerate_paths_options.max_paths
         if max_paths is not None:

@@ -96,7 +96,7 @@ def test_select_diverse_paths_fills_remaining_slots_by_existing_rank_order():
     ]
 
 
-def test_select_diverse_paths_stops_duplicate_families_after_minimum_output():
+def test_select_diverse_paths_retains_alternatives_for_independent_review():
     paths = [
         _route("a1", 0.01, 0),
         _route("a2", 0.02, 0),
@@ -107,7 +107,7 @@ def test_select_diverse_paths_stops_duplicate_families_after_minimum_output():
 
     selected = select_diverse_paths(paths, max_paths=5)
 
-    assert [path.graph["cluster_id"] for path in selected] == [0, 1, 2]
+    assert [path.graph["cluster_id"] for path in selected] == [0, 1, 2, 0, 0]
 
 
 def test_sort_paths_orders_higher_scores_first():

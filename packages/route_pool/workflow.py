@@ -208,6 +208,9 @@ def _askcos_frontier_summary(payload: dict[str, Any]) -> dict[str, Any]:
             "total_reactions",
             "total_templates",
             "total_paths",
+            "enumerated_paths",
+            "candidate_path_limit",
+            "candidate_selection",
             "first_path_time",
             "build_time",
         )

@@ -146,6 +146,15 @@ another product version.
   inference; covered families do not consume more model calls. Unchecked candidates
   are pending, not scientific failures. Final selection still uses first-move
   families; this is not a claim of globally independent whole-route strategies.
+- Native cluster labels prioritize candidate representatives only. They cannot
+  impose a family quota before independent qualification: all enumerated paths
+  within the candidate budget remain eligible. Native statistics distinguish
+  enumeration count, retained count and candidate limit. Final chemical duplicate
+  removal and qualified first-move-family selection remain product responsibilities.
+  On an optional pathway-ranker failure, both strategies explicitly retain a
+  non-neural overall-plausibility ranking with higher scores first; diagnostic
+  metadata retains the failure class only, never exception text or input data.
+  This changes ordering, not structural, forward or catalog acceptance.
 - Final qualification verifies canonical structure, reaction-field agreement,
   source-pathway agreement, a connected target DAG and exact external leaves.
   Isotopes, stereochemistry, charges, salts and precursor multiplicity remain

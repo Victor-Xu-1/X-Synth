@@ -210,6 +210,8 @@ SEARCH_PROJECTION_FILES = {
     "apps/askcos-v2/tree_search/expand_one/expand_one_controller.py",
     "apps/askcos-v2/tree_search/retro_star/utils.py",
     "apps/askcos-v2/tree_search/retro_star/retro_star_controller.py",
+    "apps/askcos-v2/tree_search/mcts/tests/test_diverse_path_selection.py",
+    "apps/askcos-v2/tree_search/retro_star/tests/test_diverse_path_selection.py",
 }
 REFERENCE_FILES = {
     "apps/api/reference_routes.py",
@@ -475,6 +477,8 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
         )
     if roots & SEARCH_PROJECTION_FILES:
         selected.update({
+            "tests/unit/test_candidate_retention.py",
+            "tests/unit/test_native_search_coverage.py",
             "tests/unit/test_route_reachability.py",
             "tests/unit/test_route_enumeration.py",
             "tests/unit/test_template_recall.py",
