@@ -30,13 +30,12 @@
       >
     </div>
     <template v-else-if="reaction">
-      <span class="field-label">反应结构</span
-      ><SmilesImage
+      <StructurePreview
+        label="反应结构"
         :smiles="reaction.smiles"
         input-type="reaction"
         :width="260"
         :height="160"
-        :show-error-image="false"
       />
       <details>
         <summary>反应 SMILES</summary>
@@ -142,7 +141,7 @@ import { safeExternalUrl } from "@/common/external-url";
 import MoleculeStockDialog from "./MoleculeStockDialog.vue";
 import RouteConditionDialog from "./RouteConditionDialog.vue";
 import MoleculeFileControls from "@/components/workspace/MoleculeFileControls.vue";
-import SmilesImage from "@/components/SmilesImage.vue";
+import StructurePreview from "@/components/workspace/StructurePreview.vue";
 import ReactionReferences from "@/components/references/ReactionReferences.vue";
 const props = defineProps({
   node: { type: Object, required: true },

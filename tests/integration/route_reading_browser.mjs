@@ -92,6 +92,18 @@ for (const [index, id] of ids.entries()) {
         await expect(inspector).toBeVisible();
         if (width <= 1100) await expect(inspector).toBeInViewport();
         await structures(inspector);
+        await inspector.getByRole("button", {name:"放大反应结构",exact:true}).click();
+        const preview = page.getByRole("dialog").filter({has:page.locator(".structure-viewer")});
+        await expect(preview).toBeVisible();
+        await structures(preview);
+        const initialWidth = await preview.locator("img").first().evaluate(image => image.getBoundingClientRect().width);
+        await preview.getByRole("button", {name:"放大结构",exact:true}).click();
+        await preview.getByRole("button", {name:"放大结构",exact:true}).click();
+        await expect.poll(() => preview.locator("img").first().evaluate(image => image.getBoundingClientRect().width)).toBeGreaterThan(initialWidth);
+        await capture(page, `${name}-structure-preview`);
+        await page.keyboard.press("Escape");
+        await expect(preview).not.toBeVisible();
+        await expect(inspector.getByRole("button", {name:"放大反应结构",exact:true})).toBeFocused();
         await noOverflow(page);
         await capture(page, `${name}-inspector`);
         await inspector.getByRole("button", { name: "关闭详情", exact: true }).click();
