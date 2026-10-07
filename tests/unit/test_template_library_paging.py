@@ -373,10 +373,32 @@ def test_filtered_counts_intersect_actual_covering_indices_not_source_metadata(p
         ).fetchone()[0] == 4
         query_plan = connection.execute("explain query plan " + statements[0]).fetchall()
         searches = [row[3] for row in query_plan if "templates USING" in row[3]]
-        assert len(searches) == 4
+        assert len(searches) == 3
         assert all("COVERING INDEX" in item for item in searches)
     assert " intersect " in statements[0]
     assert "template_sources" not in statements[0]
+
+
+@pytest.mark.parametrize("minimum", [0, 1, 4, 2147483647])
+def test_default_count_and_threshold_use_one_covering_scan(paging_database, minimum):
+    from packages.knowledge_base.template_paging import count_template_matches, prepare_template_query
+
+    service = TemplateLibraryService(paging_database)
+    plan = prepare_template_query(
+        strategy=None, sources=None, domain=None, min_count=minimum,
+        limit=20, direction="retro",
+    )
+    statements = []
+    with service.connect() as connection:
+        connection.set_trace_callback(statements.append)
+        count = count_template_matches(connection, plan)
+        assert count == connection.execute(
+            "select count(*) from templates" + plan.predicate, plan.params,
+        ).fetchone()[0]
+        operations = connection.execute("explain query plan " + statements[0]).fetchall()
+    assert " intersect " not in statements[0]
+    assert len(operations) == 1
+    assert "COVERING INDEX" in operations[0][3]
 
 
 def test_installed_read_only_index_paging_matches_actual_filtered_sql(monkeypatch):
@@ -400,7 +422,8 @@ def test_installed_read_only_index_paging_matches_actual_filtered_sql(monkeypatc
     before = file_identity(path)
     service = TemplateLibraryService(path)
     cases = [
-        ("all_retro", {}), ("high_precision", {"strategy": "high_precision"}),
+        ("all_retro", {}), ("all_retro_ui_defaults", {"min_count": 0}),
+        ("high_precision", {"strategy": "high_precision"}),
         ("ringbreaker", {"strategy": "ringbreaker"}),
         ("public_reaction_corpus", {"strategy": "public_reaction_corpus"}),
         ("forward", {"direction": "forward"}),

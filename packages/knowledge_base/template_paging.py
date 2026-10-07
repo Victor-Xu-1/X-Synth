@@ -189,15 +189,27 @@ def decode_template_cursor(
 
 
 def count_template_matches(connection: sqlite3.Connection, plan: TemplateQueryPlan) -> int:
-    if len(plan.where) == 1:
-        sql = "select count(*) from templates" + plan.predicate
+    parts, offset = [], 0
+    for clause in plan.where:
+        width = clause.count("?")
+        parts.append((clause, plan.params[offset:offset + width]))
+        offset += width
+    if offset != len(plan.params):
+        raise ValueError("Template count parameters do not match predicates")
+    if len(parts) > 1 and parts[-1][0] == "template_count >= ?":
+        minimum, minimum_params = parts.pop()
+        # Existing dimension/count indexes avoid a separate full threshold set.
+        parts = [(clause + " and " + minimum, params + minimum_params)
+                 for clause, params in parts]
+    if len(parts) == 1:
+        sql = "select count(*) from templates where " + parts[0][0]
     else:
         # Each predicate reads rowids from an existing covering lookup index.
         # Intersecting avoids fetching large record JSON just to combine filters.
         sql = "select count(*) from (" + " intersect ".join(
-            "select rowid from templates where " + clause for clause in plan.where
+            "select rowid from templates where " + clause for clause, _ in parts
         ) + ")"
-    return connection.execute(sql, plan.params).fetchone()[0]
+    return connection.execute(sql, tuple(value for _, params in parts for value in params)).fetchone()[0]
 
 
 def select_template_rows(
