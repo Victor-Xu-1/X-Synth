@@ -1,6 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { API } from "@/common/api";
 import RouteInspector from "./RouteInspector.vue";
+jest.mock("@vueuse/core", () => ({ useResizeObserver: jest.fn() }));
 
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 jest.mock("@/components/workspace/StructureInput.vue", () => ({
@@ -42,6 +43,8 @@ function setup(props = {}) {
     },
     global: {
       stubs: {
+        VDialog: { props: ["modelValue"], template: '<div v-if="modelValue"><slot /></div>' },
+        VTooltip: { template: '<span><slot name="activator" :props="{}" /></span>' },
         VBtn: {
           props: ["disabled"],
           template: '<button :disabled="disabled"><slot /></button>',

@@ -11,6 +11,7 @@ import RouteEditor from "./RouteEditor.vue";
 import { randomUUID } from "node:crypto";
 import { deserialize, serialize } from "node:v8";
 import { reactive } from "vue";
+jest.mock("@vueuse/core", () => ({ useResizeObserver: jest.fn() }));
 
 jest.mock("vue-router", () => ({
   useRoute: jest.fn(),

@@ -23,12 +23,12 @@
       <v-icon icon="mdi-cursor-default-outline" size="24" />
     </div>
     <div v-else class="tool-fields">
-      <SmilesImage
+      <StructurePreview
         v-if="node.type === 'molecule' && !editable"
+        label="化合物结构"
         :smiles="node.smiles"
         :width="260"
         :height="150"
-        :show-error-image="false"
       />
       <label v-if="editable || node.label"
         ><span class="field-label">{{
@@ -101,7 +101,7 @@
 </template>
 <script setup>
 import { onBeforeUnmount, ref, watch } from "vue";
-import SmilesImage from "@/components/SmilesImage.vue";
+import StructurePreview from "@/components/workspace/StructurePreview.vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import RouteNodeContext from "./RouteNodeContext.vue";
 import { API } from "@/common/api";
