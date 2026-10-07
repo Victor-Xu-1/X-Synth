@@ -594,7 +594,6 @@ onBeforeUnmount(() => {
   background: transparent;
   color: var(--ws-text);
   font-size: 14px;
-  outline: none;
 }
 .route-editor-canvas {
   flex: 1;

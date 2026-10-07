@@ -77,7 +77,7 @@
               type="submit"
               prepend-icon="mdi-arrow-up"
               :loading="busy"
-              :disabled="!ready"
+              :disabled="!canSubmit"
               data-cy="home-build-tree"
               >{{ mode === "manual" ? "生成候选" : "生成路线" }}</v-btn
             >
@@ -118,6 +118,7 @@ const {
   error,
   mode,
   ready,
+  canSubmit,
   previewOpen,
   previewCandidates,
   changeMode,

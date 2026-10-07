@@ -9,9 +9,10 @@
       ref="ketcherFrame"
       class="inline-ketcher-frame"
       :style="ketcherFrameStyle"
+      :aria-busy="pending && !editorError"
     >
       <v-progress-linear
-        v-if="pending"
+        v-if="pending && !editorError"
         class="editor-progress"
         indeterminate
         height="2"

@@ -31,3 +31,18 @@ test("structure input defaults to an inline board below the compact SMILES field
   expect(text).toContain("editor.value.pending");
   expect(text).toContain(':read-structure="read"');
 });
+
+test("the primary target board publishes native edits and exposes input readiness", () => {
+  const filename = path.resolve(__dirname, "StructureWorkspace.vue");
+  const text = fs.readFileSync(filename, "utf8");
+  const { descriptor, errors } = parse(text, { filename });
+  expect(errors).toEqual([]);
+  const script = compileScript(descriptor, { id: "target-workspace" });
+  expect(script.bindings).toHaveProperty("pending");
+  function editor(node) {
+    if (node.tag === "InlineKetcherEditor") return node;
+    return node.children?.map(editor).find(Boolean);
+  }
+  expect(editor(descriptor.template.ast).props.some(prop => prop.name === "auto-sync")).toBe(true);
+  expect(text).toContain("defineExpose({ read, clear, capture, pending })");
+});

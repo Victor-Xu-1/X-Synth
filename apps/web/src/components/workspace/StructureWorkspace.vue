@@ -44,12 +44,13 @@
         v-model:smiles="smiles"
         :show-actions="false"
         fill-height
+        auto-sync
       />
     </div>
   </section>
 </template>
 <script setup>
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import InlineKetcherEditor from "@/components/InlineKetcherEditor.vue";
 import MoleculeFileControls from "./MoleculeFileControls.vue";
 const smiles = defineModel({ type: String, default: "" });
@@ -57,6 +58,11 @@ defineProps({ disabled: Boolean });
 const editor = ref(null);
 const files = ref(null),
   fileBusy = ref(false);
+const pending = computed(() =>
+  !editor.value ||
+  Boolean(editor.value.pending) ||
+  Boolean(files.value?.hasPending),
+);
 async function readBoard() {
   return editor.value?.readSmilesFromEditor();
 }
@@ -72,7 +78,7 @@ async function clear() {
 async function capture() {
   return editor.value?.captureDraft();
 }
-defineExpose({ read, clear, capture });
+defineExpose({ read, clear, capture, pending });
 </script>
 <style scoped>
 .structure-workspace {
