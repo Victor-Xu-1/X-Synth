@@ -32,6 +32,15 @@ export async function noOverflow(page) {
 
 export async function structures(region) {
   await region.scrollIntoViewIfNeeded();
+  if (!(await region.locator(".route-graph-surface").count())) {
+    for (const image of await region.locator(".smiles-image-container").all()) {
+      await image.scrollIntoViewIfNeeded();
+      await expect.poll(() => image.evaluate(element => {
+        const rendered = element.querySelector("img");
+        return rendered?.complete && rendered.naturalWidth > 0 && Number(getComputedStyle(rendered).opacity) === 1;
+      }), { timeout: 30000 }).toBe(true);
+    }
+  }
   try {
     await expect.poll(() => region.locator(".smiles-image-container").evaluateAll((elements) =>
       elements.length > 0 && elements.every((element) => {
