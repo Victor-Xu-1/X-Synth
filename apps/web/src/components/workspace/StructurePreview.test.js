@@ -1,6 +1,10 @@
 import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 import StructurePreview from "./StructurePreview.vue";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { parse } from "@vue/compiler-sfc";
+import postcss from "postcss";
 jest.mock("@vueuse/core", () => ({ useResizeObserver: jest.fn() }));
 jest.mock("@/components/SmilesImage.vue", () => ({
   props: ["smiles", "inputType", "width", "height"],
@@ -37,4 +41,14 @@ test("an empty structure cannot open a misleading viewer", () => {
   const wrapper = mount(StructurePreview, {props:{smiles:""},global:{stubs}});
   expect(wrapper.get('[aria-label="放大结构预览"]').element.disabled).toBe(true);
   wrapper.unmount();
+});
+test("short screens shrink the scrolling canvas without hiding it beneath the fixed header", () => {
+  const { descriptor } = parse(readFileSync(resolve(__dirname, "StructurePreview.vue"), "utf8"));
+  const css = postcss.parse(descriptor.styles[0].content);
+  const values = selector => Object.fromEntries(css.nodes.find(rule => rule.selector === selector).nodes.filter(node => node.type === "decl").map(node => [node.prop,node.value]));
+  expect(values(".structure-viewer").display).toBe("flex");
+  expect(values(".structure-viewer")["max-height"]).toBe("calc(100dvh - 48px)");
+  expect(values(".structure-viewer header")["flex-shrink"]).toBe("0");
+  expect(values(".structure-viewer-viewport").flex).toBe("1 1 auto");
+  expect(values(".structure-viewer-viewport")["min-height"]).toBe("0");
 });
