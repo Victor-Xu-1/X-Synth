@@ -172,6 +172,7 @@ SEARCH_ROUND_FILES = {
     "packages/orchestrator/verification_cache.py",
     "packages/orchestrator/qualification_queue.py",
     "packages/orchestrator/reference_evidence.py",
+    "packages/validation/template_forward.py",
     "packages/route_pool/workflow.py",
     "packages/orchestrator/pipeline.py",
     "packages/orchestrator/search_progress.py",
@@ -508,6 +509,7 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
             "tests/unit/test_route_topology.py",
             "tests/unit/test_qualification_queue.py",
             "tests/unit/test_reference_evidence.py",
+            "tests/unit/test_template_forward.py", "tests/unit/test_evidence_route_integration.py",
         })
     if roots & ARCHITECTURE_FILES:
         selected.update({"tests/unit/test_architecture_boundaries.py", "tests/unit/test_route_artifacts.py"})

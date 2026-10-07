@@ -13,9 +13,11 @@ from packages.adapters.askcos.references import (
     canonical_reference_query,
 )
 from packages.knowledge_base.reaction_library import (
+    RECORD_COLUMNS,
     ReactionLibrary,
     ReactionLibraryError,
     compile_reaction_library,
+    reactant_signature,
     verify_evidence_record,
 )
 from packages.knowledge_base.reaction_models import ReactionEvidence
@@ -202,3 +204,29 @@ def test_indexed_records_must_belong_to_the_declared_ord_snapshot(tmp_path, muta
     assert library.status().ready  # Readiness does not scan the full library.
     with pytest.raises(ReactionLibraryError, match="reaction_library_query_failed"):
         library.search(query(record), limit=1)
+
+
+@pytest.mark.parametrize("limit", [0, 31, True, 1.5])
+def test_precursor_query_enforces_the_bounded_result_budget(tmp_path, limit):
+    record = public_record()
+    path = tmp_path / "reactions.sqlite"
+    compile_reaction_library([record], path, sources=sources(record))
+    with pytest.raises(ValueError, match="1-30"):
+        ReactionLibrary(path).precursor_records(query(record), limit=limit)
+
+
+def test_precursor_queries_use_product_signature_index_seeks(tmp_path):
+    record = public_record()
+    path = tmp_path / "reactions.sqlite"
+    compile_reaction_library([record], path, sources=sources(record))
+    with ReactionLibrary(path)._snapshot.connect(seconds=4) as connection:
+        for sql, parameters in [
+            ("SELECT reactants FROM reactions WHERE product=? AND reactants>? ORDER BY reactants LIMIT 1",
+             (query(record).product, "")),
+            (f"SELECT {RECORD_COLUMNS} FROM reactions WHERE product=? AND reactants=? "
+             "ORDER BY has_conditions DESC, has_yield DESC, id LIMIT ?",
+             (query(record).product, reactant_signature(record.reactants), 9)),
+        ]:
+            plan = connection.execute("EXPLAIN QUERY PLAN " + sql, parameters).fetchall()
+            assert any("SEARCH reactions" in row[3] and "reaction_product" in row[3] for row in plan)
+            assert not any("TEMP B-TREE" in row[3] or "SCAN reactions" in row[3] for row in plan)

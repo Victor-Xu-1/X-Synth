@@ -9,11 +9,14 @@
         软件自动核验
       </span>
       <span class="review-item" data-review="forward">
-        独立正向预测：
+        {{ summary.forward.top1 === undefined ? '独立正向预测' : '步骤核验' }}：
         <template v-if="summary.forward.status === 'ready'">
           <template v-if="summary.forward.total">
             <strong>{{ summary.forward.matched }}/{{ summary.forward.total }}</strong>
             步核验匹配
+            <template v-if="summary.forward.recorded">
+              （模型首选 {{ summary.forward.top1 }} 步，原始实验记录支持 {{ summary.forward.recorded }} 步）
+            </template>
           </template>
           <template v-else>无反应步骤</template>
         </template>

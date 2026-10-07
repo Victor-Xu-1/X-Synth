@@ -23,6 +23,8 @@ from packages.platform.native_search_contract import (
     NATIVE_SEARCH_PROTOCOL, NATIVE_SEARCH_PROTOCOL_VERSION,
 )
 from packages.platform.resource_metrics import matching_process
+from packages.knowledge_base.reaction_library import ReactionLibrary
+from packages.knowledge_base.reaction_models import EvidenceSourceStatus
 
 _cache = {}
 _cache_lock = Lock()
@@ -35,7 +37,17 @@ def _route_dependencies_ready(checks: dict) -> bool:
         "commercial_stock", "scscore", "pathway_ranker", "cluster",
         "inventory_consistent", "configured_models_loaded", "forward_predictor",
     )
-    return all(checks.get(name) is True for name in required)
+    return all(checks.get(name) is True for name in required) and checks.get("reaction_evidence_consistent", True) is True
+
+
+def _evidence_dependency_ready(path: str, native: dict | None) -> bool:
+    if not path:
+        return native is None
+    try:
+        local = ReactionLibrary(path).status()
+        return local.ready and EvidenceSourceStatus.model_validate(native) == local
+    except (OSError, ValueError, TypeError):
+        return False
 
 
 def _native_lifecycle() -> tuple[tuple | None, bool]:
@@ -131,12 +143,13 @@ def route_runtime_status(repo_root: Path, *, force: bool = False) -> dict:
     endpoints = {name: endpoint.url + NATIVE_SEARCH_READY_PATH if name in {"mcts", "retro_star"}
                  else endpoint.readiness_url for name, endpoint in resolved.items()}
     stock_path = os.environ.get("X_SYNTH_STOCK_INDEX", "")
+    evidence_path = os.environ.get("X_SYNTH_REACTION_LIBRARY_DB", "")
     with _refresh_lock:
         lifecycle, runtime_running = _native_lifecycle()
         search_key = os.environ.get(SEARCH_KEY_VARIABLE, "")
         auth_identity = hashlib.sha256(search_key.encode()).digest()
         cache_key = (
-            tuple(endpoints.items()), stock_path, lifecycle, auth_identity,
+            tuple(endpoints.items()), stock_path, evidence_path, lifecycle, auth_identity,
             budget.health_timeout_seconds,
             os.environ.get("X_SYNTH_ASKCOS_MODELS", "pistachio,pistachio_ringbreaker"),
         )
@@ -187,6 +200,11 @@ def route_runtime_status(repo_root: Path, *, force: bool = False) -> dict:
         )
         if not checks["inventory_consistent"]:
             errors["inventory_consistent"] = "search_and_review_stock_mismatch"
+        checks["reaction_evidence_consistent"] = _evidence_dependency_ready(
+            evidence_path, replies["expand_one"][1].get("evidence_source"),
+        )
+        if not checks["reaction_evidence_consistent"]:
+            errors["reaction_evidence_consistent"] = "search_and_review_reaction_evidence_mismatch"
         configured = {
             value.strip()
             for value in os.environ.get(

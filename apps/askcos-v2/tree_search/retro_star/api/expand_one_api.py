@@ -53,6 +53,7 @@ class ExpandOneInput(BaseModel):
     extract_template: bool = False
     return_reacting_atoms: bool = False
     selectivity_check: bool = False
+    include_evidence_candidates: bool = True
 
 
 class ExpandOneResponse(BaseModel):
@@ -117,7 +118,8 @@ class ExpandOneAPI:
             # Tree search always disables atom mapping / reacting-atom computation
             # regardless of expand_one_options.return_reacting_atoms
             "return_reacting_atoms": False,
-            "selectivity_check": expand_one_options.selectivity_check
+            "selectivity_check": expand_one_options.selectivity_check,
+            "include_evidence_candidates": expand_one_options.include_evidence_candidates,
         }
         # additional validation. Sending null/none value to FastAPI seems to
         # fail the validation check and break the defaulting mechanism

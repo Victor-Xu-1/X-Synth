@@ -83,6 +83,7 @@ class ExpandOneInput(LowerCamelAliasModel):
         description="whether to perform quick selectivity check "
                     "by reverse application of the forward template"
     )
+    include_evidence_candidates: bool = True
 
 class ModelMetadata(BaseModel):
     direction: str

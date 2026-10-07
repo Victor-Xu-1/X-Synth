@@ -40,6 +40,7 @@ class ExpandOneOptions(BaseModel):
     extract_template: bool = False
     return_reacting_atoms: bool = False
     selectivity_check: bool = False
+    include_evidence_candidates: bool = True
 
     model_config = ConfigDict(populate_by_name=True)
 

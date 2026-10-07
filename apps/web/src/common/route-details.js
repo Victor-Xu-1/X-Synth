@@ -235,7 +235,13 @@ export function forwardEvidence(candidate) {
     facts.push({
       label: "验证方法",
       value:
-        method === "native_template_reconstruction" ? "模板重构一致性" : method,
+        {
+          native_template_reconstruction: "模板重构一致性",
+          native_template_or_exact_record_consistency: "模板或原始反应记录一致性",
+          native_template_and_graph2smiles_top1: "模板重构与独立正向预测",
+          native_template_or_exact_record_and_graph2smiles_top1: "来源一致性与独立正向预测",
+          graph2smiles_top1_or_record_supported_candidate: "正向预测与原始实验记录共同支持",
+        }[method] || method,
     });
   if (typeof metadata.forward_validation_passed === "boolean")
     facts.push({
@@ -261,9 +267,9 @@ export function modelEvidence(step) {
         ["backend", "后端"],
         ["model_name", "模型"],
         ["direction", "方向"],
-        ["rank", "模型排名"],
-        ["model_score", "模型分数"],
-        ["normalized_model_score", "归一化模型分数"],
+        ["rank", model.attributes?.prior_kind === "retrieval_prior" ? "检索排名" : "模型排名"],
+        ["model_score", model.attributes?.prior_kind === "retrieval_prior" ? "检索排序权重" : "模型分数"],
+        ["normalized_model_score", model.attributes?.prior_kind === "retrieval_prior" ? "归一化检索权重" : "归一化模型分数"],
         ["reaction_id", "反应记录"],
         ["reaction_set", "反应集"],
       ]),

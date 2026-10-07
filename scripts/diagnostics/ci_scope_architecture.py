@@ -24,6 +24,8 @@ REACTION_FILES = {
     "packages/knowledge_base/reaction_library.py",
     "packages/knowledge_base/reaction_compile.py",
     "packages/knowledge_base/reaction_snapshot.py",
+    "packages/adapters/askcos/evidence_proposals.py",
+    "packages/adapters/askcos/evidence_audit.py",
 }
 SQLITE_FILES = {"packages/platform/immutable_sqlite.py"}
 RUNTIME_FILES = {
@@ -59,6 +61,9 @@ RPC_FILES = {
             "tree_search/expand_one/api/fast_filter_batch_api.py",
             "tree_search/expand_one/api/pricer_api.py",
             "tree_search/expand_one/api/retro_api.py",
+            "tree_search/expand_one/expand_one_server.py",
+            "tree_search/mcts/options.py", "tree_search/retro_star/options.py",
+            "askcos2_core/wrappers/tree_search/expand_one.py",
             "tree_search/expand_one/tests/test_pricer_batch.py",
             "tree_search/expand_one/tests/test_failure_and_stock_ranking.py",
             "tree_search/mcts/api/expand_one_api.py", "tree_search/mcts/mcts_server.py",
@@ -93,11 +98,15 @@ def related_tests(paths):
             "tests/unit/test_native_template_namespaces.py",
         })
     if paths & (REACTION_FILES | SQLITE_FILES):
-        selected.update({"tests/unit/test_reaction_library.py", "tests/unit/test_evidence_snapshots.py"})
+        selected.update({"tests/unit/test_reaction_library.py", "tests/unit/test_evidence_snapshots.py",
+                         "tests/unit/test_evidence_proposals.py", "tests/unit/test_evidence_readiness.py",
+                         "tests/unit/test_evidence_audit.py",
+                         "tests/unit/test_evidence_route_integration.py"})
     if paths & RUNTIME_FILES:
         selected.update({
             "tests/unit/test_native_runtime_health.py", "tests/unit/test_native_runtime_launchers.py",
             "tests/unit/test_native_runtime_ownership.py", "tests/unit/test_native_search_readiness.py",
+            "tests/unit/test_evidence_readiness.py",
             "tests/unit/test_runtime_logging.py", "tests/unit/test_native_ports.py",
             "tests/unit/test_resource_metrics.py", "tests/unit/test_operations_scripts.py",
         })

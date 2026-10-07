@@ -52,6 +52,50 @@ test("the v1 summary preserves aggregate coverage even when records are abbrevia
   expect(JSON.stringify(value)).toBe(before);
 });
 
+function supportedCandidate() {
+  const value = candidate();
+  const review = value.metadata.automated_review;
+  review.version = 2;
+  review.forward = {
+    matched_steps: 4, total_steps: 4, model_top1_matched_steps: 3, record_supported_steps: 1,
+    records: value.steps.map((step, index) => ({
+      step_id: step.step_id, record_id: "a".repeat(32), model: "graph2smiles_uspto_stereo",
+      expected_rank: index === 0 ? 2 : 1, matched: true, model_top1_matched: index !== 0,
+      support_kind: index === 0 ? "record_supported_model_candidate" : "model_top1",
+      record_support: index === 0 ? [{
+        id: "ord-contract", source: "ORD", snapshot: "b".repeat(64), source_sha256: "c".repeat(64),
+        basis: "exact_recorded_reaction_with_positive_yield",
+      }] : [],
+    })),
+  };
+  return value;
+}
+
+test("v2 counts keep model-first and record-supported candidates separate", () => {
+  const value = supportedCandidate();
+  expect(readRouteReviewSummary(value).forward).toEqual({
+    status: "ready", matched: 4, total: 4, top1: 3, recorded: 1,
+  });
+});
+
+test.each([
+  { expected_rank: null }, { expected_rank: 1 }, { model_top1_matched: true },
+  { record_support: [] }, { matched: undefined }, { support_kind: "unknown" },
+])("v2 does not accept inconsistent record support: %j", (change) => {
+  const value = supportedCandidate();
+  Object.assign(value.metadata.automated_review.forward.records[0], change);
+  expect(readRouteReviewSummary(value).forward.status).toBe("invalid");
+});
+
+test("v2 source proof and aggregate counts cannot be missing or inconsistent", () => {
+  const value = supportedCandidate();
+  value.metadata.automated_review.forward.records[0].record_support[0].snapshot = "missing";
+  expect(readRouteReviewSummary(value).forward.status).toBe("invalid");
+  const other = supportedCandidate();
+  other.metadata.automated_review.forward.model_top1_matched_steps = 4;
+  expect(readRouteReviewSummary(other).forward.status).toBe("invalid");
+});
+
 test("partial searches and unchecked steps remain distinct from returned no-matches", () => {
   const value = candidate();
   Object.assign(value.metadata.automated_review.references, {
@@ -98,7 +142,7 @@ test.each([true, [], "review", {}, { version: "1" }])(
 
 test("unknown versions cannot be interpreted as a completed v1 review", () => {
   const value = candidate();
-  value.metadata.automated_review.version = 2;
+  value.metadata.automated_review.version = 3;
   expect(readRouteReviewSummary(value)).toEqual({
     forward: { status: "unsupported" }, references: { status: "unsupported" },
   });

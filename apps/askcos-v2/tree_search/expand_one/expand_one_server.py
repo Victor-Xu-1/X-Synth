@@ -30,9 +30,14 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get("/health/ready")
 def ready():
-    if globals().get("controller") is None:
+    active = globals().get("controller")
+    if active is None:
         raise HTTPException(503, "One-step controller is not initialized")
-    return {"status": "ready", "engine": "askcos_expand_one"}
+    evidence = active.evidence_library.status() if active.evidence_library else None
+    if evidence is not None and not evidence.ready:
+        raise HTTPException(503, "Configured reaction evidence is unavailable")
+    return {"status": "ready", "engine": "askcos_expand_one",
+            "evidence_source": evidence.model_dump(mode="json") if evidence else None}
 
 base_response = {
     "status": "FAIL",
@@ -68,6 +73,7 @@ class RequestBody(BaseModel):
     extract_template: bool = False
     return_reacting_atoms: bool = True
     selectivity_check: bool = False
+    include_evidence_candidates: bool = True
 
 
 @app.post("/get_outcomes")
@@ -90,6 +96,7 @@ def expand_one_service(request: RequestBody):
             extract_template=request.extract_template,
             return_reacting_atoms=request.return_reacting_atoms,
             selectivity_check=request.selectivity_check,
+            include_evidence_candidates=request.include_evidence_candidates,
         )
         response["results"] = results
         response["status"] = "SUCCESS"

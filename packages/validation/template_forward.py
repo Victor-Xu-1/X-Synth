@@ -10,6 +10,7 @@ from rdchiral.main import rdchiralRun
 from rdkit import Chem
 
 from packages.adapters.stock.commercial_stock import canonicalize_smiles
+from packages.adapters.askcos.evidence_proposals import verify_exact_proposal
 
 
 def templates(step):
@@ -80,20 +81,37 @@ def bond_family(smarts, product):
     return "target-bond-family:" + digest
 
 
-def validate_native_routes(routes):
+def validate_native_routes(routes, *, evidence_library=None):
     checked = []
     for route in routes:
         results = []
         family = None
+        methods = []
         for index, step in enumerate(route.steps):
             matching = [
                 smarts
                 for smarts in templates(step)
                 if reconstruct(smarts, ".".join(step.precursors), step.product)
             ]
-            results.append(bool(matching))
+            recorded = [
+                evidence for evidence in step.metadata.get("model_metadata", [])
+                if evidence.get("backend") == "exact_match" and evidence.get("model_name") == "ORD"
+            ]
+            exact = bool(recorded) and evidence_library is not None and all(
+                verify_exact_proposal(evidence, step, evidence_library) for evidence in recorded
+            )
+            consistent = bool(matching) or exact
+            if recorded and not exact:
+                consistent = False
+            results.append(consistent)
+            methods.append("template_reconstruction" if matching else "exact_record_identity" if exact else "unmatched")
             if index == 0 and matching:
                 family = bond_family(matching[0], step.product)
+            elif index == 0 and exact:
+                # Unmapped records cannot establish distinct bond-change families.
+                family = "recorded-target-family:" + hashlib.sha256(
+                    canonicalize_smiles(step.product).encode()
+                ).hexdigest()[:16]
         checked.append(
             replace(
                 route,
@@ -101,9 +119,11 @@ def validate_native_routes(routes):
                 metadata={
                     **route.metadata,
                     "forward_validation_passed": bool(results) and all(results),
-                    "forward_validation_method": "native_template_reconstruction",
+                    "forward_validation_method": "native_template_or_exact_record_consistency"
+                    if "exact_record_identity" in methods else "native_template_reconstruction",
                     "full_forward_prediction_validated": False,
                     "forward_validation_steps": results,
+                    "proposal_consistency_methods": methods,
                 },
             )
         )

@@ -15,7 +15,7 @@ from packages.validation.route_quality import RouteQualityPolicy
 
 from .verification_cache import VerificationCache
 from .qualification_queue import QualificationQueue, family_key
-from .reference_evidence import reference_evidence
+from .reference_evidence import reference_evidence, recorded_reaction_support
 
 
 def forward_match(output, product, minimum):
@@ -31,6 +31,10 @@ class RouteVerifier:
     def __init__(self, *, forward, analyses, run_analysis, references, epoch, max_atoms):
         self.forward, self.analyses, self.run_analysis = forward, analyses, run_analysis
         self.references, self.epoch, self.max_atoms = references, epoch, max_atoms
+
+    def _check_reference_source(self):
+        if getattr(self.references, "has_library", False) and not self.references.library.status().ready:
+            raise EngineUnavailable("reaction_evidence_snapshot_unavailable", recoverable=True)
 
     def prediction(self, reactants, owner, cache):
         identifier = cache.records.get(cache.key(reactants))
@@ -58,6 +62,7 @@ class RouteVerifier:
         return output, identifier
 
     def qualify(self, report, *, owner, minimum, maximum, plausibility, directory, interrupted, progress):
+        self._check_reference_source()
         epoch = self.epoch()
         cache = VerificationCache(Path(directory) / "verification.json", owner, epoch)
         policy = RouteQualityPolicy(require_full_forward_validation=True)
@@ -70,6 +75,7 @@ class RouteVerifier:
             route = queue.next(qualified_families)
             if route is None or len(qualified_families) >= maximum:
                 break
+            self._check_reference_source()
             forward, references = [], []
             for step in route.steps:
                 if interrupted():
@@ -83,7 +89,7 @@ class RouteVerifier:
                                     "reason": "unsupported_forward_input"})
                     break
                 binding = (reactants, step.product)
-                if binding in step_checks:
+                if binding in step_checks and not step_checks[binding][0].get("record_support"):
                     saved_forward, saved_reference = step_checks[binding]
                     forward.append({**saved_forward, "step_id": step.step_id})
                     references.append({**saved_reference, "step_id": step.step_id})
@@ -94,12 +100,18 @@ class RouteVerifier:
                 if interrupted():
                     raise EngineUnavailable("route_verification_interrupted", recoverable=True)
                 rank, score, matched = forward_match(output, step.product, plausibility)
-                forward.append({"step_id": step.step_id, "record_id": identifier, "expected_rank": rank,
-                                "model": output.model, "feasibility_score": score, "matched": matched})
                 evidence = self.references.search(
                     ReferenceSearchInput(product=step.product, reactants=step.precursors, limit=10),
                     max_atoms=self.max_atoms,
                 )
+                top1 = matched
+                support = recorded_reaction_support(evidence) if rank is not None and rank > 1 and score >= plausibility else []
+                matched = matched or bool(support)
+                forward.append({"step_id": step.step_id, "record_id": identifier, "expected_rank": rank,
+                                "model": output.model, "feasibility_score": score, "matched": matched,
+                                "model_top1_matched": top1,
+                                "support_kind": "model_top1" if top1 else "record_supported_model_candidate" if support else "unsupported",
+                                "record_support": support})
                 references.append({"step_id": step.step_id, **reference_evidence(evidence)})
                 step_checks[binding] = (forward[-1], references[-1])
                 if interrupted():
@@ -112,8 +124,10 @@ class RouteVerifier:
                 raise EngineUnavailable("qualification_model_restarted", recoverable=True)
             passed = len(forward) == len(route.steps) and all(row["matched"] for row in forward)
             review = {
-                "version": 1,
+                "version": 2,
                 "forward": {"matched_steps": sum(row["matched"] for row in forward),
+                            "model_top1_matched_steps": sum(row.get("model_top1_matched", False) for row in forward),
+                            "record_supported_steps": sum(bool(row.get("record_support")) for row in forward),
                             "total_steps": len(route.steps), "records": forward},
                 "references": {"reaction_matched_steps": sum(row["reaction_count"] > 0 for row in references),
                                "product_matched_steps": sum(row["product_count"] > 0 for row in references),
@@ -127,7 +141,11 @@ class RouteVerifier:
             routes[route.route_id] = replace(route, metadata={
                 **route.metadata, "full_forward_prediction_validated": passed,
                 "forward_validation_passed": passed,
-                "forward_validation_method": "native_template_and_graph2smiles_top1",
+                "forward_validation_method": "graph2smiles_top1_or_record_supported_candidate"
+                if any(row.get("record_support") for row in forward)
+                else "native_template_or_exact_record_and_graph2smiles_top1"
+                if "exact_record_identity" in route.metadata.get("proposal_consistency_methods", [])
+                else "native_template_and_graph2smiles_top1",
                 "automated_review": review,
                 "qualification_status": "qualified" if passed else (
                     "unsupported" if any(row.get("reason") for row in forward) else "forward_rejected"
@@ -138,6 +156,7 @@ class RouteVerifier:
                 qualified_families.add(family_key(route))
         if interrupted():
             raise EngineUnavailable("route_verification_interrupted", recoverable=True)
+        self._check_reference_source()
         qualified = UnifiedRoutePool(min_routes=minimum, max_routes=maximum, quality_policy=policy)
         qualified.add_routes(routes.values())
         result = build_route_pool_result(

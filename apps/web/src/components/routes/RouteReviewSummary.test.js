@@ -175,7 +175,7 @@ test("overlapping reference scopes are separate counters, not a summed coverage 
 test("unsupported and malformed records do not become verified after reactive updates", async () => {
   const wrapper = setup(RouteReviewSummary, { candidate: candidate() });
   const future = candidate();
-  future.metadata.automated_review.version = 2;
+  future.metadata.automated_review.version = 3;
   await wrapper.setProps({ candidate: future });
   expect(textOf(wrapper, "forward")).toContain("记录版本不支持");
   const invalid = candidate();

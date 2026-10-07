@@ -201,7 +201,9 @@ class NativeRuntime:
 
         stock = StockIndex(self.environment["X_SYNTH_STOCK_INDEX"])
         self.environment["X_SYNTH_ASSET_IDENTITY"] = native_asset_identity(
-            self.source, self.assets, stock, models
+            self.source, self.assets, stock, models,
+            reaction_library=Path(self.environment["X_SYNTH_REACTION_LIBRARY_DB"])
+            if self.environment.get("X_SYNTH_REACTION_LIBRARY_DB") else None,
         )
 
     def _service_available(self, name):

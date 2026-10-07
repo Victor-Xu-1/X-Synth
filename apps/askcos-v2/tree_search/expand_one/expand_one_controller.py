@@ -21,6 +21,9 @@ from rdkit import Chem
 from typing import Any, ClassVar, Dict, List, Optional
 from packages.adapters.askcos.native_http import NativeProtocolError
 from packages.chemistry.material_scope import material_scope_exclusion
+from packages.adapters.askcos.evidence_proposals import EvidenceProposer
+from packages.adapters.askcos.evidence_audit import retain_evidence_query
+from packages.knowledge_base.reaction_library import ReactionLibrary
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://0.0.0.0:9100")
 atom_mapper = AtomMapAPI(
@@ -225,6 +228,9 @@ class ExpandOneController:
         # self.scscorer = scscorer
         self.scscorer_batch = scscorer_batch
         self.retro_controller = retro_controller
+        evidence_path = os.environ.get("X_SYNTH_REACTION_LIBRARY_DB")
+        self.evidence_library = ReactionLibrary(evidence_path) if evidence_path else None
+        self.evidence_proposer = EvidenceProposer(self.evidence_library) if evidence_path else None
         self.abs_group_handler = abs_group_api.abs_group_handler
         self.p = Pool(processes=int(os.environ.get("ASKCOS_MODEL_THREADS", "4")))
 
@@ -248,6 +254,7 @@ class ExpandOneController:
         extract_template: bool = False,
         return_reacting_atoms: bool = True,
         selectivity_check: bool = False,
+        include_evidence_candidates: bool = True,
         debug: bool = False
     ) -> List[Dict[str, any]]:
         if not banned_chemicals:
@@ -305,6 +312,14 @@ class ExpandOneController:
 
             retro_results.extend(retro_result)
 
+        source_count = len(retro_backend_options)
+        if include_evidence_candidates and self.evidence_proposer is not None:
+            recorded = self.evidence_proposer.propose(cano_smiles)
+            retain_evidence_query(recorded.receipt)
+            if recorded.results:
+                retro_results.extend(recorded.results)
+                source_count += 1
+
         print_if_debug(f"retro: {time.time() - start}", debug)
 
         # A number of postprocessing steps
@@ -339,12 +354,12 @@ class ExpandOneController:
 
             if cano_outcome in results_dict:
                 results_dict[cano_outcome]["average_model_score"] \
-                    += result["normalized_model_score"]/len(retro_backend_options)
+                    += result["normalized_model_score"]/source_count
                 results_dict[cano_outcome]["model_metadata"].append(result)
             else:
                 results_dict[cano_outcome] = {
                     "outcome": cano_outcome,
-                    "average_model_score": result["normalized_model_score"]/len(retro_backend_options),
+                    "average_model_score": result["normalized_model_score"]/source_count,
                     "model_metadata": [result], 
                     "precursor_properties": {},
                     "reaction_properties": {
