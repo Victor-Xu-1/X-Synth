@@ -14,7 +14,7 @@
       :nodes-connectable="editable"
       :edges-updatable="false"
       :delete-key-code="null"
-      :min-zoom="0.12"
+      :min-zoom="0.01"
       :max-zoom="2"
       :pan-on-drag="!overview"
       :zoom-on-scroll="!overview"

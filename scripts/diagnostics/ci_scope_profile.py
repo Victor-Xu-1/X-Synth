@@ -193,6 +193,7 @@ ARCHITECTURE_FILES = {
 }
 ANALYSIS_EXECUTION_FILES = {"packages/workspace/analysis_execution.py"}
 PERFORMANCE_FILES = {"packages/platform/performance.py"}
+BENCHMARK_FILES = {"scripts/diagnostics/benchmark_platform.py"}
 SEARCH_PROJECTION_FILES = {
     "packages/adapters/askcos/route_reachability.py",
     "packages/adapters/askcos/route_enumeration.py",
@@ -303,6 +304,7 @@ def guard_paths(paths: set[str]) -> None:
             | ORD_FILES
             | PRICING_FILES
             | PERFORMANCE_FILES
+            | BENCHMARK_FILES
             | SEARCH_PROJECTION_FILES
             | SEARCH_ROUND_FILES
             | ARCHITECTURE_FILES
@@ -475,6 +477,8 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
                 "tests/unit/test_route_request.py",
             }
         )
+    if roots & BENCHMARK_FILES:
+        selected.update({"tests/unit/test_platform_benchmark.py", "tests/unit/test_performance_budget.py"})
     if roots & SEARCH_PROJECTION_FILES:
         selected.update({
             "tests/unit/test_candidate_retention.py",

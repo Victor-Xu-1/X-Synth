@@ -32,6 +32,8 @@ RUNTIME_FILES = {
     "packages/platform/native_runtime.py",
     "packages/platform/resource_metrics.py",
     "packages/orchestrator/runtime_health.py",
+    "packages/orchestrator/health_refresh.py",
+    "packages/orchestrator/health_probe.py",
     "scripts/operations/serve_platform.py",
     "apps/askcos-v2/askcos2_core/configs/module_config_x_synth.py",
     "packages/platform/native_endpoints.py",
@@ -107,6 +109,8 @@ def related_tests(paths):
             "tests/unit/test_native_runtime_health.py", "tests/unit/test_native_runtime_launchers.py",
             "tests/unit/test_native_runtime_ownership.py", "tests/unit/test_native_search_readiness.py",
             "tests/unit/test_evidence_readiness.py",
+            "tests/unit/test_runtime_health_refresh.py",
+            "tests/unit/test_health_probe.py",
             "tests/unit/test_runtime_logging.py", "tests/unit/test_native_ports.py",
             "tests/unit/test_resource_metrics.py", "tests/unit/test_operations_scripts.py",
         })
