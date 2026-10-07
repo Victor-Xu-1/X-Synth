@@ -6,9 +6,9 @@ import {
   ref,
   watch,
 } from "vue";
-import { saveAs } from "file-saver";
 import { API } from "@/common/api";
 import { buildRequest, candidateCount, LIMITS, validateResult } from "./model";
+import { exportRecommendationCsv } from "./recommendation-export";
 
 export function useOptimization() {
   const content = ref(""),
@@ -228,13 +228,7 @@ export function useOptimization() {
   }
 
   function download() {
-    if (!result.value) return;
-    saveAs(
-      new Blob(["\ufeff", result.value.csv_content], {
-        type: "text/csv;charset=utf-8",
-      }),
-      "next-experiments.csv",
-    );
+    exportRecommendationCsv(result.value);
   }
 
   return {

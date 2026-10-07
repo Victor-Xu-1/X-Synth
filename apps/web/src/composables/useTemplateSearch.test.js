@@ -225,6 +225,23 @@ test("stale real list responses cannot finish a later search or expose old rows"
   expect(state.rows.value).toEqual([]);
 });
 
+test("repeated form submissions remain single-flight during router replacement and query loading", async () => {
+  const held = holdContractResponses(api, (method) => method === "post");
+  const { state } = await setup("/template", held);
+  state.filters.limit = 1;
+  const first = state.search();
+  const whileNavigating = state.search();
+  await eventually(() => held.held[0]?.ready);
+  const whileLoading = state.search();
+  await flushPromises();
+  try {
+    expect(held.held).toHaveLength(1);
+  } finally {
+    held.held.forEach((entry) => entry.release());
+    await Promise.all([first, whileNavigating, whileLoading]);
+  }
+});
+
 test("real details render SMARTS/provenance/attributes and page numeric references without links", async () => {
   const wrapper = mount(TemplateDetails, { props: { template: native } });
   wrappers.push(wrapper);

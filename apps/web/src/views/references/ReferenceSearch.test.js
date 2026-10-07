@@ -28,6 +28,10 @@ jest.mock("@/components/SmilesImage.vue", () => ({
   props: ["smiles", "inputType"],
   template: '<span class="rendered-smiles">{{ smiles }}</span>',
 }));
+jest.mock("@/components/workspace/StructurePreview.vue", () => ({
+  name: "StructurePreview", props: ["smiles", "inputType", "label"],
+  template: '<span class="rendered-smiles">{{ smiles }}</span>',
+}));
 jest.mock("@/components/workspace/ReactionInput.vue", () => ({
   name: "ReactionInput",
   template: "<div />",
@@ -44,7 +48,9 @@ const wrappers = [];
 async function setup(query = {}) {
   const route = reactive({ path: "/references", query });
   useRoute.mockReturnValue(route);
-  const wrapper = mount(ReferenceSearch, { global: { stubs: uiStubs } });
+  const wrapper = mount(ReferenceSearch, {
+    global: { stubs: { ...uiStubs, VLazy: { template: '<div><slot /></div>' } } },
+  });
   wrappers.push(wrapper);
   await flushPromises();
   return { wrapper, route };
@@ -219,6 +225,67 @@ test("fresh pending draft blocks programmatic search and immediately invalidates
   await wrapper.vm.search();
   expect(API.post).toHaveBeenCalledTimes(1);
 });
+
+test("unaccepted reference preview and cancellation keep the unchanged query evidence", async () => {
+  const { wrapper } = await setup();
+  await setReactionDraft(wrapper, { product: "CC=O", reactants: ["CCO"] });
+  API.post.mockResolvedValue(packet());
+  await wrapper.get("form").trigger("submit");
+  await flushPromises();
+  const draft = reactionDraft(wrapper);
+  draft.importRecords = jest.fn(async () => { draft.pending.value = true; return true; });
+  await wrapper.get('[data-cy="reference-load-reaction"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.findAll('[data-cy="reference-row"]')).toHaveLength(1);
+  expect(wrapper.get('[data-cy="reference-search-submit"]').element.disabled).toBe(true);
+  expect(wrapper.get('[data-cy="reference-export"]').element.disabled).toBe(true);
+  draft.pending.value = false;
+  await nextTick();
+  expect(wrapper.findAll('[data-cy="reference-row"]')).toHaveLength(1);
+  expect(wrapper.get('[data-cy="reference-search-submit"]').element.disabled).toBe(false);
+  expect(API.post).toHaveBeenCalledTimes(1);
+});
+
+test("a new URL cannot restore evidence after proposal suspension and late import completion", async () => {
+  const { wrapper, route } = await setup();
+  await setReactionDraft(wrapper, { product: "CC=O", reactants: ["CCO"] });
+  API.post.mockResolvedValue(packet());
+  await wrapper.get("form").trigger("submit");
+  await flushPromises();
+  const draft = reactionDraft(wrapper), held = deferred();
+  draft.importRecords = jest.fn(() => { draft.pending.value = true; return held.promise; });
+  await wrapper.get('[data-cy="reference-load-reaction"]').trigger("click");
+  await flushPromises();
+  route.query = { rxnsmiles: "CCN>>CC=N" };
+  await nextTick();
+  held.resolve(true);
+  draft.pending.value = false;
+  await flushPromises();
+  expect(wrapper.find('[data-cy="reference-row"]').exists()).toBe(false);
+  expect(wrapper.find('[data-cy="reference-apply-prefill"]').exists()).toBe(true);
+});
+
+test.each(["apply", "edit-and-revert"])(
+  "%s is a chemical revision even while a reference proposal is suspended",
+  async (operation) => {
+    const { wrapper } = await setup();
+    await setReactionDraft(wrapper, { product: "CC=O", reactants: ["CCO"] });
+    API.post.mockResolvedValue(packet());
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    const draft = reactionDraft(wrapper), input = wrapper.getComponent(reactionInput);
+    draft.importRecords = jest.fn(async () => { draft.pending.value = true; return true; });
+    await wrapper.get('[data-cy="reference-load-reaction"]').trigger("click");
+    await flushPromises();
+    input.vm.$emit("update:modelValue", "CCO>>CC=O");
+    if (operation === "edit-and-revert") input.vm.$emit("update:modelValue", "");
+    draft.pending.value = false;
+    await flushPromises();
+    expect(wrapper.find('[data-cy="reference-row"]').exists()).toBe(false);
+    expect(wrapper.find('[data-cy="reference-actual-input"]').exists()).toBe(false);
+    expect(API.post).toHaveBeenCalledTimes(1);
+  },
+);
 
 test("raw edit and immediate revert cannot revive a late result with the same roles", async () => {
   const { wrapper } = await setup();

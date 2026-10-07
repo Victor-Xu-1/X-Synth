@@ -8,6 +8,8 @@
           :to="analysisKinds[record.kind].to">新建计算</v-btn>
         <v-btn icon="mdi-refresh" variant="text" aria-label="刷新研究记录" title="刷新研究记录"
           :loading="loading" :disabled="loading" @click="load()" />
+        <v-btn v-if="canExportCsv" icon="mdi-file-delimited-outline" variant="text"
+          aria-label="导出下一批实验 CSV" title="导出下一批实验 CSV" @click="downloadCsv" />
         <v-btn v-if="record?.result && !error" icon="mdi-download" variant="text"
           aria-label="下载研究记录" title="下载研究记录" @click="download" />
       </div>
@@ -28,8 +30,12 @@ import { API } from "@/common/api";
 import { analysisKinds, analysisStatuses, recordDate, recordPath, readAnalysisRecord,
   analysisQuery, listQuery } from "@/common/analysis-records";
 import AnalysisResult from "./AnalysisResult.vue";
+import { exportRecommendationCsv, hasRecommendationCsv } from "@/views/optimization/recommendation-export";
 const route = useRoute(), record = ref(null), loading = ref(false), error = ref("");
 const title = computed(() => analysisKinds[record.value?.kind]?.title || "研究记录");
+const canExportCsv = computed(() => !loading.value && !error.value &&
+  record.value?.kind === "optimization" && record.value.status === "completed" &&
+  hasRecommendationCsv(record.value.result));
 const backLocation = computed(() => {
   try { const selection = analysisQuery(route.query); return { path: "/analyses", query: listQuery(selection.kind, selection.page) }; }
   catch { return "/analyses"; }
@@ -58,6 +64,10 @@ function download() {
   const link = document.createElement("a");
   link.href = url; link.download = `X-Synth-${snapshot.kind}-${snapshot.id}.json`; link.click();
   window.setTimeout(() => { if (downloads.delete(url)) URL.revokeObjectURL(url); }, 1000);
+}
+function downloadCsv() {
+  if (!canExportCsv.value) return;
+  exportRecommendationCsv(record.value.result, `X-Synth-optimization-${record.value.id}.csv`);
 }
 watch(() => route.params.id, () => load(), { immediate: true });
 onMounted(() => { timer = window.setInterval(() => {

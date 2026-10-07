@@ -45,6 +45,8 @@ test("the actual Vue component compiles with missing-value states and molecular 
   });
   expect(template.errors).toEqual([]);
   expect(source).toContain(':smiles="input.smiles"');
+  expect(source).toContain("<StructurePreview");
+  expect(script.bindings.StructurePreview).toBeDefined();
   expect(source).toContain("试剂、催化剂与溶剂：未记录");
   expect(source).not.toContain("分离收率");
 });

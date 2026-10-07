@@ -91,21 +91,22 @@
             variant="text"
             size="small"
             prepend-icon="mdi-draw"
-            :disabled="Boolean(action) || !canExport(row)"
+            :disabled="blocked || Boolean(action) || !canExport(row)"
             data-cy="reference-load-reaction"
             @click="loadReaction(row)"
             >载入画板</v-btn
           >
         </div>
         <div class="reference-record-layout">
-          <SmilesImage
-            :smiles="referenceReactionDrawing(row)"
-            input-type="reaction"
-            width="100%"
-            :height="160"
-            :show-error-image="false"
-            lazy
-          />
+          <v-lazy :min-height="194">
+            <StructurePreview
+              :smiles="referenceReactionDrawing(row)"
+              input-type="reaction"
+              label="参考反应结构"
+              :width="900"
+              :height="160"
+            />
+          </v-lazy>
           <dl class="reference-record-facts">
             <dt>报道收率</dt>
             <dd v-if="row.reported_yields.length">
@@ -198,7 +199,7 @@
                     variant="text"
                     size="small"
                     aria-label="复制原始反应 SMILES"
-                    :disabled="Boolean(action)"
+                    :disabled="blocked || Boolean(action)"
                     data-cy="reference-copy"
                     @click="operate(row, 'copy')"
                   />
@@ -212,7 +213,7 @@
                     variant="text"
                     size="small"
                     aria-label="导出完整反应 RXN"
-                    :disabled="Boolean(action) || !canExport(row)"
+                    :disabled="blocked || Boolean(action) || !canExport(row)"
                     :loading="action?.id === row.id && action.kind === 'export'"
                     data-cy="reference-export"
                     @click="operate(row, 'export')"
@@ -256,13 +257,14 @@ import {
   ReferenceContractError,
   reportedYieldMethod,
 } from "@/common/reaction-references";
-import SmilesImage from "@/components/SmilesImage.vue";
+import StructurePreview from "@/components/workspace/StructurePreview.vue";
 import RecordedReactionConditions from "./RecordedReactionConditions.vue";
 
 const props = defineProps({
   response: { type: Object, default: null },
   actualInput: { type: Object, default: null },
   pending: Boolean,
+  blocked: Boolean,
   error: { type: String, default: "" },
   searched: Boolean,
   allowCanvasReuse: Boolean,
@@ -292,7 +294,7 @@ const action = ref(null),
 let generation = 0,
   alive = true;
 watch(
-  () => [props.response, props.actualInput, props.pending],
+  () => [props.response, props.actualInput, props.pending, props.blocked],
   () => {
     generation++;
     action.value = null;
@@ -315,6 +317,7 @@ function loadReaction(row) {
     !props.allowCanvasReuse ||
     action.value ||
     props.pending ||
+    props.blocked ||
     !checked.value?.results.includes(row) ||
     !canExport(row)
   )
@@ -326,6 +329,7 @@ async function operate(row, kind) {
     !alive ||
     action.value ||
     props.pending ||
+    props.blocked ||
     !checked.value?.results.includes(row)
   )
     return;
