@@ -17,10 +17,7 @@
           v-model="filters.direction"
           :disabled="isDetail || busy"
           label="反应方向"
-          :items="[
-            { title: '逆合成', value: 'retro' },
-            { title: '正向', value: 'forward' },
-          ]"
+          :items="directionItems"
           variant="outlined"
           density="compact"
           hide-details
@@ -49,13 +46,14 @@
           variant="flat"
           type="submit"
           :loading="busy"
-          :disabled="isDetail || busy"
+          :disabled="!canSearch"
           prepend-icon="mdi-magnify"
           >检索模板</v-btn
         ><span class="workspace-muted template-index-count">索引总量 {{ total }}</span>
         <div v-if="indexError" class="tool-error" role="alert">
           {{ indexError }}
         </div>
+        <p v-if="coverageReason" class="workspace-muted" role="status">{{ coverageReason }}</p>
       </form>
       <section
         class="tool-result-panel"
@@ -171,6 +169,9 @@ const {
   searched,
   busy,
   atLimit,
+  canSearch,
+  coverageReason,
+  directionItems,
   error,
   health,
   indexError,

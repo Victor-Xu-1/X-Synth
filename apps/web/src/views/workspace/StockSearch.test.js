@@ -71,7 +71,9 @@ test("response and task snapshots are labelled separately and missing prices rem
   expect(wrapper.text()).toContain(otherSnapshot);
   expect(wrapper.text()).toContain("快照不同");
   expect(wrapper.text()).toContain("价格未记录");
-  expect(wrapper.text()).not.toMatch(/包装|纯度|交期/);
+  expect(wrapper.text()).not.toMatch(/包装|纯度/);
+  expect(wrapper.get(".stock-snapshot-warning").element.closest("details")).toBeNull();
+  expect(wrapper.get(".stock-lead-time").text()).toBe("未记录");
 });
 test("catalog prices use the shared baseline and never present an inferred ISO currency", async () => {
   const { wrapper } = setup();
@@ -152,4 +154,16 @@ test("catalogue evidence reserves a readable column and unbroken link label on m
   expect(declarations(".catalog-link").display).toBe("inline-flex");
   expect(declarations(".stock-evidence-cell")["min-width"]).toBe("100px");
   expect(declarations(".stock-records-scroll")["overflow-x"]).toBe("auto");
+});
+
+test("catalogue lead time is shown unchanged and is never a live dispatch promise", async () => {
+  const { wrapper } = setup();
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({
+    snapshot, results: { CCO: [{ smiles: "CCO", catalog_id: "record-a", lead_time: "7-21days" }] },
+  });
+  await wrapper.get("form").trigger("submit");
+  await flushPromises();
+  expect(wrapper.get(".stock-lead-time").text()).toBe("7-21days");
+  expect(wrapper.text()).toContain("非实时供货承诺");
+  expect(wrapper.find(".stock-snapshot-warning").exists()).toBe(false);
 });

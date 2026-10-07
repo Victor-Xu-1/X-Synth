@@ -202,20 +202,16 @@ export function evidenceSourceLabel(value) {
     ? available.join(" + ")
     : value?.source || "参考来源";
 }
-export function evidenceCitation(row) {
+export function evidenceCitations(row) {
+  const links = [];
+  const add = (kind, label, value) => {
+    const url = safeExternalUrl(value);
+    if (url && !links.some((link) => link.url === url)) links.push({ kind, label, url });
+  };
   if (row?.doi && /^10\.\d{4,9}\/\S+$/i.test(row.doi))
-    return {
-      label: row.doi,
-      url: safeExternalUrl(`https://doi.org/${row.doi}`),
-    };
-  if (safeExternalUrl(row?.patent_url))
-    return {
-      label: row.patent_number || "查看专利",
-      url: safeExternalUrl(row.patent_url),
-    };
-  if (safeExternalUrl(row?.publication_url))
-    return { label: "查看原始文献", url: safeExternalUrl(row.publication_url) };
-  if (safeExternalUrl(row?.source_url))
-    return { label: "查看原始数据集", url: safeExternalUrl(row.source_url) };
-  return null;
+    add("article", row.doi, `https://doi.org/${row.doi}`);
+  if (!links.length) add("article", row?.patent_number || "查看专利", row?.patent_url);
+  if (!links.length) add("article", "查看原始文献", row?.publication_url);
+  add("data", "查看原始数据集", row?.source_url);
+  return links;
 }

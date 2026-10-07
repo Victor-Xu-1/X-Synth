@@ -25,7 +25,7 @@ const row = (id) => ({
 const rows = [row("one"), row("two")];
 const wrappers = [];
 const stubs = {
-  VSelect: { props: ["modelValue", "label", "disabled"], template: '<label>{{ label }}<select :disabled="disabled" /></label>' },
+  VSelect: { props: ["modelValue", "label", "disabled", "items"], template: '<label>{{ label }}<select :disabled="disabled" /></label>' },
   VTextField: { props: ["modelValue", "label", "disabled"], template: '<label>{{ label }}<input :value="modelValue" :disabled="disabled" /></label>' },
   VBtn: { props: ["disabled", "loading", "type"], template: '<button :type="type || \'button\'" :disabled="disabled || loading"><slot /></button>' },
   VTooltip: { template: '<span><slot name="activator" :props="{}" /></span>' },
@@ -60,6 +60,16 @@ test("template controls retain intrinsic height independently of result and deta
   const css = postcss.parse(descriptor.styles[0].content);
   const rule = css.nodes.find((node) => node.selector === ".template-controls");
   expect(rule?.nodes.find((node) => node.prop === "align-self")?.value).toBe("start");
+});
+
+test("a direction missing from the index is not represented as an ordinary no-match query", async () => {
+  API.get.mockResolvedValue({ template_count: 252029, sources: ["isolated"], directions: { retro: 252029 } });
+  const { wrapper } = await setup({ direction: "forward", searched: "1" });
+  expect(API.post).not.toHaveBeenCalled();
+  expect(wrapper.text()).toContain("当前索引未包含正向模板");
+  expect(wrapper.get('button[type="submit"]').element.disabled).toBe(true);
+  const direction = wrapper.findAllComponents(stubs.VSelect).find((field) => field.props("label") === "反应方向");
+  expect(direction.props("items").find((item) => item.value === "forward").props.disabled).toBe(true);
 });
 
 test("list and detail reuse template-aware previews while original SMARTS and identities remain exact", async () => {

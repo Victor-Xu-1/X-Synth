@@ -39,6 +39,18 @@ export function useTemplateSearch({
   const atLimit = computed(
     () => searched.value && rows.value.length === Number(filters.limit),
   );
+  const directionCount = (direction) => {
+    const counts = health.value?.directions;
+    if (!counts || typeof counts !== "object" || Array.isArray(counts)) return null;
+    const count = counts[direction] ?? 0;
+    return Number.isSafeInteger(count) && count >= 0 ? count : null;
+  };
+  const directionItems = computed(() => [
+    { title: "逆合成", value: "retro" }, { title: "正向", value: "forward" },
+  ].map((item) => ({ ...item, props: { disabled: directionCount(item.value) === 0 } })));
+  const coverageReason = computed(() => directionCount(filters.direction) === 0
+    ? `当前索引未包含${filters.direction === "forward" ? "正向" : "逆合成"}模板。` : "");
+  const canSearch = computed(() => !isDetail.value && !busy.value && !coverageReason.value && !indexError.value);
   let active = true,
     searchGeneration = 0,
     detailGeneration = 0;
@@ -113,6 +125,7 @@ export function useTemplateSearch({
   );
 
   async function runSearch() {
+    if (coverageReason.value || indexError.value) return;
     let body;
     try {
       body = templateSearchBody(filters);
@@ -147,7 +160,7 @@ export function useTemplateSearch({
   }
 
   async function search() {
-    if (!active || isDetail.value || busy.value) return;
+    if (!active || !canSearch.value) return;
     try {
       templateSearchBody(filters);
     } catch (failure) {
@@ -225,6 +238,9 @@ export function useTemplateSearch({
     loading,
     busy,
     atLimit,
+    canSearch,
+    coverageReason,
+    directionItems,
     error,
     health,
     indexError,

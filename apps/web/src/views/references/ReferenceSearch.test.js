@@ -133,6 +133,15 @@ test("one optional-reactants canvas reads status but never searches on mount", a
   expect(wrapper.text()).not.toMatch(/亚结构|反应中心|反应物检索/);
 });
 
+test.each([
+  ["CCO", "chemical"],
+  ["CCO>>CC=O", "reaction"],
+])("linked preview uses its actual drawing format: %s", async (raw, inputType) => {
+  const { wrapper } = await setup({ reaction_smiles: raw });
+  expect(wrapper.getComponent({ name: "SmilesImage" }).props("inputType")).toBe(inputType);
+  expect(API.post).not.toHaveBeenCalled();
+});
+
 test.each(["reaction_smiles", "rxnsmiles"])(
   "%s preserves raw link preview and needs application before a separate search",
   async (key) => {

@@ -13,6 +13,7 @@ from rdkit.Geometry import rdGeometry
 
 from utils.draw_abbreviations import CARBON_ABS_LABELS, CUSTOM_ABBREVIATIONS, KETCHER_ABS_LABELS
 from utils.reaction_drawing import reaction_drawing_molecules
+from utils.template_drawing import check_atom_for_generalization
 
 ABBREVIATIONS = rdAbbreviations.ParseAbbreviations(
     CUSTOM_ABBREVIATIONS
@@ -872,43 +873,6 @@ def reaction_smiles_to_image(
     return combine_images_horizontally(
         images, transparent=transparent, return_png=return_png
     )
-
-
-def check_atom_for_generalization(atom):
-    """
-    Determines if an atom's SMART representation is from generalization.
-
-    Given an RDKit atom, this function determines if that atom's SMART
-    representation was likely a result of generalization. This assumes that
-    the transform string was generated using explicit Hs with aliphatic
-    carbons as C, aromatic carbons as c, and non-carbons as #N where N is the
-    atomic number of the generalized species.
-
-    Args:
-        atom (Chem.Atom): Atom to check SMART representation of.
-    """
-    smarts = atom.GetSmarts()
-
-    # Check if this was a result of generalization
-    # non-carbon atom, generalized
-    if "#" in smarts:
-        atom_symbol = atom.GetSymbol()
-        atom.SetAtomicNum(0)
-        atom.SetProp("dummyLabel", "[{}]".format(atom_symbol))
-        atom.UpdatePropertyCache()
-    # aliphatic carbon, generalized (all non-generalized use explicit Hs)
-    elif "[C:" in smarts and "H" not in smarts:
-        atom.SetAtomicNum(0)
-        atom.SetProp("dummyLabel", "C[al]")
-        atom.UpdatePropertyCache()
-    elif "[c:" in smarts and "H" not in smarts:
-        atom.SetAtomicNum(0)
-        atom.SetProp("dummyLabel", "C[ar]")
-        atom.UpdatePropertyCache()
-
-    # Clear atom map number of 0 -> this is a dummy assignment!
-    if ":0]" in smarts:
-        atom.ClearProp("molAtomMapNumber")
 
 
 def template_smarts_to_image(

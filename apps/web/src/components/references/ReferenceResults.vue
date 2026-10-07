@@ -154,17 +154,14 @@
             <dd>{{ row.provenance.source }}</dd>
             <dt>记录 ID</dt>
             <dd>{{ row.id }}</dd>
-            <dt>文献与数据</dt>
-            <dd>
-              <a
-                v-if="evidenceCitation(row)"
-                :href="evidenceCitation(row).url"
-                target="_blank"
-                rel="noopener noreferrer"
-                >{{ evidenceCitation(row).label }}</a
-              >
-              <span v-else>链接未记录</span>
-            </dd>
+            <template v-for="citation in evidenceCitations(row)" :key="citation.url">
+              <dt>{{ citation.kind === 'data' ? '原始数据' : '文献' }}</dt>
+              <dd><a :href="citation.url" target="_blank" rel="noopener noreferrer"
+                >{{ citation.label }}</a></dd>
+            </template>
+            <template v-if="!evidenceCitations(row).length">
+              <dt>文献与数据</dt><dd>链接未记录</dd>
+            </template>
             <template v-if="row.provenance.dataset_id">
               <dt>数据集</dt>
               <dd>
@@ -242,7 +239,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { API } from "@/common/api";
 import { downloadChemicalFile } from "@/common/chemical-files";
 import {
-  evidenceCitation,
+  evidenceCitations,
   evidenceSourceLabel,
   recordedNumber,
   yieldAnalysisLabel,
