@@ -95,12 +95,12 @@ watch(() => [props.smiles, props.inputType], () => {
 <style scoped>
 .structure-preview { min-width: 0; }
 .preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; margin-bottom: 6px; font-size: 14px; font-weight: 500; }
-.structure-viewer { min-width: 0; overflow: hidden; background: var(--ws-surface); color: var(--ws-text); border: 1px solid var(--ws-border); border-radius: 8px; }
-.structure-viewer header { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 20px; border-bottom: 1px solid var(--ws-border); }
+.structure-viewer { display: flex; flex-direction: column; max-height: calc(100dvh - 48px); min-width: 0; overflow: hidden; background: var(--ws-surface); color: var(--ws-text); border: 1px solid var(--ws-border); border-radius: 8px; }
+.structure-viewer header { display: flex; flex-shrink: 0; align-items: center; gap: 12px; padding: 10px 12px 10px 20px; border-bottom: 1px solid var(--ws-border); }
 .structure-viewer h2 { min-width: 0; margin: 0; font-size: 16px; font-weight: 600; flex: 1; overflow-wrap: anywhere; }
 .preview-zoom { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .preview-zoom output { width: 48px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }
-.structure-viewer-viewport { height: min(65dvh, 640px); min-height: min(300px, calc(100dvh - 140px)); overflow: auto; background: var(--ws-muted-surface); }
+.structure-viewer-viewport { flex: 1 1 auto; height: min(65dvh, 640px); min-height: 0; overflow: auto; background: var(--ws-muted-surface); }
 .structure-viewer-viewport:focus-visible { outline: 2px solid var(--ws-accent); outline-offset: -3px; }
 .structure-viewer-sheet { min-width: 100%; min-height: 100%; display: grid; place-items: center; }
 .structure-viewer-sheet :deep(.smiles-image-container) { flex-shrink: 0; max-width: none; }

@@ -11,11 +11,11 @@ after(async () => { await browser?.close(); });
 
 for (const [index, id] of ids.entries()) {
   const modes = index === 0
-    ? [[1440, "light"], [1440, "dark"], [390, "light"], [390, "dark"]]
-    : [[1440, "light"], [390, "dark"]];
-  for (const [width, theme] of modes) {
+    ? [[1440, "light"], [1440, "dark"], [390, "light"], [390, "dark"], [568, "light", 320]]
+    : [[1440, "light"], [390, "dark"], [568, "dark", 320]];
+  for (const [width, theme, screenHeight] of modes) {
     test(`real route reading ${id} ${width}px ${theme}`, { timeout: 120000 }, async (t) => {
-      const { page, context, errors, blocked } = await readOnlyPage(browser, { width, height: width > 700 ? 960 : 844 }, theme);
+      const { page, context, errors, blocked } = await readOnlyPage(browser, { width, height: screenHeight || (width > 700 ? 960 : 844) }, theme);
       const name = `route-${index + 1}-${width}-${theme}`;
       try {
         const response = await page.request.get(`/api/results/retrieve?result_id=${id}`);
@@ -96,6 +96,10 @@ for (const [index, id] of ids.entries()) {
         const preview = page.getByRole("dialog").filter({has:page.locator(".structure-viewer")});
         await expect(preview).toBeVisible();
         await structures(preview);
+        assert(await preview.locator(".structure-viewer-viewport").evaluate(element => {
+          const canvas = element.getBoundingClientRect(), viewer = element.closest(".structure-viewer").getBoundingClientRect();
+          return canvas.height > 0 && canvas.top >= viewer.top && canvas.bottom <= viewer.bottom + 1;
+        }), "The preview canvas must remain fully reachable beneath its header on short screens");
         const initialWidth = await preview.locator("img").first().evaluate(image => image.getBoundingClientRect().width);
         await preview.getByRole("button", {name:"放大结构",exact:true}).click();
         await preview.getByRole("button", {name:"放大结构",exact:true}).click();
