@@ -43,7 +43,9 @@
         >
       </div>
       <template v-if="matchedResult"
-        ><StructurePreview
+        ><p v-if="snapshotMatches === false" class="stock-snapshot-warning" role="status">
+          当前目录与任务快照不同；这些记录不能作为原任务的采购闭合证据。
+        </p><StructurePreview
           :smiles="matchedResult.smiles"
           label="匹配结构"
           :width="900"
@@ -91,6 +93,7 @@
               <th>供应商</th>
               <th>目录号</th>
               <th>CAS</th>
+              <th>交期（目录）</th>
               <th>目录价格基准</th>
               <th class="stock-evidence-cell">目录证据</th>
             </tr>
@@ -103,6 +106,7 @@
               <td>{{ row.source }}</td>
               <td class="workspace-code">{{ row.catalog_id || "—" }}</td>
               <td>{{ row.cas || "—" }}</td>
+              <td class="stock-lead-time">{{ row.lead_time?.trim() || "未记录" }}</td>
               <td class="stock-price-cell">
                 <SupplierPrice
                   :record="row"
@@ -124,6 +128,9 @@
           </tbody>
         </table>
       </div>
+      <p v-if="matchedResult?.records.length" class="workspace-muted stock-catalog-note">
+        交期来自目录快照，非实时供货承诺。
+      </p>
     </section>
   </ModuleWorkbench>
 </template>
@@ -160,6 +167,9 @@ watch(
 );
 </script>
 <style scoped>
+.stock-snapshot-warning { padding: 8px 12px; margin-bottom: 16px; border-inline-start: 2px solid var(--ws-warning); color: var(--ws-warning); font-size: 13px; }
+.stock-lead-time { min-width: 100px; white-space: nowrap; }
+.stock-catalog-note { margin-top: 8px; font-size: 12px; }
 .stock-results {
   margin-top: 28px;
 }

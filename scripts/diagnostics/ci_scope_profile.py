@@ -226,6 +226,7 @@ REFERENCE_FILES = {
     "packages/knowledge_base/reaction_evidence.py",
     "apps/askcos-v2/askcos2_core/utils/reaction_drawing.py",
     "apps/askcos-v2/askcos2_core/utils/draw_impl.py",
+    "apps/askcos-v2/askcos2_core/utils/template_drawing.py",
 }
 REACTION_FIXTURES = {
     "tests/fixtures/askcos/forward_sorafenib_result.json",
@@ -465,6 +466,11 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
         "apps/askcos-v2/askcos2_core/utils/draw_impl.py",
     }:
         selected.add("tests/unit/test_reaction_drawing.py")
+    if roots & {
+        "apps/askcos-v2/askcos2_core/utils/draw_impl.py",
+        "apps/askcos-v2/askcos2_core/utils/template_drawing.py",
+    }:
+        selected.add("tests/unit/test_template_drawing.py")
     if roots & PRICING_FILES:
         selected.update(
             {

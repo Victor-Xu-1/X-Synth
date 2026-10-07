@@ -9,7 +9,7 @@
       <SmilesImage
         v-if="prefill"
         :smiles="prefill"
-        input-type="reaction"
+        :input-type="prefill.includes('>') ? 'reaction' : 'chemical'"
         width="100%"
         :height="140"
         :show-error-image="false"

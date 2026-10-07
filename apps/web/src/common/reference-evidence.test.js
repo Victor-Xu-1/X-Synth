@@ -7,7 +7,7 @@ import {
   ReferenceContractError,
 } from "./reaction-references";
 import {
-  evidenceCitation,
+  evidenceCitations,
   recordedNumber,
   recordedParameter,
   recordedTimeLabel,
@@ -65,7 +65,7 @@ test("real deposited ORD evidence shares exact-query binding and preserves prove
       reason: null,
     }).ready,
   ).toBe(true);
-  expect(evidenceCitation(original).url).toBe(original.publication_url);
+  expect(evidenceCitations(original)[0].url).toBe(original.publication_url);
 });
 
 test("different reaction inputs, unavailable source, missing license and tampered quantities fail closed", () => {
@@ -122,11 +122,26 @@ test("protobuf numeric display does not expose spurious float precision or relab
 
 test("a publication link cannot become a javascript or credential-bearing link", () => {
   expect(
-    evidenceCitation({ publication_url: "javascript:alert(1)" }),
-  ).toBeNull();
+    evidenceCitations({ publication_url: "javascript:alert(1)" }),
+  ).toEqual([]);
   expect(
-    evidenceCitation({
+    evidenceCitations({
       publication_url: "https://private:secret@example.test/",
     }),
-  ).toBeNull();
+  ).toEqual([]);
+});
+
+test("article and source-data citations remain separately reachable", () => {
+  expect(evidenceCitations(original)).toEqual([
+    { kind: "article", label: "查看原始文献", url: original.publication_url },
+    { kind: "data", label: "查看原始数据集", url: original.source_url },
+  ]);
+});
+test("citation lists validate each URL independently and do not duplicate identical links", () => {
+  const url = "https://example.org/article";
+  expect(evidenceCitations({ publication_url: "javascript:alert(1)", source_url: url }))
+    .toEqual([{ kind: "data", label: "查看原始数据集", url }]);
+  expect(evidenceCitations({ publication_url: url, source_url: url })).toHaveLength(1);
+  expect(evidenceCitations({ source_url: "https://private:secret@example.test/" })).toEqual([]);
+  expect(evidenceCitations(null)).toEqual([]);
 });

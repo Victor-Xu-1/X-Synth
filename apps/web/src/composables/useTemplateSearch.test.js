@@ -211,7 +211,7 @@ test("stale real list responses cannot finish a later search or expose old rows"
   state.filters.limit = 1;
   const first = state.search();
   await eventually(() => held.held[0]?.ready);
-  state.filters.direction = "forward";
+  state.filters.minCount = 2147483647;
   const second = state.search();
   await eventually(() => held.held[1]?.ready);
   held.held[0].release();
@@ -222,6 +222,7 @@ test("stale real list responses cannot finish a later search or expose old rows"
   await second;
   expect(state.loading.value).toBe(false);
   expect(state.searched.value).toBe(true);
+  expect(state.coverageReason.value).toBe("");
   expect(state.rows.value).toEqual([]);
 });
 
