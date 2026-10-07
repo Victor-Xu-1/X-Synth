@@ -159,6 +159,9 @@ Cartesian 顺序组合，不缓存子图或失败结果。精确终端与库存�
 
 性能由 `PerformanceBudget` 统一控制：一个活动任务、两种搜索并行、
 每个模型服务一次执行、四个 CPU 线程、索引批量查询和缓存就绪探针。
+应用生命周期负责启动前的真实就绪探针与定期刷新，刷新不延长默认十秒缓存有效期。
+有效缓存读取不排队等待后台刷新；过期、身份变更或已完成的失败刷新不能保留旧的就绪结果。
+健康 HTTP 探针按总时长预算执行并支持取消；应用停止与就绪缓存发布使用同一取消边界。
 排队等待、模型调用与一步扩展的超时同样由该预算统一管理；网关不再沿用
 短于排队时间的上游默认超时。可恢复失败保留原断点和具体依赖分类。
 具体 SLO 和真实测量要求见架构文档。不会以减少化学审查来满足速度指标。
@@ -168,6 +171,7 @@ Cartesian 顺序组合，不缓存子图或失败结果。精确终端与库存�
 ```bash
 .venv/bin/python -m pytest tests/unit/test_product_api_security.py tests/unit/test_route_request.py -q
 .venv/bin/python -m scripts.diagnostics.benchmark_stock_index --index /absolute/catalog.sqlite
+.venv/bin/python -m scripts.diagnostics.benchmark_platform --job-id ACTUAL_SEARCH_JOB_UUID --samples 30 --interval-seconds 2
 cd apps/web
 npm test -- --runInBand src/common/unified-route.test.js src/common/job-state.test.js
 npm run build
@@ -177,6 +181,9 @@ npm audit --omit=dev --audit-level=high
 验证只覆盖当前改动及其调用链；完整回归需明确授权，不作为每次改动的默认动作。
 真实模型、数据库、API、Chrome、任务恢复和性能验收按受影响路径在配置好的环境执行。
 单元测试或页面可打开不能证明化学路线已经闭合。测试记录与截图不提交到源码仓库。
+性能采样使用正在搜索的真实任务；间隔采样覆盖多个就绪缓存刷新周期。
+读取失败保留端点、HTTP 状态和安全错误分类，仍输出其他采样结果并返回非零退出码；
+不重试失败读数，不把快速失败算作通过，也不保留每次读取的完整任务正文。
 
 ## 安全与许可
 

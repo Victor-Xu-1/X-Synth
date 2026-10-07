@@ -1,11 +1,18 @@
+import json
 import os
 import subprocess
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Event, Thread, current_thread
+from types import SimpleNamespace
 
 import pytest
 
 from packages.orchestrator import runtime_health
+from packages.orchestrator.runtime_health import _probe as http_probe
 from packages.platform.atomic_file import write_json
 from packages.platform.native_endpoints import resolve_native_endpoints
 from packages.platform.native_search_contract import NATIVE_SEARCH_READY_PATH
@@ -24,14 +31,14 @@ def health(tmp_path, monkeypatch):
     monkeypatch.setattr(runtime_health, "StockIndex", lambda _path: type("FixtureStock", (), {"summary": snapshot})())
     calls = []
 
-    def probe(url, timeout, *, require_ready):
+    def probe(url, timeout, *, require_ready, _cancel=None):
         calls.append(url)
         return True, {"status": "ready", "stock_snapshot": snapshot, "models": {"pistachio": {}, "pistachio_ringbreaker": {}}}
 
     monkeypatch.setattr(runtime_health, "_probe", probe)
 
-    def child_probe(url, timeout, *, strategy, key):
-        return probe(url + NATIVE_SEARCH_READY_PATH, timeout, require_ready=True)
+    def child_probe(url, timeout, *, strategy, key, _cancel=None):
+        return probe(url + NATIVE_SEARCH_READY_PATH, timeout, require_ready=True, _cancel=_cancel)
 
     monkeypatch.setattr(runtime_health, "_probe_search", child_probe)
     runtime_health._cache.clear()
@@ -130,7 +137,7 @@ def test_missing_or_wrong_key_cannot_reuse_cached_authenticated_readiness(health
     state, calls, _ = health
     expected = os.environ["X_SYNTH_NATIVE_SEARCH_KEY"]
 
-    def child_probe(url, timeout, *, strategy, key):
+    def child_probe(url, timeout, *, strategy, key, _cancel=None):
         calls.append(url + NATIVE_SEARCH_READY_PATH)
         return bool(key == expected), {"status": "ready"}
 
@@ -186,3 +193,305 @@ def test_qualification_dependency_cannot_claim_readiness_with_truthy_nonboolean(
     checks = route_dependencies()
     checks["forward_predictor"] = invalid
     assert not runtime_health._route_dependencies_ready(checks)
+
+
+@pytest.fixture
+def control_plane(health, monkeypatch):
+    source = SimpleNamespace(
+        block=Event(), entered=Event(), release=Event(), ready=True, requests=[], handlers=[],
+    )
+    snapshot = runtime_health.StockIndex("controlled-stock-fixture").summary
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            source.handlers.append(current_thread())
+            assert self.path == "/health/ready"
+            source.requests.append(self.path)
+            if source.block.is_set():
+                source.entered.set()
+                source.release.wait(2)
+            payload = json.dumps({
+                "status": "ready" if source.ready else "unavailable",
+                "stock_snapshot": snapshot,
+            }).encode()
+            self.send_response(200 if source.ready else 503)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            try:
+                self.wfile.write(payload)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.daemon_threads = False
+    serving = Thread(target=lambda: server.serve_forever(poll_interval=0.01))
+    serving.start()
+    endpoint = f"http://127.0.0.1:{server.server_port}"
+    monkeypatch.setenv("X_SYNTH_ASKCOS_URL", endpoint)
+    previous = runtime_health._probe
+
+    def probe(url, timeout, *, require_ready, _cancel=None):
+        if url == endpoint + "/health/ready":
+            return http_probe(url, timeout, require_ready=require_ready, _cancel=_cancel)
+        return previous(url, timeout, require_ready=require_ready, _cancel=_cancel)
+
+    monkeypatch.setattr(runtime_health, "_probe", probe)
+    try:
+        yield source
+    finally:
+        source.release.set()
+        server.shutdown()
+        serving.join(timeout=2)
+        server.server_close()
+        assert not serving.is_alive()
+        assert all(not handler.is_alive() for handler in source.handlers)
+
+
+def test_healthy_cached_read_does_not_wait_for_real_http_refresh(health, control_plane):
+    state, _, _ = health
+    assert runtime_health.route_runtime_status(state)["route_search_ready"]
+    control_plane.block.set()
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        refresh = executor.submit(runtime_health.route_runtime_status, state, force=True)
+        try:
+            assert control_plane.entered.wait(1)
+            started = time.monotonic()
+            read = executor.submit(runtime_health.route_runtime_status, state)
+            assert read.result(timeout=0.25)["route_search_ready"]
+            assert time.monotonic() - started < 0.25
+            assert not refresh.done()
+        finally:
+            control_plane.release.set()
+        assert refresh.result(timeout=2)["route_search_ready"]
+
+
+@pytest.mark.parametrize("cache_state", ["missing", "expired"])
+def test_missing_or_expired_cache_never_returns_old_ready_during_refresh(
+    health, control_plane, cache_state
+):
+    state, _, _ = health
+    assert runtime_health.route_runtime_status(state)["route_search_ready"]
+    with runtime_health._cache_lock:
+        if cache_state == "missing":
+            runtime_health._cache.clear()
+        else:
+            key, (_, snapshot) = next(iter(runtime_health._cache.items()))
+            runtime_health._cache[key] = (time.monotonic() - 11, snapshot)
+    control_plane.ready = False
+    control_plane.block.set()
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        refresh = executor.submit(runtime_health.route_runtime_status, state, force=True)
+        try:
+            assert control_plane.entered.wait(1)
+            read = executor.submit(runtime_health.route_runtime_status, state)
+            with pytest.raises(TimeoutError):
+                read.result(timeout=0.1)
+        finally:
+            control_plane.release.set()
+        assert not refresh.result(timeout=2)["route_search_ready"]
+        result = read.result(timeout=2)
+        assert not result["route_search_ready"]
+        assert result["dependency_errors"]["gateway"] == "dependency_unavailable"
+
+
+def test_forced_refresh_propagates_failure_and_invalidates_previous_ready(health, monkeypatch):
+    state, _, _ = health
+    assert runtime_health.route_runtime_status(state)["route_search_ready"]
+
+    def failed_probe(*_args, **_kwargs):
+        raise RuntimeError("controlled readiness failure")
+
+    monkeypatch.setattr(runtime_health, "_probe", failed_probe)
+    with pytest.raises(RuntimeError, match="controlled readiness failure"):
+        runtime_health.route_runtime_status(state, force=True)
+    assert not runtime_health._cache
+
+
+def test_cached_result_checks_identity_again_before_return(health, monkeypatch):
+    state, _, manifest = health
+    assert runtime_health.route_runtime_status(state)["route_search_ready"]
+    lifecycle = runtime_health._native_lifecycle
+    reads = []
+
+    def changing_lifecycle():
+        token = lifecycle()
+        reads.append(token)
+        if len(reads) == 1:
+            manifest.update(status="stopped", revision=2)
+            write_json(state / "native/runtime.json", manifest)
+        return token
+
+    monkeypatch.setattr(runtime_health, "_native_lifecycle", changing_lifecycle)
+    assert not runtime_health.route_runtime_status(state)["route_search_ready"]
+    assert len(reads) >= 2
+
+
+def test_cache_invalidation_during_fast_validation_cannot_return_detached_ready_copy(
+    health, monkeypatch
+):
+    state, calls, _ = health
+    assert runtime_health.route_runtime_status(state)["route_search_ready"]
+    lifecycle = runtime_health._native_lifecycle
+    reads = []
+
+    def invalidating_lifecycle():
+        reads.append(True)
+        if len(reads) == 2:
+            with runtime_health._cache_lock:
+                runtime_health._cache.clear()
+        return lifecycle()
+
+    monkeypatch.setattr(runtime_health, "_native_lifecycle", invalidating_lifecycle)
+    assert runtime_health.route_runtime_status(state)["route_search_ready"]
+    assert len(calls) == 26
+
+
+def test_entry_expiring_during_cache_copy_requires_new_probes(health, monkeypatch):
+    state, calls, _ = health
+    assert runtime_health.route_runtime_status(state)["route_search_ready"]
+    with runtime_health._cache_lock:
+        key, (_, snapshot) = next(iter(runtime_health._cache.items()))
+        runtime_health._cache[key] = (time.monotonic() - 9.99, snapshot)
+    previous = runtime_health.deepcopy
+    delayed = []
+
+    def copying(value):
+        if not delayed and isinstance(value, dict) and "route_search_ready" in value:
+            delayed.append(True)
+            time.sleep(0.02)
+        return previous(value)
+
+    monkeypatch.setattr(runtime_health, "deepcopy", copying)
+    assert runtime_health.route_runtime_status(state)["route_search_ready"]
+    assert len(calls) == 26
+
+
+def test_config_change_during_probe_never_caches_mixed_configuration(health, monkeypatch):
+    state, _, _ = health
+    previous = runtime_health._probe
+
+    def changing_probe(*args, **kwargs):
+        if args[0].endswith(":9100/health/ready"):
+            monkeypatch.setenv("X_SYNTH_ASKCOS_MODELS", "unloaded-model")
+        return previous(*args, **kwargs)
+
+    monkeypatch.setattr(runtime_health, "_probe", changing_probe)
+    result = runtime_health.route_runtime_status(state)
+    assert not result["route_search_ready"]
+    assert not runtime_health._cache
+
+
+def test_concurrent_cold_reads_share_one_real_probe_round(health, control_plane):
+    state, _, _ = health
+    control_plane.block.set()
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        reads = [executor.submit(runtime_health.route_runtime_status, state) for _ in range(8)]
+        try:
+            assert control_plane.entered.wait(1)
+            assert len(control_plane.requests) == 1
+        finally:
+            control_plane.release.set()
+        assert all(read.result(timeout=2)["route_search_ready"] for read in reads)
+    assert len(control_plane.requests) == 1
+
+
+def test_concurrent_forced_calls_each_perform_real_probes(health, control_plane):
+    state, _, _ = health
+    assert runtime_health.route_runtime_status(state)["route_search_ready"]
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        reads = [executor.submit(runtime_health.route_runtime_status, state, force=True) for _ in range(4)]
+        assert all(read.result(timeout=2)["route_search_ready"] for read in reads)
+    assert len(control_plane.requests) == 5
+
+
+@pytest.mark.parametrize("name,value", [
+    ("X_SYNTH_HEALTH_CACHE_SECONDS", "1"),
+    ("X_SYNTH_MODEL_THREADS", "2"),
+])
+def test_exact_budget_changes_do_not_return_previous_cached_budget(health, monkeypatch, name, value):
+    state, calls, _ = health
+    runtime_health.route_runtime_status(state)
+    monkeypatch.setenv(name, value)
+    result = runtime_health.route_runtime_status(state)
+    assert result["performance_budget"][name.removeprefix("X_SYNTH_").lower()] == float(value)
+    assert len(calls) == 26
+
+
+def test_auth_change_while_copying_cache_never_returns_previous_authenticated_ready(health, monkeypatch):
+    state, _, _ = health
+    expected = os.environ["X_SYNTH_NATIVE_SEARCH_KEY"]
+    monkeypatch.setattr(runtime_health, "_probe_search", lambda url, timeout, **kwargs: (
+        kwargs["key"] == expected, {"status": "ready"}
+    ))
+    assert runtime_health.route_runtime_status(state)["route_search_ready"]
+    previous = runtime_health.deepcopy
+    changed = []
+
+    def copying(value):
+        result = previous(value)
+        if not changed and isinstance(value, dict) and "route_search_ready" in value:
+            changed.append(True)
+            monkeypatch.setenv("X_SYNTH_NATIVE_SEARCH_KEY", "changed-control-plane-key-" + "z" * 32)
+        return result
+
+    monkeypatch.setattr(runtime_health, "deepcopy", copying)
+    assert not runtime_health.route_runtime_status(state)["route_search_ready"]
+
+
+@pytest.mark.parametrize("dependency", [
+    "gateway", "forward_predictor", "configured_models_loaded",
+    "commercial_stock", "inventory_consistent", "reaction_evidence_consistent",
+])
+def test_refresh_keeps_every_required_source_failure_not_ready(health, monkeypatch, dependency):
+    state, _, _ = health
+    previous = runtime_health._probe
+
+    def probe(url, timeout, *, require_ready, _cancel=None):
+        ready, payload = previous(url, timeout, require_ready=require_ready, _cancel=_cancel)
+        if dependency == "gateway" and url.endswith(":9100/health/ready"):
+            return False, {"status": "unavailable"}
+        if dependency == "forward_predictor" and url.endswith(":9911/health/ready"):
+            return False, {"status": "unavailable"}
+        if dependency == "configured_models_loaded" and url.endswith(":19410/health/ready"):
+            payload = {**payload, "models": {}}
+        if dependency == "inventory_consistent" and url.endswith(":9100/health/ready"):
+            payload = {**payload, "stock_snapshot": {**payload["stock_snapshot"], "catalog_sha256": "other"}}
+        return ready, payload
+
+    monkeypatch.setattr(runtime_health, "_probe", probe)
+    if dependency == "commercial_stock":
+        monkeypatch.delenv("X_SYNTH_STOCK_INDEX")
+    if dependency == "reaction_evidence_consistent":
+        monkeypatch.setenv("X_SYNTH_REACTION_LIBRARY_DB", str(state / "absent-evidence.sqlite"))
+    result = runtime_health.route_runtime_status(state, force=True)
+    assert result["service_checks"][dependency] is False
+    assert not result["route_search_ready"]
+    assert not result["backends"]["askcos_v2"]
+
+
+@pytest.mark.parametrize("field,value,endpoint,check", [
+    ("stock_snapshot", "synthetic-invalid-stock-metadata", ":9100", "inventory_consistent"),
+    ("models", 7, ":19410", "configured_models_loaded"),
+])
+def test_invalid_dependency_metadata_is_not_ready_and_can_recover(
+    health, monkeypatch, field, value, endpoint, check
+):
+    state, _, _ = health
+    previous = runtime_health._probe
+
+    def probe(url, timeout, *, require_ready, _cancel=None):
+        ready, payload = previous(url, timeout, require_ready=require_ready, _cancel=_cancel)
+        if url.endswith(endpoint + "/health/ready"):
+            payload = {**payload, field: value}
+        return ready, payload
+
+    monkeypatch.setattr(runtime_health, "_probe", probe)
+    result = runtime_health.route_runtime_status(state, force=True)
+    assert result["service_checks"][check] is False
+    assert result["route_search_ready"] is False
+    monkeypatch.setattr(runtime_health, "_probe", previous)
+    assert runtime_health.route_runtime_status(state, force=True)["route_search_ready"] is True

@@ -13,6 +13,7 @@ from packages.adapters.optimization.runtime import OptimizationRuntime
 from packages.adapters.stock.stock_index import StockIndex, StockIndexError
 from packages.chemistry.assessment import AssessmentUnavailable, assess_molecule
 from packages.orchestrator.job_repository import JobRepository
+from packages.orchestrator.health_refresh import RuntimeHealthRefresh
 from packages.orchestrator.pipeline import RoutePipeline
 from packages.orchestrator.route_request import RouteJobRequest
 from packages.orchestrator.runtime_health import route_runtime_status
@@ -108,14 +109,24 @@ def create_app(
     except (KeyError, StockIndexError):
         stock = None
 
+    health_refresh = RuntimeHealthRefresh(
+        lambda cancel: route_runtime_status(repo_root, force=True, _cancel=cancel), budget=budget
+    )
+
     @asynccontextmanager
     async def lifespan(app):
-        optimizer.health()
-        if pipeline is not None:
-            pipeline.start()
-        yield
-        if pipeline is not None:
-            pipeline.stop()
+        try:
+            optimizer.health()
+            health_refresh.start()
+            if pipeline is not None:
+                pipeline.start()
+            yield
+        finally:
+            try:
+                health_refresh.stop()
+            finally:
+                if pipeline is not None:
+                    pipeline.stop()
 
     app = FastAPI(
         title="X-Synth",
@@ -129,9 +140,12 @@ def create_app(
     app.state.repository = repository
     app.state.documents = documents
     app.state.pipeline = pipeline
+    app.state.health_refresh = health_refresh
 
     def readiness():
+        health_refresh.check()
         result = route_runtime_status(repo_root)
+        health_refresh.check()
         worker_ready = (
             pipeline is not None
             and pipeline.thread is not None

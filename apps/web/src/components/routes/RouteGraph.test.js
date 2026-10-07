@@ -7,7 +7,7 @@ Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID });
 jest.mock("@vue-flow/core", () => ({
   VueFlow: {
     name: "VueFlow",
-    props: ["nodes", "edges"],
+    props: ["nodes", "edges", "minZoom"],
     emits: ["node-drag-stop", "connect"],
     template: "<div />",
   },
@@ -32,6 +32,15 @@ function setup(graph, editable = false) {
   return wrapper;
 }
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
+
+test.each(["overview", "reading", "editable"])(
+  "%s can fit a wide route below the former fixed zoom floor",
+  async (mode) => {
+    const wrapper = setup({ target_id: "target", nodes: [], edges: [] });
+    await wrapper.setProps({ [mode]: true });
+    expect(wrapper.getComponent({ name: "VueFlow" }).props("minZoom")).toBe(0.01);
+  },
+);
 
 test("starting-node flags scan incoming edges once and are reused when scores change", async () => {
   let targetReads = 0;

@@ -127,6 +127,28 @@ def test_native_and_asset_boundaries_have_explicit_related_scope(path):
     assert profile.architecture.related_tests({path})
 
 
+def test_platform_benchmark_selects_only_measurement_and_budget_contracts(tmp_path):
+    path = "scripts/diagnostics/benchmark_platform.py"
+    expected = {"tests/unit/test_platform_benchmark.py", "tests/unit/test_performance_budget.py"}
+    files = {name: "pass" for name in expected}
+    item = snapshot(tmp_path, {**files, path: "pass"})
+    profile.guard_paths({path})
+    assert profile.python_tests(item, item, {path}) == sorted(expected)
+
+
+@pytest.mark.parametrize("path", [
+    "packages/orchestrator/health_probe.py",
+    "packages/orchestrator/health_refresh.py",
+])
+def test_owned_health_modules_include_probe_and_lifecycle_regressions(path):
+    profile.guard_paths({path})
+    assert {
+        "tests/unit/test_health_probe.py",
+        "tests/unit/test_runtime_health_refresh.py",
+        "tests/unit/test_native_runtime_health.py",
+    } <= profile.architecture.related_tests({path})
+
+
 def test_ord_import_checks_are_isolated_and_diff_selected():
     assert profile.reaction_data_tests(
         {"packages/knowledge_base/ord_extract.py"}
