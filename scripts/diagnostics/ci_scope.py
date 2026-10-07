@@ -28,7 +28,7 @@ def command(root: Path, *args: str) -> str:
 
 
 def git(root: Path, *args: str) -> str:
-    return command(root, "git", *args)
+    return command(root, "git", "--no-optional-locks", *args)
 
 
 def revision(root: Path, ref: str) -> str:

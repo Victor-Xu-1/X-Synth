@@ -3,7 +3,7 @@
     <div class="tool-layout">
       <form
         class="tool-input-panel tool-fields template-controls"
-        @submit.prevent="search"
+        @submit.prevent="changePage(search)"
       >
         <v-select
           v-model="filters.source"
@@ -37,7 +37,7 @@
           type="number"
           min="1"
           max="500"
-          label="结果上限"
+          label="每页条数"
           variant="outlined"
           density="compact"
           hide-details
@@ -88,7 +88,45 @@
           </div>
         </template>
         <div v-show="!isDetail" class="template-list-region">
-          <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
+          <div v-if="error" ref="pageError" class="tool-error" role="alert" tabindex="-1">
+            {{ error }}
+            <div class="template-error-actions">
+              <v-btn class="template-retry" variant="text" prepend-icon="mdi-refresh"
+                :disabled="!canSearch" @click="changePage(retrySearch)">重试此页</v-btn>
+              <v-btn class="template-new-search" variant="text" prepend-icon="mdi-magnify"
+                :disabled="!canSearch" @click="changePage(search)">重新检索</v-btn>
+            </div>
+          </div>
+          <nav v-if="showPagination" class="template-pagination" aria-label="模板列表分页">
+            <div ref="pageSummary" class="template-page-summary" role="status" aria-live="polite" tabindex="-1">
+              <template v-if="searched">
+                <span class="template-matched-count">筛选匹配 {{ matchedCount.toLocaleString() }} 条模板</span>
+                <span class="template-result-count">当前页 {{ rows.length }} 条模板</span>
+                <span v-if="pageNumber !== null">第 {{ pageNumber }} 页</span>
+              </template>
+              <span v-else>{{ busy ? "读取当前页" : "当前页未读取" }}</span>
+            </div>
+            <div class="template-page-actions">
+              <v-tooltip text="返回首页">
+                <template #activator="{ props: activator }">
+                  <v-btn v-bind="activator" icon="mdi-page-first" variant="text" size="small"
+                    aria-label="返回首页" :disabled="!canFirst" @click="changePage(firstPage)" />
+                </template>
+              </v-tooltip>
+              <v-tooltip text="上一页">
+                <template #activator="{ props: activator }">
+                  <v-btn v-bind="activator" icon="mdi-chevron-left" variant="text" size="small"
+                    aria-label="上一页" :disabled="!canPrevious" @click="changePage(previousPage)" />
+                </template>
+              </v-tooltip>
+              <v-tooltip text="下一页">
+                <template #activator="{ props: activator }">
+                  <v-btn v-bind="activator" icon="mdi-chevron-right" variant="text" size="small"
+                    aria-label="下一页" :disabled="!canNext" @click="changePage(nextPage)" />
+                </template>
+              </v-tooltip>
+            </div>
+          </nav>
           <div v-if="busy" class="workspace-loading" role="status">
             <v-progress-linear indeterminate /><span>检索模板记录</span>
           </div>
@@ -97,21 +135,9 @@
             <h2>模板知识库</h2>
           </div>
           <div v-else-if="searched && !rows.length" class="workspace-empty">
-            <span class="template-result-count">已返回 0 条模板</span>
             没有匹配的模板
           </div>
-          <div v-else ref="list" class="template-table">
-            <div
-              v-if="searched && !error"
-              class="template-result-summary"
-              role="status"
-            >
-              <span class="template-result-count">已返回 {{ rows.length }} 条模板</span>
-              <span>按反应例数排序 · 本次上限 {{ filters.limit }} 条</span>
-              <p v-if="atLimit" class="template-limit-note">
-                达到本次上限；匹配总数及是否截断未提供。
-              </p>
-            </div>
+          <div v-else-if="searched && !error" :key="pageKey" ref="list" class="template-table">
             <article
               v-for="row in rows"
               :key="identity(row)"
@@ -157,7 +183,7 @@
   </ModuleWorkbench>
 </template>
 <script setup>
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import TemplateDetails from "@/components/templates/TemplateDetails.vue";
 import { useTemplateSearch } from "@/composables/useTemplateSearch";
@@ -168,8 +194,14 @@ const {
   rows,
   searched,
   busy,
-  atLimit,
   canSearch,
+  canNext,
+  canPrevious,
+  canFirst,
+  pageKey,
+  pageNumber,
+  matchedCount,
+  showPagination,
   coverageReason,
   directionItems,
   error,
@@ -180,35 +212,53 @@ const {
   detailLoading,
   detailError,
   search,
+  nextPage,
+  previousPage,
+  firstPage,
+  retrySearch,
   openTemplate,
   backToList,
   loadDetail,
 } = useTemplateSearch();
 const list = ref(null);
+const pageSummary = ref(null), pageError = ref(null);
 const identity = (row) => templateDetailLocation(row)?.query.id;
 const source = (row) => row.source || row.template_set || row.raw?.template_set;
-let returnPoint;
+let returnPoint, active = true, focusGeneration = 0;
+async function changePage(operation) {
+  const generation = ++focusGeneration;
+  returnPoint = null;
+  await operation();
+  await nextTick();
+  if (!active || generation !== focusGeneration || isDetail.value || busy.value) return;
+  const target = error.value ? pageError.value : searched.value ? pageSummary.value : null;
+  if (!target?.isConnected) return;
+  const scroller = target.closest(".workspace-page");
+  if (scroller) scroller.scrollTop = Math.max(0, scroller.scrollTop +
+    target.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 16);
+  target.focus({ preventScroll: true });
+}
 function inspect(row, event) {
   const scroller = event.currentTarget.closest(".workspace-page");
   returnPoint = {
     id: identity(row),
-    key: JSON.stringify(filters),
+    key: pageKey.value,
     top: scroller?.scrollTop || 0,
   };
   return openTemplate(row);
 }
 watch(
-  () => JSON.stringify(filters),
+  pageKey,
   () => { returnPoint = null; },
   { flush: "sync" },
 );
 watch(
   isDetail,
   async (value, previous) => {
-    if (value || !previous || !returnPoint || returnPoint.key !== JSON.stringify(filters)) return;
+    if (value || !previous || !returnPoint || returnPoint.key !== pageKey.value) return;
     const point = returnPoint;
     await nextTick();
-    if (returnPoint !== point || isDetail.value) return;
+    if (!active || returnPoint !== point || isDetail.value) return;
     const button = [...(list.value?.querySelectorAll(".template-open") || [])]
       .find((element) => element.dataset.templateId === point.id);
     if (!button) return;
@@ -224,6 +274,7 @@ watch(
   },
   { flush: "post" },
 );
+onUnmounted(() => { active = false; focusGeneration++; returnPoint = null; });
 const total = computed(() => {
   const count = health.value?.template_count;
   return Number.isSafeInteger(count) && count >= 0
@@ -232,33 +283,60 @@ const total = computed(() => {
 });
 const sources = computed(() => [
   { title: "全部来源", value: "" },
-  ...(health.value?.sources || []).map((value) => ({ title: value, value })),
+  ...(Array.isArray(health.value?.sources) ? health.value.sources : [])
+    .filter((value) => typeof value === "string" && value.length <= 128 && value && !/[\s:]/.test(value))
+    .map((value) => ({ title: value, value })),
 ]);
 </script>
 <style scoped>
 .template-controls {
   align-self: start;
+  position: static;
+}
+@media (min-width: 1200px) and (min-height: 800px) {
+  .template-controls {
+    position: sticky;
+    top: 16px;
+    max-height: calc(100dvh - 180px);
+    overflow-y: auto;
+  }
 }
 .template-reading {
   display: grid;
   gap: 20px;
   min-width: 0;
 }
-.template-result-summary {
+.template-pagination {
   display: flex;
-  gap: 8px 20px;
+  align-items: center;
+  gap: 8px 16px;
   flex-wrap: wrap;
   font-size: 12px;
   color: var(--ws-muted);
   padding: 0 0 12px;
   border-bottom: 1px solid var(--ws-border);
 }
+.template-page-summary {
+  display: flex;
+  flex: 1 1 260px;
+  min-width: 0;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+.template-page-actions, .template-error-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  min-height: 32px;
+}
+.template-page-summary:focus-visible, .tool-error:focus-visible {
+  outline: 2px solid var(--ws-accent);
+  outline-offset: 3px;
+}
 .template-result-count {
   color: var(--ws-text);
-}
-.template-limit-note {
-  flex-basis: 100%;
-  margin: 0;
 }
 .template-back {
   margin-bottom: 20px;

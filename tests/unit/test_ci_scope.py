@@ -17,6 +17,13 @@ def snapshot(tmp_path, content):
     return SimpleNamespace(root=tmp_path, files=set(content), text=content.__getitem__)
 
 
+def test_git_inspection_does_not_refresh_or_lock_the_worktree_index(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(scope, "command", lambda root, *args: calls.append((root, args)) or "result")
+    assert scope.git(tmp_path, "diff", "--name-only") == "result"
+    assert calls == [(tmp_path, ("git", "--no-optional-locks", "diff", "--name-only"))]
+
+
 def manifest(dependencies=None, **extra):
     return {
         "name": "x-synth-web",
@@ -136,6 +143,21 @@ def test_platform_benchmark_selects_only_measurement_and_budget_contracts(tmp_pa
     assert profile.python_tests(item, item, {path}) == sorted(expected)
 
 
+def test_template_paging_selects_cursor_api_and_legacy_consumers_only(tmp_path):
+    path = "packages/knowledge_base/template_paging.py"
+    expected = {
+        "tests/unit/test_template_library_api.py",
+        "tests/unit/test_template_library_paging.py",
+        "tests/unit/test_template_compilation.py",
+        "tests/unit/test_template_export.py",
+        "tests/unit/test_template_contract_data.py",
+        "tests/unit/test_product_api_security.py",
+    }
+    item = snapshot(tmp_path, {**{name: "pass" for name in expected}, path: "pass"})
+    profile.guard_paths({path})
+    assert profile.python_tests(item, item, {path}) == sorted(expected)
+
+
 @pytest.mark.parametrize("path", [
     "packages/orchestrator/health_probe.py",
     "packages/orchestrator/health_refresh.py",
@@ -216,6 +238,7 @@ def test_native_template_and_history_changes_use_explicit_related_contracts(tmp_
             "tests/unit/test_native_drawing_proxy.py",
             "tests/unit/test_product_api_security.py",
             "tests/unit/test_template_library_api.py",
+            "tests/unit/test_template_library_paging.py",
             "tests/unit/test_template_compilation.py",
             "tests/unit/test_template_contract_data.py",
             "tests/unit/test_template_export.py",
@@ -233,6 +256,7 @@ def test_native_template_and_history_changes_use_explicit_related_contracts(tmp_
     ) == sorted(
         [
             "tests/unit/test_template_library_api.py",
+            "tests/unit/test_template_library_paging.py",
             "tests/unit/test_product_api_security.py",
             "tests/unit/test_template_compilation.py",
             "tests/unit/test_template_contract_data.py",

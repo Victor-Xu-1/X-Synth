@@ -380,6 +380,142 @@ def test_cached_summary_is_defensive_and_refreshes_on_asset_replacement(database
         service.summary()
 
 
+@pytest.fixture
+def paging_index(tmp_path):
+    from test_template_library_paging import create_paging_database
+
+    return create_paging_database(tmp_path / "paging.sqlite")
+
+
+def test_query_api_adds_genuine_pages_without_changing_legacy_fields(paging_index):
+    expected = TemplateLibraryService(paging_index).query_templates(limit=500)
+    with template_client(paging_index) as client:
+        first = client.post(
+            "/api/v1/template-library/query", json={"limit": 2},
+        )
+        assert first.status_code == 200
+        body = first.json()
+        assert body["count"] == len(body["templates"]) == 2
+        assert body["matched_count"] == len(expected) == 21
+        assert body["has_more"] is True and body["next_cursor"]
+        second = client.post("/api/v1/template-library/query", json={
+            "limit": 500, "cursor": body["next_cursor"],
+        })
+        assert second.status_code == 200
+        tail = second.json()
+        assert tail["count"] == 19 and tail["matched_count"] == 21
+        assert tail["has_more"] is False and tail["next_cursor"] is None
+        rows = body["templates"] + tail["templates"]
+        assert [row["template_id"] for row in rows] == [
+            row.template_id for row in expected
+        ]
+        assert [row["raw"] for row in rows] == [row.raw for row in expected]
+        assert all("source_path" not in row for row in rows)
+
+
+def test_query_api_empty_matches_have_exact_zero_total(paging_index):
+    with template_client(paging_index) as client:
+        response = client.post(
+            "/api/v1/template-library/query", json={"sources": ["uninstalled"]},
+        )
+    assert response.status_code == 200
+    assert response.json() == {
+        "count": 0, "templates": [], "matched_count": 0,
+        "next_cursor": None, "has_more": False,
+    }
+
+
+@pytest.mark.parametrize("body", [
+    {"cursor": ""}, {"cursor": "invalid"}, {"cursor": "x" * 2049},
+    {"cursor": 42}, {"cursor": []}, {"offset": 1},
+    {"limit": True}, {"limit": "2"}, {"min_count": True},
+    {"limit": 501}, {"sources": ["x"] * 21}, {"direction": "invalid"},
+])
+def test_query_api_rejects_malformed_or_unbounded_input(paging_index, body):
+    with template_client(paging_index) as client:
+        assert client.post(
+            "/api/v1/template-library/query", json=body,
+        ).status_code == 422
+
+
+def test_query_api_filter_mismatch_and_snapshot_replacement_are_visible(paging_index):
+    with template_client(paging_index) as client:
+        first = client.post("/api/v1/template-library/query", json={"limit": 1})
+        cursor = first.json()["next_cursor"]
+        mismatch = client.post("/api/v1/template-library/query", json={
+            "cursor": cursor, "sources": ["ord"],
+        })
+        assert mismatch.status_code == 422
+        replacement = paging_index.with_name("replacement.sqlite")
+        with (
+            closing(sqlite3.connect(paging_index)) as original,
+            closing(sqlite3.connect(replacement)) as updated,
+        ):
+            original.backup(updated)
+        replacement.replace(paging_index)
+        stale = client.post("/api/v1/template-library/query", json={"cursor": cursor})
+        assert stale.status_code == 409
+        assert "templates" not in stale.json()
+        assert str(paging_index) not in stale.text
+        assert client.post("/api/v1/template-library/query", json={}).status_code == 200
+
+
+@pytest.mark.parametrize("headers", [
+    {"Origin": "https://attacker.example"}, {"Host": "attacker.example"},
+    {"Sec-Fetch-Site": "cross-site"},
+])
+def test_query_pagination_keeps_the_existing_identity_boundary(paging_index, headers):
+    with template_client(paging_index) as client:
+        assert client.post(
+            "/api/v1/template-library/query", json={"limit": 1}, headers=headers,
+        ).status_code == 403
+
+
+def test_query_pagination_rejects_remote_clients_and_missing_shared_login(
+    paging_index, monkeypatch,
+):
+    with template_client(paging_index, host="192.0.2.1") as client:
+        assert client.post("/api/v1/template-library/query", json={}).status_code == 403
+    monkeypatch.setenv("X_SYNTH_AUTH_MODE", "askcos")
+    with template_client(paging_index) as client:
+        assert client.post("/api/v1/template-library/query", json={}).status_code == 401
+
+
+@pytest.mark.parametrize("kind", ["unconfigured", "missing", "corrupt", "bad_record"])
+def test_query_unavailable_index_never_becomes_empty_success(tmp_path, paging_index, kind):
+    path = None if kind == "unconfigured" else tmp_path / "unavailable.sqlite"
+    if kind == "corrupt":
+        path.write_bytes(b"not SQLite")
+    elif kind == "bad_record":
+        path = paging_index
+        with closing(sqlite3.connect(path)) as connection:
+            connection.execute("update templates set raw_json='invalid json'")
+            connection.commit()
+    with template_client(path) as client:
+        response = client.post("/api/v1/template-library/query", json={})
+    assert response.status_code == 503
+    assert "templates" not in response.json()
+    assert str(path) not in response.text
+
+
+@pytest.mark.parametrize("column,value", [
+    ("template_count", 0), ("template_count", -1), ("template_count", 1.5),
+    ("template_count", float("inf")), ("template_id", "bare-id"),
+    ("template_id", "pistachio:wrong-source"),
+])
+def test_query_corrupt_counts_and_namespaces_are_redacted_errors(paging_index, column, value):
+    with closing(sqlite3.connect(paging_index)) as connection:
+        connection.execute(
+            f"update templates set {column}=? where template_id='ord:test-0000'", (value,),
+        )
+        connection.commit()
+    with template_client(paging_index) as client:
+        response = client.post("/api/v1/template-library/query", json={"limit": 500})
+    assert response.status_code == 503
+    assert "templates" not in response.json()
+    assert str(paging_index) not in response.text
+
+
 def contract_rpc():
     """Portable HTTP/SQLite interface checks; native scientific acceptance is separate."""
     from test_template_contract_data import create_contract_database

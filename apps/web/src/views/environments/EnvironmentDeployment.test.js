@@ -11,6 +11,28 @@ import {
 const source = (file) =>
   readFileSync(resolve(__dirname, "../..", file), "utf8");
 
+function elements(node) {
+  return [node, ...(node.children || []).flatMap(elements)];
+}
+const bound = (node, name) => node.props.find(prop => prop.type === 7 && prop.name === "bind" && prop.arg?.content === name)?.exp?.content;
+
+test("environment tabs control persistent named panels rather than unrelated sections", () => {
+  const { descriptor } = parse(source("views/environments/EnvironmentDeployment.vue"));
+  const nodes = elements(descriptor.template.ast);
+  const tab = nodes.find(node => node.tag === "v-tab");
+  const panel = nodes.find(node => node.props?.some(prop => prop.name === "role" && prop.value?.content === "tabpanel"));
+  expect(panel).toBeDefined();
+  expect(bound(tab, "id")).toBe(bound(panel, "aria-labelledby"));
+  expect(bound(tab, "aria-controls")).toBe(bound(panel, "id"));
+  expect(bound(panel, "hidden")).toBe("tab !== view.value");
+  expect(bound(tab, "id")).toContain("viewId");
+});
+
+test("unread inventory health is not labelled as a failed consistency check", () => {
+  const page = source("views/environments/EnvironmentDeployment.vue");
+  expect(page).toMatch(/inventory_consistent === false/);
+});
+
 test.each([
   "views/environments/EnvironmentDeployment.vue",
   "components/environments/EngineEnvironment.vue",

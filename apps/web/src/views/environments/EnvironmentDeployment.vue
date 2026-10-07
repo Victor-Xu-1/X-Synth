@@ -4,7 +4,7 @@
       <div>
         <h1>环境部署</h1>
         <span class="environment-platform"
-          >X-Synth v{{ platform.version || productVersion }} ·
+        >X-Synth v{{ platform.version || productVersion }} ·
           {{ platform.system || "未读取" }}</span
         >
       </div>
@@ -13,157 +13,165 @@
         prepend-icon="mdi-refresh"
         :loading="loading"
         @click="refresh"
-        >刷新环境</v-btn
+      >刷新环境</v-btn
       >
     </header>
     <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
-    <v-tabs :model-value="tab" density="compact" @update:model-value="setTab"
-      ><v-tab value="engines">引擎环境</v-tab
-      ><v-tab value="configuration">部署配置</v-tab
-      ><v-tab value="monitor">运行监测</v-tab></v-tabs
-    >
-    <div v-if="loading && !snapshot.environments" class="workspace-loading">
-      正在读取环境
+    <v-tabs :model-value="tab" density="compact" aria-label="部署环境视图" @update:model-value="setTab">
+      <v-tab v-for="view in views" :key="view.value" :value="view.value"
+             :id="`${viewId}-${view.value}-tab`" :aria-controls="`${viewId}-${view.value}-panel`"
+      >{{ view.label }}</v-tab>
+    </v-tabs>
+    <div v-for="view in views" :key="view.value" class="environment-panel" role="tabpanel"
+         :id="`${viewId}-${view.value}-panel`" :aria-labelledby="`${viewId}-${view.value}-tab`"
+         :hidden="tab !== view.value" :aria-busy="loading && tab === view.value" tabindex="0">
+      <template v-if="tab === view.value">
+        <div v-if="loading && !snapshot.environments" class="workspace-loading">
+          正在读取环境
+        </div>
+        <div v-else-if="!snapshot.environments" class="workspace-empty">
+          <v-icon icon="mdi-server-off" size="30" />
+          <h2>环境信息暂不可用</h2>
+        </div>
+        <div v-else-if="tab === 'engines'" class="engine-list">
+          <EngineEnvironment
+            v-for="engine in snapshot.environments.engines"
+            :key="engine.id"
+            :engine="engine"
+            @configure="setTab('configuration')"
+            @monitor="setTab('monitor')"
+          />
+          <div v-if="!snapshot.environments.engines.length" class="workspace-empty">
+            暂无已接入引擎
+          </div>
+          <section class="scientific-engine-list" aria-label="研究计算环境">
+            <h2>研究计算环境</h2>
+            <div class="scientific-engine-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>执行软件</th>
+                    <th>用途</th>
+                    <th>就绪状态</th>
+                    <th>软件版本</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="engine in snapshot.environments.scientific_engines || []"
+                    :key="engine.id"
+                  >
+                    <td>{{ engine.name }}</td>
+                    <td>{{ engine.purpose }}</td>
+                    <td>{{ engine.ready ? "已就绪" : "未就绪" }}</td>
+                    <td>
+                      {{
+                        Object.entries(engine.versions || {})
+                          .map(([name, value]) => `${name} ${value}`)
+                          .join(" · ") || "随产品运行环境"
+                      }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <BackendInventory :inventory="snapshot.environments" />
+        </div>
+        <section
+          v-else-if="tab === 'configuration'"
+          class="environment-configuration"
+          aria-label="部署配置"
+        >
+          <h2>产品环境</h2>
+          <dl>
+            <div>
+              <dt>操作系统</dt>
+              <dd>{{ platform.system }}</dd>
+            </div>
+            <div>
+              <dt>产品版本</dt>
+              <dd>{{ platform.version }}</dd>
+            </div>
+            <div>
+              <dt>产品 Python</dt>
+              <dd>{{ platform.python_version }}</dd>
+            </div>
+            <div>
+              <dt>访问模式</dt>
+              <dd>
+                {{ platform.access_mode === "local" ? "本地单用户" : "账号认证" }}
+              </dd>
+            </div>
+            <div>
+              <dt>统一部署入口</dt>
+              <dd>
+                <code>{{ platform.entrypoint }}</code>
+              </dd>
+            </div>
+            <div>
+              <dt>代码提交</dt>
+              <dd>
+                <code>{{ platform.build?.revision || "未记录" }}</code>
+              </dd>
+            </div>
+            <div>
+              <dt>源码状态</dt>
+              <dd>
+                {{
+                  platform.build?.dirty === true
+                    ? "存在本地改动"
+                    : platform.build?.dirty === false
+                      ? "与提交一致"
+                      : "未记录"
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt>监测缓存（秒）</dt>
+              <dd>
+                {{ snapshot.runtime?.budget?.health_cache_seconds ?? "未读取" }}
+              </dd>
+            </div>
+          </dl>
+          <h2>后端绑定</h2>
+          <dl>
+            <div v-for="engine in snapshot.environments.engines" :key="engine.id">
+              <dt>{{ engine.name }}</dt>
+              <dd>
+                {{ engine.active ? "当前后端引擎" : "已接入" }} ·
+                <code>{{ engine.backend }}</code>
+              </dd>
+            </div>
+            <div>
+              <dt>商业库存一致性</dt>
+              <dd>
+                {{
+                  snapshot.health?.service_checks?.inventory_consistent === true
+                    ? "已通过"
+                    : snapshot.health?.service_checks?.inventory_consistent === false
+                      ? "未通过"
+                      : "未读取"
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt>目录快照</dt>
+              <dd>
+                <code>{{
+                  snapshot.health?.stock_snapshot?.catalog_sha256 || "未读取"
+                }}</code>
+              </dd>
+            </div>
+          </dl>
+        </section>
+        <EnvironmentMonitoring v-else :snapshot="snapshot" />
+      </template>
     </div>
-    <div v-else-if="!snapshot.environments" class="workspace-empty">
-      <v-icon icon="mdi-server-off" size="30" />
-      <h2>环境信息暂不可用</h2>
-    </div>
-    <div v-else-if="tab === 'engines'" class="engine-list">
-      <EngineEnvironment
-        v-for="engine in snapshot.environments.engines"
-        :key="engine.id"
-        :engine="engine"
-        @configure="setTab('configuration')"
-        @monitor="setTab('monitor')"
-      />
-      <div v-if="!snapshot.environments.engines.length" class="workspace-empty">
-        暂无已接入引擎
-      </div>
-      <section class="scientific-engine-list" aria-label="研究计算环境">
-        <h2>研究计算环境</h2>
-        <div class="scientific-engine-scroll">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>执行软件</th>
-                <th>用途</th>
-                <th>就绪状态</th>
-                <th>软件版本</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="engine in snapshot.environments.scientific_engines || []"
-                :key="engine.id"
-              >
-                <td>{{ engine.name }}</td>
-                <td>{{ engine.purpose }}</td>
-                <td>{{ engine.ready ? "已就绪" : "未就绪" }}</td>
-                <td>
-                  {{
-                    Object.entries(engine.versions || {})
-                      .map(([name, value]) => `${name} ${value}`)
-                      .join(" · ") || "随产品运行环境"
-                  }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-      <BackendInventory :inventory="snapshot.environments" />
-    </div>
-    <section
-      v-else-if="tab === 'configuration'"
-      class="environment-configuration"
-      aria-label="部署配置"
-    >
-      <h2>产品环境</h2>
-      <dl>
-        <div>
-          <dt>操作系统</dt>
-          <dd>{{ platform.system }}</dd>
-        </div>
-        <div>
-          <dt>产品版本</dt>
-          <dd>{{ platform.version }}</dd>
-        </div>
-        <div>
-          <dt>产品 Python</dt>
-          <dd>{{ platform.python_version }}</dd>
-        </div>
-        <div>
-          <dt>访问模式</dt>
-          <dd>
-            {{ platform.access_mode === "local" ? "本地单用户" : "账号认证" }}
-          </dd>
-        </div>
-        <div>
-          <dt>统一部署入口</dt>
-          <dd>
-            <code>{{ platform.entrypoint }}</code>
-          </dd>
-        </div>
-        <div>
-          <dt>代码提交</dt>
-          <dd>
-            <code>{{ platform.build?.revision || "未记录" }}</code>
-          </dd>
-        </div>
-        <div>
-          <dt>源码状态</dt>
-          <dd>
-            {{
-              platform.build?.dirty === true
-                ? "存在本地改动"
-                : platform.build?.dirty === false
-                  ? "与提交一致"
-                  : "未记录"
-            }}
-          </dd>
-        </div>
-        <div>
-          <dt>监测缓存（秒）</dt>
-          <dd>
-            {{ snapshot.runtime?.budget?.health_cache_seconds ?? "未读取" }}
-          </dd>
-        </div>
-      </dl>
-      <h2>后端绑定</h2>
-      <dl>
-        <div v-for="engine in snapshot.environments.engines" :key="engine.id">
-          <dt>{{ engine.name }}</dt>
-          <dd>
-            {{ engine.active ? "当前后端引擎" : "已接入" }} ·
-            <code>{{ engine.backend }}</code>
-          </dd>
-        </div>
-        <div>
-          <dt>商业库存一致性</dt>
-          <dd>
-            {{
-              snapshot.health?.service_checks?.inventory_consistent === true
-                ? "已通过"
-                : "未通过"
-            }}
-          </dd>
-        </div>
-        <div>
-          <dt>目录快照</dt>
-          <dd>
-            <code>{{
-              snapshot.health?.stock_snapshot?.catalog_sha256 || "未读取"
-            }}</code>
-          </dd>
-        </div>
-      </dl>
-    </section>
-    <EnvironmentMonitoring v-else :snapshot="snapshot" />
   </section>
 </template>
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, useId } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { API } from "@/common/api";
 import { loadRuntimeStatus } from "@/common/runtime-status";
@@ -178,8 +186,14 @@ const snapshot = ref({}),
   loading = ref(false),
   error = ref("");
 const platform = computed(() => snapshot.value.environments?.platform || {});
+const viewId = useId();
+const views = [
+  { value: "engines", label: "引擎环境" },
+  { value: "configuration", label: "部署配置" },
+  { value: "monitor", label: "运行监测" },
+];
 const tab = computed(() =>
-  ["engines", "configuration", "monitor"].includes(route.query.tab)
+  views.some(view => view.value === route.query.tab)
     ? route.query.tab
     : "engines",
 );
@@ -205,6 +219,8 @@ onMounted(refresh);
 onBeforeUnmount(() => (alive = false));
 </script>
 <style scoped>
+.environment-panel { min-width: 0; }
+.environment-panel[hidden] { display: none; }
 .scientific-engine-list {
   margin-top: 24px;
 }

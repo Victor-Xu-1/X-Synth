@@ -23,12 +23,17 @@ const row = (id) => ({
   attributes: {}, references: [], raw: { _id: id, index: 1, template_set: "isolated" },
 });
 const rows = [row("one"), row("two")];
+const followingRows = [row("u-third"), row("v-fourth")];
+const lastRow = row("z-last");
+const response = (templates, matched_count = templates.length, next_cursor = null) => ({
+  count: templates.length, templates, matched_count, next_cursor, has_more: next_cursor !== null,
+});
 const wrappers = [];
 const stubs = {
   VSelect: { props: ["modelValue", "label", "disabled", "items"], template: '<label>{{ label }}<select :disabled="disabled" /></label>' },
   VTextField: { props: ["modelValue", "label", "disabled"], template: '<label>{{ label }}<input :value="modelValue" :disabled="disabled" /></label>' },
-  VBtn: { props: ["disabled", "loading", "type"], template: '<button :type="type || \'button\'" :disabled="disabled || loading"><slot /></button>' },
-  VTooltip: { template: '<span><slot name="activator" :props="{}" /></span>' },
+  VBtn: { props: ["disabled", "loading", "type", "icon"], template: '<button :type="type || \'button\'" :disabled="disabled || loading"><slot /></button>' },
+  VTooltip: { props: ["text"], template: '<span><slot name="activator" :props="{}" /></span>' },
   VLazy: { template: '<div><slot /></div>' },
   VIcon: true, VProgressLinear: true,
 };
@@ -50,8 +55,12 @@ async function setup(query = {}) {
 beforeEach(() => {
   API.get.mockReset().mockImplementation(async (path, selection) => path.endsWith("/health")
     ? { template_count: 252029, sources: ["isolated"] }
-    : { template: rows.find((value) => value.template_id === selection.template_id) });
-  API.post.mockReset().mockImplementation(async (_, body) => ({ count: body.limit, templates: rows.slice(0, body.limit) }));
+    : { template: [...rows, ...followingRows, lastRow].find((value) => value.template_id === selection.template_id) });
+  API.post.mockReset().mockImplementation(async (_, body) => {
+    if (body.cursor === "page-b") return response(followingRows, 5, "page-c");
+    if (body.cursor === "page-c") return response([lastRow], 5);
+    return body.limit === 2 ? response(rows, 5, "page-b") : response(rows);
+  });
 });
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
 
@@ -60,6 +69,22 @@ test("template controls retain intrinsic height independently of result and deta
   const css = postcss.parse(descriptor.styles[0].content);
   const rule = css.nodes.find((node) => node.selector === ".template-controls");
   expect(rule?.nodes.find((node) => node.prop === "align-self")?.value).toBe("start");
+});
+
+test("sticky filters are confined to wide, tall desktop screens and remain bounded in the workspace scroller", () => {
+  const { descriptor } = parse(readFileSync(resolve(__dirname, "TemplateSearch.vue"), "utf8"));
+  const css = postcss.parse(descriptor.styles[0].content);
+  const sticky = [];
+  css.walkRules(".template-controls", (rule) => {
+    if (rule.nodes.some((node) => node.prop === "position" && node.value === "sticky")) sticky.push(rule);
+  });
+  expect(sticky).toHaveLength(1);
+  expect(sticky[0].parent.name).toBe("media");
+  expect(sticky[0].parent.params).toBe("(min-width: 1200px) and (min-height: 800px)");
+  const declarations = Object.fromEntries(sticky[0].nodes.map((node) => [node.prop, node.value]));
+  expect(declarations).toMatchObject({ top: "16px", "max-height": "calc(100dvh - 180px)", "overflow-y": "auto" });
+  const base = css.nodes.find((node) => node.selector === ".template-controls");
+  expect(base.nodes.find((node) => node.prop === "position")?.value).toBe("static");
 });
 
 test("a direction missing from the index is not represented as an ordinary no-match query", async () => {
@@ -87,52 +112,55 @@ test("list and detail reuse template-aware previews while original SMARTS and id
   expect(wrapper.get(".template-details").text()).toContain(rows[0].raw._id);
 });
 
-test("index total and returned count are separate; reaching the limit is not a claimed DB total", async () => {
+test("index, filtered total and current page counts are separate and pager icons have names/tooltips", async () => {
   const { wrapper } = await setup({ limit: "2", searched: "1" });
   expect(wrapper.get(".template-index-count").text()).toContain("252,029");
   expect(wrapper.get(".template-result-count").text()).toContain("2");
-  expect(wrapper.get(".template-limit-note").text()).toContain("达到本次上限");
-  expect(wrapper.get(".template-limit-note").text()).toContain("未提供");
-  expect(wrapper.find('[aria-label="模板列表分页"]').exists()).toBe(false);
+  expect(wrapper.get(".template-matched-count").text()).toBe("筛选匹配 5 条模板");
+  expect(wrapper.get(".template-page-summary").text()).toContain("第 1 页");
+  expect(wrapper.find(".template-limit-note").exists()).toBe(false);
+  const pager = wrapper.get('[aria-label="模板列表分页"]');
+  const buttons = pager.findAllComponents(stubs.VBtn);
+  expect(buttons.map((button) => [button.attributes("aria-label"), button.props("icon")])).toEqual([
+    ["返回首页", "mdi-page-first"], ["上一页", "mdi-chevron-left"], ["下一页", "mdi-chevron-right"],
+  ]);
+  expect(pager.findAllComponents(stubs.VTooltip).map((tooltip) => tooltip.props("text"))).toEqual(["返回首页", "上一页", "下一页"]);
+  expect(wrapper.findAllComponents(stubs.VTextField).map((field) => field.props("label"))).toContain("每页条数");
   expect(API.post).toHaveBeenCalledWith("/api/v1/template-library/query", {
     sources: [], direction: "retro", min_count: 0, limit: 2,
-  });
+  }, false, expect.objectContaining({ timeoutMs: 15000 }));
 });
 
 test("below-limit results report their real returned count without claiming truncation or full DB paging", async () => {
-  API.post.mockResolvedValue({ count: 1, templates: [rows[0]] });
+  API.post.mockResolvedValue(response([rows[0]]));
   const { wrapper } = await setup({ limit: "2", searched: "1" });
   expect(wrapper.get(".template-result-count").text()).toContain("1");
   expect(wrapper.find(".template-limit-note").exists()).toBe(false);
 });
 
-test("legacy source and native ID still locate the template without guessing from training index", async () => {
+test("a query row without normalized source identity cannot be guessed from raw native fields", async () => {
   const legacy = { ...rows[0] };
   delete legacy.template_id;
   delete legacy.source;
   delete legacy.template_set;
-  API.post.mockResolvedValue({ count: 1, templates: [legacy] });
+  API.post.mockResolvedValue(response([legacy]));
   const { wrapper } = await setup({ limit: "2", searched: "1" });
-  expect(wrapper.get(".template-open").attributes("data-template-id")).toBe(rows[0].template_id);
-  await wrapper.get(".template-open").trigger("click");
-  await flushPromises();
-  expect(API.get).toHaveBeenCalledWith("/api/v1/template-library/template", {
-    source: "isolated", template_id: rows[0].template_id,
-  });
+  expect(wrapper.get(".tool-error").text()).toContain("模板分页响应无效");
+  expect(wrapper.find(".template-open").exists()).toBe(false);
 });
 
 test("malformed returned counts never become displayed result totals", async () => {
-  API.post.mockResolvedValue({ count: 252029, templates: [rows[0]] });
+  API.post.mockResolvedValue({ ...response([rows[0]]), count: 252029 });
   const { wrapper } = await setup({ limit: "2", searched: "1" });
-  expect(wrapper.get(".tool-error").text()).toContain("模板查询失败");
+  expect(wrapper.get(".tool-error").text()).toContain("模板分页响应无效");
   expect(wrapper.find(".template-result-count").exists()).toBe(false);
   expect(wrapper.find(".template-open").exists()).toBe(false);
 });
 
 test.each([null, undefined, "", 0])("invalid SMARTS field %p is rejected before the preview receives it", async (reaction_smarts) => {
-  API.post.mockResolvedValue({ count: 1, templates: [{ ...rows[0], reaction_smarts }] });
+  API.post.mockResolvedValue(response([{ ...rows[0], reaction_smarts }]));
   const { wrapper } = await setup({ limit: "2", searched: "1" });
-  expect(wrapper.get(".tool-error").text()).toContain("模板查询失败");
+  expect(wrapper.get(".tool-error").text()).toContain("模板分页响应无效");
   expect(wrapper.find(".template-open").exists()).toBe(false);
 });
 
@@ -192,4 +220,130 @@ test("reading a detail preserves the list's native SMARTS disclosure state", asy
   await flushPromises();
   expect(wrapper.get(".template-row-code").element).toBe(disclosure);
   expect(disclosure.open).toBe(true);
+});
+
+test("next/previous/first fetch whole server pages, update the URL, and focus the new page summary", async () => {
+  const { wrapper, router } = await setup({ limit: "2", searched: "1" });
+  await wrapper.get('[aria-label="下一页"]').trigger("click");
+  await flushPromises();
+  expect(API.post.mock.calls[1][1].cursor).toBe("page-b");
+  expect(router.currentRoute.value.query.cursor).toBe("page-b");
+  expect(wrapper.findAll(".template-open").map((button) => button.attributes("data-template-id")))
+    .toEqual(followingRows.map((record) => record.template_id));
+  expect(document.activeElement).toBe(wrapper.get(".template-page-summary").element);
+  expect(wrapper.get(".template-page-summary").text()).toContain("第 2 页");
+  await wrapper.get('[aria-label="下一页"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.get(".template-result-count").text()).toBe("当前页 1 条模板");
+  expect(wrapper.get('[aria-label="下一页"]').element.disabled).toBe(true);
+  await wrapper.get('[aria-label="上一页"]').trigger("click");
+  await flushPromises();
+  expect(API.post.mock.calls[3][1].cursor).toBe("page-b");
+  await wrapper.get('[aria-label="返回首页"]').trigger("click");
+  await flushPromises();
+  expect(API.post.mock.calls[4][1]).not.toHaveProperty("cursor");
+  expect(router.currentRoute.value.query).not.toHaveProperty("cursor");
+  expect(wrapper.get('[aria-label="上一页"]').element.disabled).toBe(true);
+});
+
+test("direct cursor reload cannot guess a previous cursor or ordinal, but can return to first", async () => {
+  const { wrapper, router } = await setup({ limit: "2", cursor: "page-b" });
+  expect(API.post.mock.calls[0][1].cursor).toBe("page-b");
+  expect(wrapper.get('[aria-label="上一页"]').element.disabled).toBe(true);
+  expect(wrapper.get('[aria-label="返回首页"]').element.disabled).toBe(false);
+  expect(wrapper.get(".template-page-summary").text()).not.toMatch(/第 \d+ 页/);
+  await wrapper.get('[aria-label="返回首页"]').trigger("click");
+  await flushPromises();
+  expect(router.currentRoute.value.query).not.toHaveProperty("cursor");
+  expect(wrapper.get(".template-page-summary").text()).toContain("第 1 页");
+});
+
+test.each([409, 422])("failed cursor page %i offers same-page retry and explicit new search, never no matches", async (status) => {
+  API.post.mockRejectedValueOnce(new Error(JSON.stringify({ detail: `cursor ${status}` })));
+  const { wrapper, router } = await setup({ limit: "2", searched: "1", cursor: "page-b" });
+  expect(wrapper.get(".tool-error").text()).toContain(`cursor ${status}`);
+  expect(wrapper.find(".workspace-empty").exists()).toBe(false);
+  expect(wrapper.find(".template-result-count").exists()).toBe(false);
+  await wrapper.get(".template-retry").trigger("click");
+  await flushPromises();
+  expect(API.post.mock.calls[1][1].cursor).toBe("page-b");
+  expect(router.currentRoute.value.query.cursor).toBe("page-b");
+  API.post.mockRejectedValueOnce(new Error(JSON.stringify({ detail: `cursor ${status}` })));
+  await wrapper.get('[aria-label="下一页"]').trigger("click");
+  await flushPromises();
+  expect(document.activeElement).toBe(wrapper.get(".tool-error").element);
+  await wrapper.get(".template-new-search").trigger("click");
+  await flushPromises();
+  expect(API.post.mock.calls[3][1]).not.toHaveProperty("cursor");
+  expect(router.currentRoute.value.query).not.toHaveProperty("cursor");
+});
+
+test("paging controls remain mounted and single-flight while filters and duplicate actions are disabled", async () => {
+  const { wrapper } = await setup({ limit: "2", searched: "1" });
+  let release;
+  API.post.mockImplementationOnce(() => new Promise((yes) => { release = yes; }));
+  const next = wrapper.get('[aria-label="下一页"]').element;
+  await wrapper.get('[aria-label="下一页"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.get('[aria-label="下一页"]').element).toBe(next);
+  expect(next.disabled).toBe(true);
+  expect(wrapper.get('[aria-label="上一页"]').element.disabled).toBe(true);
+  expect(wrapper.get('[aria-label="返回首页"]').element.disabled).toBe(true);
+  expect(wrapper.findAll(".template-controls input, .template-controls select").every((field) => field.element.disabled)).toBe(true);
+  expect(wrapper.find(".template-open").exists()).toBe(false);
+  await wrapper.get('[aria-label="下一页"]').trigger("click");
+  expect(API.post).toHaveBeenCalledTimes(2);
+  release(response(followingRows, 5, "page-c"));
+  await flushPromises();
+  expect(document.activeElement).toBe(wrapper.get(".template-page-summary").element);
+});
+
+test("detail/back on a later page preserves cursor, lower-row focus and disclosures; paging clears old context", async () => {
+  const { wrapper, router } = await setup({ limit: "2", searched: "1" });
+  await wrapper.get('[aria-label="下一页"]').trigger("click");
+  await flushPromises();
+  const disclosure = wrapper.get(".template-row-code").element;
+  disclosure.open = true;
+  const scroller = wrapper.get(".workspace-page").element;
+  scroller.scrollTop = 2000;
+  await wrapper.findAll(".template-open")[1].trigger("click");
+  await flushPromises();
+  expect(router.currentRoute.value.query.cursor).toBe("page-b");
+  scroller.scrollTop = 0;
+  await wrapper.get(".template-back").trigger("click");
+  await flushPromises();
+  expect(router.currentRoute.value.query.cursor).toBe("page-b");
+  expect(scroller.scrollTop).toBe(2000);
+  expect(document.activeElement.dataset.templateId).toBe(followingRows[1].template_id);
+  expect(wrapper.get(".template-row-code").element).toBe(disclosure);
+  expect(disclosure.open).toBe(true);
+  await wrapper.get('[aria-label="下一页"]').trigger("click");
+  await flushPromises();
+  expect(disclosure.isConnected).toBe(false);
+  expect(document.activeElement).toBe(wrapper.get(".template-page-summary").element);
+  expect(wrapper.get(".template-row-code").element.open).toBe(false);
+});
+
+test("genuine empty filtered pages display zero counts without a false error", async () => {
+  API.post.mockResolvedValue(response([]));
+  const { wrapper } = await setup({ limit: "2", searched: "1" });
+  expect(wrapper.get(".workspace-empty").text()).toContain("没有匹配的模板");
+  expect(wrapper.get(".template-matched-count").text()).toContain("0");
+  expect(wrapper.get(".template-result-count").text()).toContain("0");
+  expect(wrapper.find(".tool-error").exists()).toBe(false);
+  expect(wrapper.get('[aria-label="下一页"]').element.disabled).toBe(true);
+});
+
+test("unmount during paging cannot refocus detached controls or restore an old return point", async () => {
+  const { wrapper } = await setup({ limit: "2", searched: "1" });
+  let release;
+  API.post.mockImplementationOnce(() => new Promise((yes) => { release = yes; }));
+  const summary = wrapper.get(".template-page-summary").element;
+  const focus = jest.spyOn(summary, "focus");
+  await wrapper.get('[aria-label="下一页"]').trigger("click");
+  await flushPromises();
+  wrapper.unmount();
+  release(response(followingRows, 5, "page-c"));
+  await flushPromises();
+  expect(focus).not.toHaveBeenCalled();
 });

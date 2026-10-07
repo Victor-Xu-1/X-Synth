@@ -151,6 +151,7 @@ NATIVE_CAPABILITY_FILES = {
 TEMPLATE_FILES = {
     "apps/api/data_routes.py",
     "packages/knowledge_base/template_library.py",
+    "packages/knowledge_base/template_paging.py",
 }
 HISTORY_FILES = {
     "apps/api/job_views.py",
@@ -437,6 +438,10 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
         selected.update(
             {
                 "tests/unit/test_template_library_api.py",
+                "tests/unit/test_template_library_paging.py",
+                "tests/unit/test_template_compilation.py",
+                "tests/unit/test_template_export.py",
+                "tests/unit/test_template_contract_data.py",
                 "tests/unit/test_product_api_security.py",
             }
         )
