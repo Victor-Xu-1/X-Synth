@@ -2,13 +2,35 @@
  * Shared utility functions
  */
 
-function copyToClipboard(text, parent) {
+async function copyToClipboard(text, parent) {
+  if (typeof text !== "string" || !text.length) return false;
+  if (typeof navigator.clipboard?.writeText === "function") {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  if (!parent?.appendChild || typeof document.execCommand !== "function")
+    return false;
+  const opener = document.activeElement;
   const dummy = document.createElement("textarea");
-  parent.appendChild(dummy);
   dummy.value = text;
-  dummy.select();
-  document.execCommand("copy");
-  dummy.remove();
+  dummy.readOnly = true;
+  dummy.tabIndex = -1;
+  dummy.setAttribute("aria-hidden", "true");
+  dummy.style.cssText = "position:fixed;inset:0;opacity:0;pointer-events:none;";
+  try {
+    parent.appendChild(dummy);
+    dummy.select();
+    return document.execCommand("copy") === true;
+  } catch {
+    return false;
+  } finally {
+    dummy.remove();
+    if (opener?.isConnected) opener.focus({ preventScroll: true });
+  }
 }
 
 function num2str(n, round = true, sigfigs = 2, exp = false, threshold = -4) {

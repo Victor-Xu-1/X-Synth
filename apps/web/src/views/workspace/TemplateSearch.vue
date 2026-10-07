@@ -89,7 +89,7 @@
             <TemplateDetails :template="detail" />
           </div>
         </template>
-        <template v-else>
+        <div v-show="!isDetail" class="template-list-region">
           <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
           <div v-if="busy" class="workspace-loading" role="status">
             <v-progress-linear indeterminate /><span>检索模板记录</span>
@@ -153,7 +153,7 @@
               </details>
             </article>
           </div>
-        </template>
+        </div>
       </section>
     </div>
   </ModuleWorkbench>
@@ -214,6 +214,12 @@ watch(
     const scroller = button.closest(".workspace-page");
     if (scroller) scroller.scrollTop = point.top;
     button.focus({ preventScroll: true });
+    if (scroller) {
+      const viewport = scroller.getBoundingClientRect();
+      const bounds = button.getBoundingClientRect();
+      if (bounds.top < viewport.top || bounds.bottom > viewport.bottom)
+        button.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
   },
   { flush: "post" },
 );

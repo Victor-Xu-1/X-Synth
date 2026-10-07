@@ -170,3 +170,16 @@ test("return and browser back restore the namespaced trigger and internal list s
   expect(scroller.scrollTop).toBe(3003);
   expect(API.post).toHaveBeenCalledTimes(1);
 });
+
+test("reading a detail preserves the list's native SMARTS disclosure state", async () => {
+  const { wrapper } = await setup({ limit: "2", searched: "1" });
+  const disclosure = wrapper.get(".template-row-code").element;
+  disclosure.open = true;
+  await wrapper.findAll(".template-open")[1].trigger("click");
+  await flushPromises();
+  expect(disclosure.isConnected).toBe(true);
+  await wrapper.get(".template-back").trigger("click");
+  await flushPromises();
+  expect(wrapper.get(".template-row-code").element).toBe(disclosure);
+  expect(disclosure.open).toBe(true);
+});
