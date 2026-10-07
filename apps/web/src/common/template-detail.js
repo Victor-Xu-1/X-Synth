@@ -32,15 +32,17 @@ export function templateSelectionFromQuery(query) {
 }
 
 export function templateSearchFilters(query) {
-  const scalar = (value) => (typeof value === "string" ? value : undefined);
+  const scalar = (value, fallback) => value === undefined ? fallback
+    : typeof value === "string" ? value : null;
+  const numeric = (value, fallback) => {
+    const text = scalar(value, fallback);
+    return typeof text === "string" && /^\d+$/.test(text) ? Number(text) : NaN;
+  };
   return {
-    source:
-      scalar(query.filter_source) ??
-      (query.id === undefined ? scalar(query.source) : "") ??
-      "",
-    direction: scalar(query.direction) ?? "retro",
-    minCount: Number(scalar(query.min_count) ?? 0),
-    limit: Number(scalar(query.limit) ?? 50),
+    source: scalar(query.filter_source, query.id === undefined ? scalar(query.source, "") : ""),
+    direction: scalar(query.direction, "retro"),
+    minCount: numeric(query.min_count, "0"),
+    limit: numeric(query.limit, "50"),
   };
 }
 
@@ -48,6 +50,7 @@ export function templateSearchBody(filters) {
   if (
     typeof filters.source !== "string" ||
     filters.source.length > 128 ||
+    /[\s:]/.test(filters.source) ||
     !["retro", "forward"].includes(filters.direction) ||
     !Number.isInteger(filters.minCount) ||
     filters.minCount < 0 ||

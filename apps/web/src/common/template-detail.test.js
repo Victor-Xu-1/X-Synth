@@ -86,6 +86,8 @@ test.each([
   { minCount: -1 },
   { minCount: NaN },
   { direction: "anything" },
+  { source: "space source" },
+  { source: "source:id" },
 ])("out-of-bounds search is rejected before posting: %j", (invalid) => {
   expect(() =>
     templateSearchBody({
@@ -97,3 +99,9 @@ test.each([
     }),
   ).toThrow();
 });
+
+test.each(["filter_source", "direction", "min_count", "limit"])(
+  "repeated URL filter %s is not silently normalized to a different query", (field) => {
+    expect(() => templateSearchBody(templateSearchFilters({ [field]: ["1", "2"] }))).toThrow();
+  },
+);
