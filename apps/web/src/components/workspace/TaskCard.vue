@@ -163,6 +163,8 @@ const active = computed(() =>
   min-width: 0;
 }
 .task-card-title {
+  grid-column: 2;
+  grid-row: 1;
   min-width: 0;
   max-height: 60px;
   display: -webkit-box;
@@ -177,6 +179,8 @@ const active = computed(() =>
   line-height: 20px;
 }
 .task-card-controls :deep(.v-selection-control) {
+  grid-column: 1;
+  grid-row: 1;
   flex: 0 0 32px;
   color: var(--ws-accent);
 }
@@ -206,6 +210,9 @@ const active = computed(() =>
   white-space: nowrap;
 }
 .task-card-controls .state-badge {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
   flex-shrink: 0;
 }
 .state-badge.active {

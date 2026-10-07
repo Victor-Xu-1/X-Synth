@@ -1,6 +1,10 @@
 import { mount, RouterLinkStub } from "@vue/test-utils";
 import TaskCard from "./TaskCard.vue";
 import TaskActions from "./TaskActions.vue";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { parse } from "@vue/compiler-sfc";
+import postcss from "postcss";
 jest.mock("@/components/SmilesImage.vue", () => ({
   props: ["smiles"],
   template: '<div :data-smiles="smiles" />',
@@ -23,6 +27,21 @@ const context = {
   view: "cards",
   archived: false,
 };
+
+test("header positions are explicit instead of inheriting a component's named grid area", () => {
+  const { descriptor } = parse(readFileSync(resolve(__dirname, "TaskCard.vue"), "utf8"));
+  const css = postcss.parse(descriptor.styles[0].content);
+  for (const [selector, column] of [
+    [".task-card-controls :deep(.v-selection-control)", "1"],
+    [".task-card-title", "2"],
+    [".task-card-controls .state-badge", "3"],
+  ]) {
+    const rule = css.nodes.find(node => node.selector === selector);
+    const values = Object.fromEntries(rule.nodes.filter(node => node.type === "decl").map(node => [node.prop, node.value]));
+    expect(values["grid-column"]).toBe(column);
+    expect(values["grid-row"]).toBe("1");
+  }
+});
 const stubs = {
   RouterLink: RouterLinkStub,
   TaskActions: true,

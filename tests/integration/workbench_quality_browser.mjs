@@ -73,6 +73,7 @@ for (const width of [1440, 390]) {
       const card = page.locator(`.task-card:has(a[href*="${jobId}"])`).first();
       await card.waitFor({timeout:30000});
       await card.scrollIntoViewIfNeeded();
+      assert(await card.locator(".task-card-title").evaluate(element => element.getBoundingClientRect().width) >= 120, "Card titles must retain a readable text column");
       await expect.poll(() => card.locator("img").evaluateAll(images => images.some(image => image.complete && image.naturalWidth > 20 && getComputedStyle(image).opacity === "1")), {timeout:30000}).toBe(true);
       assert.equal(await card.locator(".task-actions > .v-btn, .task-actions > .v-tooltip").count() >= 1, true);
       const more = card.getByRole("button", {name:"更多任务操作",exact:true});
@@ -110,6 +111,7 @@ for (const width of [1440, 390]) {
       }
       await page.getByRole("button", {name:"切换主题",exact:true}).click();
       await expect(page.locator(".v-application")).toHaveClass(/v-theme--dark/);
+      assert(await card.locator(".task-card-title").evaluate(element => element.getBoundingClientRect().width) >= 120, "Dark theme must preserve the title column");
       if (width < 900) await page.keyboard.press("Escape");
       await layout(page);
       await capture(page, `history-dark-${width}`);
