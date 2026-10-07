@@ -11,7 +11,21 @@ import RouteEditor from "./RouteEditor.vue";
 import { randomUUID } from "node:crypto";
 import { deserialize, serialize } from "node:v8";
 import { reactive } from "vue";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { parse } from "@vue/compiler-sfc";
 jest.mock("@vueuse/core", () => ({ useResizeObserver: jest.fn() }));
+
+test("the document title does not suppress the shared keyboard-focus outline", () => {
+  const { descriptor } = parse(readFileSync(resolve(__dirname, "RouteEditor.vue"), "utf8"));
+  const stylesheet = document.createElement("style");
+  stylesheet.textContent = descriptor.styles[0].content;
+  document.head.append(stylesheet);
+  try {
+    const rule = [...stylesheet.sheet.cssRules].find(item => item.selectorText === ".document-title-input");
+    expect(rule.style.getPropertyValue("outline")).not.toBe("none");
+  } finally { stylesheet.remove(); }
+});
 
 jest.mock("vue-router", () => ({
   useRoute: jest.fn(),

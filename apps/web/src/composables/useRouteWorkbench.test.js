@@ -76,6 +76,30 @@ test("typed history prefill does not execute validation, search or one-step mode
   expect(API.post).not.toHaveBeenCalled();
   expect(expandMolecule).not.toHaveBeenCalled();
 });
+test("structure readiness does not relabel a healthy model as unavailable", async () => {
+  const state = setup(seed());
+  expect(state.ready.value).toBe(true);
+  state.structure.value = { pending: true, read: jest.fn() };
+  expect(state.canSubmit.value).toBe(false);
+  await state.submit();
+  expect(state.structure.value.read).not.toHaveBeenCalled();
+  expect(API.post).not.toHaveBeenCalled();
+  expect(state.ready.value).toBe(true);
+  state.structure.value.pending = false;
+  expect(state.canSubmit.value).toBe(true);
+});
+test("an empty board or an unmounted structure cannot start an inference", async () => {
+  const state = setup(seed());
+  state.draft.smiles = "";
+  expect(state.canSubmit.value).toBe(false);
+  await state.submit();
+  expect(API.post).not.toHaveBeenCalled();
+  state.draft.smiles = "CCO";
+  state.structure.value = null;
+  expect(state.canSubmit.value).toBe(false);
+  await state.submit();
+  expect(API.post).not.toHaveBeenCalled();
+});
 test("explicit submit sends the same validated policy and second-level budget as the stored request", async () => {
   const state = setup(seed());
   API.post
@@ -147,6 +171,7 @@ test("a new URL seed invalidates pending structure reads without submitting the 
 });
 test("invalid manually edited draft fields cannot reach the job API", async () => {
   const state = setup();
+  state.draft.smiles = "CCO";
   state.draft.settings.minRoutes = 8;
   state.draft.settings.maxRoutes = 3;
   await state.submit();

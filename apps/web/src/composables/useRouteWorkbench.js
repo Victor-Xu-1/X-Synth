@@ -29,6 +29,15 @@ export function useRouteWorkbench() {
   const ready = computed(() =>
     mode.value === "manual" ? workspace.can("retro") : workspace.ready,
   );
+  const canSubmit = computed(() =>
+    ready.value &&
+    !busy.value &&
+    mode.value !== "import" &&
+    Boolean(structure.value) &&
+    !structure.value.pending &&
+    typeof draft.smiles === "string" &&
+    Boolean(draft.smiles.trim()),
+  );
   let lifetime = 0;
   let appliedSeed = null,
     seedError = false;
@@ -81,7 +90,7 @@ export function useRouteWorkbench() {
     draft.smiles = "";
   }
   async function submit() {
-    if (busy.value || !ready.value || seedError || mode.value === "import")
+    if (!canSubmit.value || seedError)
       return;
     busy.value = true;
     error.value = "";
@@ -160,6 +169,7 @@ export function useRouteWorkbench() {
     error,
     mode,
     ready,
+    canSubmit,
     previewOpen,
     previewCandidates,
     changeMode,

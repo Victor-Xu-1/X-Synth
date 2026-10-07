@@ -8,6 +8,20 @@ function readEditor() {
   return fs.readFileSync(editorPath, "utf8");
 }
 
+test("a failed structure remains blocked without displaying ongoing progress", () => {
+  const { descriptor } = parse(readEditor());
+  function progress(node) {
+    if (node.tag === "v-progress-linear") return node;
+    return node.children?.map(progress).find(Boolean);
+  }
+  const indicator = progress(descriptor.template.ast);
+  const condition = indicator.props.find(prop => prop.name === "if").exp.content;
+  const visible = new Function("pending", "editorError", `return (${condition});`);
+  expect(visible(true, "")).toBe(true);
+  expect(visible(false, "")).toBe(false);
+  expect(visible(true, "结构同步失败")).toBe(false);
+});
+
 test("inline Ketcher editor scales the fixed-width Ketcher app to the available frame", () => {
   const text = readEditor();
   const compact = (value) => value.replace(/\s+/g, "").replace(/,\)/g, ")");

@@ -19,6 +19,13 @@ export function fitKetcherCanvas(editor) {
     return false;
   const molecule = editor.struct();
   if (!molecule?.atoms?.size) return false;
+  if (
+    typeof editor.selection !== "function" ||
+    typeof editor.event?.selectionChange?.dispatch !== "function"
+  )
+    throw new Error("Ketcher view update events are unavailable");
+  // Native fitting only shrinks; a prior narrow view must not constrain the new fit.
+  if (editor.zoom() !== 1) editor.zoom(1);
   editor.zoomAccordingContent(molecule);
   const viewport = editor.render?.clientArea?.getBoundingClientRect?.();
   const bounds = molecule.getCoordBoundingBox?.();
@@ -38,5 +45,7 @@ export function fitKetcherCanvas(editor) {
   }
   // Refresh the camera at its current zoom without moving molecular coordinates.
   editor.zoom(zoom);
+  // The native toolbar observes view events, not direct camera changes.
+  editor.event.selectionChange.dispatch(editor.selection());
   return true;
 }

@@ -36,6 +36,44 @@ async function layout(page) {
   assert.deepEqual(state, {overflow:false,mainOverflow:false,landmarks:1});
 }
 
+async function cameraCaption(board) {
+  await expect.poll(() => board.evaluate(frame => {
+    const editor = frame.contentWindow.ketcher.editor;
+    const label = [...frame.contentDocument.querySelectorAll("button")]
+      .find(button => /^\d+%$/.test(button.textContent.trim()));
+    return label?.textContent.trim() === `${Math.round(editor.zoom() * 100)}%`;
+  }), {timeout:10000}).toBe(true);
+}
+
+async function inputStates(page, board, smiles, width) {
+  const input = page.locator("#target-smiles");
+  if (width === 390) {
+    await page.setViewportSize({width:1440,height:1000});
+    await expect.poll(() => board.evaluate(frame => frame.contentWindow.ketcher.editor.zoom())).toBe(1);
+    await cameraCaption(board);
+    await capture(page, "input-resized-1440");
+    await page.setViewportSize({width,height:1000});
+    await expect.poll(() => board.evaluate(frame => frame.contentWindow.ketcher.editor.zoom() < 1)).toBe(true);
+  }
+  await cameraCaption(board);
+  await input.fill("not-a-smiles");
+  await expect(page.locator(".editor-error")).toBeVisible();
+  await expect(page.locator(".editor-progress")).toHaveCount(0);
+  await expect(page.locator(".inline-ketcher-frame")).toHaveAttribute("aria-busy", "false");
+  await expect(page.locator('[data-cy="home-build-tree"]')).toBeDisabled();
+  await capture(page, `input-error-${width}`);
+  await input.fill(smiles);
+  await expect(page.locator(".editor-error")).toHaveCount(0);
+  await expect(page.locator(".editor-progress")).toHaveCount(0, {timeout:30000});
+  await board.contentFrame().getByTitle("Clear Canvas (Ctrl+Del)", {exact:true}).click();
+  await expect(input).toHaveValue("");
+  await expect(page.locator('[data-cy="home-build-tree"]')).toBeDisabled();
+  await input.fill(smiles);
+  await expect(page.locator(".editor-progress")).toHaveCount(0, {timeout:30000});
+  await expect(page.locator('[data-cy="home-build-tree"]')).toBeEnabled();
+  await cameraCaption(board);
+}
+
 for (const width of [1440, 390]) {
   test(`real workbench input, navigation and task menus at ${width}px`, {timeout:120000}, async () => {
     const context = await browser.newContext({baseURL, viewport:{width,height:1000}, reducedMotion:"reduce"});
@@ -62,6 +100,7 @@ for (const width of [1440, 390]) {
       assert.equal(await canonical(actual), await canonical(task.target_smiles));
       const atoms = await board.evaluate(frame => frame.contentWindow.ketcher.editor.struct().atoms.size);
       assert(atoms > 3, "The real drawing board must contain the input molecule");
+      await inputStates(page, board, task.target_smiles, width);
       await layout(page);
       await capture(page, `input-${width}`);
       await page.locator(".skip-navigation").focus();
@@ -115,6 +154,20 @@ for (const width of [1440, 390]) {
       if (width < 900) await page.keyboard.press("Escape");
       await layout(page);
       await capture(page, `history-dark-${width}`);
+
+      const documents = await json(await page.request.get("/api/v1/route-documents"));
+      assert(Array.isArray(documents) && documents.length, "Use an actual existing route document for editor acceptance");
+      await page.goto(`/editor/${documents[0].id}`);
+      const title = page.getByRole("textbox", {name:"路线名称",exact:true});
+      await title.focus();
+      const focus = await title.evaluate(element => {
+        const style = getComputedStyle(element);
+        return {visible:element.matches(":focus-visible"),style:style.outlineStyle,width:parseFloat(style.outlineWidth)};
+      });
+      assert.equal(focus.visible, true);
+      assert.equal(focus.style, "solid");
+      assert(focus.width >= 2, "Keyboard focus must remain visible on the document title");
+      await capture(page, `document-title-focus-${width}`);
       assert.deepEqual(writes, [], "UI review must not start models, rename or modify stored tasks");
       assert.deepEqual(errors, []);
     } catch (error) {
