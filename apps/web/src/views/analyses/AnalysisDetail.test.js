@@ -1,7 +1,10 @@
 import { mount, flushPromises } from "@vue/test-utils";
+import { TextEncoder } from "node:util";
 import { createRouter, createMemoryHistory } from "vue-router";
 import { API } from "@/common/api";
+import { saveAs } from "file-saver";
 import AnalysisDetail from "./AnalysisDetail.vue";
+jest.mock("file-saver", () => ({ saveAs: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn(), delete: jest.fn(),
   toErrorObject: (error) => ({ string_error: error.message }) } }));
 jest.mock("./AnalysisResult.vue", () => ({ props: ["kind", "result"], template: '<div class="read-only-result">{{ kind }}</div>' }));
@@ -80,4 +83,54 @@ test("download serializes the exact loaded record without requests and revokes i
   expect(JSON.parse(text)).toEqual(known); expect(click).toHaveBeenCalledTimes(1);
   expect(API.get).toHaveBeenCalledTimes(1); expect(API.post).not.toHaveBeenCalled();
   wrapper.unmount(); expect(revoke).toHaveBeenCalledWith("blob:owned-record");
+});
+
+test("saved optimization CSV downloads verbatim with blank measured responses and no recomputation", async () => {
+  // Export protocol bytes only, not a scientific result or acceptance fixture.
+  const csv = 'recommendation,factor,response,posterior_mean\r\n1,"quoted, level",,0\r\n';
+  const known = { ...record(), kind: "optimization", result: {
+    engine: "BayBE", empirically_confirmed: false, csv_content: csv,
+    recommendations: [{ conditions: { factor: "quoted, level" } }],
+    target: { name: "response" }, versions: { baybe: "0.15.0" }, selected_rows: [1, 2, 3],
+  } };
+  API.get.mockResolvedValue(known);
+  const { wrapper } = await setup();
+  await wrapper.get('[aria-label="导出下一批实验 CSV"]').trigger("click");
+  expect(saveAs).toHaveBeenCalledTimes(1);
+  const [blob, name] = saveAs.mock.calls[0];
+  const text = await new Promise((resolve) => {
+    const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsText(blob);
+  });
+  expect(text).toBe(csv);
+  expect(blob.size).toBe(new TextEncoder().encode(csv).length);
+  expect(name).toBe("X-Synth-optimization-record-a.csv");
+  expect(known.result.csv_content).toBe(csv);
+  expect(API.get).toHaveBeenCalledTimes(1);
+  expect(API.post).not.toHaveBeenCalled(); expect(API.delete).not.toHaveBeenCalled();
+});
+
+test("missing or non-optimization CSV has no export action", async () => {
+  API.get.mockResolvedValue({ ...record(), kind: "optimization" });
+  const { wrapper } = await setup();
+  expect(wrapper.find('[aria-label="导出下一批实验 CSV"]').exists()).toBe(false);
+  API.get.mockResolvedValue({ ...record(), result: { csv_content: "not an optimization export" } });
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  expect(wrapper.find('[aria-label="导出下一批实验 CSV"]').exists()).toBe(false);
+});
+
+test("navigation and failed reads immediately remove the previous record's CSV export", async () => {
+  const known = { ...record(), kind: "optimization", result: {
+    engine: "BayBE", empirically_confirmed: false, csv_content: "stored protocol bytes",
+    recommendations: [{ conditions: {} }],
+  } };
+  let rejectRead;
+  API.get.mockResolvedValueOnce(known).mockReturnValueOnce(new Promise((_, reject) => { rejectRead = reject; }));
+  const { wrapper, router } = await setup();
+  expect(wrapper.find('[aria-label="导出下一批实验 CSV"]').exists()).toBe(true);
+  await router.replace("/analyses/record-b"); await flushPromises();
+  expect(wrapper.find('[aria-label="导出下一批实验 CSV"]').exists()).toBe(false);
+  rejectRead(new Error("read failed")); await flushPromises();
+  expect(wrapper.find('[aria-label="导出下一批实验 CSV"]').exists()).toBe(false);
+  expect(saveAs).not.toHaveBeenCalled();
+  expect(API.post).not.toHaveBeenCalled(); expect(API.delete).not.toHaveBeenCalled();
 });

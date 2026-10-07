@@ -12,6 +12,7 @@ jest.mock("@/common/api", () => ({
   },
 }));
 jest.mock("file-saver", () => ({ saveAs: jest.fn() }));
+jest.mock("./optimization.css", () => ({}));
 global.TextDecoder = TextDecoder;
 
 // Protocol-only view fixtures; scientific acceptance uses the separate published-data test.
@@ -82,6 +83,7 @@ test("view renders persisted current result, automatically reveals its panel and
     value: scroll,
   });
   const wrapper = mount(Optimization, {
+    attachTo: document.body,
     global: {
       stubs: {
         ModuleWorkbench: {
@@ -112,6 +114,17 @@ test("view renders persisted current result, automatically reveals its panel and
     });
     await input.trigger("change");
     await flushPromises();
+    expect(wrapper.find("main").exists()).toBe(false);
+    const tabs = wrapper.findAll('[role="tab"]');
+    const panels = wrapper.findAll('[role="tabpanel"]');
+    expect(panels).toHaveLength(2);
+    for (const tab of tabs) {
+      const panel = panels.find((panel) => panel.attributes("id") === tab.attributes("aria-controls"));
+      expect(panel).toBeDefined();
+      expect(panel.attributes("aria-labelledby")).toBe(tab.attributes("id"));
+    }
+    await tabs[0].trigger("keydown", { key: "ArrowRight" });
+    expect(tabs[0].attributes("aria-selected")).toBe("true");
     expect(wrapper.get('[aria-label="选择本页实测记录"]').element.checked).toBe(
       false,
     );
@@ -135,6 +148,14 @@ test("view renders persisted current result, automatically reveals its panel and
         element.classList.contains("opt-results"),
       ),
     ).toBe(true);
+    expect(tabs[1].attributes("tabindex")).toBe("0");
+    expect(tabs[0].attributes("tabindex")).toBe("-1");
+    await tabs[1].trigger("keydown", { key: "ArrowLeft" });
+    expect(tabs[0].attributes("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(tabs[0].element);
+    await tabs[0].trigger("keydown", { key: "End" });
+    expect(tabs[1].attributes("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(tabs[1].element);
     await wrapper
       .get('[aria-label="temperature 候选水平"]')
       .setValue("10\n20\n30");

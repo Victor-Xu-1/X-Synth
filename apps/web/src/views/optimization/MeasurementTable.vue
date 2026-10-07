@@ -26,8 +26,8 @@
         />
       </div>
     </div>
-    <div class="opt-table-scroll">
-      <table>
+    <div class="opt-table-scroll" role="region" aria-label="实测记录表" tabindex="0">
+      <table class="opt-data-table">
         <thead>
           <tr>
             <th class="opt-select-column">
@@ -36,13 +36,7 @@
                 aria-label="选择本页实测记录"
                 :checked="allPageSelected"
                 :indeterminate="somePageSelected && !allPageSelected"
-                @change="
-                  $emit(
-                    'select-page',
-                    visibleRows.map((row) => row.index),
-                    $event.target.checked,
-                  )
-                "
+                @change="selectVisibleRows"
               />
             </th>
             <th>记录</th>
@@ -64,7 +58,7 @@
                 :checked="selectedRows.includes(row.index)"
                 :disabled="
                   !selectedRows.includes(row.index) &&
-                  selectedRows.length >= 256
+                  selectedRows.length >= LIMITS.measurements
                 "
                 @change="$emit('toggle-row', row.index)"
               />
@@ -80,12 +74,13 @@
   </section>
 </template>
 <script setup>
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
+import { LIMITS } from "./model";
 const props = defineProps({
   table: { type: Object, required: true },
   selectedRows: { type: Array, required: true },
 });
-defineEmits(["toggle-row", "select-page"]);
+const emit = defineEmits(["toggle-row", "select-page"]);
 const page = ref(1),
   pageSize = 50;
 const pages = computed(() =>
@@ -95,11 +90,19 @@ const visibleRows = computed(() =>
   props.table.rows.slice((page.value - 1) * pageSize, page.value * pageSize),
 );
 const allPageSelected = computed(() =>
-  visibleRows.value.every((row) => props.selectedRows.includes(row.index)),
+  visibleRows.value.length > 0 && visibleRows.value.every((row) => props.selectedRows.includes(row.index)),
 );
 const somePageSelected = computed(() =>
   visibleRows.value.some((row) => props.selectedRows.includes(row.index)),
 );
+async function selectVisibleRows(event) {
+  const input = event.target;
+  emit("select-page", visibleRows.value.map((row) => row.index), input.checked);
+  await nextTick();
+  // A rejected command leaves props unchanged, but the native checkbox already toggled.
+  input.checked = allPageSelected.value;
+  input.indeterminate = somePageSelected.value && !allPageSelected.value;
+}
 watch(
   () => props.table.table_sha256,
   () => {
