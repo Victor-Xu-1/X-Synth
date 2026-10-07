@@ -9,6 +9,7 @@
       }"
       @keydown="handleNavigationKeydown"
     >
+      <a class="skip-navigation" href="#workspace-content" @click="focusContent">跳到工作区</a>
       <AppBar
         :mobile="mobile"
         :navigation-open="mobile ? mobileOpen : !compact"
@@ -36,7 +37,7 @@
         <div v-if="!online" class="workspace-connection-message" role="status">
           网络已断开
         </div>
-        <main class="workspace-page">
+        <main id="workspace-content" class="workspace-page" tabindex="-1">
           <WorkspaceSectionNav /><router-view />
         </main>
       </div>
@@ -62,10 +63,13 @@ const online = useOnline();
 const { width } = useWindowSize();
 const mobile = computed(() => width.value < 900);
 const shell = ref(null);
-const preferredCompact = ref(true);
+const preferredCompact = ref(false);
 const compact = computed(() => !mobile.value && preferredCompact.value);
 const mobileOpen = ref(false);
 let timer;
+function focusContent() {
+  shell.value?.querySelector("#workspace-content")?.focus({ preventScroll: true });
+}
 function navigationControls() {
   return [
     ...(shell.value?.querySelectorAll(

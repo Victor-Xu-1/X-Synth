@@ -1,11 +1,20 @@
 <template>
-  <div class="molecule-graph-node" :class="{ selected, target: data.isTarget }">
+  <div
+    class="molecule-graph-node"
+    :class="{ selected, target: data.isTarget, starting: data.isStarting && !data.isTarget }"
+  >
     <Handle type="target" :position="Position.Left" />
     <div class="graph-node-heading">
-      <span>{{
-        data.isTarget ? "目标分子" : data.isStarting ? "起始原料" : "中间体"
-      }}</span
-      ><strong v-if="data.label">{{ data.label }}</strong>
+      <span>
+        <v-icon
+          v-if="data.isTarget || data.isStarting"
+          :icon="data.isTarget ? 'mdi-target' : 'mdi-flask-outline'"
+          size="14"
+          aria-hidden="true"
+        />
+        {{ data.isTarget ? "目标分子" : data.isStarting ? "起始原料" : "中间体" }}
+      </span>
+      <strong v-if="data.label" :title="data.label">{{ data.label }}</strong>
     </div>
     <SmilesImage
       :smiles="data.smiles"
@@ -59,6 +68,55 @@ const price = computed(() =>
 );
 </script>
 <style scoped>
+.molecule-graph-node {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.4;
+}
+.graph-node-heading {
+  flex: 0 0 auto;
+}
+.graph-node-heading > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.graph-node-heading > strong {
+  min-width: 0;
+}
+.target .graph-node-heading > span {
+  color: var(--ws-accent, #0b7163);
+  font-weight: 600;
+}
+.starting .graph-node-heading > span {
+  color: var(--ws-info, #356d91);
+}
+:global(.v-theme--dark) .starting .graph-node-heading > span {
+  color: var(--ws-info, #8bbbd9);
+}
+.molecule-graph-node > :deep(.smiles-image-container) {
+  flex: 0 0 auto;
+}
+.graph-node-footer {
+  flex: 0 0 auto;
+  margin-top: auto;
+}
+.graph-node-smiles {
+  font-size: 10px;
+  line-height: 1.4;
+}
+.graph-node-action {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  color: var(--ws-muted);
+}
+.graph-node-action:focus-visible {
+  outline: 2px solid var(--ws-accent, #0b7163);
+  outline-offset: 1px;
+}
 .graph-node-catalog-price {
   min-width: 0;
   flex: 1;
@@ -70,7 +128,7 @@ const price = computed(() =>
 }
 .graph-node-catalog-price span {
   color: var(--ws-muted);
-  font-size: 9px;
+  font-size: 10px;
   margin-left: 3px;
 }
 </style>

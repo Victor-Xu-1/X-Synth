@@ -1,7 +1,7 @@
 import { mount, flushPromises } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import {
   parse,
   compileScript,
@@ -41,6 +41,7 @@ const button = {
 const stubs = {
   VBtn: button,
   VIcon: true,
+  VDivider: true,
   VProgressLinear: true,
   VTooltip: { template: '<div><slot name="activator" :props="{}" /></div>' },
   VMenu: {
@@ -99,7 +100,7 @@ const data = (results = [row()], total = results.length) => ({
   groups: [{ id: "g-1", name: "项目", revision: 3, count: 11 }],
 });
 const wrappers = [];
-async function setup(url = "/results") {
+async function setup(url = "/results", { insideShell = false } = {}) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -109,7 +110,10 @@ async function setup(url = "/results") {
     ],
   });
   await router.push(url);
-  const wrapper = mount(TaskList, { global: { plugins: [router], stubs } });
+  const component = insideShell
+    ? { components: { TaskList }, template: '<main id="test-shell"><TaskList /></main>' }
+    : TaskList;
+  const wrapper = mount(component, { global: { plugins: [router], stubs } });
   wrappers.push(wrapper);
   await flushPromises();
   return { wrapper, router };
@@ -149,6 +153,21 @@ test("actual history composition reads one page, keeps server group totals, and 
   expect(API.post).not.toHaveBeenCalled();
   expect(API.delete).not.toHaveBeenCalled();
 });
+
+test.each(["cards", "list"])(
+  "history collection in %s view retains its accessible name without adding a primary landmark", async (view) => {
+    const { wrapper } = await setup(`/results?view=${view}`, { insideShell: true });
+    const landmarks = wrapper.findAll("main, [role=main]");
+    expect(landmarks).toHaveLength(1);
+    expect(landmarks[0].attributes("id")).toBe("test-shell");
+    const collection = wrapper.get(".history-content");
+    expect(collection.element.tagName).toBe("SECTION");
+    expect(collection.attributes("aria-labelledby")).toBe("history-collection-title");
+    expect(collection.get("#history-collection-title").text()).toBe("全部任务");
+    expect(API.post).not.toHaveBeenCalled();
+    expect(API.delete).not.toHaveBeenCalled();
+  },
+);
 
 test("collection heading and independent group rail use server counts, not the current card count", async () => {
   API.get.mockResolvedValueOnce(
@@ -223,7 +242,7 @@ test("comparable cards preserve long titles, chemical identity, actual status an
   expect(cards[1].get(".task-route-count").text()).toBe("路线数未记录");
   expect(cards[1].get("time").text()).toBe("时间未记录");
   expect(cards[0].find(".task-card-controls button").exists()).toBe(false);
-  for (const label of ["重命名任务", "任务信息", "预览路线", "重新搜索"])
+  for (const label of ["重命名任务", "任务信息", "查看任务进度", "重新搜索"])
     expect(
       cards[0].get(`.task-card-footer [aria-label="${label}"]`).exists(),
     ).toBe(true);
@@ -413,6 +432,36 @@ test("list links and modal detail links carry identical namespaced history conte
   });
 });
 
+test("compact list keeps a primary preview and an overflow toolbar without changing long names or chemistry", async () => {
+  const title = "完整的先导化合物研究名称".repeat(12);
+  const smiles = "[13CH3][C@@H](O)C(=O)[O-].[Na+]";
+  API.get.mockResolvedValueOnce(data([row("long-name", { description: title, target_smiles: smiles })]));
+  const { wrapper } = await setup("/results?view=list");
+  expect(wrapper.get(".task-row-title a").text()).toBe(title);
+  expect(wrapper.get(".task-row-title a").attributes("title")).toBe(title);
+  expect(wrapper.get(".task-row-title .workspace-code").text()).toBe(smiles);
+  expect(wrapper.get("[data-smiles]").attributes("data-smiles")).toBe(smiles);
+  const toolbar = wrapper.get(".task-action-cell .task-actions");
+  const primary = toolbar.findAll("button").filter((item) => !item.element.closest(".task-actions-menu"));
+  expect(primary.map((item) => item.attributes("aria-label"))).toEqual(["预览路线", "更多任务操作"]);
+  for (const label of ["任务信息", "移至分组", "移入回收箱", "重新搜索", "重命名任务"])
+    expect(toolbar.get(`.task-actions-menu [aria-label="${label}"]`).exists()).toBe(true);
+  expect(API.post).not.toHaveBeenCalled();
+  expect(API.delete).not.toHaveBeenCalled();
+});
+
+test("list preview uses the same route availability and busy gates as the existing task actions", async () => {
+  API.get.mockResolvedValueOnce(data([row("empty", { num_trees: null, result_state: "failed" })]));
+  const { wrapper } = await setup("/results?view=list");
+  expect(wrapper.get('.task-action-cell [aria-label="预览路线"]').element.disabled).toBe(true);
+  expect(wrapper.get('.task-action-cell [aria-label="更多任务操作"]').element.disabled).toBe(false);
+  API.get.mockRejectedValueOnce(new Error(JSON.stringify({ detail: "暂时不可用" })));
+  await wrapper.get('[aria-label="刷新任务"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.get('.task-action-cell [aria-label="更多任务操作"]').element.disabled).toBe(true);
+  expect(wrapper.get(".task-row-title").text()).toContain("先导化合物");
+});
+
 test("searching tasks with stored candidates can preview while filtered and keep RoutePreview's old props contract", async () => {
   const active = row("running", { result_state: "searching" });
   API.get.mockResolvedValueOnce(data([active]));
@@ -468,7 +517,7 @@ test.each(["cards", "list"])(
       ...active,
       result: { unified_route_pool: { selected_routes: [] } },
     });
-    const control = wrapper.get('[aria-label="预览路线"]');
+    const control = wrapper.get('[aria-label="查看任务进度"]');
     expect(control.element.disabled).toBe(false);
     await control.trigger("click");
     await flushPromises();
@@ -537,7 +586,7 @@ test("the history page and its exclusive card compile scripts, templates and res
         compileStyle({
           filename,
           id: "task-history",
-          source: style.content,
+          source: style.src ? readFileSync(resolve(dirname(filename), style.src), "utf8") : style.content,
           scoped: true,
         }).errors,
       ).toEqual([]);

@@ -27,7 +27,8 @@ test("route search uses chemical labels and collapsed expert fields without chan
   const settings = reactive(defaultSearchSettings());
   const original = buildWorkbenchRequest({ smiles: "CCO", name: "", settings });
   const wrapper = render(RouteSearchSettings, { name: "", settings });
-  expect(wrapper.text()).toContain("每轮搜索时长（分钟）");
+  expect(wrapper.text()).toContain("每轮时长（分钟）");
+  expect(wrapper.get('[name="expansion_time_minutes"]').attributes("aria-label")).toBe("每轮搜索时长（分钟）");
   expect(wrapper.text()).not.toMatch(/搜索预算|终点判定/);
   const expert = wrapper.get("details");
   expect(expert.element.open).toBe(false);

@@ -213,6 +213,7 @@ onBeforeUnmount(() => (alive = false));
   margin-bottom: 12px;
 }
 .scientific-engine-scroll {
+  min-width: 0;
   overflow-x: auto;
 }
 .scientific-engine-scroll table {
@@ -222,8 +223,6 @@ onBeforeUnmount(() => (alive = false));
   max-width: 360px;
   overflow-wrap: anywhere;
 }
-</style>
-<style scoped>
 .environment-deployment {
   max-width: 1200px;
 }
@@ -235,6 +234,9 @@ onBeforeUnmount(() => (alive = false));
   display: grid;
   gap: 16px;
   margin-top: 24px;
+}
+.engine-list > * {
+  min-width: 0;
 }
 .environment-configuration h2 {
   font-size: 15px;

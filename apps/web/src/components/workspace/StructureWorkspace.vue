@@ -79,7 +79,7 @@ defineExpose({ read, clear, capture });
   min-width: 0;
 }
 .structure-input-row {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 .structure-heading {
   display: flex;
@@ -87,7 +87,7 @@ defineExpose({ read, clear, capture });
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 600;
 }
 .structure-heading :deep(.v-btn) {
@@ -102,13 +102,13 @@ defineExpose({ read, clear, capture });
 }
 .structure-input-actions input {
   min-width: 0;
-  font-family: monospace;
-  font-size: 16px;
-  min-height: 50px;
+  font-family: var(--ws-font-code);
+  font-size: 13px;
+  min-height: 44px;
 }
 .structure-board {
   min-width: 0;
-  height: clamp(420px, calc(100dvh - 396px), 760px);
+  height: clamp(420px, calc(100dvh - 340px), 760px);
 }
 .board-busy {
   opacity: 0.7;

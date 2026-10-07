@@ -66,6 +66,7 @@ const legacy = () => ({ ...candidate("legacy"), metadata: {
   forward_validation_passed: true, forward_validation_method: "native_template_reconstruction",
 } });
 const stubs = {
+  VLazy: { template: '<div><slot /></div>' },
   VIcon: { props: ["icon"], template: '<span :data-icon="icon" />' },
   VBtn: { props: ["disabled"], template: '<button :disabled="disabled"><slot /></button>' },
   VCheckboxBtn: true,

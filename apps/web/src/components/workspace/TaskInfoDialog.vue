@@ -414,7 +414,7 @@ const hasSettings = computed(() =>
   justify-content: space-between;
   gap: 12px;
   margin-top: 14px;
-  color: #c63f43;
+  color: var(--ws-danger);
   font-size: 12px;
 }
 .task-info-error > span {

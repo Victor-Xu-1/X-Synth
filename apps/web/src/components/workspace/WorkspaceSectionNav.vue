@@ -58,20 +58,25 @@ const activeExtra = computed(() =>
 .workspace-section-nav {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
-  padding: 10px 28px;
+  padding: 6px 28px;
   border-bottom: 1px solid var(--ws-border);
   min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 .workspace-section-nav > a {
   display: flex;
   align-items: center;
   gap: 6px;
   min-height: 38px;
-  padding: 8px 14px;
+  padding: 8px 12px;
   border-radius: 6px;
   font-size: 14px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  transition: background-color var(--ws-motion) var(--ws-ease);
 }
 .workspace-section-nav > a:hover {
   background: var(--ws-hover);
@@ -79,9 +84,11 @@ const activeExtra = computed(() =>
 .workspace-section-nav .active {
   background: var(--ws-accent-soft);
   color: var(--ws-accent);
+  font-weight: 600;
 }
 .section-more {
   max-width: 100%;
+  flex-shrink: 0;
 }
 .section-more :deep(.v-btn__content) {
   white-space: normal;

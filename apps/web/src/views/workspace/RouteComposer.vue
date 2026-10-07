@@ -133,20 +133,20 @@ const {
   min-width: 0;
 }
 .route-workbench h1 {
-  font-size: 30px;
+  font-size: 24px;
   font-weight: 600;
   line-height: 1.25;
 }
 .workbench-mode-bar :deep(.v-btn-toggle) {
-  height: 54px;
+  height: 42px;
   max-width: 100%;
   border-radius: 6px;
   gap: 6px;
   overflow-x: auto;
 }
 .workbench-mode-bar :deep(.v-btn) {
-  font-size: 16px;
-  padding: 0 18px;
+  font-size: 14px;
+  padding: 0 14px;
   border: 1px solid var(--ws-border);
   background: var(--ws-surface);
 }
@@ -162,11 +162,11 @@ const {
 .workbench-settings {
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 24px;
   min-width: 0;
 }
 .workbench-settings h2 {
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 600;
   line-height: 1.35;
 }
@@ -178,11 +178,11 @@ const {
   border-top: 1px solid var(--ws-border);
 }
 .workbench-submit .v-btn {
-  height: 56px;
-  font-size: 16px;
+  height: 44px;
+  font-size: 14px;
 }
 .workbench-submit .v-btn[type="submit"] {
-  width: 152px;
+  width: 140px;
   max-width: 60%;
 }
 .workbench-submit .v-btn[type="button"] {

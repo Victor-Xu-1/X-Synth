@@ -57,9 +57,23 @@ test("structure cards preserve chemical identity, real count and task name, and 
   expect(wrapper.text()).toContain("先导化合物");
   await wrapper.get("input").setValue(true);
   expect(wrapper.emitted("check")).toEqual([[true]]);
-  await wrapper.get('[aria-label="重命名任务"]').trigger("click");
+  expect(wrapper.find('.task-card-footer [aria-label="重命名任务"]').exists()).toBe(false);
+  wrapper.findComponent(TaskActions).vm.$emit("rename");
   expect(wrapper.emitted("rename")).toEqual([[]]);
   expect(wrapper.find(".task-card-link input").exists()).toBe(false);
+});
+
+test("long task/group names, actual source tags, timestamps and unknown route counts stay intact", () => {
+  const name = "完整的先导化合物研究名称".repeat(12), group = "完整的项目名称".repeat(12);
+  const smiles = "[13CH3][C@@H](O)C(=O)[O-].[Na+]";
+  const wrapper = setup({ task: { ...row, description: name, target_smiles: smiles, num_trees: null, tags: ["原始记录"] }, groupName: group });
+  expect(wrapper.get(".task-card-title").text()).toBe(name);
+  expect(wrapper.get(".task-card-title").attributes("title")).toBe(name);
+  expect(wrapper.get(".task-card-group").attributes("title")).toBe(group);
+  expect(wrapper.get(".task-card-source").text()).toBe("原始记录");
+  expect(wrapper.get(".task-route-count").text()).toBe("路线数未记录");
+  expect(wrapper.get("[data-smiles]").attributes("data-smiles")).toBe(smiles);
+  expect(wrapper.get(".task-card-footer time").attributes("datetime")).toBe(row.modified);
 });
 test("card detail links namespace the current history context, while preview remains available for searching tasks", () => {
   const wrapper = setup({ historyContext: context });

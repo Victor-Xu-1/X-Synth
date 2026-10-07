@@ -40,39 +40,18 @@
           :show-error-image="false"
         />
       </div>
-      <div class="task-card-heading">
-        <span class="task-card-source" :title="taskSourceLabel(task)">{{
-          taskSourceLabel(task)
-        }}</span>
-        <span class="task-card-group" :title="groupName">{{ groupName }}</span>
-      </div>
       <div class="task-card-meta">
         <span class="task-route-count">{{
           count === null ? "路线数未记录" : `${count} 条路线`
         }}</span>
-        <time
-          :datetime="task.modified"
-          :title="`更新时间：${taskTimestampLabel(task.modified)}`"
-          >{{
-            task.modified ? displayTime(task.modified) : "时间未记录"
-          }}</time
-        >
+        <span class="task-card-group" :title="groupName">{{ groupName }}</span>
+        <span v-if="sourceLabel !== '路线记录'" class="task-card-source" :title="sourceLabel">{{ sourceLabel }}</span>
       </div>
     </router-link>
     <footer class="task-card-footer">
-      <v-tooltip v-if="!archived" text="重命名任务">
-        <template #activator="{ props }">
-          <v-btn
-            v-bind="props"
-            icon="mdi-pencil-outline"
-            variant="text"
-            size="small"
-            aria-label="重命名任务"
-            :disabled="disabled || Boolean(pending) || infoLoading"
-            @click="$emit('rename')"
-          />
-        </template>
-      </v-tooltip>
+      <time :datetime="task.modified" :title="`更新时间：${taskTimestampLabel(task.modified)}`">
+        {{ task.modified ? displayTime(task.modified) : "时间未记录" }}
+      </time>
       <TaskActions
         :task="task"
         :pending="pending"
@@ -135,6 +114,7 @@ defineEmits([
   "check",
 ]);
 const count = computed(() => taskRouteCount(props.task));
+const sourceLabel = computed(() => taskSourceLabel(props.task));
 const active = computed(() =>
   activeTaskStates.includes(props.task.result_state),
 );
@@ -143,8 +123,8 @@ const active = computed(() =>
 <style scoped>
 .task-card {
   display: grid;
-  grid-template-rows: 64px minmax(0, 1fr) 44px;
-  height: 368px;
+  grid-template-rows: 84px minmax(0, 1fr) 44px;
+  height: 352px;
   min-width: 0;
   border: 1px solid var(--ws-border);
   border-radius: 6px;
@@ -156,12 +136,12 @@ const active = computed(() =>
   border-color: var(--ws-muted);
 }
 .task-card.selected {
-  border-color: var(--ws-accent, #16876f);
-  outline: 1px solid var(--ws-accent, #16876f);
+  border-color: var(--ws-accent);
+  outline: 1px solid var(--ws-accent);
 }
 .task-card-link {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) 18px 24px;
+  grid-template-rows: minmax(0, 1fr) 40px;
   gap: 8px;
   min-width: 0;
   min-height: 0;
@@ -171,60 +151,66 @@ const active = computed(() =>
 }
 .task-card-link:focus-visible,
 .task-card-title:focus-visible {
-  outline: 2px solid var(--ws-accent, #16876f);
+  outline: 2px solid var(--ws-accent);
   outline-offset: -3px;
 }
-.task-card-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
 .task-card-controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 14px 6px 8px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  padding: 12px 12px 10px 8px;
   min-width: 0;
 }
 .task-card-title {
-  flex: 1;
   min-width: 0;
-  max-height: 40px;
+  max-height: 60px;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   overflow: hidden;
   overflow-wrap: anywhere;
   color: var(--ws-text);
   text-decoration: none;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 20px;
 }
 .task-card-controls :deep(.v-selection-control) {
   flex: 0 0 32px;
-  color: var(--ws-accent, #16876f);
+  color: var(--ws-accent);
 }
 .task-card-group,
 .task-card-source {
   color: var(--ws-muted);
-  font-size: 11px;
+  font-size: 12px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 18px;
 }
 .task-card-group {
-  max-width: 48%;
+  grid-column: 2;
+  grid-row: 1 / 3;
+  max-width: 100%;
+  justify-self: end;
+  text-align: right;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.task-card-source {
+  grid-column: 1;
+  grid-row: 2;
+  white-space: nowrap;
 }
 .task-card-controls .state-badge {
   flex-shrink: 0;
 }
 .state-badge.active {
-  color: #a56b12;
-  background: #a56b1212;
+  color: var(--ws-warning);
+  background: color-mix(in srgb, var(--ws-warning) 10%, var(--ws-surface));
 }
 .task-card-structure {
   min-width: 0;
@@ -247,10 +233,11 @@ const active = computed(() =>
   line-height: 18px;
 }
 .task-card-meta {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 2px 12px;
   min-width: 0;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
@@ -262,34 +249,20 @@ const active = computed(() =>
   white-space: nowrap;
   font-weight: 600;
 }
-.task-card-meta time {
-  flex-shrink: 0;
+.task-card-footer time {
+  min-width: 0;
   color: var(--ws-muted);
-  font-size: 11px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 .task-card-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 2px;
-  padding: 6px 8px;
+  gap: 12px;
+  padding: 6px 12px;
   border-top: 1px solid var(--ws-border);
-}
-.task-card-footer :deep(.task-actions) {
-  flex: 1;
-  min-width: 0;
-  flex-shrink: 1;
-  justify-content: space-between;
-}
-.task-card-footer :deep(.v-btn) {
-  width: 30px;
-  height: 30px;
-  min-width: 30px;
-  color: var(--ws-muted);
-  letter-spacing: 0;
-}
-.task-card-footer :deep(.v-btn:hover) {
-  color: var(--ws-accent, #16876f);
 }
 @media (prefers-reduced-motion: reduce) {
   .task-card {

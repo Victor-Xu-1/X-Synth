@@ -7,7 +7,7 @@ const stubs = {
   },
   VList: { template: "<div><slot /></div>" },
   VIcon: true,
-  VListItem: { props: ["title"], template: "<button>{{ title }}</button>" },
+  VListItem: { props: ["title", "disabled"], template: '<button :disabled="disabled">{{ title }}</button>' },
   VBtn: {
     props: ["disabled", "loading"],
     template: '<button :disabled="disabled || loading"><slot /></button>',
@@ -50,6 +50,19 @@ test("persistent group counts are server-wide, and group/create/recycle links ha
   expect(wrapper.emitted("archive")).toEqual([[]]);
   await wrapper.get('[aria-label="新建分组"]').trigger("click");
   expect(wrapper.emitted("create")).toEqual([[]]);
+});
+
+test("unread counters are not shown as zero, while long names and named menu items remain intact", async () => {
+  const name = "完整的先导项目名称".repeat(12);
+  const wrapper = setup({ countsLoaded: false, groups: [{ ...group, name }], busy: true });
+  expect(wrapper.get("nav").attributes("aria-busy")).toBe("true");
+  expect(wrapper.findAll(".group-link small").map((count) => count.text())).toEqual(["", "", ""]);
+  expect(wrapper.get(".group-row .group-link span").attributes("title")).toBe(name);
+  expect(wrapper.get(".group-actions-menu").attributes("role")).toBe("menu");
+  expect(wrapper.get('[aria-label="重命名分组"]').element.disabled).toBe(true);
+  await wrapper.setProps({ countsLoaded: true, busy: false });
+  expect(wrapper.get(".group-row small").text()).toBe("31");
+  expect(wrapper.get('[aria-label="重命名分组"]').element.disabled).toBe(false);
 });
 test("rename and dissolve retain the actual group/revision, while recycle mode does not relabel live counts", async () => {
   const wrapper = setup({ archived: true, selected: "g-1" });

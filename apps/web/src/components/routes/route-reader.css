@@ -1,0 +1,285 @@
+.route-reader {
+  min-width: 0;
+  color: var(--ws-text);
+  background: var(--ws-surface);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.route-reader-selection {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-height: 52px;
+  padding: 4px 20px;
+  border-bottom: 1px solid var(--ws-border);
+}
+.reader-selection-count {
+  font-weight: 600;
+}
+.reader-selection-picked {
+  color: var(--ws-muted);
+  font-variant-numeric: tabular-nums;
+}
+.route-reader-selection > .v-btn {
+  margin-left: auto;
+}
+.reader-route-navigation {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--ws-border);
+}
+.reader-route-navigation > .v-btn {
+  flex: 0 0 auto;
+}
+.reader-route-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.reader-route-tabs button {
+  flex: 0 0 auto;
+  height: 44px;
+  padding: 0 16px;
+  border-bottom: 2px solid transparent;
+  color: var(--ws-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.reader-route-tabs button:hover {
+  color: var(--ws-text);
+  background: var(--ws-hover);
+}
+.reader-route-tabs button.active {
+  border-bottom-color: var(--ws-accent, #0b7163);
+  color: var(--ws-accent, #0b7163);
+  font-weight: 600;
+}
+.reader-route-tabs button:focus-visible {
+  outline: 2px solid var(--ws-accent, #0b7163);
+  outline-offset: -4px;
+}
+.reader-route-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  padding: 12px 20px;
+  font-size: 13px;
+}
+.reader-route-summary > strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+.reader-route-summary > span:not(.state-badge) {
+  color: var(--ws-muted);
+  font-variant-numeric: tabular-nums;
+}
+.reader-route-summary > .page-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.route-reader > .reader-review-summary {
+  padding: 10px 20px;
+  background: var(--ws-muted-surface);
+}
+.reader-route-overviews {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 16px 20px;
+  background: var(--ws-canvas);
+}
+.reader-overview-entry {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: start;
+  min-width: 0;
+  padding: 0 16px;
+  border: 1px solid var(--ws-border);
+  border-radius: 8px;
+  background: var(--ws-surface);
+}
+.reader-overview-entry.picked {
+  border-color: var(--ws-accent, #0b7163);
+}
+.route-choice-check {
+  grid-column: 1;
+  min-width: 0;
+  margin-top: 13px;
+}
+.reader-overview-entry > :deep(.route-overview-list) {
+  grid-column: 2;
+  min-width: 0;
+  width: 100%;
+  padding: 0 0 0 12px;
+}
+.reader-overview-entry > :deep(.route-review-summary) {
+  grid-column: 1 / -1;
+  padding: 10px 0;
+}
+.reader-detail-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  min-width: 0;
+}
+.reader-tool-rail {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 20px;
+  border-top: 1px solid var(--ws-border);
+  border-bottom: 1px solid var(--ws-border);
+  background: var(--ws-surface);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.reader-tool-rail > .v-btn {
+  flex: 0 0 auto;
+  min-width: 88px;
+  height: 48px;
+  padding: 0 12px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0 !important;
+  color: var(--ws-muted);
+  font-size: 13px;
+  letter-spacing: 0;
+}
+.reader-tool-rail > .v-btn.active {
+  border-bottom-color: var(--ws-accent, #0b7163);
+  color: var(--ws-accent, #0b7163);
+  font-weight: 600;
+}
+.reader-tool-rail > .v-btn:focus-visible {
+  outline-offset: -4px;
+}
+.reader-main {
+  min-width: 0;
+}
+.reader-main:focus-visible {
+  outline: 2px solid var(--ws-accent, #0b7163);
+  outline-offset: -2px;
+}
+.reader-catalog-status {
+  margin: 0;
+  padding: 8px 20px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.reader-graph {
+  height: max(520px, calc(100dvh - 310px));
+  min-width: 0;
+}
+.reader-graph > :deep(.route-graph-surface) {
+  background: var(--ws-surface);
+}
+.reader-detail-body > :deep(.route-inspector) {
+  width: 336px;
+  max-height: calc(100dvh - 310px);
+  min-width: 0;
+  box-shadow: none;
+  scroll-margin-block: 12px;
+}
+.reader-evidence {
+  padding: 14px 20px;
+  border-top: 1px solid var(--ws-border);
+  font-size: 13px;
+}
+.reader-evidence > summary {
+  display: list-item;
+  padding: 4px 0;
+  color: var(--ws-muted);
+  cursor: pointer;
+}
+.reader-evidence > summary .v-icon {
+  margin-right: 4px;
+}
+.reader-evidence[open] > summary {
+  margin-bottom: 12px;
+  color: var(--ws-text);
+}
+.reader-error {
+  margin: 0;
+  padding: 12px 20px;
+}
+.reader-empty {
+  min-height: 300px;
+}
+.compact .reader-graph {
+  height: 65vh;
+  min-height: 350px;
+}
+@media (max-width: 1100px) {
+  .reader-detail-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .reader-detail-body > :deep(.route-inspector) {
+    grid-column: 1;
+    width: 100%;
+    max-height: none;
+    border-left: 0;
+    border-top: 1px solid var(--ws-border);
+  }
+}
+@media (max-width: 700px) {
+  .route-reader-selection {
+    padding: 4px 12px;
+    gap: 4px 8px;
+    font-size: 12px;
+  }
+  .reader-route-navigation {
+    padding: 0 12px;
+    gap: 6px;
+  }
+  .reader-route-tabs button {
+    padding: 0 12px;
+  }
+  .reader-route-summary {
+    padding: 10px 12px;
+    gap: 8px 12px;
+  }
+  .reader-route-summary > .page-actions {
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+  .route-reader > .reader-review-summary {
+    padding: 10px 12px;
+  }
+  .reader-tool-rail {
+    padding: 0 8px;
+    gap: 0;
+  }
+  .reader-tool-rail > .v-btn {
+    min-width: 80px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  .reader-route-overviews {
+    padding: 12px;
+    gap: 12px;
+  }
+  .reader-overview-entry {
+    grid-template-columns: 28px minmax(0, 1fr);
+    padding: 0 10px;
+  }
+  .reader-overview-entry > :deep(.route-overview-list) {
+    padding-left: 8px;
+  }
+  .reader-evidence,
+  .reader-catalog-status,
+  .reader-error {
+    padding: 12px;
+  }
+}

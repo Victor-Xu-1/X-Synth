@@ -95,7 +95,7 @@ const workspacePages = [
     path: "references",
     name: "ReactionReferences",
     component: () => import("@/views/references/ReferenceSearch.vue"),
-    meta: { title: "专利参考反应", feature: "references" },
+    meta: { title: "参考反应检索", feature: "references" },
   },
   {
     path: "buyables",

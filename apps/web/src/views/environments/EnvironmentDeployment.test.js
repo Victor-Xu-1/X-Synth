@@ -67,7 +67,7 @@ test("prominent workspace templates stay backend-neutral while environment cards
     "engine.name",
   );
   expect(source("components/workspace/TaskCard.vue")).toContain(
-    "taskSourceLabel(task)",
+    "taskSourceLabel(props.task)",
   );
   expect(source("components/routes/RoutePreview.vue")).toContain(
     "<RouteReader",

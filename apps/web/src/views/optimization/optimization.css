@@ -34,7 +34,7 @@
   width: 100%;
 }
 .opt-file:focus-within {
-  outline: 2px solid #427ab2;
+  outline: 2px solid var(--ws-info);
   outline-offset: 2px;
 }
 .opt-file-name {
@@ -47,7 +47,7 @@
   color: var(--ws-muted, #666);
 }
 .opt-runtime.ready {
-  color: #16856b;
+  color: var(--ws-accent);
 }
 .opt-layout {
   display: grid;
@@ -83,7 +83,7 @@
   flex-direction: column;
   gap: 5px;
   margin-bottom: 10px;
-  font-size: 12px;
+  font-size: 13px;
   min-width: 0;
 }
 .opt-field input,
@@ -99,7 +99,7 @@
   font: inherit;
 }
 .opt-field select {
-  min-height: 34px;
+  min-height: 40px;
 }
 .opt-field textarea {
   resize: vertical;
@@ -245,7 +245,7 @@
   color: var(--ws-muted, #777);
 }
 .optimization-workspace tr.selected {
-  background: rgba(22, 133, 107, 0.07);
+  background: var(--ws-accent-soft);
 }
 .opt-result-summary {
   display: flex;
@@ -255,11 +255,11 @@
   font-size: 12px;
 }
 .opt-result-summary strong {
-  color: #af7923;
+  color: var(--ws-warning);
   font-weight: 500;
 }
 .opt-scientific-notes {
-  border-left: 2px solid #af7923;
+  border-left: 2px solid var(--ws-warning);
   padding-left: 12px;
   font-size: 12px;
   line-height: 1.7;
@@ -287,28 +287,28 @@
   overflow-wrap: anywhere;
 }
 .opt-provenance a {
-  color: #427ab2;
+  color: var(--ws-info);
 }
 .opt-notice,
 .opt-error {
   padding: 10px 12px;
   margin-top: 12px;
   line-height: 1.7;
-  border-left: 2px solid #af7923;
+  border-left: 2px solid var(--ws-warning);
   background: rgba(175, 121, 35, 0.05);
   overflow-wrap: anywhere;
 }
 .opt-error {
-  border-color: #c63f43;
-  color: #c63f43;
-  background: rgba(198, 63, 67, 0.05);
+  border-color: var(--ws-danger);
+  color: var(--ws-danger);
+  background: var(--ws-danger-soft);
 }
 .opt-error-text {
-  color: #c63f43;
+  color: var(--ws-danger);
 }
 .opt-level-error {
   font-size: 12px;
-  color: #c63f43;
+  color: var(--ws-danger);
   line-height: 1.6;
   margin: 0 0 10px;
 }
@@ -317,7 +317,7 @@
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  color: #427ab2;
+  color: var(--ws-info);
   margin-bottom: 12px;
 }
 .opt-loading {
