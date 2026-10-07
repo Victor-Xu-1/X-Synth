@@ -7,6 +7,40 @@ from packages.knowledge_base.reaction_models import (
     EvidenceSourceStatus,
     ReactionLibraryResponse,
 )
+from packages.knowledge_base.reaction_library import verify_evidence_record
+from packages.adapters.askcos.evidence_proposals import recorded_candidate_exclusion
+
+
+def recorded_reaction_support(response: ReferenceSearchResponse) -> list[dict]:
+    """Positive exact ORD outcomes support a candidate only under recorded conditions."""
+    if not isinstance(response, ReactionLibraryResponse):
+        return []
+    sources = {item.source: item for item in response.sources}
+    source = sources.get("ORD")
+    if (source is None or not source.ready or not source.snapshot or response.has_more
+            or any(not item.ready for item in response.sources)):
+        return []
+    supported = []
+    for record in response.results:
+        if (
+            record.provenance.source != "ORD" or record.match_scope != "reaction_identity"
+            or recorded_candidate_exclusion(record)
+            or not record.conditions or not (
+                record.conditions.temperature or record.conditions.time or record.conditions.pressure
+                or record.procedure and record.procedure.strip()
+            )
+        ):
+            continue
+        verify_evidence_record(record, response.query)
+        measured = [item for item in record.reported_yields if item.unit == "%"
+                    and item.method == "ord_product_measurement" and item.value is not None
+                    and item.measurement_type == "YIELD" and item.source_field
+                    and 0 < item.value <= 100 and item.product_smiles == response.query.product]
+        if measured:
+            supported.append({"id": record.id, "source": "ORD", "snapshot": source.snapshot,
+                              "source_sha256": record.provenance.source_sha256,
+                              "basis": "exact_recorded_reaction_with_positive_yield"})
+    return supported
 
 
 def reference_evidence(response: ReferenceSearchResponse) -> dict:

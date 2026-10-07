@@ -23,6 +23,23 @@ def expander(request, monkeypatch):
     return expansion_client(request.param, monkeypatch)
 
 
+@pytest.mark.parametrize("enabled", [True, False])
+def test_evidence_setting_survives_native_transport_without_default_substitution(expander, enabled):
+    received = []
+
+    def inspect_request(_handler, payload):
+        received.append(payload)
+        return 200, {"status_code": 200, "message": "transport-only", "result": []}, {}
+
+    with local_http(inspect_request) as (url, _server):
+        client = expander.ExpandOneAPI(url, request_timeout=1)
+        try:
+            assert client("CCO", expander.ExpandOneOptions(include_evidence_candidates=enabled)) == []
+            assert received[0]["include_evidence_candidates"] is enabled
+        finally:
+            client.session.close()
+
+
 @pytest.mark.parametrize("status,envelope,recoverable", [
     (503, {"detail": "outage"}, True),
     (422, {"detail": "invalid"}, False),

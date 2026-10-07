@@ -60,6 +60,8 @@ def test_asset_change_during_hashing_is_rejected(tmp_path, monkeypatch):
     "packages/platform/native_search_contract.py",
     "packages/platform/native_endpoints.py",
     "packages/platform/performance.py",
+    "packages/adapters/askcos/evidence_proposals.py",
+    "packages/knowledge_base/reaction_library.py",
 ])
 def test_supporting_algorithm_source_changes_identity_without_rehashing_weights(tmp_path, monkeypatch, directory):
     """Tiny file identity controls; no model inference or provider is simulated."""
@@ -109,3 +111,25 @@ def test_each_stock_decision_helper_is_in_identity_boundary():
         "packages/adapters/stock/catalog_pricing.py",
         "packages/platform/immutable_sqlite.py",
     } <= set(asset_identity.NATIVE_EXTERNAL_FILES)
+
+
+def test_pinned_reaction_data_bytes_are_in_native_identity(tmp_path):
+    source, assets = tmp_path / "source", tmp_path / "assets"
+    for name in asset_identity.NATIVE_EXTERNAL_FILES:
+        path = source / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("CONTROL = 1\n", encoding="ascii")
+    for name in (
+        "models/fast_filter/1/saved_model.pb", "models/pathway_ranker/treeLSTM512-fp2048.pt",
+        "models/value_network/epoch_99.pt", "models/scscore/model_1024bool.npz",
+    ):
+        path = assets / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"file-identity-control-not-a-model")
+    stock = SimpleNamespace(summary={"catalog_sha256": "a" * 64})
+    path = tmp_path / "reaction-identity-control"
+    path.write_bytes(b"first data identity control")
+    first = asset_identity.native_asset_identity(source, assets, stock, [], reaction_library=path)
+    assert asset_identity.native_asset_identity(source, assets, stock, []) != first
+    path.write_bytes(b"changed data identity control")
+    assert asset_identity.native_asset_identity(source, assets, stock, [], reaction_library=path) != first

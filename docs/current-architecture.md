@@ -16,6 +16,7 @@ flowchart TD
   JOB --> RUN["One Product Orchestrator"]
   RUN --> SEARCH["Private ASKCOS Child Jobs: MCTS + RetroStar"]
   MODELS["Resident Trained Models + Matching Template Order"] --> SEARCH
+  ORD["Pinned ORD Exact Records / Distinct Precursors"] --> SEARCH
   STOCK["Pinned Unified Stock Snapshot"] --> SEARCH
   SEARCH --> POOL["Pure Route Pool: Closure / Cycles / Families / Ranking"]
   STOCK --> POOL
@@ -113,6 +114,30 @@ another product version.
   parameters. A shared template query database cannot replace a trained output
   ordering. Imported ORD/USPTO templates are knowledge assets until a compatible
   native proposal mechanism is configured.
+- The existing one-step expansion also retrieves exact-product precursors from
+  the configured immutable ORD record index. Repeated condition variants do not
+  count as different precursor sets. Recorded agents remain separate from
+  structural precursors; disconnected compound groups that native search cannot
+  preserve are explicitly unsupported, not split into purchasable fragments.
+  Retrieval uses a bounded uniform search prior, never a neural confidence or
+  experimental success probability. Known measured zero-yield records are not
+  promoted as successful recorded proposals. No SMARTS is fabricated.
+  Exact record identity is checked again against the pinned source during review,
+  separately from template reconstruction; both still require an independent
+  Graph2SMILES candidate, the unchanged FF threshold, exact stock closure and DAG
+  checks. Model top-1 agreement is the default. A lower-ranked target candidate
+  is supported only by an exact ORD reaction with positive target yield, recorded
+  conditions, ready pinned sources and untruncated retrieval. Product-only matches,
+  missing/zero yields or a target absent from model candidates cannot pass.
+  Review version 2 distinguishes model top-1 from recorded-reaction support;
+  original experimental conditions do not certify new conditions or a new experiment.
+  Unmapped record-only first moves share a conservative target family, preventing
+  leaving-group variants from inflating the requested diversity count.
+- The configured ORD bytes and proposal code belong to the native checkpoint
+  identity. Readiness verifies that expansion and review use the same available
+  ORD snapshot; an absent optional source stays absent in both processes. Changing
+  the configured source cannot reuse an old search graph. Native USPTO remains
+  a source-scoped reference provider, not an implicitly installed proposal model.
 - Quality evaluation and a bounded second search are coordinated once by the
   product pipeline. Layered repair loops must not multiply silently.
 - Qualification visits the finite normalized candidate pool rather than imposing

@@ -43,6 +43,7 @@ def build_search_options(
             "filter_threshold": tuning.minimum_plausibility,
             "return_reacting_atoms": False,
             "extract_template": False,
+            "include_evidence_candidates": True,
         },
         "build_tree_options": {
             "expansion_time": expansion,

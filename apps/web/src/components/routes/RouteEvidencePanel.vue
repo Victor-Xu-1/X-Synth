@@ -9,6 +9,12 @@
     <p v-if="candidate?.metadata?.forward_validation_method === 'native_template_reconstruction'" class="evidence-boundary">
       模板重构仅核对结构一致性，不代表独立正向预测或实验验证。
     </p>
+    <p v-if="candidate?.metadata?.forward_validation_method === 'native_template_or_exact_record_consistency'" class="evidence-boundary">
+      原始记录一致性仅核对反应物和产物身份，不代表独立正向预测或当前条件的实验验证。
+    </p>
+    <p v-if="candidate?.metadata?.forward_validation_method === 'graph2smiles_top1_or_record_supported_candidate'" class="evidence-boundary">
+      非第一名的正向候选仅在完整反应身份、原始条件及正收率记录一致时获得支持；不代表当前实验已验证。
+    </p>
     <section v-if="materials.length" class="evidence-section">
       <h3>起始原料 <span>{{ materials.length }}</span></h3>
       <ul class="evidence-values">

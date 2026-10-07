@@ -35,6 +35,14 @@ NATIVE_EXTERNAL_FILES = (
     "packages/adapters/stock/stock_snapshot.py",
     "packages/adapters/stock/catalog_pricing.py",
     "packages/platform/immutable_sqlite.py",
+    "packages/adapters/askcos/evidence_proposals.py",
+    "packages/adapters/askcos/evidence_audit.py",
+    "packages/adapters/askcos/reference_identity.py",
+    "packages/adapters/askcos/reference_models.py",
+    "packages/knowledge_base/reaction_library.py",
+    "packages/knowledge_base/reaction_models.py",
+    "packages/knowledge_base/reaction_snapshot.py",
+    "packages/workspace/structure_validation.py",
 )
 
 
@@ -60,7 +68,7 @@ def content_digest(path: Path) -> str:
     return result
 
 
-def native_asset_identity(source: Path, assets: Path, stock, models: list[str]) -> str:
+def native_asset_identity(source: Path, assets: Path, stock, models: list[str], *, reaction_library: Path | None = None) -> str:
     installed = {}
     for name in models:
         directory = assets / "models/template-relevance" / name
@@ -100,6 +108,7 @@ def native_asset_identity(source: Path, assets: Path, stock, models: list[str]) 
                 "stock": stock.summary["catalog_sha256"],
                 "models": installed,
                 "code": code.hexdigest(),
+                "reaction_evidence": content_digest(reaction_library) if reaction_library else None,
             },
             sort_keys=True,
         ).encode()

@@ -1,8 +1,9 @@
 """One authority for downstream qualification, independent of search inputs."""
 
-REVIEW_POLICY = "exact_stock_graph2smiles_connected_dag_family_queue_v3"
+REVIEW_POLICY = "exact_stock_graph2smiles_pinned_record_family_queue_v4"
 FORWARD_REVIEW_POLICIES = {
-    "exact_stock_graph2smiles_references_target_bond_families_v2", REVIEW_POLICY,
+    "exact_stock_graph2smiles_references_target_bond_families_v2",
+    "exact_stock_graph2smiles_connected_dag_family_queue_v3", REVIEW_POLICY,
 }
 PREVIOUS_REVIEW_POLICY = "exact_stock_template_reconstruction_target_bond_families_v1"
 

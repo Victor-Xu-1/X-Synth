@@ -81,6 +81,19 @@ const branch = {
 const graph = graphFromCandidate(branch);
 const source = (file) => readFileSync(resolve(__dirname, "..", file), "utf8");
 const compactSource = (file) => source(file).replace(/\s+/g, " ");
+
+test("record retrieval weights are not presented as neural confidence", () => {
+  const facts = modelEvidence({ metadata: { model_metadata: [{
+    backend: "exact_match", model_name: "ORD", rank: 1, model_score: 0.5,
+    normalized_model_score: 0.5, attributes: { prior_kind: "retrieval_prior" },
+  }] } })[0];
+  expect(facts).toContainEqual({ label: "检索排序权重", value: 0.5 });
+  expect(facts).toContainEqual({ label: "归一化检索权重", value: 0.5 });
+  expect(facts.some((fact) => fact.label.includes("模型分数"))).toBe(false);
+  expect(forwardEvidence({ metadata: {
+    forward_validation_method: "native_template_or_exact_record_and_graph2smiles_top1",
+  } })[0].value).toBe("来源一致性与独立正向预测");
+});
 test("filter and sort preserve original indices and never mutate selected records", () => {
   const routes = [
     candidate,

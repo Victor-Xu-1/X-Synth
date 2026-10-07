@@ -15,7 +15,7 @@ from packages.platform.resource_metrics import process_identity
 @pytest.fixture
 def health(tmp_path, monkeypatch):
     for key in list(os.environ):
-        if key in {"GATEWAY_URL", "X_SYNTH_STATE_DIR", "X_SYNTH_ASKCOS_MODELS", "X_SYNTH_STOCK_INDEX"} or key.endswith("_URL") and key.startswith("X_SYNTH_"):
+        if key in {"GATEWAY_URL", "X_SYNTH_STATE_DIR", "X_SYNTH_ASKCOS_MODELS", "X_SYNTH_STOCK_INDEX", "X_SYNTH_REACTION_LIBRARY_DB"} or key.endswith("_URL") and key.startswith("X_SYNTH_"):
             monkeypatch.delenv(key)
     monkeypatch.setenv("X_SYNTH_STATE_DIR", str(tmp_path))
     monkeypatch.setenv("X_SYNTH_STOCK_INDEX", "controlled-stock-fixture")

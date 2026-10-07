@@ -13,7 +13,7 @@ from packages.knowledge_base.reaction_models import (
     ReactionLibraryResponse,
     RecordedConditions,
 )
-from packages.orchestrator.reference_evidence import reference_evidence
+from packages.orchestrator.reference_evidence import reference_evidence, recorded_reaction_support
 from test_reaction_library import public_record, query
 
 
@@ -68,6 +68,33 @@ def native_response(*, patent=None, has_more=False):
         requested=ReferenceQuery(product="[Br-].OC", reactants=["BrC", "[OH-]"]),
         limit=1,
     )
+
+
+def test_positive_deposited_exact_reaction_support_is_distinct_from_model_top1():
+    record = public_record().model_copy(update={"match_scope": "reaction_identity"})
+    response = library_response(records=[record])
+    proof = recorded_reaction_support(response)
+    assert proof[0]["id"] == record.id
+    assert proof[0]["source_sha256"] == record.provenance.source_sha256
+    assert proof[0]["basis"] == "exact_recorded_reaction_with_positive_yield"
+    assert recorded_reaction_support(library_response(records=[public_record()])) == []
+    assert recorded_reaction_support(native_response()) == []
+    assert recorded_reaction_support(library_response(records=[record], has_more=True)) == []
+    assert recorded_reaction_support(library_response(records=[record], ready=False)) == []
+
+
+@pytest.mark.parametrize("value", [0, None, -1, 101])
+def test_unknown_zero_or_invalid_yields_cannot_support_a_lower_ranked_candidate(value):
+    record = public_record().model_copy(deep=True, update={"match_scope": "reaction_identity"})
+    record.reported_yields[0].value = value
+    assert recorded_reaction_support(library_response(records=[record])) == []
+
+
+def test_only_reactant_inventory_is_not_recorded_reaction_conditions():
+    record = public_record().model_copy(deep=True, update={"match_scope": "reaction_identity", "procedure": None})
+    record.conditions.temperature = []
+    assert record.conditions.inputs
+    assert recorded_reaction_support(library_response(records=[record])) == []
 
 
 def test_native_reference_without_patent_does_not_access_ord_only_attributes():
