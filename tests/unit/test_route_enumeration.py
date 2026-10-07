@@ -154,7 +154,7 @@ def test_empty_first_root_branch_does_not_block_closed_alternatives():
 
 @pytest.mark.parametrize("prefix_depth", [1, 3])
 @pytest.mark.parametrize("budget", [3, 5])
-def test_deep_or_branches_are_not_lost_to_first_branch_combinations(prefix_depth, budget):
+def test_deep_candidates_balance_ordered_variants_and_or_representatives(prefix_depth, budget):
     prefix = ["target", *(f"prefix{i}" for i in range(prefix_depth))]
     edges = []
     for index, (product, precursor) in enumerate(zip(prefix, prefix[1:])):
@@ -173,7 +173,32 @@ def test_deep_or_branches_are_not_lost_to_first_branch_combinations(prefix_depth
     for path in routes:
         node = next(node for node, data in path.nodes(data=True) if data["smiles"] == intermediate)
         steps.append(path.nodes[next(path.successors(node))]["smiles"])
-    assert steps == ["r:first", "r:second", "r:third", "r:first", "r:first"][:budget]
+    assert steps == ["r:first", "r:first", "r:second", "r:first", "r:third"][:budget]
+
+
+@pytest.mark.parametrize("prefix_depth", [1, 3])
+def test_ordered_deep_variants_survive_alongside_diverse_alternatives(prefix_depth):
+    prefix = ["target", *(f"prefix{i}" for i in range(prefix_depth))]
+    edges = []
+    for index, (product, precursor) in enumerate(zip(prefix, prefix[1:])):
+        edges.extend([(product, f"r:prefix{index}"), (f"r:prefix{index}", precursor)])
+    intermediate = prefix[-1]
+    tree = graph(
+        edges + [(intermediate, "r:first"), ("r:first", "a")]
+        + [("a", f"r:variant{i}") for i in range(20)]
+        + [(f"r:variant{i}", "stock") for i in range(20)]
+        + [(intermediate, "r:second"), ("r:second", "stock")]
+        + [(intermediate, "r:third"), ("r:third", "stock")],
+        {"stock"},
+    )
+    routes = list(enumerate_route_graphs(tree, "target", "root", max_trees=3))
+    signatures = [frozenset(data["smiles"] for _, data in path.nodes(data=True)
+                            if data["type"] == "reaction") for path in routes]
+    assert len(routes) == len(set(signatures)) == 3
+    assert any({"r:first", "r:variant1"} <= signature for signature in signatures)
+    assert any("r:second" in signature for signature in signatures)
+    for path in routes:
+        assert_closed_projection(tree, path)
 
 
 @pytest.mark.parametrize("max_depth", [3, 6])
@@ -194,10 +219,7 @@ def test_captured_deep_or_representative_survives_the_same_200_path_budget(max_d
     assert reaction in deep_reactions
     assert len(routes) == 200
     assert len(root_reactions) == 28
-    assert len(deep_reactions) == 114
-    if max_depth == 6:
-        assert next(index for index, path in enumerate(routes)
-                    if any(data["smiles"] == reaction for _, data in path.nodes(data=True))) == 111
+    assert len(deep_reactions) == {3: 113, 6: 112}[max_depth]
     assert any(path.out_degree(node) > 1 for path in routes for node, data in path.nodes(data=True)
                if data["type"] == "reaction")
     for path in routes:
