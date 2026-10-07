@@ -156,3 +156,33 @@ def test_malformed_lifecycle_cannot_poison_cache_or_claim_ready(health, invalid)
     manifest.update(invalid)
     write_json(state / "native/runtime.json", manifest)
     assert not runtime_health.route_runtime_status(state)["route_search_ready"]
+
+
+def route_dependencies():
+    return dict.fromkeys((
+        "gateway", "expand_one", "template_relevance", "fast_filter",
+        "commercial_stock", "scscore", "pathway_ranker", "cluster",
+        "inventory_consistent", "configured_models_loaded", "forward_predictor",
+    ), True)
+
+
+@pytest.mark.parametrize("missing", ["forward_predictor", "fast_filter", "commercial_stock", "inventory_consistent"])
+def test_route_admission_requires_every_search_and_qualification_dependency(missing):
+    checks = route_dependencies()
+    assert runtime_health._route_dependencies_ready(checks)
+    checks[missing] = False
+    assert not runtime_health._route_dependencies_ready(checks)
+    checks.pop(missing)
+    assert not runtime_health._route_dependencies_ready(checks)
+
+
+def test_optional_scientific_tools_do_not_block_fully_verifiable_routes():
+    checks = {**route_dependencies(), "condition_recommender": False, "impurity": False}
+    assert runtime_health._route_dependencies_ready(checks)
+
+
+@pytest.mark.parametrize("invalid", [None, "ready", 1])
+def test_qualification_dependency_cannot_claim_readiness_with_truthy_nonboolean(invalid):
+    checks = route_dependencies()
+    checks["forward_predictor"] = invalid
+    assert not runtime_health._route_dependencies_ready(checks)

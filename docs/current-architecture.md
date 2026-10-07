@@ -151,6 +151,10 @@ another product version.
   their actual features. Handler telemetry excludes submitted structures,
   predictions and private asset paths. Training utilities remain upstream source,
   not a second product-input authority.
+- New route admission requires the independent forward-qualification service as
+  well as proposal, search and exact-stock dependencies. An unavailable qualifier
+  cannot allow an expensive search to start and fail only during delivery review.
+  Optional condition and impurity tools do not become route-admission dependencies.
 
 ### Native Lifecycle
 

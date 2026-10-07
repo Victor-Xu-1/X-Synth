@@ -29,6 +29,15 @@ _cache_lock = Lock()
 _refresh_lock = Lock()
 
 
+def _route_dependencies_ready(checks: dict) -> bool:
+    required = (
+        "gateway", "expand_one", "template_relevance", "fast_filter",
+        "commercial_stock", "scscore", "pathway_ranker", "cluster",
+        "inventory_consistent", "configured_models_loaded", "forward_predictor",
+    )
+    return all(checks.get(name) is True for name in required)
+
+
 def _native_lifecycle() -> tuple[tuple | None, bool]:
     state = os.environ.get("X_SYNTH_STATE_DIR")
     if not state:
@@ -199,21 +208,7 @@ def route_runtime_status(repo_root: Path, *, force: bool = False) -> dict:
         if not runtime_running:
             errors["native_runtime"] = "native_runtime_not_running"
             available = []
-        askcos_ready = runtime_running and all(
-            checks[name]
-            for name in (
-                "gateway",
-                "expand_one",
-                "template_relevance",
-                "fast_filter",
-                "commercial_stock",
-                "scscore",
-                "pathway_ranker",
-                "cluster",
-                "inventory_consistent",
-                "configured_models_loaded",
-            )
-        ) and bool(available)
+        askcos_ready = runtime_running and _route_dependencies_ready(checks) and bool(available)
         result = {
             "route_search_ready": askcos_ready,
             "backends": {"askcos_v2": askcos_ready},
