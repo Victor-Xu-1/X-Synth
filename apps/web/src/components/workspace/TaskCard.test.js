@@ -1,6 +1,10 @@
 import { mount, RouterLinkStub } from "@vue/test-utils";
 import TaskCard from "./TaskCard.vue";
 import TaskActions from "./TaskActions.vue";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { parse } from "@vue/compiler-sfc";
+import postcss from "postcss";
 jest.mock("@/components/SmilesImage.vue", () => ({
   props: ["smiles"],
   template: '<div :data-smiles="smiles" />',
@@ -23,6 +27,21 @@ const context = {
   view: "cards",
   archived: false,
 };
+
+test("header positions are explicit instead of inheriting a component's named grid area", () => {
+  const { descriptor } = parse(readFileSync(resolve(__dirname, "TaskCard.vue"), "utf8"));
+  const css = postcss.parse(descriptor.styles[0].content);
+  for (const [selector, column] of [
+    [".task-card-controls :deep(.v-selection-control)", "1"],
+    [".task-card-title", "2"],
+    [".task-card-controls .state-badge", "3"],
+  ]) {
+    const rule = css.nodes.find(node => node.selector === selector);
+    const values = Object.fromEntries(rule.nodes.filter(node => node.type === "decl").map(node => [node.prop, node.value]));
+    expect(values["grid-column"]).toBe(column);
+    expect(values["grid-row"]).toBe("1");
+  }
+});
 const stubs = {
   RouterLink: RouterLinkStub,
   TaskActions: true,
@@ -57,9 +76,23 @@ test("structure cards preserve chemical identity, real count and task name, and 
   expect(wrapper.text()).toContain("先导化合物");
   await wrapper.get("input").setValue(true);
   expect(wrapper.emitted("check")).toEqual([[true]]);
-  await wrapper.get('[aria-label="重命名任务"]').trigger("click");
+  expect(wrapper.find('.task-card-footer [aria-label="重命名任务"]').exists()).toBe(false);
+  wrapper.findComponent(TaskActions).vm.$emit("rename");
   expect(wrapper.emitted("rename")).toEqual([[]]);
   expect(wrapper.find(".task-card-link input").exists()).toBe(false);
+});
+
+test("long task/group names, actual source tags, timestamps and unknown route counts stay intact", () => {
+  const name = "完整的先导化合物研究名称".repeat(12), group = "完整的项目名称".repeat(12);
+  const smiles = "[13CH3][C@@H](O)C(=O)[O-].[Na+]";
+  const wrapper = setup({ task: { ...row, description: name, target_smiles: smiles, num_trees: null, tags: ["原始记录"] }, groupName: group });
+  expect(wrapper.get(".task-card-title").text()).toBe(name);
+  expect(wrapper.get(".task-card-title").attributes("title")).toBe(name);
+  expect(wrapper.get(".task-card-group").attributes("title")).toBe(group);
+  expect(wrapper.get(".task-card-source").text()).toBe("原始记录");
+  expect(wrapper.get(".task-route-count").text()).toBe("路线数未记录");
+  expect(wrapper.get("[data-smiles]").attributes("data-smiles")).toBe(smiles);
+  expect(wrapper.get(".task-card-footer time").attributes("datetime")).toBe(row.modified);
 });
 test("card detail links namespace the current history context, while preview remains available for searching tasks", () => {
   const wrapper = setup({ historyContext: context });

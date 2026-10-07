@@ -7,7 +7,7 @@
         :aria-label="`X-Synth v${version} 首页`"
         @click="$emit('navigate')"
       >
-        <BrandMark :size="42" />
+        <BrandMark :size="34" />
         <span class="workspace-brand-copy">
           <span>X-Synth</span><small>v{{ version }}</small>
         </span>

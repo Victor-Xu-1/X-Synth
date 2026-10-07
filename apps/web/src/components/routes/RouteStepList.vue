@@ -7,11 +7,17 @@
       :class="{ active: selectedRoute === choice.route.route_id }"
     >
       <header>
-        <strong>{{ routeLabel(choice.originalIndex) }}</strong
-        ><span>{{ engineLabel(choice.route.engine) }}</span>
+        <button
+          type="button"
+          class="overview-open"
+          :disabled="busy"
+          :aria-label="`查看${routeLabel(choice.originalIndex)}完整路线`"
+          @click="$emit('choose', choice.route.route_id)"
+        ><strong>{{ routeLabel(choice.originalIndex) }}</strong></button>
+        <span>{{ engineLabel(choice.route.engine) }}</span>
         <span
           class="state-badge"
-          :class="{ success: choice.route.closed === true }"
+          :class="{ success: choice.route.closed === true, warning: choice.route.closed === false }"
           >{{ closureLabel(choice.route) }}</span
         >
         <div class="overview-actions">
@@ -23,6 +29,7 @@
                 size="small"
                 variant="text"
                 aria-label="查看完整路线"
+                :disabled="busy"
                 @click="$emit('choose', choice.route.route_id)"
               /> </template
           ></v-tooltip>
@@ -58,24 +65,20 @@
           <dd>{{ scoreText(choice.route.route_score) }}</dd>
         </div>
       </dl>
-      <v-lazy
-        :min-height="360"
-        :options="{ rootMargin: '250px' }"
-        transition="fade-transition"
+      <div
+        class="overview-route-graph"
+        :aria-label="`${routeLabel(choice.originalIndex)} 完整路线缩略图`"
       >
-        <div
-          class="overview-route-graph"
-          :aria-label="`${routeLabel(choice.originalIndex)} 完整路线缩略图`"
-        >
+        <v-lazy height="100%" :min-height="360" :options="{ rootMargin: '250px' }" transition="fade-transition">
           <RouteGraph
-            :graph="choice.prepared.graph"
-            :scores="choice.prepared.scores"
-            :overview="true"
-            reading
-            @select="$emit('choose', choice.route.route_id)"
+          :graph="choice.prepared.graph"
+          :scores="choice.prepared.scores"
+          :overview="true"
+          reading
+          @select="!busy && $emit('choose', choice.route.route_id)"
           />
-        </div>
-      </v-lazy>
+        </v-lazy>
+      </div>
       <div class="overview-structures" v-if="!choice.route.steps.length">
         <div class="overview-materials">
           <figure v-for="smiles in choice.materials.slice(0, 3)" :key="smiles">
@@ -126,7 +129,10 @@
         <button
           type="button"
           class="step-select"
+          :data-node-id="step.nodeId"
           :disabled="!step.nodeId"
+          :aria-pressed="selectedNode === step.nodeId"
+          :aria-label="`查看合成步骤 ${step.number}详情`"
           @click="$emit('select', step.nodeId)"
         >
           <strong>合成步骤 {{ step.number }}</strong>
@@ -155,7 +161,9 @@
             :key="index"
             type="button"
             class="step-molecule"
+            :data-node-id="precursor.nodeId"
             :disabled="!precursor.nodeId"
+            :aria-label="`查看步骤 ${step.number}反应物 ${index + 1}`"
             @click="$emit('select', precursor.nodeId)"
           >
             <span>反应物 {{ index + 1 }}</span>
@@ -171,7 +179,9 @@
         <button
           type="button"
           class="step-molecule step-product"
+          :data-node-id="step.product.nodeId"
           :disabled="!step.product.nodeId"
+          :aria-label="`查看步骤 ${step.number}产物`"
           @click="$emit('select', step.product.nodeId)"
         >
           <span>产物</span>
@@ -256,230 +266,4 @@ const scoreText = (value) =>
 const hasMetadata = (step) =>
   step.metadata && Object.keys(step.metadata).length;
 </script>
-<style scoped>
-.route-step-list,
-.route-overview-list {
-  padding: 0 20px;
-  min-width: 0;
-}
-.route-step,
-.route-overview {
-  padding: 18px 0;
-  border-bottom: 1px solid var(--ws-border);
-  min-width: 0;
-}
-.route-step.active {
-  border-left: 3px solid var(--ws-text);
-  padding-left: 12px;
-}
-.route-overview.active {
-  border-left: 0;
-}
-.route-overview header > strong {
-  font-size: 14px;
-  color: var(--ws-accent, #16876f);
-}
-.step-heading,
-.route-overview header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  font-size: 12px;
-}
-.step-select {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-align: left;
-  color: var(--ws-text);
-}
-.step-id,
-.step-confidence,
-.step-validation,
-.route-overview header > span:not(.state-badge) {
-  font-size: 11px;
-  color: var(--ws-muted);
-}
-.step-heading > .step-confidence {
-  margin-left: auto;
-}
-.step-structures {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 24px minmax(0, 210px);
-  align-items: center;
-  gap: 12px;
-  padding: 14px 0;
-}
-.step-precursors {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px;
-  min-width: 0;
-}
-.step-molecule {
-  min-width: 0;
-  width: 100%;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 8px;
-  border: 1px solid var(--ws-border);
-  border-radius: 6px;
-  color: var(--ws-text);
-  background: var(--ws-surface);
-}
-.step-molecule > span {
-  align-self: flex-start;
-  font-size: 11px;
-  color: var(--ws-muted);
-}
-.step-molecule code,
-.step-record code,
-figcaption code,
-.overview-id {
-  font:
-    11px/1.6 Consolas,
-    monospace;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-.step-molecule code {
-  align-self: stretch;
-  padding-top: 6px;
-}
-.step-molecule :deep(.smiles-image-container) {
-  max-width: 100%;
-}
-.step-molecule:hover:not(:disabled) {
-  border-color: var(--ws-text);
-}
-.step-molecule:focus-visible,
-.step-select:focus-visible,
-summary:focus-visible {
-  outline: 2px solid var(--ws-text);
-  outline-offset: 3px;
-}
-.step-record {
-  padding-top: 10px;
-  font-size: 11px;
-}
-.step-record summary {
-  cursor: pointer;
-  color: var(--ws-muted);
-  padding: 4px 0;
-}
-.step-record > code {
-  display: block;
-  margin-top: 6px;
-}
-.overview-actions {
-  display: flex;
-  gap: 2px;
-  margin-left: auto;
-}
-.overview-metrics {
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
-  padding: 12px 0;
-  margin: 0;
-}
-.overview-metrics > div {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 12px;
-}
-.overview-metrics dt {
-  color: var(--ws-muted);
-  font-size: 11px;
-}
-.overview-metrics dd {
-  margin: 0;
-}
-.overview-structures {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 24px 180px;
-  align-items: center;
-  gap: 12px;
-}
-.overview-route-graph {
-  height: 360px;
-  min-width: 0;
-  border-top: 1px solid var(--ws-border);
-  border-bottom: 1px solid var(--ws-border);
-  overflow: hidden;
-}
-.overview-materials {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-.overview-structures figure {
-  margin: 0;
-  min-width: 0;
-  width: 130px;
-}
-.overview-structures .overview-target {
-  width: 100%;
-}
-.overview-structures :deep(.smiles-image-container) {
-  max-width: 100%;
-}
-.overview-structures figcaption {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 11px;
-}
-.material-count {
-  font-size: 11px;
-  color: var(--ws-muted);
-}
-.overview-id {
-  display: block;
-  margin-top: 14px;
-  color: var(--ws-muted);
-}
-@media (max-width: 1050px) {
-  .step-structures,
-  .overview-structures {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .step-arrow,
-  .overview-arrow {
-    transform: rotate(90deg);
-    justify-self: center;
-  }
-  .step-product {
-    max-width: 260px;
-    justify-self: center;
-  }
-  .overview-structures .overview-target {
-    width: 180px;
-    justify-self: center;
-  }
-}
-@media (max-width: 480px) {
-  .route-step-list,
-  .route-overview-list {
-    padding: 0 12px;
-  }
-  .step-precursors {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .step-confidence {
-    margin-left: 0 !important;
-  }
-  .step-validation {
-    flex-basis: 100%;
-  }
-  .overview-metrics {
-    gap: 10px 16px;
-  }
-}
-</style>
+<style scoped src="./route-step-list.css"></style>

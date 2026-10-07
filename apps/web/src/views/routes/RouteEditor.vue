@@ -604,7 +604,7 @@ onBeforeUnmount(() => {
 }
 .route-editor-error {
   padding: 10px 20px;
-  color: #c63f43;
+  color: var(--ws-danger);
   font-size: 12px;
   display: flex;
   justify-content: space-between;

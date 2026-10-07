@@ -1,4 +1,4 @@
-import { mount } from "@vue/test-utils";
+import { mount, flushPromises } from "@vue/test-utils";
 import TaskBatchActions from "./TaskBatchActions.vue";
 const stubs = {
   VTooltip: { template: '<div><slot name="activator" :props="{}" /></div>' },
@@ -20,9 +20,10 @@ const stubs = {
   },
 };
 const wrappers = [];
-function setup(props = {}) {
+function setup(props = {}, attach = false) {
   const wrapper = mount(TaskBatchActions, {
     props: { pageSize: 24, ...props },
+    attachTo: attach ? document.body : undefined,
     global: { stubs },
   });
   wrappers.push(wrapper);
@@ -38,6 +39,37 @@ test("select-all means the current page, partial selection is indeterminate, and
   expect(wrapper.emitted("clear")).toEqual([[]]);
   await wrapper.setProps({ count: 0 });
   expect(wrapper.text()).toContain("本页 24 项");
+});
+
+test("no selection exposes no repeated action icons, and unread page counts are not presented as zero", async () => {
+  const wrapper = setup({ loaded: false, pageSize: 0 });
+  expect(wrapper.get(".batch-count").text()).toBe("");
+  expect(wrapper.find(".batch-tools").exists()).toBe(false);
+  expect(wrapper.get("input").element.disabled).toBe(true);
+  await wrapper.setProps({ loaded: true, pageSize: 24 });
+  expect(wrapper.get(".batch-count").text()).toBe("本页 24 项");
+  expect(wrapper.find(".batch-tools").exists()).toBe(false);
+});
+
+test("removing a keyboard-focused selection toolbar returns focus to select-all", async () => {
+  const wrapper = setup({ count: 1 }, true);
+  wrapper.get('[aria-label="清空选择"]').element.focus();
+  expect(document.activeElement).toBe(wrapper.get('[aria-label="清空选择"]').element);
+  await wrapper.setProps({ count: 0 });
+  await flushPromises();
+  expect(document.activeElement).toBe(wrapper.get("input").element);
+});
+
+test("selection changes never steal focus from another control", async () => {
+  const wrapper = setup({ count: 1 }, true);
+  const external = document.createElement("button");
+  document.body.appendChild(external);
+  try {
+    external.focus();
+    await wrapper.setProps({ count: 0 });
+    await flushPromises();
+    expect(document.activeElement).toBe(external);
+  } finally { external.remove(); }
 });
 test("running selections can move groups but cannot archive; terminal selection can archive", async () => {
   const wrapper = setup({ count: 2, groups: [{ id: "g-1", name: "项目" }] });

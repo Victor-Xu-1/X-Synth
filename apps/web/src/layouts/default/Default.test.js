@@ -68,11 +68,18 @@ test("header spans the shell rather than living inside the page column", () => {
   expect(wrapper.findAll("main")).toHaveLength(1);
 });
 
-test("desktop starts with a labeled compact rail and can expand navigation", async () => {
+test("desktop starts with readable labeled navigation and can compact it", async () => {
   setup(1024);
-  expect(wrapper.findComponent(stubs.Sidebar).props("compact")).toBe(true);
-  await wrapper.get(".workspace-navigation-toggle").trigger("click");
   expect(wrapper.findComponent(stubs.Sidebar).props("compact")).toBe(false);
+  await wrapper.get(".workspace-navigation-toggle").trigger("click");
+  expect(wrapper.findComponent(stubs.Sidebar).props("compact")).toBe(true);
+});
+
+test("skip navigation focuses the primary work area", async () => {
+  setup();
+  await wrapper.get(".skip-navigation").trigger("click");
+  expect(document.activeElement).toBe(wrapper.get("#workspace-content").element);
+  expect(wrapper.get("#workspace-content").attributes("tabindex")).toBe("-1");
 });
 
 test("closed mobile drawer is excluded from focus and accessibility trees", () => {

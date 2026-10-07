@@ -50,8 +50,8 @@ h3 { font-size: 13px; margin: 12px 0 8px; }
 .process-metrics { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 20px; font-size: 13px; }
 .process-metrics dt { color: var(--ws-muted); }
 .process-metrics dd { margin: 0; font-variant-numeric: tabular-nums; }
-.boundary-notice { padding: 12px 0; border-top: 1px solid var(--ws-border); font-size: 13px; color: #98610b; }
-.missing-inputs { font-size: 12px; color: #98610b; }
+.boundary-notice { padding: 12px 0; border-top: 1px solid var(--ws-border); font-size: 13px; color: var(--ws-warning); }
+.missing-inputs { font-size: 12px; color: var(--ws-warning); }
 ul { padding-left: 20px; line-height: 1.8; }
 .recorded-materials { border-top: 1px solid var(--ws-border); padding-top: 16px; margin: 20px 0; font-size: 12px; }
 summary { cursor: pointer; }

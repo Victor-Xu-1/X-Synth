@@ -26,10 +26,11 @@
         ><span
           class="field-label"
           title="每轮各搜索策略的时长上限；追加搜索与路线审查另计。"
-          >每轮搜索时长（分钟）</span
+          >每轮时长（分钟）</span
         ><input
           v-model.number="settings.minutes"
           name="expansion_time_minutes"
+          aria-label="每轮搜索时长（分钟）"
           class="workspace-input"
           type="number"
           min="1"
@@ -69,7 +70,7 @@ defineProps({ disabled: Boolean });
 <style scoped>
 .search-setting-fields {
   display: grid;
-  gap: 30px;
+  gap: 24px;
 }
 .search-primary-settings {
   display: grid;
@@ -87,7 +88,7 @@ defineProps({ disabled: Boolean });
 .search-advanced {
   border-top: 1px solid var(--ws-border);
   padding-top: 17px;
-  font-size: 16px;
+  font-size: 14px;
 }
 .search-advanced summary {
   cursor: pointer;

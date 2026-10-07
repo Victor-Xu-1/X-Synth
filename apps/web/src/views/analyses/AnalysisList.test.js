@@ -4,17 +4,22 @@ import { API } from "@/common/api";
 import AnalysisList from "./AnalysisList.vue";
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn(), delete: jest.fn(),
   toErrorObject: (error) => ({ string_error: error.message }) } }));
-jest.mock("@/components/SmilesImage.vue", () => ({ template: "<span />" }));
+jest.mock("@/components/SmilesImage.vue", () => ({ props: ["smiles"], template: '<span :data-smiles="smiles" />' }));
 const row = (id = "record-a", status = "completed") => ({ id, kind: "optimization", status,
   created: "2026-10-04T00:00:00Z", structure: "" });
 const data = (rows = [row()], total = rows.length) => ({ items: rows, total });
 const wrappers = [];
 async function setup(url = "/analyses") {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/analyses", component: { render: () => null } }] });
+  const router = createRouter({ history: createMemoryHistory(), routes: [
+    { path: "/analyses", component: { render: () => null } },
+    { path: "/analyses/:id", component: { render: () => null } },
+  ] });
   await router.push(url);
   const wrapper = mount(AnalysisList, { global: { plugins: [router], stubs: {
     VBtn: { props: ["disabled", "loading"], template: '<button :disabled="disabled || loading"><slot /></button>' },
     VProgressLinear: true,
+    VIcon: true,
+    VTooltip: { template: '<div><slot name="activator" :props="{}" /></div>' },
     VSelect: { props: ["modelValue", "items"], emits: ["update:modelValue"], template:
       `<select aria-label="研究类型" :value="modelValue" @change="$emit('update:modelValue', $event.target.value)">
       <option v-for="item in items" :key="item.value" :value="item.value">{{ item.title }}</option></select>` },
@@ -67,10 +72,56 @@ test("empty, malformed, and failed lists remain separate and support explicit re
   expect(wrapper.text()).not.toContain("暂无研究记录");
   API.get.mockRejectedValueOnce(new Error("connection failed"));
   await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
-  expect(wrapper.get('[role="alert"]').text()).toBe("connection failed");
+  expect(wrapper.get('[role="alert"] span').text()).toBe("connection failed");
   API.get.mockResolvedValue(data());
-  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  await wrapper.get('[role="alert"] button').trigger("click"); await flushPromises();
   expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+});
+
+test("filtered empty records have an explicit reset without submitting or deleting research", async () => {
+  API.get.mockResolvedValueOnce(data([]));
+  const { wrapper, router } = await setup("/analyses?kind=forward");
+  expect(wrapper.get(".analysis-empty h2").text()).toBe("暂无此类研究记录");
+  API.get.mockResolvedValueOnce(data());
+  await wrapper.get(".analysis-empty button").trigger("click");
+  await flushPromises();
+  expect(router.currentRoute.value.query.kind).toBeUndefined();
+  expect(API.get.mock.calls.at(-1)).toEqual(["/api/v1/analyses", { limit: 25, offset: 0 }]);
+  expect(API.post).not.toHaveBeenCalled();
+  expect(API.delete).not.toHaveBeenCalled();
+});
+
+test("readable research rows preserve exact chemical identity, real states and contextual detail links", async () => {
+  const smiles = "[13CH3][C@@H](O)C(=O)[O-].[Na+]";
+  API.get.mockResolvedValueOnce(data([
+    { ...row("chemical", "interrupted"), kind: "assessment", structure: smiles },
+    row("without-structure", "failed"),
+  ], 26));
+  const { wrapper } = await setup("/analyses?page=2");
+  const records = wrapper.findAll("tbody tr");
+  expect(records[0].get("[data-smiles]").attributes("data-smiles")).toBe(smiles);
+  expect(records[0].get(".analysis-structure-text").text()).toBe(smiles);
+  expect(records[0].get(".analysis-state .state-badge").classes()).toContain("interrupted");
+  expect(records[0].get(".analysis-state").text()).toBe("已中断");
+  expect(records[0].get(".analysis-identity").attributes("href")).toBe("/analyses/chemical?page=2");
+  expect(records[1].find("[data-smiles]").exists()).toBe(false);
+  expect(records[1].get(".analysis-state").text()).toBe("未完成");
+});
+
+test("same-page refresh retains readable results and truthful counts; a failed read does not imply emptiness", async () => {
+  API.get.mockResolvedValueOnce(data([row()], 26));
+  const { wrapper } = await setup();
+  let fail;
+  API.get.mockReturnValueOnce(new Promise((resolve, reject) => { fail = reject; }));
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click");
+  expect(wrapper.findAll("tbody tr")).toHaveLength(1);
+  expect(wrapper.get(".analysis-filters [role=status]").text()).toBe("共 26 次计算");
+  expect(wrapper.find(".analysis-loading").exists()).toBe(false);
+  fail(new Error("读取超时"));
+  await flushPromises();
+  expect(wrapper.get('[role="alert"] span').text()).toBe("读取超时");
+  expect(wrapper.findAll("tbody tr")).toHaveLength(1);
+  expect(wrapper.find(".analysis-empty").exists()).toBe(false);
 });
 test("a shrinking list redirects once to its real last page", async () => {
   API.get.mockResolvedValueOnce(data([], 1)).mockResolvedValueOnce(data());

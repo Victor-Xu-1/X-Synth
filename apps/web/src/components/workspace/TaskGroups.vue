@@ -16,7 +16,7 @@
         </template>
       </v-tooltip>
     </header>
-    <nav>
+    <nav aria-label="任务分组导航" :aria-busy="!countsLoaded">
       <button
         class="group-link"
         :aria-current="!archived && selected === 'all' ? 'page' : undefined"
@@ -24,7 +24,7 @@
       >
         <v-icon icon="mdi-folder-multiple-outline" size="18" /><span
           >全部任务</span
-        ><small>{{ allTotal }}</small>
+        ><small :aria-hidden="!countsLoaded">{{ countsLoaded ? allTotal : "" }}</small>
       </button>
       <button
         class="group-link"
@@ -34,7 +34,7 @@
         @click="$emit('select', 'ungrouped')"
       >
         <v-icon icon="mdi-folder-outline" size="18" /><span>未分组</span
-        ><small>{{ ungroupedTotal }}</small>
+        ><small :aria-hidden="!countsLoaded">{{ countsLoaded ? ungroupedTotal : "" }}</small>
       </button>
       <div v-for="group in groups" :key="group.id" class="group-row">
         <button
@@ -47,29 +47,30 @@
           <v-icon icon="mdi-folder-outline" size="18" /><span
             :title="group.name"
             >{{ group.name }}</span
-          ><small>{{ group.count }}</small>
+          ><small :aria-hidden="!countsLoaded">{{ countsLoaded ? group.count : "" }}</small>
         </button>
         <v-menu :disabled="busy">
-          <template #activator="{ props }">
-            <v-btn
-              v-bind="props"
-              icon="mdi-dots-horizontal"
-              variant="text"
-              size="small"
-              :aria-label="`分组操作：${group.name}`"
-              :title="`分组操作：${group.name}`"
-              :disabled="busy"
-            />
+          <template #activator="{ props: menuProps }">
+            <v-tooltip :text="`分组操作：${group.name}`">
+              <template #activator="{ props: tooltipProps }">
+                <v-btn v-bind="mergeProps(menuProps, tooltipProps)" icon="mdi-dots-horizontal"
+                  variant="text" size="small" :aria-label="`分组操作：${group.name}`" :disabled="busy" />
+              </template>
+            </v-tooltip>
           </template>
-          <v-list density="compact">
+          <v-list density="compact" class="group-actions-menu" role="menu" :aria-label="`分组操作：${group.name}`">
             <v-list-item
+              role="menuitem"
               title="重命名分组"
+              aria-label="重命名分组"
               :disabled="busy"
               prepend-icon="mdi-pencil-outline"
               @click="$emit('rename', group)"
             />
             <v-list-item
+              role="menuitem"
               title="解散分组"
+              aria-label="解散分组"
               :disabled="busy"
               prepend-icon="mdi-folder-remove-outline"
               @click="$emit('delete', group)"
@@ -139,12 +140,14 @@
 </template>
 
 <script setup>
+import { mergeProps } from "vue";
 defineProps({
   groups: { type: Array, default: () => [] },
   selected: { type: String, default: "all" },
   archived: Boolean,
   allTotal: { type: Number, default: 0 },
   ungroupedTotal: { type: Number, default: 0 },
+  countsLoaded: { type: Boolean, default: true },
   busy: Boolean,
   form: { type: Object, default: null },
   error: { type: String, default: "" },
@@ -164,6 +167,8 @@ defineEmits([
 <style scoped>
 .task-groups {
   min-width: 0;
+  font-size: 14px;
+  letter-spacing: 0;
   border-right: 1px solid var(--ws-border);
   padding-right: 16px;
 }
@@ -175,8 +180,9 @@ defineEmits([
   gap: 8px;
   margin-bottom: 8px;
 }
+.task-groups > header { min-height: 36px; margin-bottom: 12px; }
 h2 {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   margin: 0;
 }
@@ -196,37 +202,52 @@ nav {
   width: 100%;
   min-width: 0;
   padding: 9px 7px;
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--ws-text);
   text-align: left;
-  font-size: 12px;
+  font-size: 14px;
+  line-height: 20px;
 }
-.group-link:hover,
-.group-link[aria-current] {
+.group-link:hover {
   background: var(--ws-muted-surface);
 }
 .group-link[aria-current] {
+  background: var(--ws-accent-soft);
+  color: var(--ws-accent);
   font-weight: 600;
 }
+.group-link:focus-visible { outline: 2px solid var(--ws-accent); outline-offset: 2px; }
 .group-link span {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 .group-link small {
   color: var(--ws-muted);
-  font-size: 11px;
+  font-size: 12px;
   flex-shrink: 0;
+  min-width: 22px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
+.group-link[aria-current] small { color: inherit; }
 .group-row :deep(.v-btn),
 .task-groups header :deep(.v-btn) {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  color: var(--ws-muted);
+  border-radius: 6px;
 }
+.group-actions-menu { min-width: 196px; max-width: calc(100vw - 32px); padding: 4px; border: 1px solid var(--ws-border); border-radius: 8px; background: var(--ws-surface); color: var(--ws-text); }
+.group-actions-menu :deep(.v-list-item) { border-radius: 6px; min-height: 36px; }
+.group-actions-menu :deep(.v-list-item-title) { font-size: 14px; line-height: 20px; }
+.group-actions-menu :deep(.v-list-item:focus-visible) { outline: 2px solid var(--ws-accent); outline-offset: -2px; }
 .recycle-link {
   border-top: 1px solid var(--ws-border);
   margin-top: 10px;
@@ -247,9 +268,12 @@ nav {
   display: flex;
   justify-content: flex-end;
 }
+.group-form h2 { font-size: 16px; }
+.group-form .tool-error { overflow-wrap: anywhere; }
+.group-form :deep(.v-field) { border-radius: 6px; }
 .group-form :deep(.v-btn) {
   letter-spacing: 0;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 @media (max-width: 760px) {
   .task-groups {
@@ -263,7 +287,7 @@ nav {
   .recycle-link {
     margin-top: 0;
     border-top: 0;
-    border-radius: 4px;
+    border-radius: 6px;
   }
 }
 </style>

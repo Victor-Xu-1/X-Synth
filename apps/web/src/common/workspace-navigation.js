@@ -1,6 +1,6 @@
 export const researchTools = [
   {
-    title: "专利参考反应",
+    title: "参考反应",
     icon: "mdi-book-open-page-variant-outline",
     to: "/references",
     feature: "references",

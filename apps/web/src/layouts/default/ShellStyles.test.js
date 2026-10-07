@@ -72,7 +72,7 @@ test("one shared light/dark palette retains every original consumer token", () =
     ])
       expect(palette[token]).toBeDefined();
   expect(light["--ws-sidebar-width"]).toBe("208px");
-  expect(light["--ws-inspector-width"]).toBe("374px");
+  expect(light["--ws-inspector-width"]).toBe("296px");
   expect(light["--ws-canvas"]).toBe("#f5f7f8");
   expect(declarations(".workspace-page").background).toBe("var(--ws-surface)");
 });
@@ -83,10 +83,31 @@ test("one stylesheet entry composes four owned modules without competing inline 
   ).toEqual(modules.map((module) => ["atrule", "import", `"./${module}"`]));
   expect(
     declarations(".workspace-shell.sidebar-compact")["--ws-sidebar-width"],
-  ).toBe("124px");
+  ).toBe("96px");
   expect(
     declarations(".workspace-sidebar.compact .nav-item")["flex-direction"],
   ).toBe("column");
+});
+
+test.each([
+  ["light", light],
+  ["dark", dark],
+])("%s semantic and body colors are readable on their surfaces", (_, palette) => {
+  for (const [foreground, background] of [
+    ["--ws-text", "--ws-surface"],
+    ["--ws-muted", "--ws-surface"],
+    ["--ws-danger", "--ws-danger-soft"],
+    ["--ws-info", "--ws-info-soft"],
+    ["--ws-warning", "--ws-surface"],
+  ]) expect(contrast(palette[foreground], palette[background])).toBeGreaterThanOrEqual(4.5);
+});
+
+test("shared tokens provide restrained dimensions and keyboard access", () => {
+  expect(light["--ws-header-height"]).toBe("64px");
+  expect(declarations(".workspace-sidebar.compact .nav-item")["min-height"]).toBe("72px");
+  expect(declarations(".workspace-page")["scrollbar-gutter"]).toBe("stable");
+  expect(declarations(".skip-navigation:focus").transform).toBe("translatey(0)");
+  expect(declarations(".workspace-input:focus").outline).toBe("2px solid var(--ws-accent)");
 });
 
 test.each([

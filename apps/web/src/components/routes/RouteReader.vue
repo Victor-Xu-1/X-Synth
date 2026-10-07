@@ -17,7 +17,8 @@
         aria-label="全选当前路线"
         @update:model-value="selectAll"
       />
-      <span>{{ choices.length }} 条路线 · 已选 {{ picked.length }} 条</span>
+      <span class="reader-selection-count">{{ choices.length }} 条路线</span>
+      <span class="reader-selection-picked">已选 {{ picked.length }} 条</span>
       <v-btn
         prepend-icon="mdi-eye-outline"
         variant="text"
@@ -29,9 +30,7 @@
     </div>
     <div
       v-if="view !== 'overview' && readingChoices.length"
-      class="reader-route-tabs"
-      role="tablist"
-      aria-label="所选合成路线"
+      class="reader-route-navigation"
     >
       <v-btn
         prepend-icon="mdi-arrow-left"
@@ -40,23 +39,37 @@
         @click="showAll"
         >全部路线</v-btn
       >
-      <button
-        v-for="choice in readingChoices"
-        :key="choice.route.route_id"
-        type="button"
-        role="tab"
-        :aria-selected="selectedId === choice.route.route_id"
-        :class="{ active: selectedId === choice.route.route_id }"
-        @click="selectedId = choice.route.route_id"
+      <div
+        class="reader-route-tabs"
+        role="tablist"
+        aria-label="所选合成路线"
+        @keydown="moveRouteTab"
       >
-        {{ labelFor(choice) }}
-      </button>
+        <button
+          v-for="choice in readingChoices"
+          :id="`${graphId}-route-${choice.originalIndex}`"
+          :key="choice.route.route_id"
+          type="button"
+          role="tab"
+          :aria-selected="selectedId === choice.route.route_id"
+          :aria-controls="`${graphId}-panel`"
+          :tabindex="selectedId === choice.route.route_id ? 0 : -1"
+          :class="{ active: selectedId === choice.route.route_id }"
+          @click="selectedId = choice.route.route_id"
+        >
+          {{ labelFor(choice) }}
+        </button>
+      </div>
     </div>
     <div v-if="candidate && view !== 'overview'" class="reader-route-summary">
-      <strong>{{ labelFor(selectedChoice) }}</strong
-      ><span>总步数 {{ candidate.steps.length }}</span>
-      <span>最长线性步数 {{ linearSteps ?? "未记录" }}</span
-      ><span>{{ closureLabel(candidate) }}</span>
+      <strong>{{ labelFor(selectedChoice) }}</strong>
+      <span>总步数 {{ candidate.steps.length }}</span>
+      <span>最长线性步数 {{ linearSteps ?? "未记录" }}</span>
+      <span
+        class="state-badge"
+        :class="{ success: candidate.closed === true, warning: candidate.closed === false }"
+        >{{ closureLabel(candidate) }}</span
+      >
       <div class="page-actions">
         <v-menu
           ><template #activator="{ props }">
@@ -111,50 +124,62 @@
         v-for="choice in choices"
         :key="choice.route.route_id"
         class="reader-overview-entry"
+        :class="{ picked: picked.includes(choice.route.route_id) }"
       >
-        <div class="route-choice-check">
-          <v-checkbox-btn
-            :model-value="picked.includes(choice.route.route_id)"
-            :disabled="busy"
-            :aria-label="`选择${labelFor(choice)}`"
-            @update:model-value="(value) => pick(choice.route.route_id, value)"
+          <div class="route-choice-check">
+            <v-checkbox-btn
+              :model-value="picked.includes(choice.route.route_id)"
+              :disabled="busy"
+              :aria-label="`选择${labelFor(choice)}`"
+              @update:model-value="(value) => pick(choice.route.route_id, value)"
+            />
+          </div>
+          <RouteStepList
+            overview
+            :choices="[choice]"
+            :selected-route="selectedId"
+            :busy="busy"
+            :can-edit="canEdit"
+            @choose="openRoute"
+            @edit="$emit('edit', $event)"
           />
-        </div>
-        <RouteStepList
-          overview
-          :choices="[choice]"
-          :selected-route="selectedId"
-          :busy="busy"
-          :can-edit="canEdit"
-          @choose="openRoute"
-          @edit="$emit('edit', $event)"
-        />
-        <RouteReviewSummary :candidate="choice.route" />
+          <RouteReviewSummary :candidate="choice.route" />
       </div>
     </div>
     <div v-else-if="candidate" class="reader-detail-body">
-      <nav class="reader-tool-rail" aria-label="路线视图">
-        <v-tooltip
+      <nav
+        class="reader-tool-rail"
+        role="tablist"
+        aria-label="路线视图"
+        @keydown="moveViewTab"
+      >
+        <v-btn
           v-for="tool in readerTools"
+          :id="`${graphId}-view-${tool.value}`"
           :key="tool.value"
-          :text="tool.label"
-          location="right"
+          :prepend-icon="tool.icon"
+          :aria-label="tool.label"
+          :aria-selected="view === tool.value"
+          :aria-pressed="view === tool.value"
+          :aria-controls="`${graphId}-panel`"
+          :tabindex="view === tool.value ? 0 : -1"
+          :class="{ active: view === tool.value }"
+          role="tab"
+          size="small"
+          variant="text"
+          @click="view = tool.value"
         >
-          <template #activator="{ props }">
-            <v-btn
-              v-bind="props"
-              :icon="tool.icon"
-              :aria-label="tool.label"
-              :aria-pressed="view === tool.value"
-              :class="{ active: view === tool.value }"
-              size="small"
-              variant="text"
-              @click="view = tool.value"
-            />
-          </template>
-        </v-tooltip>
+          {{ tool.label }}
+        </v-btn>
       </nav>
-      <main class="reader-main">
+      <div
+        :id="`${graphId}-panel`"
+        ref="readerMain"
+        class="reader-main"
+        role="tabpanel"
+        :aria-labelledby="`${graphId}-view-${view}`"
+        tabindex="0"
+      >
         <p
           v-if="view === 'graph' && catalogError"
           class="reader-catalog-status tool-error"
@@ -199,12 +224,17 @@
           @navigate="$emit('navigate')"
         />
         <details class="reader-evidence" :key="candidate.route_id">
-          <summary>路线审查与来源</summary>
+          <summary>
+            <v-icon icon="mdi-file-document-outline" size="18" aria-hidden="true" />
+            路线审查与来源
+          </summary>
           <RouteEvidencePanel :candidate="candidate" />
         </details>
-      </main>
+      </div>
       <RouteInspector
         v-if="node"
+        ref="inspectorView"
+        tabindex="-1"
         :key="candidate.route_id"
         :node="node"
         :graph="sourceGraph"
@@ -213,7 +243,7 @@
         :context-id="candidate.route_id"
         :target="selectedNode === sourceGraph.target_id"
         :score="scores[selectedNode]"
-        @close="selectedNode = null"
+        @close="closeInspector"
         @navigate="$emit('navigate')"
       />
     </div>
@@ -285,6 +315,8 @@ const filters = ref({ query: "", engine: "", closure: "", sort: "rank" });
 const picked = ref([]),
   readingIds = ref([]),
   selectedNode = ref(null),
+  readerMain = ref(null),
+  inspectorView = ref(null),
   graphView = ref(null),
   exporting = ref(false),
   exportError = ref("");
@@ -350,6 +382,7 @@ const allSelected = computed(
 const graphId = `reader-${crypto.randomUUID()}`,
   { fitView } = useVueFlow({ id: graphId });
 let generation = 0,
+  selectionOrigin = null,
   disposed = false;
 function labelFor(choice) {
   return routeLabel(
@@ -376,17 +409,60 @@ function showAll() {
   view.value = "overview";
 }
 function openRoute(id) {
+  if (props.busy) return;
   readingIds.value = [];
   selectedId.value = id;
   view.value = "graph";
 }
-function selectNode(id) {
+function moveTab(event, values, current, select) {
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+  if (!values.length || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  const index = values.indexOf(current);
+  const next = event.key === "Home" ? 0
+    : event.key === "End" ? values.length - 1
+      : (index + (event.key === "ArrowRight" ? 1 : -1) + values.length) % values.length;
+  event.preventDefault();
+  select(values[next]);
+  const tab = event.currentTarget.querySelectorAll('[role="tab"]')[next];
+  tab?.focus();
+  tab?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+}
+function moveRouteTab(event) {
+  moveTab(event, readingChoices.value.map((choice) => choice.route.route_id), selectedId.value,
+    (value) => { selectedId.value = value; });
+}
+function moveViewTab(event) {
+  moveTab(event, readerTools.map((tool) => tool.value), view.value,
+    (value) => { view.value = value; });
+}
+async function selectNode(id, revealDetails = true) {
+  selectionOrigin = null;
   selectedNode.value = sourceGraph.value.nodes.some((node) => node.id === id)
     ? id
     : null;
+  if (!selectedNode.value || !revealDetails || window.innerWidth > 1100) return;
+  const routeId = selectedId.value, focused = document.activeElement;
+  await nextTick();
+  if (disposed || routeId !== selectedId.value || id !== selectedNode.value) return;
+  const selector = view.value === "graph" ? ".vue-flow__node[data-id]" : "[data-node-id]";
+  selectionOrigin = readerMain.value.contains(focused) && focused !== readerMain.value ? focused
+    : [...readerMain.value.querySelectorAll(selector)]
+      .find((element) => (element.dataset.nodeId || element.dataset.id) === id) || null;
+  const inspector = inspectorView.value?.$el;
+  inspector?.scrollIntoView?.({ block: "nearest" });
+  inspector?.focus?.({ preventScroll: true });
+}
+async function closeInspector() {
+  const origin = selectionOrigin, routeId = selectedId.value;
+  selectionOrigin = null;
+  selectedNode.value = null;
+  await nextTick();
+  if (disposed || routeId !== selectedId.value || !origin?.isConnected || window.innerWidth > 1100) return;
+  origin.scrollIntoView?.({ block: "nearest" });
+  origin.focus?.({ preventScroll: true });
 }
 async function locateNode(id) {
-  selectNode(id);
+  selectNode(id, false);
   const routeId = selectedId.value;
   view.value = "graph";
   await nextTick();
@@ -455,6 +531,7 @@ watch(
 );
 watch(selectedId, () => {
   selectedNode.value = null;
+  selectionOrigin = null;
   exportError.value = "";
   exporting.value = false;
   generation++;
@@ -467,192 +544,13 @@ watch(view, async (value) => {
 });
 onBeforeUnmount(() => {
   disposed = true;
+  selectionOrigin = null;
   generation++;
 });
 </script>
 <style scoped>
-.route-reader {
-  min-width: 0;
-  color: var(--ws-text);
-}
-.route-reader-selection {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-  padding: 6px 16px;
-  border-bottom: 1px solid var(--ws-border);
-  font-size: 12px;
-}
-.reader-route-tabs {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--ws-border);
-  overflow-x: auto;
-}
-.reader-route-tabs button {
-  flex: 0 0 auto;
-  height: 42px;
-  padding: 0 14px;
-  font-size: 12px;
-  color: var(--ws-muted);
-  border-bottom: 2px solid transparent;
-}
-.reader-route-tabs button.active {
-  color: var(--ws-accent, #16876f);
-  border-bottom-color: var(--ws-accent, #16876f);
-  background: var(--ws-accent-soft, #e9f5ef);
-}
-.reader-route-summary {
-  padding: 10px 20px;
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  flex-wrap: wrap;
-  font-size: 12px;
-}
-.reader-route-summary > span {
-  color: var(--ws-muted);
-}
-.reader-route-summary > .page-actions {
-  margin-left: auto;
-}
-.route-reader > .reader-review-summary {
-  padding: 8px 20px;
-}
-.reader-route-overviews {
-  padding: 16px 20px;
-  background: var(--ws-canvas, #f3f5f6);
-}
-.reader-overview-entry {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
-  align-items: start;
-  padding: 0 16px;
-  margin-bottom: 16px;
-  border: 1px solid var(--ws-border);
-  border-radius: 8px;
-  background: var(--ws-surface);
-}
-.reader-overview-entry > :first-child {
-  margin-top: 14px;
-}
-.route-choice-check {
-  grid-column: 1;
-  min-width: 0;
-}
-.reader-overview-entry > :deep(.route-overview-list) {
-  grid-column: 2;
-  min-width: 0;
-  width: 100%;
-}
-.reader-overview-entry > :deep(.route-review-summary) {
-  grid-column: 1 / -1;
-}
-.reader-detail-body {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) auto;
-  align-items: start;
-}
-.reader-tool-rail {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: center;
-  align-self: stretch;
-  padding: 14px 6px;
-  border-right: 1px solid var(--ws-border);
-  background: var(--ws-surface);
-}
-.reader-tool-rail .active {
-  color: var(--ws-accent, #16876f);
-  background: var(--ws-accent-soft, #e9f5ef);
-}
-.reader-main {
-  min-width: 0;
-}
-.reader-catalog-status {
-  margin: 0;
-  padding: 8px 16px;
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-.reader-graph {
-  height: max(520px, calc(100dvh - 240px));
-  min-width: 0;
-}
 .reader-detail-body > :deep(.route-inspector) {
   position: static;
-  width: 336px;
-  max-height: calc(100dvh - 240px);
-  box-shadow: none;
-  min-width: 0;
-}
-.reader-evidence {
-  padding: 16px 20px;
-  border-top: 1px solid var(--ws-border);
-  font-size: 12px;
-}
-summary {
-  cursor: pointer;
-}
-.reader-error {
-  padding: 12px 20px;
-}
-.reader-empty {
-  min-height: 300px;
-}
-.compact .reader-graph {
-  height: 65vh;
-  min-height: 350px;
-}
-@media (max-width: 1100px) {
-  .reader-detail-body {
-    grid-template-columns: 56px minmax(0, 1fr);
-  }
-  .reader-detail-body > :deep(.route-inspector) {
-    grid-column: 2;
-    width: 100%;
-    border-left: 0;
-    border-top: 1px solid var(--ws-border);
-  }
-}
-@media (max-width: 700px) {
-  .route-reader-selection {
-    padding: 6px 10px;
-    gap: 4px;
-  }
-  .reader-detail-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .reader-tool-rail {
-    flex-direction: row;
-    padding: 6px 12px;
-    border-right: 0;
-    border-bottom: 1px solid var(--ws-border);
-  }
-  .reader-detail-body > :deep(.route-inspector) {
-    grid-column: 1;
-    max-height: none;
-  }
-  .reader-route-summary,
-  .reader-evidence {
-    padding: 12px;
-    gap: 10px;
-  }
-  .route-reader > .reader-review-summary {
-    padding: 8px 12px;
-  }
-  .reader-route-overviews {
-    padding: 10px;
-  }
-  .reader-overview-entry {
-    padding: 0 8px;
-  }
-  .reader-route-tabs {
-    padding: 0 12px;
-  }
 }
 </style>
+<style scoped src="./route-reader.css"></style>

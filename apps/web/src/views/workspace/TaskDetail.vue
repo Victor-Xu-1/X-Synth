@@ -1,5 +1,5 @@
 <template>
-  <section class="task-detail-workspace">
+  <section class="task-detail-workspace" aria-label="路线任务详情" :aria-busy="loading">
     <header class="task-detail-heading">
       <div class="task-title">
         <v-btn
@@ -95,8 +95,15 @@
         taskStateLabel(job.status)
       }}</span>
     </div>
-    <div v-if="job && !active && !candidates.length" class="task-detail-heading">
-      <v-btn prepend-icon="mdi-magnify" variant="outlined" :disabled="mutating || rerunning" :loading="rerunning" @click="rerun">重新搜索</v-btn>
+    <div v-if="job && !active && !candidates.length" class="task-detail-recovery">
+      <v-btn
+        prepend-icon="mdi-magnify"
+        variant="outlined"
+        :disabled="mutating || rerunning"
+        :loading="rerunning"
+        @click="rerun"
+        >重新搜索</v-btn
+      >
     </div>
     <TaskInfoDialog
       v-model="infoOpen"
@@ -343,10 +350,12 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-height: 520px;
+  min-width: 0;
   color: var(--ws-text);
 }
 .task-detail-heading {
-  padding: 14px 20px;
+  padding: 16px 20px;
+  background: var(--ws-surface);
   border-bottom: 1px solid var(--ws-border);
   display: flex;
   gap: 12px;
@@ -356,27 +365,40 @@ onBeforeUnmount(() => {
 }
 .task-title {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
   min-width: 0;
   flex: 1 1 260px;
 }
 .task-title h1 {
-  font-size: 15px;
-  font-weight: 550;
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.5;
+  font-weight: 600;
   overflow-wrap: anywhere;
   min-width: 0;
 }
 .task-title .state-badge {
   flex-shrink: 0;
 }
+.task-title > .v-btn {
+  flex: 0 0 auto;
+}
 .page-actions {
+  display: flex;
+  align-items: center;
   gap: 6px;
   flex-wrap: wrap;
 }
 .task-detail-message {
   padding: 10px 20px;
+  font-size: 13px;
+  line-height: 1.7;
   overflow-wrap: anywhere;
+}
+.task-detail-recovery {
+  padding: 16px 20px;
+  border-top: 1px solid var(--ws-border);
 }
 .workspace-empty {
   min-height: 420px;
@@ -389,6 +411,22 @@ onBeforeUnmount(() => {
   }
   .task-title {
     flex-basis: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .task-title h1 {
+    flex: 1 1 calc(100% - 48px);
+    font-size: 16px;
+  }
+  .task-title .state-badge {
+    margin-left: 40px;
+  }
+  .task-detail-heading > .page-actions {
+    margin-left: auto;
+  }
+  .task-detail-message,
+  .task-detail-recovery {
+    padding: 12px;
   }
 }
 </style>

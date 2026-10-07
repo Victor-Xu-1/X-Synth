@@ -4,6 +4,7 @@ import dagre from "@dagrejs/dagre";
 import { API } from "@/common/api";
 import { oneStepCandidate } from "@/common/workbench-model";
 import { originalRouteIndex, stepDetails } from "@/common/route-details";
+import { routeLabel } from "@/common/route-reading";
 import RouteReader from "./RouteReader.vue";
 import { randomUUID } from "node:crypto";
 import { deserialize, serialize } from "node:v8";
@@ -71,9 +72,10 @@ const stubs = {
 };
 const wrappers = [];
 let layout;
-async function setup(candidates, props = {}, lazyVisible = true) {
+async function setup(candidates, props = {}, lazyVisible = true, attached = false) {
   const wrapper = mount(RouteReader, {
     props: { candidates, canEdit: true, ...props },
+    attachTo: attached ? document.body : undefined,
     global: {
       stubs: {
         ...stubs,
@@ -186,19 +188,94 @@ test("thumbnail, detail, steps, filters and reordered candidates share each prep
   expect(layout).toHaveBeenCalledTimes(2);
 });
 
-test("offscreen thumbnails and topology summaries do not run Dagre until the route is opened", async () => {
+test("offscreen route controls stay keyboard accessible while heavy chemistry layout waits", async () => {
   const first = candidate("native-a"),
     second = candidate("native-b", "CCN");
   const wrapper = await setup([first, second], {}, false);
-  expect(wrapper.text()).toContain("最长线性步数");
+  expect(wrapper.findAll(".reader-overview-entry")).toHaveLength(2);
+  expect(wrapper.findAll(".overview-open")).toHaveLength(2);
+  expect(wrapper.findAll(".route-choice-check")).toHaveLength(2);
+  expect(wrapper.findAllComponents({ name: "RouteReviewSummary" })).toHaveLength(2);
+  expect(wrapper.findAllComponents({ name: "RouteGraph" })).toHaveLength(0);
   expect(layout).not.toHaveBeenCalled();
-  wrapper.findAllComponents({ name: "RouteStepList" })[1].vm.$emit(
-    "choose", second.route_id,
-  );
+  await wrapper.setProps({ selectedRoute: second.route_id, view: "graph" });
   await flushPromises();
   expect(layout).toHaveBeenCalledTimes(1);
   await wrapper.setProps({ busy: true });
   expect(layout).toHaveBeenCalledTimes(1);
+});
+
+test("route and view tabs support roving focus, arrows and boundary keys", async () => {
+  const wrapper = await setup([candidate("native-a"), candidate("native-b", "CCN")], { view: "graph" });
+  const tabs = wrapper.findAll('.reader-route-tabs [role="tab"]');
+  const focus = jest.spyOn(tabs[1].element, "focus");
+  expect(tabs.map((tab) => tab.attributes("tabindex"))).toEqual(["0", "-1"]);
+  await tabs[0].trigger("keydown", { key: "ArrowRight" });
+  expect(tabs[1].attributes("aria-selected")).toBe("true");
+  expect(focus).toHaveBeenCalled();
+  await tabs[1].trigger("keydown", { key: "ArrowRight" });
+  expect(tabs[0].attributes("aria-selected")).toBe("true");
+  await tabs[0].trigger("keydown", { key: "End" });
+  expect(tabs[1].attributes("tabindex")).toBe("0");
+  await tabs[1].trigger("keydown", { key: "Home" });
+  expect(tabs[0].attributes("aria-selected")).toBe("true");
+
+  const views = wrapper.findAll('.reader-tool-rail [role="tab"]');
+  await views[0].trigger("keydown", { key: "ArrowRight" });
+  expect(views[1].attributes("aria-selected")).toBe("true");
+  expect(wrapper.get('[role="tabpanel"]').attributes("aria-labelledby")).toBe(views[1].attributes("id"));
+  expect(wrapper.findComponent({ name: "RouteStepList" }).exists()).toBe(true);
+  await views[1].trigger("keydown", { key: "End" });
+  expect(views[3].attributes("aria-selected")).toBe("true");
+  await views[3].trigger("keydown", { key: "Home", ctrlKey: true });
+  expect(views[3].attributes("aria-selected")).toBe("true");
+  await views[3].trigger("keydown", { key: "Home" });
+  expect(views[0].attributes("aria-selected")).toBe("true");
+});
+
+test("picked routes retain their native labels and exclude unpicked route tabs", async () => {
+  const wrapper = await setup([candidate("native-a"), candidate("native-b", "CCN"), candidate("native-c", "CCCl")]);
+  wrapper.vm.pick("native-b", true);
+  wrapper.vm.pick("native-c", true);
+  await flushPromises();
+  expect(wrapper.findAll(".reader-overview-entry.picked")).toHaveLength(2);
+  await wrapper.findAll("button").find((button) => button.text() === "查看选中路线").trigger("click");
+  const tabs = wrapper.findAll('.reader-route-tabs [role="tab"]');
+  expect(tabs.map((tab) => tab.text())).toEqual([routeLabel(1), routeLabel(2)]);
+  expect(wrapper.get('[role="tabpanel"]').attributes("id")).toBe(tabs[0].attributes("aria-controls"));
+  expect(wrapper.getComponent({ name: "RouteGraph" }).props("scores")).toEqual({ "r-1": 0 });
+});
+
+test("busy overview cards cannot navigate while an edit is in progress", async () => {
+  const wrapper = await setup([candidate("native-a")], { busy: true });
+  const overview = wrapper.getComponent({ name: "RouteStepList" });
+  expect(overview.get(".overview-open").attributes("disabled")).toBeDefined();
+  overview.vm.$emit("choose", "native-a");
+  await flushPromises();
+  expect(wrapper.find(".reader-detail-body").exists()).toBe(false);
+});
+
+test("narrow-screen node details reveal immediately and closing returns focus to the actual step", async () => {
+  const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+  const scroll = jest.fn();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scroll });
+  try {
+    const wrapper = await setup([candidate("native-a")], { view: "steps" }, true, true);
+    const button = wrapper.get('.step-select[data-node-id="r-1"]');
+    await button.trigger("click");
+    await flushPromises();
+    const inspector = wrapper.getComponent({ name: "RouteInspector" });
+    expect(inspector.element).toBe(document.activeElement);
+    expect(scroll.mock.contexts).toContain(inspector.element);
+    inspector.vm.$emit("close");
+    await flushPromises();
+    expect(wrapper.findComponent({ name: "RouteInspector" }).exists()).toBe(false);
+    expect(document.activeElement).toBe(button.element);
+    expect(scroll.mock.contexts).toContain(button.element);
+  } finally {
+    if (original) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", original);
+    else delete HTMLElement.prototype.scrollIntoView;
+  }
 });
 
 test("fresh source snapshots and reactive chemistry updates cannot reuse a stale prepared graph", async () => {

@@ -3,8 +3,8 @@
   --ws-accent-soft: #e7f4ef;
   --ws-canvas: #f5f7f8;
   --ws-bg: var(--ws-canvas);
-  --ws-sidebar: #f7f9fa;
-  --ws-inspector: #f2f5f7;
+  --ws-sidebar: #fff;
+  --ws-inspector: #f8fafb;
   --ws-surface: #fff;
   --ws-muted-surface: #f5f7f8;
   --ws-text: #232c33;
@@ -13,9 +13,18 @@
   --ws-hover: #edf1f3;
   --ws-header: #fff;
   --ws-warning: #916015;
+  --ws-danger: #b83240;
+  --ws-danger-soft: #fff0f2;
+  --ws-info: #3568a4;
+  --ws-info-soft: #edf4fc;
   --ws-sidebar-width: 208px;
-  --ws-inspector-width: 374px;
-  --ws-header-height: 74px;
+  --ws-inspector-width: 296px;
+  --ws-header-height: 64px;
+  --ws-font-body: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --ws-font-code: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --ws-radius: 6px;
+  --ws-motion: 140ms;
+  --ws-ease: cubic-bezier(0.2, 0, 0, 1);
 }
 .v-theme--dark {
   --ws-accent: #5ac6aa;
@@ -32,4 +41,8 @@
   --ws-hover: #303b43;
   --ws-header: #20262a;
   --ws-warning: #f2bc62;
+  --ws-danger: #ff9da5;
+  --ws-danger-soft: #42292f;
+  --ws-info: #a2c6f0;
+  --ws-info-soft: #253544;
 }

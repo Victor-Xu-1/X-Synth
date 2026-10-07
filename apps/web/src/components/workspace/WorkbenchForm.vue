@@ -53,7 +53,7 @@ defineEmits(["submit"]);
   grid-column: 1;
   grid-row: 1;
   min-width: 0;
-  padding: 34px;
+  padding: 28px 24px;
   border-right: 1px solid var(--ws-border);
   background: var(--ws-inspector);
 }
@@ -61,7 +61,7 @@ defineEmits(["submit"]);
   grid-column: 2;
   grid-row: 1;
   min-width: 0;
-  padding: 32px;
+  padding: 28px 32px;
 }
 .workbench-page-heading {
   display: flex;
@@ -71,7 +71,7 @@ defineEmits(["submit"]);
   margin-bottom: 22px;
 }
 .workbench-page-modes {
-  margin-bottom: 36px;
+  margin-bottom: 24px;
 }
 .inspector-hidden {
   grid-template-columns: minmax(0, 1fr);
