@@ -10,6 +10,10 @@ import {
   templateSelectionFromQuery,
 } from "@/common/template-detail";
 
+function hasReactionSmarts(record) {
+  return typeof record?.reaction_smarts === "string" && !!record.reaction_smarts.trim();
+}
+
 export function useTemplateSearch({
   route = useRoute(),
   router = useRouter(),
@@ -18,7 +22,8 @@ export function useTemplateSearch({
   const filters = reactive(templateSearchFilters(route.query));
   const result = ref(null),
     loading = ref(false),
-    error = ref("");
+    error = ref(""),
+    submitting = ref(false);
   const detail = ref(null),
     detailLoading = ref(false),
     detailError = ref("");
@@ -30,10 +35,13 @@ export function useTemplateSearch({
     result.value?.key === filterKey.value ? result.value.rows : [],
   );
   const searched = computed(() => result.value?.key === filterKey.value);
+  const busy = computed(() => submitting.value || loading.value);
+  const atLimit = computed(
+    () => searched.value && rows.value.length === Number(filters.limit),
+  );
   let active = true,
     searchGeneration = 0,
-    detailGeneration = 0,
-    submitting = false;
+    detailGeneration = 0;
 
   watch(
     filterKey,
@@ -65,7 +73,8 @@ export function useTemplateSearch({
       if (!active || generation !== detailGeneration) return;
       if (
         response.template?.source !== selection.source ||
-        response.template?.template_id !== selection.template_id
+        response.template?.template_id !== selection.template_id ||
+        !hasReactionSmarts(response.template)
       )
         throw new Error("模板详情与请求的来源或标识不一致。");
       detail.value = response.template;
@@ -93,7 +102,7 @@ export function useTemplateSearch({
     () => {
       Object.assign(filters, templateSearchFilters(route.query));
       if (
-        !submitting &&
+        !submitting.value &&
         !isDetail.value &&
         route.query.searched === "1" &&
         !searched.value &&
@@ -119,7 +128,12 @@ export function useTemplateSearch({
       const response = await api.post("/api/v1/template-library/query", body);
       if (!active || generation !== searchGeneration || key !== filterKey.value)
         return;
-      if (!Array.isArray(response.templates))
+      if (
+        !Array.isArray(response.templates) ||
+        response.count !== response.templates.length ||
+        response.templates.length > body.limit ||
+        response.templates.some((row) => !templateDetailLocation(row) || !hasReactionSmarts(row))
+      )
         throw new Error("模板查询返回了无效记录。");
       result.value = { key, rows: response.templates };
     } catch (failure) {
@@ -133,6 +147,7 @@ export function useTemplateSearch({
   }
 
   async function search() {
+    if (!active || isDetail.value || busy.value) return;
     try {
       templateSearchBody(filters);
     } catch (failure) {
@@ -146,11 +161,11 @@ export function useTemplateSearch({
     };
     delete query.id;
     delete query.source;
-    submitting = true;
+    submitting.value = true;
     try {
       await router.replace({ path: "/template", query });
     } finally {
-      submitting = false;
+      submitting.value = false;
     }
     if (active) await runSearch();
   }
@@ -208,6 +223,8 @@ export function useTemplateSearch({
     rows,
     searched,
     loading,
+    busy,
+    atLimit,
     error,
     health,
     indexError,

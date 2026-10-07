@@ -14,9 +14,8 @@ jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn() } }));
 jest.mock("@/common/chemical-files", () => ({
   downloadChemicalFile: jest.fn(),
 }));
-jest.mock("@/components/SmilesImage.vue", () => ({
-  name: "SmilesImage",
-  props: ["smiles", "inputType"],
+jest.mock("@/components/workspace/StructurePreview.vue", () => ({
+  name: "StructurePreview", props: ["smiles", "inputType", "label"],
   template: '<span class="rendered-smiles">{{ smiles }}</span>',
 }));
 
@@ -95,13 +94,14 @@ const stubs = {
   },
   VTooltip: { template: '<span><slot name="activator" :props="{}" /></span>' },
   VIcon: true,
+  VLazy: { template: '<div><slot /></div>' },
 };
 function mounted(component, props = {}) {
   const wrapper = mount(component, { props, global: { stubs } });
   wrappers.push(wrapper);
   return wrapper;
 }
-async function setup() {
+async function setup(options = {}) {
   const product = ref("CC=O"),
     reactants = ref(["CCO"]),
     limit = ref(20),
@@ -110,7 +110,7 @@ async function setup() {
   const wrapper = mounted(
     defineComponent({
       setup() {
-        state = useReactionReferences({ product, reactants, limit, blocked });
+        state = useReactionReferences({ product, reactants, limit, blocked, ...options });
         return () => null;
       },
     }),
@@ -251,6 +251,35 @@ describe("query lifecycle", () => {
     await state.search();
     expect(state.countError.value).toContain("1-30");
     expect(API.post).toHaveBeenCalledTimes(1);
+  });
+  test("a nonchemical interaction suspension blocks new searches without discarding accepted evidence", async () => {
+    const invalidationBlocked = ref(false);
+    const { state, blocked } = await setup({ invalidationBlocked });
+    API.post.mockResolvedValue(packet());
+    await state.search();
+    const accepted = state.result.value;
+    blocked.value = true;
+    expect(state.result.value).toBe(accepted);
+    expect(state.canSearch.value).toBe(false);
+    await state.search();
+    blocked.value = false;
+    expect(state.result.value).toBe(accepted);
+    expect(API.post).toHaveBeenCalledTimes(1);
+  });
+  test("a chemical pending revision still rejects late replies even if interaction blocking reverts", async () => {
+    const invalidationBlocked = ref(false);
+    const { state, blocked } = await setup({ invalidationBlocked });
+    const held = deferred();
+    API.post.mockReturnValue(held.promise);
+    const searching = state.search();
+    invalidationBlocked.value = true;
+    blocked.value = true;
+    invalidationBlocked.value = false;
+    blocked.value = false;
+    held.resolve(packet());
+    await searching;
+    expect(state.result.value).toBeNull();
+    expect(state.actualInput.value).toBeNull();
   });
   test("input change and immediate revert cannot resurrect a late response", async () => {
     const { state, product } = await setup(),
@@ -394,6 +423,31 @@ describe("shared reaction references", () => {
 });
 
 describe("reference records", () => {
+  test("reference magnification receives verified role arrays rather than the raw mapped string", () => {
+    const response = packet();
+    response.results[0].reaction_smiles = "[CH3:1][CH2:2]O>>[CH3:1][CH:2]=O";
+    const wrapper = mounted(ReferenceResults, {
+      response, actualInput: response.query, searched: true,
+    });
+    const preview = wrapper.getComponent({ name: "StructurePreview" });
+    expect(preview.props("inputType")).toBe("reaction");
+    expect(preview.props("smiles")).toBe("CCO>>CC=O");
+    expect(wrapper.get(".reference-raw").text()).toBe(response.results[0].reaction_smiles);
+    expect(API.post).not.toHaveBeenCalled();
+  });
+  test("a suspended record blocks copy, export and canvas reuse without hiding its evidence", async () => {
+    const response = packet();
+    const wrapper = mounted(ReferenceResults, {
+      response, actualInput: response.query, searched: true, allowCanvasReuse: true, blocked: true,
+    });
+    expect(wrapper.find('[data-cy="reference-row"]').exists()).toBe(true);
+    for (const action of ["reference-copy", "reference-export", "reference-load-reaction"])
+      expect(wrapper.get(`[data-cy="${action}"]`).element.disabled).toBe(true);
+    await wrapper.vm.operate(response.results[0], "export");
+    wrapper.vm.loadReaction(response.results[0]);
+    expect(API.post).not.toHaveBeenCalled();
+    expect(wrapper.emitted("load-reaction")).toBeUndefined();
+  });
   test("records show unrecorded fields and raw yield text without guessing units or unsafe links", () => {
     const response = packet();
     response.results[0].patent_url = "javascript:alert(1)";
@@ -492,7 +546,7 @@ describe("reference records", () => {
       "reference-reaction",
     );
   });
-  test.each(["replace", "unmount"])(
+  test.each(["replace", "unmount", "block-and-revert"])(
     "a late RXN response cannot export after %s",
     async (operation) => {
       const response = packet(),
@@ -506,6 +560,10 @@ describe("reference records", () => {
       await wrapper.get('[data-cy="reference-export"]').trigger("click");
       if (operation === "replace")
         await wrapper.setProps({ response: null, actualInput: null });
+      else if (operation === "block-and-revert") {
+        await wrapper.setProps({ blocked: true });
+        await wrapper.setProps({ blocked: false });
+      }
       else wrapper.unmount();
       held.resolve({ format: "rxn", content: "$RXN" });
       await flushPromises();

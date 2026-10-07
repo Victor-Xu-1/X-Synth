@@ -27,14 +27,14 @@
         }}</span>
         <div>
           <strong v-if="input.name">{{ input.name }}</strong>
-          <SmilesImage
-            v-if="input.smiles"
-            :smiles="input.smiles"
-            :width="150"
-            :height="75"
-            :show-error-image="false"
-            lazy
-          />
+          <v-lazy v-if="input.smiles" :min-height="124">
+            <StructurePreview
+              :smiles="input.smiles"
+              :label="`${roles[input.role] || input.role}结构`"
+              :width="150"
+              :height="90"
+            />
+          </v-lazy>
           <details v-if="input.smiles">
             <summary>SMILES</summary>
             <code>{{ input.smiles }}</code>
@@ -53,7 +53,7 @@ import {
   recordedParameter,
   recordedTimeLabel,
 } from "@/common/reference-evidence";
-import SmilesImage from "@/components/SmilesImage.vue";
+import StructurePreview from "@/components/workspace/StructurePreview.vue";
 defineProps({ conditions: { type: Object, default: null } });
 const parameters = [
   { key: "temperature", label: "温度" },

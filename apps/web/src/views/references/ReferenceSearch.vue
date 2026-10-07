@@ -139,6 +139,7 @@
       :response="result"
       :actual-input="actualInput"
       :pending="loading"
+      :blocked="blocked"
       :error="error"
       :searched="searched"
       allow-canvas-reuse
@@ -148,7 +149,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { evidenceSourceLabel } from "@/common/reference-evidence";
 import { reactionInputPrefill } from "@/common/reaction-input";
@@ -173,9 +174,28 @@ const reactants = computed(() => canvas.value?.reactants || []);
 const prefill = ref(null),
   prefillError = ref("");
 const inputPending = computed(() => !!canvas.value?.pending);
+const referenceProposal = ref(false);
+let proposalGeneration = 0;
 const blocked = computed(
   () => inputPending.value || !!prefill.value || !!prefillError.value,
 );
+const invalidationBlocked = computed(
+  () =>
+    (inputPending.value && !referenceProposal.value) ||
+    !!prefill.value ||
+    !!prefillError.value,
+);
+function resetProposal() {
+  proposalGeneration++;
+  referenceProposal.value = false;
+}
+watch(reactionSmiles, resetProposal, { flush: "sync" });
+watch(
+  inputPending,
+  (pending) => { if (!pending) referenceProposal.value = false; },
+  { flush: "sync" },
+);
+onBeforeUnmount(resetProposal);
 const {
   sourceStatus,
   ready,
@@ -196,12 +216,14 @@ const {
   reactants,
   limit,
   blocked,
+  invalidationBlocked,
   context: [reactionSmiles],
 });
 watch(
   () => route.query,
   () => {
     canvas.value?.cancelImport();
+    resetProposal();
     invalidate();
     prefill.value = null;
     prefillError.value = "";
@@ -245,7 +267,15 @@ async function loadReaction(records) {
     !canvas.value
   )
     return;
-  await canvas.value.importRecords(records);
+  const generation = ++proposalGeneration;
+  // A staged reference does not revise chemistry until the existing canvas accepts it.
+  referenceProposal.value = true;
+  try {
+    await canvas.value.importRecords(records);
+  } finally {
+    if (generation === proposalGeneration && !inputPending.value)
+      referenceProposal.value = false;
+  }
 }
 </script>
 

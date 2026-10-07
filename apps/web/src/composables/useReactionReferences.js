@@ -18,6 +18,7 @@ export function useReactionReferences({
   reactants = ref([]),
   limit = ref(20),
   blocked = ref(false),
+  invalidationBlocked = blocked,
   context = [],
   api = API,
 }) {
@@ -92,7 +93,7 @@ export function useReactionReferences({
       ...context.map((value) => value.value),
     ]);
   // Flush synchronously so an edit and revert cannot resurrect an earlier query.
-  watch([product, reactants, limit, blocked, ...context], invalidate, {
+  watch([product, reactants, limit, invalidationBlocked, ...context], invalidate, {
     deep: true,
     flush: "sync",
   });

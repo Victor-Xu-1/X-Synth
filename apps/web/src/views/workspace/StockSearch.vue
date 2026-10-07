@@ -43,10 +43,11 @@
         >
       </div>
       <template v-if="matchedResult"
-        ><SmilesImage
+        ><StructurePreview
           :smiles="matchedResult.smiles"
+          label="匹配结构"
+          :width="900"
           :height="180"
-          :show-error-image="false"
         />
         <details class="stock-technical">
           <summary>结构与目录版本</summary>
@@ -91,7 +92,7 @@
               <th>目录号</th>
               <th>CAS</th>
               <th>目录价格基准</th>
-              <th>目录证据</th>
+              <th class="stock-evidence-cell">目录证据</th>
             </tr>
           </thead>
           <tbody>
@@ -109,7 +110,7 @@
                   :smiles="matchedResult.smiles"
                 />
               </td>
-              <td>
+              <td class="stock-evidence-cell">
                 <a
                   v-if="safeExternalUrl(row.url)"
                   :href="safeExternalUrl(row.url)"
@@ -134,7 +135,7 @@ import { stockQueryPrefill } from "@/common/stock-lookup";
 import { safeExternalUrl } from "@/common/external-url";
 import { useWorkspaceStore } from "@/store/workspace";
 import StructureInput from "@/components/workspace/StructureInput.vue";
-import SmilesImage from "@/components/SmilesImage.vue";
+import StructurePreview from "@/components/workspace/StructurePreview.vue";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import SupplierPrice from "@/components/routes/SupplierPrice.vue";
@@ -186,8 +187,15 @@ watch(
   overflow-wrap: anywhere;
 }
 .catalog-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
   font-size: 12px;
   text-decoration: underline;
+}
+.stock-evidence-cell {
+  min-width: 100px;
 }
 .stock-records-scroll {
   overflow-x: auto;

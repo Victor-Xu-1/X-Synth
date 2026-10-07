@@ -5,17 +5,21 @@ import { API } from "@/common/api";
 import { useWorkspaceStore } from "@/store/workspace";
 import StockSearch from "./StockSearch.vue";
 import { priceContractRecord } from "@/common/route-price-test-data";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { parse } from "@vue/compiler-sfc";
+import postcss from "postcss";
 
 jest.mock("vue-router", () => ({ useRoute: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 jest.mock("@/store/workspace", () => ({ useWorkspaceStore: jest.fn() }));
-jest.mock("@/components/SmilesImage.vue", () => ({
-  name: "SmilesImage",
-  template: "<div />",
-}));
 jest.mock("@/components/workspace/StructureInput.vue", () => ({
   name: "StructureInput",
   template: "<div />",
+}));
+jest.mock("@/components/workspace/StructurePreview.vue", () => ({
+  name: "StructurePreview", props: ["smiles", "label", "inputType"],
+  template: '<span class="matched-structure">{{ smiles }}</span>',
 }));
 const snapshot = "a".repeat(64),
   otherSnapshot = "b".repeat(64);
@@ -26,10 +30,6 @@ const stubs = {
     emits: ["update:modelValue"],
     template:
       '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
-  },
-  SmilesImage: {
-    props: ["smiles"],
-    template: '<span class="matched-structure">{{ smiles }}</span>',
   },
   VBtn: { template: "<button><slot /></button>" },
   VIcon: true,
@@ -125,4 +125,31 @@ test("supplier anchors use the shared safe URL boundary", async () => {
   expect(wrapper.get("a").attributes("href")).toBe(
     "https://example.org/catalog",
   );
+});
+
+test("matched stock structure uses the shared read-only preview without changing evidence", async () => {
+  const { wrapper } = setup();
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({
+    snapshot,
+    results: { CCO: [{ smiles: "CCO", catalog_id: "record-a" }] },
+  });
+  await wrapper.get("form").trigger("submit");
+  await flushPromises();
+  const preview = wrapper.getComponent({ name: "StructurePreview" });
+  expect(preview.props("smiles")).toBe("CCO");
+  expect(wrapper.text()).toContain("record-a");
+  expect(API.post).toHaveBeenCalledTimes(2);
+});
+
+test("catalogue evidence reserves a readable column and unbroken link label on mobile", () => {
+  const { descriptor } = parse(readFileSync(resolve(__dirname, "StockSearch.vue"), "utf8"));
+  const css = postcss.parse(descriptor.styles[0].content);
+  const declarations = (selector) => Object.fromEntries(
+    css.nodes.find((rule) => rule.selector === selector)?.nodes
+      .filter((node) => node.type === "decl").map((node) => [node.prop, node.value]) || [],
+  );
+  expect(declarations(".catalog-link")["white-space"]).toBe("nowrap");
+  expect(declarations(".catalog-link").display).toBe("inline-flex");
+  expect(declarations(".stock-evidence-cell")["min-width"]).toBe("100px");
+  expect(declarations(".stock-records-scroll")["overflow-x"]).toBe("auto");
 });
