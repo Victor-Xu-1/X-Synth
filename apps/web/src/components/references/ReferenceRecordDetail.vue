@@ -88,11 +88,11 @@ watch(() => props.record.id, () => { panel.value = "reaction"; });
 </script>
 <style scoped>
 .reference-record-detail { display: flex; flex-direction: column; min-width: 0; max-height: calc(100dvh - 48px); color: var(--ws-text); background: var(--ws-surface); border: 1px solid var(--ws-border); border-radius: var(--ws-radius, 6px); overflow: hidden; }
-.reference-detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--ws-border); }
+.reference-detail-heading { display: flex; flex-shrink: 0; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--ws-border); }
 .reference-detail-identity { min-width: 0; }
 .reference-detail-heading h2 { margin: 4px 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
 .reference-detail-heading p, .reference-detail-heading span { font-size: 12px; color: var(--ws-muted); margin: 0; }
-.reference-detail-body { height: min(520px, calc(100dvh - 220px)); min-height: min(300px, calc(100dvh - 220px)); overflow-y: auto; padding: 12px 20px; overscroll-behavior: contain; }
+.reference-detail-body { height: min(520px, calc(100dvh - 220px)); min-height: 0; overflow-y: auto; padding: 12px 20px; overscroll-behavior: contain; }
 .reference-record-detail > :deep(.workspace-tabs) { flex-shrink: 0; padding: 0 20px; border-bottom: 1px solid var(--ws-border); }
 .reference-detail-body > .reference-detail-section { border-top: 0; padding-top: 4px; }
 .reference-detail-section { padding: 16px 0; border-top: 1px solid var(--ws-border); font-size: 12px; overflow-wrap: anywhere; }
