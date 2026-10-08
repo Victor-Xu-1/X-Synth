@@ -12,11 +12,11 @@
       !loaded ? "" : count ? $tr('已选 {count} 项', { count: count }) : $tr('本页 {page} 项', { page: pageSize })
     }}</span>
     <div v-if="count > 0" ref="tools" class="batch-tools">
-      <v-menu v-if="!archived" :disabled="busy || !count">
+      <v-menu v-if="!archived" v-model="groupMenuOpen" :disabled="busy || !count">
         <template #activator="{ props: menuProps }">
           <v-tooltip :text="$tr('批量移至分组')"><template #activator="{ props: tooltipProps }">
             <v-btn v-bind="mergeProps(menuProps, tooltipProps)" icon="mdi-folder-move-outline"
-              variant="text" size="small" :aria-label="$tr('批量移至分组')" :disabled="busy || !count" />
+              variant="text" size="small" :aria-label="$tr('批量移至分组')" :disabled="busy || !count" :loading="pending === 'group'" />
           </template></v-tooltip>
         </template>
         <v-list density="compact" class="batch-group-menu" role="menu" :aria-label="$tr('所选任务移至分组')">
@@ -49,7 +49,7 @@
             variant="text"
             size="small"
             :disabled="busy || !count || (!archived && !archivable)"
-            :loading="Boolean(pending)"
+            :loading="pending === (archived ? 'restore' : 'archive')"
             @click="$emit(archived ? 'restore' : 'archive')"
           />
         </template>
@@ -83,9 +83,14 @@ const props = defineProps({
   archivable: Boolean,
   busy: Boolean,
   pending: { type: String, default: "" },
+  selectionKey: { type: String, default: "" },
 });
 defineEmits(["select-page", "clear", "group", "archive", "restore"]);
 const toolbar = ref(null), tools = ref(null);
+const groupMenuOpen = ref(false);
+watch(() => [props.selectionKey, props.count, props.busy, props.archived], () => {
+  groupMenuOpen.value = false;
+}, { flush: "sync" });
 watch(() => props.count, (count, previous) => {
   if (count || !previous || !tools.value?.contains(document.activeElement)) return;
   nextTick(() => {
@@ -132,8 +137,11 @@ watch(() => props.count, (count, previous) => {
   color: var(--ws-muted);
 }
 .batch-tools :deep(.v-btn:focus-visible) { outline: 2px solid var(--ws-accent); outline-offset: 2px; }
-.batch-group-menu { min-width: 208px; max-width: min(320px, calc(100vw - 32px)); padding: 4px; border: 1px solid var(--ws-border); border-radius: 8px; background: var(--ws-surface); color: var(--ws-text); }
+.batch-group-menu { min-width: 208px; max-width: min(320px, calc(100vw - 32px)); max-height: min(420px, calc(100dvh - 32px)); overflow-y: auto; overscroll-behavior: contain; padding: 4px; border: 1px solid var(--ws-border); border-radius: 8px; background: var(--ws-surface); color: var(--ws-text); }
 .batch-group-menu :deep(.v-list-item) { border-radius: 6px; }
 .batch-group-menu :deep(.v-list-item-title) { font-size: 14px; line-height: 20px; white-space: normal; overflow-wrap: anywhere; }
 .batch-group-menu :deep(.v-list-item:focus-visible) { outline: 2px solid var(--ws-accent); outline-offset: -2px; }
+@media (max-width: 760px) {
+  .batch-tools :deep(.v-btn) { width: 40px; height: 40px; min-width: 40px; }
+}
 </style>

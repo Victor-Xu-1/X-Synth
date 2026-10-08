@@ -2,6 +2,7 @@ import { computed, ref, onBeforeUnmount } from "vue";
 import { API } from "@/common/api";
 import { cleanGraph, layoutGraph } from "@/common/route-graph";
 import { errorMessage } from "@/common/workspace-errors";
+import { readRouteDocument, RouteDocumentResponseError } from "@/common/route-document-response";
 
 export function useRouteDocument() {
   const document = ref(null),
@@ -18,16 +19,18 @@ export function useRouteDocument() {
     validationGeneration = 0;
   const copy = (value) => JSON.parse(JSON.stringify(value));
   const selected = ref(null);
-  function accept(value) {
-    document.value = value;
-    title.value = value.title;
-    graph.value = copy(value.graph);
+  function accept(value, expectedId = "") {
+    readRouteDocument(value, expectedId);
+    let prepared = copy(value.graph);
     if (
-      graph.value.nodes.every(
+      prepared.nodes.every(
         (node) => node.position.x === 0 && node.position.y === 0,
       )
     )
-      graph.value = layoutGraph(graph.value);
+      prepared = layoutGraph(prepared);
+    document.value = value;
+    title.value = value.title;
+    graph.value = prepared;
     undoStack.value = [];
     redoStack.value = [];
     dirty.value = false;
@@ -57,10 +60,10 @@ export function useRouteDocument() {
         null,
         false,
       );
-      if (current === generation) accept(value);
+      if (current === generation) accept(value, identifier);
     } catch (e) {
       if (current === generation)
-        error.value = errorMessage(e, "路线文档加载失败。");
+        error.value = e instanceof RouteDocumentResponseError ? e.message : errorMessage(e, "路线文档加载失败。");
     } finally {
       if (current === generation) loading.value = false;
     }
@@ -97,7 +100,7 @@ export function useRouteDocument() {
       return value;
     } catch (e) {
       if (current === generation)
-        error.value = errorMessage(e, "无法创建路线文档。");
+        error.value = e instanceof RouteDocumentResponseError ? e.message : errorMessage(e, "无法创建路线文档。");
       return null;
     } finally {
       if (current === generation) saving.value = false;
@@ -132,6 +135,7 @@ export function useRouteDocument() {
     try {
       const body = { title: title.value, graph: cleanGraph(graph.value) };
       const snapshot = JSON.stringify(body);
+      const identifier = document.value.id;
       const value = asCopy
         ? await API.post("/api/v1/route-documents", body)
         : await API.put(`/api/v1/route-documents/${document.value.id}`, {
@@ -139,18 +143,22 @@ export function useRouteDocument() {
             revision: document.value.revision,
           });
       if (current !== generation) return null;
-      document.value = value;
+      readRouteDocument(value, asCopy ? "" : identifier);
+      if (asCopy && value.id === identifier)
+        throw new RouteDocumentResponseError("路线文档标识与请求不一致，未应用内容。");
+      const savedGraph = copy(value.graph);
       if (
         snapshot ===
         JSON.stringify({ title: title.value, graph: cleanGraph(graph.value) })
       ) {
-        graph.value = copy(value.graph);
+        graph.value = savedGraph;
         dirty.value = false;
       }
+      document.value = value;
       return value;
     } catch (e) {
       if (current === generation)
-        error.value = errorMessage(e, "保存失败，修改仍保留在画布。");
+        error.value = e instanceof RouteDocumentResponseError ? e.message : errorMessage(e, "保存失败，修改仍保留在画布。");
       return null;
     } finally {
       if (current === generation) saving.value = false;

@@ -57,20 +57,20 @@
         <tbody>
           <tr v-for="row in filtered" :key="row.id" :data-document-id="row.id">
             <td class="document-identity-cell">
-              <router-link :to="`/editor/${row.id}`" class="document-title-cell"
-                :aria-label="$tr('打开编辑：{name}', { name: row.title })" @click.capture="preserveStructureControl"
-                ><SmilesImage
+              <div class="document-identity">
+                <StructurePreview
                   class="document-thumbnail"
                   :smiles="row.target_smiles"
-                  :width="85"
-                  :height="60"
-                  :show-error-image="false"
+                  label="目标化合物"
+                  :width="180"
+                  :height="96"
                 />
-                <div>
+                <router-link :to="`/editor/${row.id}`" class="document-title-cell"
+                  :aria-label="$tr('打开编辑：{name}', { name: row.title })">
                   <strong :title="row.title">{{ row.title }}</strong
                   ><span class="workspace-code" :title="row.target_smiles">{{ row.target_smiles }}</span>
-                </div></router-link
-              >
+                </router-link>
+              </div>
             </td>
             <td class="document-count-cell"><span class="document-mobile-label" aria-hidden="true">{{ $tr('反应') }}</span>{{ row.reaction_count }}</td>
             <td class="workspace-muted document-time-cell"><time :datetime="row.modified" :title="taskTimestampLabel(row.modified)">{{ displayTime(row.modified) }}</time></td>
@@ -114,10 +114,11 @@
 import { computed, mergeProps, onMounted, onBeforeUnmount, ref } from "vue";
 import { API } from "@/common/api";
 import { uiText } from "@/i18n";
+import { readRouteDocument, RouteDocumentResponseError } from "@/common/route-document-response";
 import { errorMessage } from "@/common/workspace-errors";
 import { displayTime } from "@/common/task-state";
-import { preserveStructureControl, taskTimestampLabel } from "@/common/task-history-view";
-import SmilesImage from "@/components/SmilesImage.vue";
+import { taskTimestampLabel } from "@/common/task-history-view";
+import StructurePreview from "@/components/workspace/StructurePreview.vue";
 import DocumentPreview from "@/components/routes/DocumentPreview.vue";
 
 const rows = ref([]),
@@ -173,10 +174,10 @@ async function preview(row) {
       false,
     );
     if (disposed) return;
-    previewDocument.value = document;
+    previewDocument.value = readRouteDocument(document, row.id);
     showPreview.value = true;
   } catch (e) {
-    if (!disposed) actionError.value = errorMessage(e, "预览加载失败。");
+    if (!disposed) actionError.value = e instanceof RouteDocumentResponseError ? e.message : errorMessage(e, "预览加载失败。");
   } finally {
     if (!disposed) previewing.value = "";
   }
@@ -210,8 +211,8 @@ onBeforeUnmount(() => { disposed = true; generation++; });
 .document-heading { margin-bottom: 20px; }
 .document-heading h1 { font-size: 24px; }
 .document-heading .page-actions { gap: 6px; }
-.document-heading :deep(.v-btn) { height: 36px; border-radius: 6px; }
-.document-heading :deep(.v-btn--icon) { width: 36px; min-width: 36px; color: var(--ws-muted); }
+.document-heading :deep(.v-btn) { height: 44px; border-radius: 6px; }
+.document-heading :deep(.v-btn--icon) { width: 44px; min-width: 44px; color: var(--ws-muted); }
 .document-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
 .document-toolbar p { margin: 0; color: var(--ws-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .document-search { flex: 0 1 430px; min-width: 0; }
@@ -236,32 +237,30 @@ onBeforeUnmount(() => { disposed = true; generation++; });
 .document-table th { white-space: nowrap; background: var(--ws-muted-surface); }
 .document-table th:first-child { width: 60%; }
 .document-table th:nth-child(2) { width: 64px; }
-.document-table th:last-child { width: 88px; }
+.document-table th:last-child { width: 108px; }
 .document-table td { padding: 12px; }
 .document-table tbody tr:last-child td { border-bottom: 0; }
 .document-count-cell { font-variant-numeric: tabular-nums; }
 .document-time-cell { font-size: 12px; font-variant-numeric: tabular-nums; }
 .document-mobile-label { display: none; }
-.document-thumbnail {
-  width: 85px;
-  height: 60px;
-  flex: 0 0 85px;
-}
-.document-title-cell {
+.document-identity {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+}
+.document-thumbnail { width: 180px; flex: 0 0 180px; }
+.document-thumbnail :deep(.preview-heading) { font-size: 12px; }
+.document-title-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
   min-width: 0;
   color: var(--ws-text);
   text-decoration: none;
 }
 .document-title-cell:hover { color: var(--ws-accent, #0b7163); }
-.document-title-cell > div {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-}
+.document-title-cell:focus-visible { outline: 2px solid var(--ws-accent); outline-offset: 4px; border-radius: 2px; }
 .document-title-cell strong {
   font-size: 14px;
   font-weight: 500;
@@ -282,7 +281,7 @@ onBeforeUnmount(() => { disposed = true; generation++; });
   justify-content: flex-end;
   gap: 2px;
 }
-.document-row-actions :deep(.v-btn) { width: 32px; height: 32px; min-width: 32px; border-radius: 6px; color: var(--ws-muted); }
+.document-row-actions :deep(.v-btn) { width: 44px; height: 44px; min-width: 44px; border-radius: 6px; color: var(--ws-muted); }
 .document-action-menu { min-width: 196px; padding: 4px; border: 1px solid var(--ws-border); border-radius: 8px; background: var(--ws-surface); color: var(--ws-text); }
 .document-action-menu :deep(.v-list-item) { min-height: 36px; border-radius: 6px; }
 .document-action-menu :deep(.v-list-item-title) { font-size: 14px; line-height: 20px; }
@@ -297,7 +296,7 @@ onBeforeUnmount(() => { disposed = true; generation++; });
   .document-table,
   .document-table tbody { display: block; width: 100%; }
   .document-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  .document-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) 68px; gap: 8px; padding: 12px; border-bottom: 1px solid var(--ws-border); }
+  .document-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) 92px; gap: 8px; padding: 12px; border-bottom: 1px solid var(--ws-border); }
   .document-table tbody tr:last-child { border-bottom: 0; }
   .document-table td { padding: 0; border: 0; min-width: 0; }
   .document-identity-cell { grid-column: 1 / -1; grid-row: 1; }
@@ -305,6 +304,7 @@ onBeforeUnmount(() => { disposed = true; generation++; });
   .document-time-cell { grid-column: 1; grid-row: 3; }
   .document-action-cell { grid-column: 2; grid-row: 2 / 4; align-self: start; }
   .document-mobile-label { display: inline; margin-right: 8px; color: var(--ws-muted); }
-  .document-title-cell { align-items: flex-start; gap: 8px; }
+  .document-identity { flex-direction: column; align-items: stretch; gap: 12px; }
+  .document-thumbnail { width: 100%; flex: none; }
 }
 </style>

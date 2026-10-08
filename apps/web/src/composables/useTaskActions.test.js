@@ -103,6 +103,108 @@ test("late detail responses cannot replace the selected task", async () => {
   expect(actions.infoLoading.value).toBe(false);
 });
 
+test.each(["preview", "rerun"])("a later information selection invalidates an outstanding %s intent", async (action) => {
+  const request = deferred();
+  const api = { get: jest.fn().mockReturnValueOnce(request.promise).mockResolvedValueOnce({
+    ...row, result_id: "second-task", settings,
+  }) };
+  const { actions, router } = setupActions(api);
+  const pending = actions[action](row);
+  await actions.info({ ...row, result_id: "second-task" });
+  request.resolve({ ...row, settings, result: { unified_route_pool: { selected_routes: [
+    { route_id: "stored", target_smiles: "CCO", steps: [] },
+  ] } } });
+  expect(await pending).toBe(false);
+  expect(actions.infoTask.value.result_id).toBe("second-task");
+  expect(actions.showInfo.value).toBe(true);
+  expect(actions.showPreview.value).toBe(false);
+  expect(router.push).not.toHaveBeenCalled();
+});
+
+test.each(["info", "preview", "rerun"])("changing the history collection invalidates a pending %s read and its errors", async (action) => {
+  const request = deferred(), historyContext = ref(previewContext);
+  const api = { get: jest.fn().mockReturnValue(request.promise), post: jest.fn() };
+  const { actions, router } = setupActions(api, { historyContext });
+  const pending = actions[action](row);
+  historyContext.value = { ...previewContext, query: "another compound" };
+  await nextTick();
+  request.reject(new Error("old collection read failed"));
+  await pending;
+  expect(actions.showInfo.value).toBe(false);
+  expect(actions.showPreview.value).toBe(false);
+  expect(actions.infoError.value).toBe("");
+  expect(actions.actionError.value).toBe("");
+  expect(router.push).not.toHaveBeenCalled();
+  expect(api.get).toHaveBeenCalledTimes(1);
+  expect(api.post).not.toHaveBeenCalled();
+});
+
+test.each(["preview", "rerun"])("the new %s intent survives closing another task's open information dialog", async action => {
+  const request = deferred();
+  const second = { ...row, result_id: "second-task", description: "Task B", target_smiles: "CCN" };
+  const secondSettings = { ...settings, smiles: "CCN" };
+  const routes = [{ route_id: "second-route", target_smiles: "CCN", steps: [] }];
+  const api = { get: jest.fn().mockResolvedValueOnce({ ...row, settings }).mockReturnValueOnce(request.promise) };
+  const { actions, router } = setupActions(api);
+  await actions.info(row);
+  const pending = actions[action](second);
+  await nextTick();
+  request.resolve({ ...second, settings: secondSettings, result: { unified_route_pool: { selected_routes: routes } } });
+  expect(await pending).toBe(true);
+  expect(actions.showInfo.value).toBe(false);
+  if (action === "preview") {
+    expect(actions.showPreview.value).toBe(true);
+    expect(actions.previewJob.value).toBe(second.result_id);
+    expect(actions.previewRoutes.value).toEqual(routes);
+  } else expect(router.push).toHaveBeenCalledTimes(1);
+});
+
+test("changing cards/list presentation retains the current task dialog, metadata draft and pending information read", async () => {
+  const request = deferred(), historyContext = ref(previewContext);
+  const { actions } = setupActions({ get: jest.fn().mockReturnValue(request.promise) }, { historyContext });
+  actions.editName(row);
+  actions.renameForm.value.description = "Untouched raw name";
+  historyContext.value = { ...previewContext, view: "cards" };
+  await nextTick();
+  request.resolve({ ...row, settings });
+  await flushPromises();
+  expect(actions.showInfo.value).toBe(true);
+  expect(actions.infoTask.value.settings).toEqual(settings);
+  expect(actions.renameForm.value.description).toBe("Untouched raw name");
+});
+
+test("a different information task never inherits the previous task's rename draft", async () => {
+  const { actions } = setupActions({ get: jest.fn().mockResolvedValue({ settings }) });
+  actions.editName(row);
+  await flushPromises();
+  actions.renameForm.value.description = "Draft for task A";
+  await actions.info({ ...row, result_id: "second-task" });
+  expect(actions.renameForm.value).toBeNull();
+  expect(actions.infoTask.value.result_id).toBe("second-task");
+});
+
+test("stale rename selections use the displayed current record and keep that metadata lock after retrieval", async () => {
+  const latest = { ...row, history_revision: 4, description: "Current displayed name" };
+  const { actions } = setupActions({ get: jest.fn().mockResolvedValue({ ...row, settings }) }, { rows: ref([latest]) });
+  actions.editName(row);
+  await flushPromises();
+  expect(actions.renameForm.value).toMatchObject({ description: latest.description, history_revision: 4 });
+  expect(actions.infoTask.value.description).toBe(latest.description);
+  expect(actions.infoTask.value.history_revision).toBe(4);
+});
+
+test.each(["info", "preview", "rerun"])("a mismatched %s response cannot change the requested task identity or navigate", async (action) => {
+  const api = { get: jest.fn().mockResolvedValue({ ...row, result_id: "wrong-task", settings,
+    result: { unified_route_pool: { selected_routes: [{ route_id: "wrong-route", target_smiles: "CCO", steps: [] }] } },
+  }) };
+  const { actions, router } = setupActions(api);
+  await actions[action](row);
+  expect(actions.infoTask.value?.result_id || row.result_id).toBe(row.result_id);
+  expect(actions.showPreview.value).toBe(false);
+  expect(actions.infoError.value || actions.actionError.value).not.toBe("");
+  expect(router.push).not.toHaveBeenCalled();
+});
+
 test("closing the info dialog invalidates the outstanding response", async () => {
   const request = deferred();
   const { actions } = setupActions({

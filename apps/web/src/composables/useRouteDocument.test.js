@@ -76,7 +76,7 @@ test("selected reaction occurrences survive editing, undo, save-copy and reload"
   expect(state.graph.value.edges).toEqual([]);
   state.redo();
   API.post.mockImplementation(async (_, body) => ({
-    ...documentValue(), ...body, state: "draft", revision: 0,
+    ...documentValue("b".repeat(32)), ...body, state: "draft", revision: 0,
   }));
   const saved = await state.save(true);
   expect(API.post.mock.calls[0][1].graph.edges[0].input_occurrences).toBe(2);
@@ -207,3 +207,40 @@ test("malformed canonical structures cannot add empty material entries", async (
   expect(state.undoStack.value).toHaveLength(0);
   expect(state.dirty.value).toBe(false);
 });
+
+const invalidDocument = (failure) => {
+  const value = documentValue();
+  if (failure === "different document") value.id = "b".repeat(32);
+  else if (failure === "missing position") delete value.graph.nodes[0].position;
+  else if (failure === "missing target") value.graph.target_id = "missing";
+  else if (failure === "invalid revision") value.revision = -1;
+  else if (failure === "null scores") value.prediction_scores = null;
+  return value;
+};
+test.each(["different document", "missing position", "missing target", "invalid revision", "null scores"])(
+  "loading %s never publishes a partially accepted document", async (failure) => {
+    const state = await setup();
+    API.get.mockResolvedValueOnce(invalidDocument(failure));
+    await state.load("a".repeat(32));
+    expect(state.document.value).toBeNull();
+    expect(state.graph.value).toEqual({ nodes: [], edges: [], target_id: "" });
+    expect(state.error.value).toBeTruthy();
+    expect(state.loading.value).toBe(false);
+  },
+);
+test.each(["different document", "missing position", "missing target", "invalid revision", "null scores"])(
+  "saving %s preserves the complete edited graph and previous revision", async (failure) => {
+    const state = await setup();
+    const edited = { ...state.graph.value, nodes: state.graph.value.nodes.map(node => ({ ...node, note: "Keep this draft" })) };
+    state.replaceGraph(edited);
+    const draft = structuredClone(JSON.parse(JSON.stringify(state.graph.value)));
+    API.put.mockResolvedValueOnce(invalidDocument(failure));
+    expect(await state.save()).toBeNull();
+    expect(state.document.value.id).toBe("a".repeat(32));
+    expect(state.document.value.revision).toBe(3);
+    expect(state.graph.value).toEqual(draft);
+    expect(state.dirty.value).toBe(true);
+    expect(state.error.value).toBeTruthy();
+    expect(state.saving.value).toBe(false);
+  },
+);

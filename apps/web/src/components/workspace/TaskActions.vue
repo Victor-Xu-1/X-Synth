@@ -18,7 +18,7 @@
         />
       </template>
     </v-tooltip>
-    <v-menu :disabled="busy">
+    <v-menu v-model="menuOpen" :disabled="busy" :close-on-content-click="false">
       <template #activator="{ props: menuProps }">
         <v-tooltip :text="$tr('更多任务操作')">
           <template #activator="{ props: tooltipProps }">
@@ -34,14 +34,14 @@
           </template>
         </v-tooltip>
       </template>
-      <v-list density="compact" class="task-actions-menu" role="menu" :aria-label="$tr('任务操作：{name}', { name: taskTitle(task) })">
+      <v-list v-if="!choosingGroup" ref="menuList" density="compact" class="task-actions-menu" role="menu" :aria-label="$tr('任务操作：{name}', { name: taskTitle(task) })">
         <v-list-item
           role="menuitem"
           :title="$tr('任务信息')"
           :aria-label="$tr('任务信息')"
           :disabled="busy"
           prepend-icon="mdi-information-outline"
-          @click="$emit('info')"
+          @click="dispatch('info')"
         />
         <v-list-item
           v-if="!archived"
@@ -50,37 +50,38 @@
           :aria-label="$tr('重命名任务')"
           :disabled="busy"
           prepend-icon="mdi-pencil-outline"
-          @click="$emit('rename')"
+          @click="dispatch('rename')"
         />
-        <v-menu v-if="!archived" submenu :disabled="busy">
-          <template #activator="{ props: groupProps }">
-            <v-list-item v-bind="groupProps" role="menuitem" :title="$tr('移至分组')" :aria-label="$tr('移至分组')"
-              prepend-icon="mdi-folder-move-outline" append-icon="mdi-chevron-right" :disabled="busy" />
-          </template>
-          <v-list density="compact" class="task-actions-menu task-group-menu" role="menu" :aria-label="$tr('选择任务分组')">
-            <v-list-item role="menuitem" :title="$tr('未分组')" :aria-label="$tr('未分组')" prepend-icon="mdi-folder-outline"
-              :disabled="busy || task.group_id === null" @click="$emit('group', null)" />
-            <v-list-item v-for="group in groups" :key="group.id" role="menuitem" :title="group.name"
-              :aria-label="group.name" prepend-icon="mdi-folder-outline" :disabled="busy || task.group_id === group.id"
-              @click="$emit('group', group.id)" />
-          </v-list>
-        </v-menu>
+        <v-list-item v-if="!archived" role="menuitem" data-action="group" :title="$tr('移至分组')" :aria-label="$tr('移至分组')"
+          prepend-icon="mdi-folder-move-outline" append-icon="mdi-chevron-right" :disabled="busy"
+          @keydown.enter.stop @keydown.right.stop.prevent="chooseGroups(true)" @click="chooseGroups(true)" />
         <v-list-item role="menuitem" :title="$tr('重新搜索')" :aria-label="$tr('重新搜索')" prepend-icon="mdi-magnify"
-          :disabled="busy" @click="$emit('rerun')" />
+          :disabled="busy" @click="dispatch('rerun')" />
         <v-divider v-if="archived || archivable || active" />
         <v-list-item v-if="archived" role="menuitem" :title="$tr('恢复任务')" :aria-label="$tr('恢复任务')"
-          prepend-icon="mdi-delete-restore" :disabled="busy" @click="$emit('restore')" />
+          prepend-icon="mdi-delete-restore" :disabled="busy" @click="dispatch('restore')" />
         <v-list-item v-else-if="archivable" role="menuitem" :title="$tr('移入回收箱')" :aria-label="$tr('移入回收箱')"
-          prepend-icon="mdi-trash-can-outline" :disabled="busy" @click="$emit('archive')" />
+          prepend-icon="mdi-trash-can-outline" :disabled="busy" @click="dispatch('archive')" />
         <v-list-item v-if="active && !archived" role="menuitem" :title="$tr('取消任务')" :aria-label="$tr('取消任务')"
-          class="task-cancel-action" prepend-icon="mdi-stop-circle-outline" :disabled="busy" @click="$emit('cancel')" />
+          class="task-cancel-action" prepend-icon="mdi-stop-circle-outline" :disabled="busy" @click="dispatch('cancel')" />
+      </v-list>
+      <v-list v-else ref="menuList" density="compact" class="task-actions-menu task-group-menu" role="menu" :aria-label="$tr('选择任务分组')">
+        <v-list-item role="menuitem" :title="$tr('返回')" :aria-label="$tr('返回')" prepend-icon="mdi-arrow-left"
+          @keydown.enter.stop @click="chooseGroups(false)" />
+        <v-divider />
+        <v-list-item role="menuitem" :title="$tr('未分组')" :aria-label="$tr('未分组')"
+          :prepend-icon="task.group_id === null ? 'mdi-check' : 'mdi-folder-outline'"
+          :disabled="busy || task.group_id === null" @click="dispatch('group', null)" />
+        <v-list-item v-for="group in groups" :key="group.id" role="menuitem" :title="group.name"
+          :aria-label="group.name" :prepend-icon="task.group_id === group.id ? 'mdi-check' : 'mdi-folder-outline'"
+          :disabled="busy || task.group_id === group.id" @click="dispatch('group', group.id)" />
       </v-list>
     </v-menu>
   </div>
 </template>
 
 <script setup>
-import { computed, mergeProps } from "vue";
+import { computed, mergeProps, nextTick, ref, watch } from "vue";
 import { activeTaskStates } from "@/common/task-state";
 import { taskRouteCount, taskTitle } from "@/common/task-history-view";
 import { canArchiveTask } from "@/common/task-history-selection";
@@ -92,7 +93,7 @@ const props = defineProps({
   archived: Boolean,
   groups: { type: Array, default: () => [] },
 });
-defineEmits([
+const emit = defineEmits([
   "info",
   "preview",
   "rerun",
@@ -110,6 +111,27 @@ const active = computed(() =>
   activeTaskStates.includes(props.task.result_state),
 );
 const archivable = computed(() => canArchiveTask(props.task));
+const menuOpen = ref(false), choosingGroup = ref(false), menuList = ref(null);
+function dispatch(action, value) {
+  if (busy.value) return;
+  menuOpen.value = false;
+  if (action === "group") emit(action, value);
+  else emit(action);
+}
+async function chooseGroups(open) {
+  if (busy.value) return;
+  choosingGroup.value = open;
+  await nextTick();
+  await new Promise(requestAnimationFrame);
+  if (menuOpen.value && choosingGroup.value === open) menuList.value?.$el?.querySelector(
+    open ? '[role="menuitem"]' : '[data-action="group"]',
+  )?.focus();
+}
+watch(menuOpen, (open) => { if (!open) choosingGroup.value = false; });
+watch([() => props.task.result_id, () => props.task.history_revision, () => props.archived, busy], () => {
+  menuOpen.value = false;
+  choosingGroup.value = false;
+}, { flush: "sync" });
 </script>
 
 <style scoped>
@@ -136,6 +158,9 @@ const archivable = computed(() => canArchiveTask(props.task));
 .task-actions-menu {
   min-width: 208px;
   max-width: min(320px, calc(100vw - 32px));
+  max-height: min(420px, calc(100dvh - 32px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 4px;
   background: var(--ws-surface);
   color: var(--ws-text);
@@ -150,4 +175,8 @@ const archivable = computed(() => canArchiveTask(props.task));
 .task-actions-menu :deep(.v-divider) { margin: 4px 0; border-color: var(--ws-border); }
 .task-actions-menu :deep(.v-list-item:focus-visible) { outline: 2px solid var(--ws-accent); outline-offset: -2px; }
 .task-cancel-action { color: var(--ws-danger); }
+@media (max-width: 760px) {
+  .task-actions { min-width: 82px; }
+  .task-actions :deep(.v-btn) { width: 40px; height: 40px; min-width: 40px; }
+}
 </style>

@@ -330,6 +330,46 @@ test("polling preserves filters and unchanged metadata selection, but invalidate
     group: "ungrouped",
   });
 });
+
+test("background polling preserves interactive history and cannot overlap; an explicit refresh still locks controls", async () => {
+  const active = row("running", { result_state: "searching" }), background = deferred(), foreground = deferred();
+  const api = { get: jest.fn().mockResolvedValueOnce(data([active]))
+    .mockReturnValueOnce(background.promise).mockReturnValueOnce(foreground.promise) };
+  const { state } = await setup(api);
+  state.togglePage(true);
+  jest.advanceTimersByTime(6000);
+  await flushPromises();
+  expect(state.loading.value).toBe(false);
+  expect(state.selection.value).toHaveLength(1);
+  jest.advanceTimersByTime(6000);
+  await flushPromises();
+  expect(api.get).toHaveBeenCalledTimes(2);
+  background.resolve(data([{ ...active, revision: 8, num_trees: 4 }]));
+  await flushPromises();
+  expect(state.rows.value[0].num_trees).toBe(4);
+  const manual = state.refresh();
+  expect(state.loading.value).toBe(true);
+  foreground.resolve(data([active]));
+  await manual;
+  expect(state.loading.value).toBe(false);
+});
+
+test("a background history failure remains visible and stops polling until an explicit retry", async () => {
+  const active = row("running", { result_state: "searching" });
+  const api = { get: jest.fn().mockResolvedValueOnce(data([active]))
+    .mockRejectedValueOnce(new Error(JSON.stringify({ detail: "History temporarily unavailable" })))
+    .mockResolvedValueOnce(data([active])) };
+  const { state } = await setup(api);
+  jest.advanceTimersByTime(6000);
+  await flushPromises();
+  expect(state.error.value).toContain("History temporarily unavailable");
+  expect(state.rows.value).toHaveLength(1);
+  jest.advanceTimersByTime(18000);
+  await flushPromises();
+  expect(api.get).toHaveBeenCalledTimes(2);
+  expect(await state.refresh()).toBe(true);
+  expect(state.error.value).toBe("");
+});
 test.each(["resolve", "reject"])(
   "unmount cancels debounce/poll and ignores late %s without another request",
   async (mode) => {

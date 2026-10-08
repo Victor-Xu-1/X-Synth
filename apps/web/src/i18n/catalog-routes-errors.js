@@ -48,6 +48,8 @@ export default [
   ["取消当前任务？", "Cancel the current task?"], ["任务状态更新失败。", "Failed to update task status."],
   ["重新搜索参数读取失败。", "Failed to read parameters for searching again."],
   ["路线文档加载失败。", "Failed to load route documents."], ["预览加载失败。", "Failed to load preview."],
+  ["路线文档响应格式无效，未应用内容。", "The route document response is invalid; no content was applied."],
+  ["路线文档标识与请求不一致，未应用内容。", "The route document identity does not match the request; no content was applied."],
   ["删除失败。", "Deletion failed."], ["候选反应无法加入路线。", "The candidate reaction could not be added to the route."],
   ["图像导出失败，请确认结构图已加载。", "Image export failed. Check that the structure diagram has loaded."],
   ["文件不是有效的 X-Synth 路线文档。", "The file is not a valid X-Synth route document."],

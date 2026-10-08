@@ -19,6 +19,7 @@
     <nav :aria-label="$tr('任务分组导航')" :aria-busy="!countsLoaded">
       <button
         class="group-link"
+        :disabled="navigationDisabled"
         :aria-current="!archived && selected === 'all' ? 'page' : undefined"
         @click="$emit('select', 'all')"
       >
@@ -28,6 +29,7 @@
       </button>
       <button
         class="group-link"
+        :disabled="navigationDisabled"
         :aria-current="
           !archived && selected === 'ungrouped' ? 'page' : undefined
         "
@@ -39,6 +41,7 @@
       <div v-for="group in groups" :key="group.id" class="group-row">
         <button
           class="group-link"
+          :disabled="navigationDisabled"
           :aria-current="
             !archived && selected === group.id ? 'page' : undefined
           "
@@ -80,6 +83,7 @@
       </div>
       <button
         class="group-link recycle-link"
+        :disabled="navigationDisabled"
         :aria-current="archived ? 'page' : undefined"
         @click="$emit('archive')"
       >
@@ -89,6 +93,7 @@
     <v-dialog
       :model-value="Boolean(form)"
       max-width="420"
+      :persistent="busy"
       aria-labelledby="group-form-title"
       @update:model-value="
         (open) => {
@@ -96,7 +101,7 @@
         }
       "
     >
-      <form v-if="form" class="group-form" @submit.prevent="$emit('save')">
+      <form v-if="form" class="group-form" @submit.prevent="!busy && form.name.trim() && $emit('save')">
         <header>
           <h2 id="group-form-title">
             {{ form.id ? $tr('重命名分组') : $tr('新建分组') }}
@@ -149,6 +154,7 @@ defineProps({
   ungroupedTotal: { type: Number, default: 0 },
   countsLoaded: { type: Boolean, default: true },
   busy: Boolean,
+  navigationDisabled: Boolean,
   form: { type: Object, default: null },
   error: { type: String, default: "" },
 });
@@ -189,6 +195,9 @@ h2 {
 nav {
   display: grid;
   gap: 3px;
+  max-height: max(160px, calc(100dvh - 280px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .group-row {
   display: flex;
@@ -211,6 +220,7 @@ nav {
 .group-link:hover {
   background: var(--ws-muted-surface);
 }
+.group-link:disabled { opacity: 0.6; cursor: default; }
 .group-link[aria-current] {
   background: var(--ws-accent-soft);
   color: var(--ws-accent);
@@ -262,6 +272,8 @@ nav {
   border: 1px solid var(--ws-border);
   border-radius: 6px;
   min-width: 0;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
   letter-spacing: 0;
 }
 .group-form footer {
@@ -283,6 +295,7 @@ nav {
   }
   nav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: 168px;
   }
   .recycle-link {
     margin-top: 0;

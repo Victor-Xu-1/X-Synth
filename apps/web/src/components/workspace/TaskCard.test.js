@@ -29,18 +29,18 @@ const context = {
   archived: false,
 };
 
-test("header positions are explicit instead of inheriting a component's named grid area", () => {
+test("a full-width title and a separate state row retain explicit stable header positions", () => {
   const { descriptor } = parse(readFileSync(resolve(__dirname, "TaskCard.vue"), "utf8"));
   const css = postcss.parse(descriptor.styles[0].content);
-  for (const [selector, column] of [
-    [".task-card-controls :deep(.v-selection-control)", "1"],
-    [".task-card-title", "2"],
-    [".task-card-controls .state-badge", "3"],
+  for (const [selector, column, row] of [
+    [".task-card-controls :deep(.v-selection-control)", "1", "1"],
+    [".task-card-title", "2", "1"],
+    [".task-card-controls .state-badge", "2", "2"],
   ]) {
     const rule = css.nodes.find(node => node.selector === selector);
     const values = Object.fromEntries(rule.nodes.filter(node => node.type === "decl").map(node => [node.prop, node.value]));
     expect(values["grid-column"]).toBe(column);
-    expect(values["grid-row"]).toBe("1");
+    expect(values["grid-row"]).toBe(row);
   }
 });
 const stubs = {
