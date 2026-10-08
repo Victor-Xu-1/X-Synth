@@ -22,7 +22,8 @@
     <div v-else-if="record?.error" class="tool-error" role="alert">{{ record.error }}</div>
     <p v-else-if="record?.status === 'running'" role="status">该次计算仍在执行。</p>
     <p v-else-if="record?.status === 'interrupted'" role="status">该次计算已中断。</p>
-    <details v-if="record" class="submitted-input"><summary>本次提交的输入</summary><pre>{{ JSON.stringify(record.inputs, null, 2) }}</pre></details>
+    <OptimizationInputSummary v-if="record?.kind === 'optimization'" :inputs="record.inputs" :record-id="record.id" />
+    <details v-if="record" class="submitted-input" @toggle="inputOpen = $event.target.open"><summary>本次提交的输入</summary><pre v-if="inputOpen">{{ JSON.stringify(record.inputs, null, 2) }}</pre></details>
   </section>
 </template>
 <script setup>
@@ -32,15 +33,16 @@ import { API } from "@/common/api";
 import { analysisKinds, analysisStatuses, recordDate, recordPath, readAnalysisRecord,
   analysisQuery, listQuery } from "@/common/analysis-records";
 import AnalysisResult from "./AnalysisResult.vue";
+import OptimizationInputSummary from "@/views/optimization/OptimizationInputSummary.vue";
 import { exportRecommendationCsv, hasRecommendationCsv } from "@/views/optimization/recommendation-export";
-const route = useRoute(), record = ref(null), loading = ref(false), error = ref("");
+const route = useRoute(), record = ref(null), loading = ref(false), error = ref(""), inputOpen = ref(false);
 const title = computed(() => {
   const label = analysisKinds[record.value?.kind]?.title;
   return label ? `${label}${record.value.status === 'completed' ? '结果' : '记录'}` : "研究记录";
 });
 const editLocation = computed(() => {
   const current = record.value;
-  if (!current || !["process", "assessment", "conditions", "forward", "impurity"].includes(current.kind)) return null;
+  if (!current || !["process", "assessment", "conditions", "forward", "impurity", "optimization"].includes(current.kind)) return null;
   const location = analysisKinds[current.kind].to;
   const [path, query] = location.split("?");
   return { path, query: { ...Object.fromEntries(new URLSearchParams(query || "")), record: current.id } };
@@ -58,7 +60,7 @@ async function load(preserve = false) {
   if (disposed) return;
   const current = ++generation, id = route.params.id;
   const active = () => !disposed && current === generation && id === route.params.id;
-  if (!preserve || record.value?.id !== id) record.value = null;
+  if (!preserve || record.value?.id !== id) { record.value = null; inputOpen.value = false; }
   loading.value = true; error.value = "";
   try {
     if (!recordPath(id)) throw new Error("研究记录标识无效。");

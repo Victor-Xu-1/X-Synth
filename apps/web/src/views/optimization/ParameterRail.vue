@@ -1,5 +1,6 @@
 <template>
-  <form class="opt-rail" @submit.prevent="$emit('recommend')">
+  <form class="opt-rail" :aria-busy="disabled" @submit.prevent="$emit('recommend')">
+    <fieldset class="opt-parameter-fields" :disabled="disabled">
     <section class="opt-rail-section">
       <h2>实测响应</h2>
       <label class="opt-field"
@@ -126,6 +127,10 @@
         <dt>实测记录</dt>
         <dd>{{ selectedCount }} / 256</dd>
       </dl>
+      <details class="opt-seed-setting"><summary>高级设置</summary>
+        <label class="opt-field">随机种子<input :value="seed" type="number" min="0" max="4294967295" step="1"
+          aria-label="随机种子" @input="$emit('update:seed', $event.target.value)" /></label>
+      </details>
       <label class="opt-confirmation"
         ><input
           type="checkbox"
@@ -152,6 +157,7 @@
         >推荐下一批</v-btn
       >
     </section>
+    </fieldset>
   </form>
 </template>
 <script setup>
@@ -168,12 +174,15 @@ const props = defineProps({
   confirmedCandidates: Boolean,
   canRecommend: Boolean,
   running: Boolean,
+  disabled: Boolean,
+  seed: { type: [Number, String], default: 42 },
 });
 defineEmits([
   "toggle-factor",
   "update-target",
   "update-factor",
   "update:batchSize",
+  "update:seed",
   "update:confirmedMeasurements",
   "update:confirmedCandidates",
   "recommend",

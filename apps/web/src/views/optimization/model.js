@@ -51,6 +51,7 @@ export function buildRequest({
   factors,
   target,
   batchSize,
+  seed = 42,
   confirmedMeasurements,
   confirmedCandidates,
 }) {
@@ -66,6 +67,9 @@ export function buildRequest({
   const number = Number(batchSize);
   if (!Number.isInteger(number) || number < 1 || number > LIMITS.batch)
     throw new Error("下一批实验数必须为 1-8 的整数。");
+  if (!(typeof seed === "number" || typeof seed === "string" && /^\d+$/.test(seed))
+      || !Number.isInteger(Number(seed)) || Number(seed) < 0 || Number(seed) > 2 ** 32 - 1)
+    throw new Error("随机种子必须为 0 至 4294967295 的整数。");
   const count = candidateCount(factors);
   if (count > LIMITS.candidates)
     throw new Error("候选组合超过 4096，请缩小离散水平。");
@@ -85,7 +89,7 @@ export function buildRequest({
         target.kind === "yield_percent" ? "maximize" : target.direction,
     },
     batch_size: number,
-    seed: 42,
+    seed: Number(seed),
     confirmed_measurements: true,
     confirmed_candidates: true,
   };
@@ -103,6 +107,9 @@ export function validateResult(result, request) {
     typeof result.csv_content !== "string" ||
     result.target?.name !== request.target.name ||
     result.target?.direction !== request.target.direction ||
+    result.target?.kind !== request.target.kind ||
+    result.target?.unit !== request.target.unit ||
+    result.seed !== request.seed ||
     JSON.stringify(result.selected_rows) !==
       JSON.stringify(request.selected_rows)
   )
@@ -126,10 +133,4 @@ export function formatResponse(value) {
   return Number.isFinite(value)
     ? value.toLocaleString("zh-CN", { maximumFractionDigits: 3 })
     : "未提供";
-}
-
-export function analysisRecordUrl(recordId) {
-  return typeof recordId === "string" && /^[a-f0-9]{32}$/.test(recordId)
-    ? `/analyses/${encodeURIComponent(recordId)}`
-    : null;
 }
