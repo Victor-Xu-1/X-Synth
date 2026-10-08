@@ -41,7 +41,8 @@ export function useAnalysisInput({ kind, clear, apply, prefill, querySeeds = ["s
     if (disposed || event?.ctrlKey || event?.metaKey || event?.shiftKey || event?.altKey || event?.button > 0) return;
     try {
       const state = { ...window.history.state };
-      delete state.xSynthSubmittedInput;
+      // Null also overrides Vue Router's cached pointer on its next push.
+      state.xSynthSubmittedInput = null;
       window.history.replaceState(state, "");
       generation++; source.value = null; error.value = ""; loading.value = false; clear();
     } catch (cause) {

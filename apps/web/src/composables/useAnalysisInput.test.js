@@ -47,10 +47,12 @@ test("new input resets a restored history entry even when its URL is unchanged, 
   API.get.mockResolvedValue(record("saved"));
   const { wrapper } = setup({}); await flushPromises();
   expect(wrapper.vm.source.id).toBe("saved");
+  const cachedRouterState = { ...window.history.state };
   clear.mockClear(); wrapper.vm.startNew({ defaultPrevented: true });
   expect(wrapper.vm.source).toBeNull(); expect(wrapper.vm.error).toBe("");
   expect(clear).toHaveBeenCalledTimes(1);
-  expect(window.history.state).toEqual({ position: 3 });
+  expect(window.history.state).toEqual({ position: 3, xSynthSubmittedInput: null });
+  expect({ ...cachedRouterState, ...window.history.state }.xSynthSubmittedInput).toBeNull();
   await wrapper.vm.reload();
   expect(API.get).toHaveBeenCalledTimes(1);
   expect(prefill).toHaveBeenLastCalledWith("", {});

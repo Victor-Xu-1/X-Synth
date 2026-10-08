@@ -96,7 +96,7 @@ test("same-URL New Optimization clears a history-restored form and its recovery 
   await wrapper.findAll("button").find((button) => button.text() === "新建优化").trigger("click");
   expect(wrapper.find(".opt-layout").exists()).toBe(false);
   expect(wrapper.text()).toContain("尚无已选实验数据");
-  expect(window.history.state.xSynthSubmittedInput).toBeUndefined();
+  expect(window.history.state.xSynthSubmittedInput).toBeNull();
 });
 
 test("declared response with unselected pending labels remains editable after replay", async () => {

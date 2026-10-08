@@ -149,15 +149,24 @@ try {
   await page.locator(".opt-seed-setting summary").click();
   assert.equal(await page.getByLabel("随机种子", { exact: true }).inputValue(), String(recorded.inputs.seed));
   await page.screenshot({ path: join(evidence, "browser-back-input-desktop.png"), fullPage: true });
+  await page.goForward();
+  await page.getByRole("heading", { name: "实验优化结果", exact: true }).waitFor();
+  assert.equal(submissions, 1);
+  await page.goBack();
+  await page.getByText("1728 条记录 · 已选择 50", { exact: true }).waitFor();
   await page.getByRole("link", { name: "新建优化", exact: true }).click();
+  await page.getByText("尚无已选实验数据", { exact: true }).waitFor();
+  await page.getByRole("link", { name: "研究记录", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/analyses");
+  await page.goBack();
   await page.getByText("尚无已选实验数据", { exact: true }).waitFor();
   await page.reload();
   await page.getByText("尚无已选实验数据", { exact: true }).waitFor();
   assert.equal(await page.locator(".opt-layout").count(), 0);
-  await page.goForward();
+  await page.goto(origin + `/analyses/${payload.record_id}?kind=optimization`);
   await page.getByRole("heading", { name: "实验优化结果", exact: true }).waitFor();
   assert.equal(submissions, 1);
-  checks.push("Back restores the exact input with confirmations reset; same-URL New clears recovery, refresh stays fresh; Forward reads saved result without recomputation");
+  checks.push("Back/Forward preserves the saved calculation; New survives later navigation/Back and refresh without reviving old input; no recomputation");
   for (const width of [768, 1920]) {
     await page.setViewportSize({ width, height: 960 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
