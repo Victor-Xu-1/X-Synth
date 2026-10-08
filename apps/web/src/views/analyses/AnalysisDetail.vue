@@ -31,7 +31,6 @@
         <time v-if="record.finished" :datetime="record.finished">{{ recordDate(record.finished) }}</time>
         <span v-else>{{ $tr('未记录') }}</span>
       </dd></div>
-      <div><dt>{{ $tr('记录标识') }}</dt><dd class="analysis-record-identity">{{ record.id }}</dd></div>
     </dl>
     <div v-if="editLocation" class="analysis-stage" :aria-label="$tr('计算流程')">
       <span>{{ $tr('01 / 录入') }}</span><v-icon icon="mdi-arrow-right" size="15" aria-hidden="true" />
@@ -54,6 +53,7 @@
       <OptimizationInputSummary v-if="record.kind === 'optimization'" :inputs="record.inputs" :record-id="record.id" />
       <details ref="inputDisclosure" class="submitted-input" :open="inputOpen" @toggle="toggleInput">
         <summary>{{ $tr('本次提交的输入') }}</summary>
+        <dl class="analysis-input-meta"><dt>{{ $tr('记录标识') }}</dt><dd class="analysis-record-identity">{{ record.id }}</dd></dl>
         <pre v-if="inputOpen">{{ JSON.stringify(record.inputs, null, 2) }}</pre>
       </details>
     </div>
@@ -160,11 +160,14 @@ onBeforeUnmount(() => {
 .analysis-status.is-running { color: var(--ws-info); }
 .analysis-status.is-failed { color: var(--ws-danger); }
 .analysis-status.is-interrupted { color: var(--ws-warning); }
-.analysis-record-meta { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 20px 40px; margin: 0 0 18px; font-size: 12px; }
+.analysis-record-meta { display: grid; grid-template-columns: repeat(2, minmax(0, max-content)); gap: 20px 40px; margin: 0 0 18px; font-size: 12px; }
 .analysis-record-meta > div { min-width: 0; }
 .analysis-record-meta dt { color: var(--ws-muted); margin-bottom: 5px; }
 .analysis-record-meta dd { margin: 0; overflow-wrap: anywhere; }
 .analysis-record-identity { font-family: var(--ws-font-code); }
+.analysis-input-meta { display: flex; gap: 8px 16px; margin-top: 16px; }
+.analysis-input-meta dt { flex-shrink: 0; color: var(--ws-muted); }
+.analysis-input-meta dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .analysis-stage { display: flex; align-items: center; gap: 12px; margin: 0 0 24px; padding-bottom: 16px; border-bottom: 1px solid var(--ws-border); font-size: 12px; color: var(--ws-muted); }
 .analysis-stage strong { color: var(--ws-text); font-weight: 600; }
 .analysis-read-status { display: flex; align-items: center; gap: 10px; padding: 16px 0; color: var(--ws-muted); font-size: 13px; }
@@ -179,7 +182,6 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 16px; padding:
 .tool-error { overflow-wrap: anywhere; }
 @media (max-width: 900px) {
   .analysis-record-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; }
-  .analysis-record-meta > div:last-child { grid-column: 1 / -1; }
 }
 @media (max-width: 600px) {
   .analysis-navigation { gap: 4px; margin-bottom: 16px; }

@@ -322,10 +322,12 @@ test("same-ID list query changes update the return destination without rereading
   expect(API.get).toHaveBeenCalledTimes(1);
 });
 
-test("record identity and submitted/finished dates are explicit while missing completion remains unrecorded", async () => {
+test("record identity is disclosed with original inputs while submitted/finished dates remain primary", async () => {
   API.get.mockResolvedValueOnce({ ...record(), finished: "2026-10-04T00:01:00Z" }).mockResolvedValueOnce(record());
   const { wrapper } = await setup();
   expect(wrapper.get(".analysis-record-identity").text()).toBe("record-a");
+  expect(wrapper.find(".analysis-record-meta .analysis-record-identity").exists()).toBe(false);
+  expect(wrapper.get(".submitted-input .analysis-record-identity").text()).toBe("record-a");
   expect(wrapper.get('time[datetime="2026-10-04T00:00:00Z"]').exists()).toBe(true);
   expect(wrapper.get('time[datetime="2026-10-04T00:01:00Z"]').exists()).toBe(true);
   await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
