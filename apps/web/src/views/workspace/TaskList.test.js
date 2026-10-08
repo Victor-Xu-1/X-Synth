@@ -316,6 +316,8 @@ test("a failed refresh keeps the actual cards, shows the server error, and disab
   expect(wrapper.get(".state-badge").text()).toBe("已完成");
   expect(wrapper.find(".workspace-empty").exists()).toBe(false);
   expect(wrapper.get('[aria-label="移入回收箱"]').element.disabled).toBe(true);
+  expect(wrapper.getComponent(TaskGroups).props("busy")).toBe(true);
+  expect(wrapper.get('[aria-label="新建分组"]').element.disabled).toBe(true);
   expect(API.post).not.toHaveBeenCalled();
 });
 
@@ -355,6 +357,9 @@ test("view switching reuses the same server page and preserves filters and selec
   expect(wrapper.find(".task-table").exists()).toBe(true);
   expect(wrapper.findAllComponents(TaskCard)).toHaveLength(0);
   expect(wrapper.findComponent(TaskBatchActions).props("count")).toBe(1);
+  expect(JSON.parse(wrapper.findComponent(TaskBatchActions).props("selectionKey"))).toEqual([
+    { id: "task-a", revision: 2 },
+  ]);
   expect(router.currentRoute.value.query).toEqual({
     query: "CCO",
     status: "completed",
@@ -362,6 +367,22 @@ test("view switching reuses the same server page and preserves filters and selec
     view: "list",
   });
   expect(API.get).toHaveBeenCalledTimes(1);
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test("changing the collection invalidates a pending card preview before publishing any dialog or new navigation", async () => {
+  const { wrapper, router } = await setup();
+  let respond;
+  API.get.mockImplementationOnce(() => new Promise(resolve => { respond = resolve; }));
+  await wrapper.get('[aria-label="预览路线"]').trigger("click");
+  await wrapper.get('input[aria-label="搜索任务"]').setValue("new collection");
+  respond({ ...row(), result: { unified_route_pool: { selected_routes: [
+    { route_id: "stored-route", target_smiles: "CCO", steps: [] },
+  ] } } });
+  await flushPromises();
+  expect(wrapper.findComponent(RoutePreview).props("modelValue")).toBe(false);
+  expect(wrapper.findComponent(TaskInfoDialog).props("modelValue")).toBe(false);
+  expect(router.currentRoute.value.path).toBe("/results");
   expect(API.post).not.toHaveBeenCalled();
 });
 

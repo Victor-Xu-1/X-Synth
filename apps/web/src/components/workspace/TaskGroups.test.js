@@ -52,6 +52,14 @@ test("persistent group counts are server-wide, and group/create/recycle links ha
   expect(wrapper.emitted("create")).toEqual([[]]);
 });
 
+test("pending metadata operations lock collection navigation, without making loading alone block switching collections", async () => {
+  const wrapper = setup({ busy: true, navigationDisabled: true });
+  for (const link of wrapper.findAll(".group-link")) expect(link.element.disabled).toBe(true);
+  await wrapper.setProps({ navigationDisabled: false });
+  for (const link of wrapper.findAll(".group-link")) expect(link.element.disabled).toBe(false);
+  expect(wrapper.get('[aria-label="新建分组"]').element.disabled).toBe(true);
+});
+
 test("unread counters are not shown as zero, while long names and named menu items remain intact", async () => {
   const name = "完整的先导项目名称".repeat(12);
   const wrapper = setup({ countsLoaded: false, groups: [{ ...group, name }], busy: true });

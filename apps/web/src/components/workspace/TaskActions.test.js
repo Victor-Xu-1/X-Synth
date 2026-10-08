@@ -1,4 +1,4 @@
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import TaskActions from "./TaskActions.vue";
 
 const row = {
@@ -19,6 +19,8 @@ afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
 const actionControlStubs = {
   VTooltip: { template: '<div><slot name="activator" :props="{}" /></div>' },
   VMenu: {
+    props: ["modelValue"],
+    emits: ["update:modelValue"],
     template: '<div><slot name="activator" :props="{}" /><slot /></div>',
   },
   VList: { template: "<div><slot /></div>" },
@@ -138,14 +140,82 @@ test("named menus preserve rename, group identity and terminal archive operation
     { id: "g-current", name: "当前项目" },
     { id: "g-next", name: "完整的项目名称".repeat(12) },
   ] });
+  await controls.get('[aria-label="移至分组"]').trigger("click");
   expect(controls.get('.task-group-menu [aria-label="当前项目"]').element.disabled).toBe(true);
   const name = "完整的项目名称".repeat(12);
   await controls.get(`.task-group-menu [aria-label="${name}"]`).trigger("click");
+  await controls.get('[aria-label="返回"]').trigger("click");
   await controls.get('[aria-label="重命名任务"]').trigger("click");
   await controls.get('[aria-label="移入回收箱"]').trigger("click");
   expect(controls.emitted("group")).toEqual([["g-next"]]);
   expect(controls.emitted("rename")).toEqual([[]]);
   expect(controls.emitted("archive")).toEqual([[]]);
+});
+
+test("group picking replaces the action menu and returns without mutation; a changed task closes it", async () => {
+  const controls = setupActionControls(row);
+  const menu = controls.findComponent(actionControlStubs.VMenu);
+  menu.vm.$emit("update:modelValue", true);
+  await controls.get('[aria-label="移至分组"]').trigger("click");
+  expect(controls.find('.task-group-menu').exists()).toBe(true);
+  expect(controls.find('[aria-label="任务信息"]').exists()).toBe(false);
+  await controls.get('[aria-label="返回"]').trigger("click");
+  expect(controls.find('.task-group-menu').exists()).toBe(false);
+  expect(controls.emitted("group")).toBeUndefined();
+  await controls.get('[aria-label="移至分组"]').trigger("click");
+  await controls.setProps({ task: { ...row, result_id: "another-task" } });
+  expect(menu.props("modelValue")).toBe(false);
+  expect(controls.find('.task-group-menu').exists()).toBe(false);
+});
+
+test("worker-only snapshots preserve an open group picker, while a metadata revision change closes it", async () => {
+  const controls = setupActionControls(row);
+  const menu = controls.findComponent(actionControlStubs.VMenu);
+  menu.vm.$emit("update:modelValue", true);
+  await controls.get('[aria-label="移至分组"]').trigger("click");
+  await controls.setProps({ task: { ...row, revision: 8, num_trees: 2 } });
+  expect(menu.props("modelValue")).toBe(true);
+  expect(controls.find('.task-group-menu').exists()).toBe(true);
+  await controls.setProps({ task: { ...row, revision: 8, history_revision: 3 } });
+  expect(menu.props("modelValue")).toBe(false);
+});
+
+test("group-layer focus waits for overlay capture and a closed menu cannot reclaim focus on the next frame", async () => {
+  const frames = [], raf = jest.spyOn(window, "requestAnimationFrame").mockImplementation(callback => {
+    frames.push(callback);
+    return frames.length;
+  });
+  const controls = setupActionControls(row), external = document.createElement("button");
+  document.body.append(controls.element, external);
+  try {
+    const menu = controls.findComponent(actionControlStubs.VMenu);
+    menu.vm.$emit("update:modelValue", true);
+    external.focus();
+    await controls.get('[aria-label="移至分组"]').trigger("click");
+    expect(document.activeElement).toBe(external);
+    frames.shift()(0);
+    await flushPromises();
+    expect(document.activeElement).toBe(controls.get('[aria-label="返回"]').element);
+    await controls.get('[aria-label="返回"]').trigger("click");
+    menu.vm.$emit("update:modelValue", false);
+    external.focus();
+    frames.shift()(0);
+    await flushPromises();
+    expect(document.activeElement).toBe(external);
+  } finally { raf.mockRestore(); external.remove(); }
+});
+
+test("group-layer Enter does not bubble to the menu's close/navigation handler, and ArrowRight opens the group layer", async () => {
+  const controls = setupActionControls(row);
+  const bubbled = jest.fn();
+  controls.element.addEventListener("keydown", bubbled);
+  await controls.get('[aria-label="移至分组"]').trigger("keydown", { key: "Enter" });
+  expect(bubbled).not.toHaveBeenCalled();
+  await controls.get('[aria-label="移至分组"]').trigger("keydown", { key: "ArrowRight" });
+  expect(controls.find('.task-group-menu').exists()).toBe(true);
+  await controls.get('[aria-label="返回"]').trigger("keydown", { key: "Enter" });
+  expect(bubbled).not.toHaveBeenCalled();
+  expect(controls.emitted("group")).toBeUndefined();
 });
 
 test("searching tasks with a real route count can preview and group without exposing archive", async () => {

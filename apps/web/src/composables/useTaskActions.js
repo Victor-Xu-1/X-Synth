@@ -49,25 +49,42 @@ export function useTaskActions({
     groupError = ref(""),
     groupPending = ref(false);
   let alive = true,
-    infoGeneration = 0,
-    previewGeneration = 0,
-    rerunGeneration = 0,
+    readGeneration = 0,
     actionGeneration = 0;
 
-  const retrieve = (task) =>
-    api.get("/api/results/retrieve", { result_id: task.result_id });
+  function checkedResponse(task, response) {
+    if ([response?.result_id, response?.job_id].some((id) => id !== undefined && id !== task.result_id))
+      throw new Error(JSON.stringify({ detail: "任务历史响应格式无效。" }));
+    return response;
+  }
+  const retrieve = async (task) => checkedResponse(task,
+    await api.get("/api/results/retrieve", { result_id: task.result_id }));
+  const currentTask = (task) => normalizeTaskInfo(task,
+    rows?.value.find((row) => row.result_id === task.result_id));
+
+  function beginRead(task) {
+    if (infoTask.value?.result_id !== task.result_id) {
+      showInfo.value = false;
+      renameError.value = "";
+    }
+    if (renameForm.value?.id !== task.result_id) renameForm.value = null;
+    infoLoading.value = false;
+    showPreview.value = false;
+    infoError.value = "";
+    actionError.value = "";
+    return ++readGeneration;
+  }
+  const currentRead = (generation) => alive && generation === readGeneration;
 
   async function info(task) {
     if (!alive || !task?.result_id) return false;
-    const current = ++infoGeneration;
-    actionError.value = "";
-    infoError.value = "";
-    infoTask.value = normalizeTaskInfo(task);
+    const current = beginRead(task);
+    infoTask.value = currentTask(task);
     showInfo.value = true;
     infoLoading.value = true;
     try {
       const response = await retrieve(task);
-      if (!alive || current !== infoGeneration) return;
+      if (!currentRead(current)) return false;
       infoTask.value = normalizeTaskInfo(infoTask.value, response);
       if (
         !infoTask.value.settings ||
@@ -75,7 +92,7 @@ export function useTaskActions({
       )
         infoError.value = "此记录未返回原始搜索参数。";
     } catch (e) {
-      if (!alive || current !== infoGeneration) return;
+      if (!currentRead(current)) return false;
       infoError.value = errorMessage(e, "任务参数加载失败。");
       try {
         const response = await api.get(
@@ -83,13 +100,13 @@ export function useTaskActions({
           null,
           false,
         );
-        if (alive && current === infoGeneration)
-          infoTask.value = normalizeTaskInfo(infoTask.value, response);
+        if (currentRead(current))
+          infoTask.value = normalizeTaskInfo(infoTask.value, checkedResponse(task, response));
       } catch {
         // Keep the retrieve error and the last real history snapshot visible.
       }
     } finally {
-      if (alive && current === infoGeneration) infoLoading.value = false;
+      if (currentRead(current)) infoLoading.value = false;
     }
   }
 
@@ -111,7 +128,7 @@ export function useTaskActions({
         false,
       );
       if (!alive) return null;
-      latest = normalizeTaskInfo(task, response);
+      latest = normalizeTaskInfo(task, checkedResponse(task, response));
       if (infoTask.value?.result_id === task.result_id)
         infoTask.value = normalizeTaskInfo(infoTask.value, response);
     } catch {
@@ -127,13 +144,14 @@ export function useTaskActions({
   async function run(task, action, operation, fallback, onFailure) {
     const id = task?.result_id;
     if (!alive || !id || pending.value[id] || batchPending.value) return false;
+    const read = ["preview", "rerun"].includes(action) ? beginRead(task) : null;
     const current = ++actionGeneration;
     pending.value = { ...pending.value, [id]: action };
     actionError.value = "";
     try {
-      return (await operation()) !== false && alive;
+      return (await operation(read)) !== false && alive;
     } catch (e) {
-      if (alive && current === actionGeneration)
+      if (alive && current === actionGeneration && (read === null || currentRead(read)))
         actionError.value = mutationError(e, fallback);
       if (alive && onFailure) await onFailure(e);
       return false;
@@ -150,10 +168,9 @@ export function useTaskActions({
     return run(
       task,
       "preview",
-      async () => {
-        const current = ++previewGeneration;
+      async (current) => {
         const response = await retrieve(task);
-        if (!alive || current !== previewGeneration) return false;
+        if (!currentRead(current)) return false;
         const routes = readSelectedRoutes(response);
         if (!routes.length) {
           const polled = rows?.value.find(
@@ -178,7 +195,7 @@ export function useTaskActions({
         previewJob.value = task.result_id;
         previewSnapshot.value =
           response.result?.stats?.stock_snapshot?.source_sha256 || "";
-        previewTitle.value = taskTitle(task);
+        previewTitle.value = taskTitle(normalizeTaskInfo(currentTask(task), response));
         if (infoTask.value?.result_id === task.result_id)
           showInfo.value = false;
         showPreview.value = true;
@@ -191,13 +208,10 @@ export function useTaskActions({
     return run(
       task,
       "rerun",
-      async () => {
-        const current = ++rerunGeneration;
+      async (current) => {
         const response = await retrieve(task);
-        if (alive && current === rerunGeneration)
-          await router.push(
-            buildTaskSearchLocation(normalizeTaskInfo(task, response)),
-          );
+        if (!currentRead(current)) return false;
+        await router.push(buildTaskSearchLocation(normalizeTaskInfo(currentTask(task), response)));
       },
       "原始搜索参数加载失败。",
     );
@@ -312,13 +326,14 @@ export function useTaskActions({
       batchPending.value
     )
       return;
+    task = currentTask(task);
+    void info(task);
     renameForm.value = {
       id: task.result_id,
       description: task.description || "",
       history_revision: historyRevision(task),
     };
     renameError.value = "";
-    void info(task);
   }
 
   async function saveName() {
@@ -488,7 +503,7 @@ export function useTaskActions({
     showInfo,
     (open) => {
       if (!open) {
-        infoGeneration++;
+        readGeneration++;
         infoLoading.value = false;
         renameForm.value = null;
       }
@@ -502,11 +517,26 @@ export function useTaskActions({
       );
       if (current) infoTask.value = normalizeTaskInfo(infoTask.value, current);
     });
+  if (historyContext) watch(() => {
+    const context = unref(historyContext) || {};
+    return [context.query || "", context.status, context.group, context.page, context.archived];
+  }, (next, previous) => {
+    if (!next.some((value, index) => value !== previous[index])) return;
+    readGeneration++;
+    actionGeneration++;
+    showInfo.value = false;
+    showPreview.value = false;
+    infoLoading.value = false;
+    infoError.value = "";
+    actionError.value = "";
+    renameForm.value = null;
+    renameError.value = "";
+    groupForm.value = null;
+    groupError.value = "";
+  }, { flush: "sync" });
   onBeforeUnmount(() => {
     alive = false;
-    infoGeneration++;
-    previewGeneration++;
-    rerunGeneration++;
+    readGeneration++;
   });
 
   return {

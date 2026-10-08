@@ -126,7 +126,7 @@ const active = computed(() =>
 <style scoped>
 .task-card {
   display: grid;
-  grid-template-rows: 84px minmax(0, 1fr) 44px;
+  grid-template-rows: 92px minmax(0, 1fr) 44px;
   height: 352px;
   min-width: 0;
   border: 1px solid var(--ws-border);
@@ -159,9 +159,10 @@ const active = computed(() =>
 }
 .task-card-controls {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-rows: 40px 20px;
   align-items: start;
-  gap: 8px;
+  gap: 4px 8px;
   padding: 12px 12px 10px 8px;
   min-width: 0;
 }
@@ -169,10 +170,10 @@ const active = computed(() =>
   grid-column: 2;
   grid-row: 1;
   min-width: 0;
-  max-height: 60px;
+  max-height: 40px;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   overflow: hidden;
   overflow-wrap: anywhere;
   color: var(--ws-text);
@@ -213,9 +214,9 @@ const active = computed(() =>
   white-space: nowrap;
 }
 .task-card-controls .state-badge {
-  grid-column: 3;
-  grid-row: 1;
-  justify-self: end;
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: start;
   flex-shrink: 0;
 }
 .state-badge.active {
@@ -278,5 +279,8 @@ const active = computed(() =>
   .task-card {
     transition: none;
   }
+}
+@media (max-width: 760px) {
+  .task-card { grid-template-rows: 92px minmax(0, 1fr) 52px; height: 360px; }
 }
 </style>

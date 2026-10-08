@@ -35,7 +35,8 @@
         :all-total="allTotal"
         :ungrouped-total="ungroupedTotal"
         :counts-loaded="loaded"
-        :busy="groupPending || Boolean(batchPending)"
+        :busy="controlsBusy"
+        :navigation-disabled="groupPending || Boolean(batchPending)"
         :form="groupForm"
         :error="groupError"
         @select="chooseGroup"
@@ -58,7 +59,7 @@
           <v-text-field
             v-model="query"
             prepend-inner-icon="mdi-magnify"
-            :label="$tr('名称、SMILES 或 ID')"
+            :label="$tr('搜索名称或结构')"
             :aria-label="$tr('搜索任务')"
             density="compact"
             variant="outlined"
@@ -147,6 +148,7 @@
           :archivable="selectionArchivable"
           :busy="controlsBusy"
           :pending="batchPending"
+          :selection-key="selectionKey"
           @select-page="togglePage"
           @clear="clearSelection"
           @group="batch('group', $event)"
@@ -521,6 +523,7 @@ const controlsBusy = computed(
     Boolean(batchPending.value) ||
     groupPending.value,
 );
+const selectionKey = computed(() => JSON.stringify(selection.value));
 const filtering = computed(
   () => Boolean(query.value) || status.value !== "all",
 );

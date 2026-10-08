@@ -3,6 +3,8 @@ import TaskBatchActions from "./TaskBatchActions.vue";
 const stubs = {
   VTooltip: { template: '<div><slot name="activator" :props="{}" /></div>' },
   VMenu: {
+    props: ["modelValue", "disabled"],
+    emits: ["update:modelValue"],
     template: '<div><slot name="activator" :props="{}" /><slot /></div>',
   },
   VList: { template: "<div><slot /></div>" },
@@ -87,6 +89,27 @@ test("running selections can move groups but cannot archive; terminal selection 
   await wrapper.setProps({ archivable: true });
   await wrapper.get('[aria-label="所选任务移入回收箱"]').trigger("click");
   expect(wrapper.emitted("archive")).toEqual([[]]);
+});
+
+test("a group operation spins its own control, not the archive control", () => {
+  const wrapper = setup({ count: 1, pending: "group", busy: true });
+  const controls = wrapper.findAllComponents(stubs.VBtn);
+  expect(controls.find(control => control.attributes("aria-label") === "批量移至分组").props("loading")).toBe(true);
+  expect(controls.find(control => control.attributes("aria-label") === "所选任务移入回收箱").props("loading")).toBe(false);
+});
+
+test("an open grouping menu closes when selected identities or metadata revisions change even at the same count", async () => {
+  const wrapper = setup({ count: 1, selectionKey: "task-a:2" });
+  const menu = wrapper.findComponent(stubs.VMenu);
+  menu.vm.$emit("update:modelValue", true);
+  await flushPromises();
+  expect(menu.props("modelValue")).toBe(true);
+  await wrapper.setProps({ selectionKey: "task-b:2" });
+  expect(menu.props("modelValue")).toBe(false);
+  menu.vm.$emit("update:modelValue", true);
+  await flushPromises();
+  await wrapper.setProps({ selectionKey: "task-b:3" });
+  expect(menu.props("modelValue")).toBe(false);
 });
 test("recycle mode offers restore, not destructive deletion or group mutation, and busy disables all controls", async () => {
   const wrapper = setup({ count: 1, archived: true });

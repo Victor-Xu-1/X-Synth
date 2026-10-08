@@ -54,6 +54,7 @@ export function useTaskHistory({ api = API, route, router } = {}) {
   let generation = 0,
     disposed = false,
     suspended = false,
+    polling = false,
     routeValid = !error.value,
     debounce,
     poll;
@@ -99,13 +100,14 @@ export function useTaskHistory({ api = API, route, router } = {}) {
     }
   }
 
-  async function refresh() {
+  async function refresh({ background = false } = {}) {
     if (disposed || !routeValid || (route && route.path !== historyPath))
       return false;
     clearTimeout(debounce);
     const current = ++generation,
       filters = state();
-    loading.value = true;
+    polling = background;
+    loading.value = !background;
     error.value = "";
     const request = (offsetPage) =>
       api.get("/api/v1/results/page", {
@@ -133,6 +135,7 @@ export function useTaskHistory({ api = API, route, router } = {}) {
         clearSelection();
         rows.value = [];
         loaded.value = false;
+        loading.value = true;
         filters.page = lastPage;
         await syncLocation();
         if (disposed || current !== generation) return false;
@@ -172,7 +175,10 @@ export function useTaskHistory({ api = API, route, router } = {}) {
         error.value = errorMessage(e, "任务历史加载失败。");
       return false;
     } finally {
-      if (!disposed && current === generation) loading.value = false;
+      if (!disposed && current === generation) {
+        loading.value = false;
+        polling = false;
+      }
     }
   }
 
@@ -301,10 +307,12 @@ export function useTaskHistory({ api = API, route, router } = {}) {
     poll = setInterval(() => {
       if (
         !loading.value &&
+        !polling &&
+        !error.value &&
         !archived.value &&
         rows.value.some((task) => activeTaskStates.includes(task.result_state))
       )
-        void refresh();
+        void refresh({ background: true });
     }, 6000);
   });
   onBeforeUnmount(() => {
