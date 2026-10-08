@@ -4,5 +4,10 @@
     "revision": "17233bcf2d6c427fb4568552a0ba7ac1ebdce257",
     "version": "0.1.0"
   },
-  "merged_prs": []
+  "merged_prs": [
+    {
+      "number": 55,
+      "merge_commit_sha": "5c99fa727038464ab2c6250151f7c2b6a5b3edda"
+    }
+  ]
 }
