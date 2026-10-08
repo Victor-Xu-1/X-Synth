@@ -204,6 +204,15 @@ test("preview rejects another document's response without opening or replacing a
   expect(wrapper.findAll("tbody tr")).toHaveLength(1);
 });
 
+test("preview rejects null renderer scores before opening the graph", async () => {
+  const wrapper = await setup();
+  API.get.mockResolvedValueOnce({ ...savedDocument(), prediction_scores: null });
+  await wrapper.get('[aria-label="预览文档：先导系列路线"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.get('[role="alert"]').text()).toContain("路线文档响应格式无效");
+  expect(wrapper.findComponent(DocumentPreview).exists()).toBe(false);
+});
+
 test("background refresh keeps loaded routes readable and disables deletion until it settles", async () => {
   const wrapper = await setup();
   let finish;

@@ -9,6 +9,8 @@ const invalid = () => { throw new RouteDocumentResponseError("路线文档响应
 export function readRouteDocument(value, expectedId = "") {
   if (!record(value) || !text(value.id) || typeof value.title !== "string"
     || !Number.isInteger(value.revision) || value.revision < 0) invalid();
+  if (Object.hasOwn(value, "prediction_scores") && (!record(value.prediction_scores)
+    || Object.values(value.prediction_scores).some(score => !Number.isFinite(score)))) invalid();
   if (expectedId && value.id !== expectedId)
     throw new RouteDocumentResponseError("路线文档标识与请求不一致，未应用内容。");
   const graph = value.graph;

@@ -214,9 +214,10 @@ const invalidDocument = (failure) => {
   else if (failure === "missing position") delete value.graph.nodes[0].position;
   else if (failure === "missing target") value.graph.target_id = "missing";
   else if (failure === "invalid revision") value.revision = -1;
+  else if (failure === "null scores") value.prediction_scores = null;
   return value;
 };
-test.each(["different document", "missing position", "missing target", "invalid revision"])(
+test.each(["different document", "missing position", "missing target", "invalid revision", "null scores"])(
   "loading %s never publishes a partially accepted document", async (failure) => {
     const state = await setup();
     API.get.mockResolvedValueOnce(invalidDocument(failure));
@@ -227,7 +228,7 @@ test.each(["different document", "missing position", "missing target", "invalid 
     expect(state.loading.value).toBe(false);
   },
 );
-test.each(["different document", "missing position", "missing target", "invalid revision"])(
+test.each(["different document", "missing position", "missing target", "invalid revision", "null scores"])(
   "saving %s preserves the complete edited graph and previous revision", async (failure) => {
     const state = await setup();
     const edited = { ...state.graph.value, nodes: state.graph.value.nodes.map(node => ({ ...node, note: "Keep this draft" })) };

@@ -13,7 +13,9 @@ test("a valid response retains chemical identity, notes and source data without 
   expect(JSON.stringify(document)).toBe(bytes);
 });
 
-test.each([null, [], {}, { ...value(), graph: null }, { ...value(), revision: "2" }])(
+test.each([null, [], {}, { ...value(), graph: null }, { ...value(), revision: "2" },
+  { ...value(), prediction_scores: null }, { ...value(), prediction_scores: [] },
+  { ...value(), prediction_scores: { r1: "0.9" } }])(
   "rejects incomplete response %j without exposing a renderable document", document => {
     expect(() => readRouteDocument(document)).toThrow(RouteDocumentResponseError);
   },
