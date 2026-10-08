@@ -118,6 +118,14 @@ const stubs = {
 const wrappers = [];
 const buttonWithText = (wrapper, text) =>
   wrapper.findAll("button").find((button) => button.text() === text);
+
+test("a loaded document has one named page heading while retaining its editable title and full canvas", async () => {
+  const { wrapper } = await setup();
+  const name = wrapper.get('[aria-label="路线名称"]').element.value;
+  expect(wrapper.findAll("h1")).toHaveLength(1);
+  expect(wrapper.get("h1").text()).toBe(name);
+  expect(wrapper.get(".editor-graph").exists()).toBe(true);
+});
 async function setup(state = "source_copy", identifier = documentId) {
   const router = { replace: jest.fn().mockResolvedValue(undefined) };
   const route = reactive({ params: { id: identifier } });

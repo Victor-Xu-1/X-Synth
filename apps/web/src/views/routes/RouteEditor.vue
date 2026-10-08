@@ -1,5 +1,6 @@
 <template>
   <section class="route-editor-workspace">
+    <h1 v-if="document" class="document-heading">{{ title || '未命名路线' }}</h1>
     <header class="route-editor-toolbar">
       <div class="route-editor-name">
         <input
@@ -550,6 +551,7 @@ onBeforeUnmount(() => {
 });
 </script>
 <style scoped>
+.document-heading { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .route-editor-workspace {
   display: flex;
   flex-direction: column;

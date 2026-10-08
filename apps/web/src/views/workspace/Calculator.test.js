@@ -77,6 +77,7 @@ test.each(["/feasibility", "/molcom"])(
       form.get(".workbench-input-area .calculator-structure").exists(),
     ).toBe(true);
     expect(form.find(".calculator-results").exists()).toBe(false);
+    expect(wrapper.find(".calculator-results").exists()).toBe(false);
     const event = new Event("submit", { bubbles: true, cancelable: true });
     form.element.dispatchEvent(event);
     await flushPromises();
@@ -133,6 +134,20 @@ test("FF scores canvas reactants and selected product without imported agents or
   expect(wrapper.text()).not.toContain("实验成功率");
 });
 
+test("a zero score opens a separate reading layer and edit returns to the retained reaction without recalc", async () => {
+  const { wrapper } = await setup();
+  await setReactionDraft(wrapper, { reactants: ["CCO"], product: "CC=O" });
+  ffResponses(0);
+  await wrapper.get("form").trigger("submit"); await flushPromises();
+  expect(wrapper.get("form").attributes("style")).toContain("display: none");
+  expect(wrapper.get(".calculation-score strong").text()).toBe("0.000");
+  await wrapper.findAll("button").find((button) => button.text() === "返回修改").trigger("click");
+  expect(wrapper.get("form").attributes("style") || "").not.toContain("display: none");
+  expect(wrapper.get(".reaction-text").element.value).toBe("CCO>>CC=O");
+  expect(wrapper.find(".calculator-results").exists()).toBe(false);
+  expect(API.post).toHaveBeenCalledTimes(3);
+});
+
 test.each([
   { pending: true, reactants: ["CCO"], product: "CC=O" },
   { pending: false, reactants: [], product: "CC=O" },
@@ -175,15 +190,26 @@ test("one active calculation blocks repeat submits and releases loading after st
   );
 });
 
-test("raw edits clear an existing score even if canvas identities have not changed", async () => {
+test("a late raw canvas update clears an existing score even if canvas identities have not changed", async () => {
   const { wrapper } = await setup();
   await setReactionDraft(wrapper, { reactants: ["CCO"], product: "CC=O" });
   ffResponses();
   await wrapper.get("form").trigger("submit");
   await flushPromises();
   expect(wrapper.find(".calculation-score").exists()).toBe(true);
-  await wrapper.get(".reaction-text").setValue("OCC>>C(C)=O");
+  await wrapper.getComponent(reactionInput).vm.$emit("update:modelValue", "OCC>>C(C)=O");
   expect(wrapper.find(".calculation-score").exists()).toBe(false);
+});
+
+test("read-only editor recycling preserves the score while changed chemical roles invalidate it", async () => {
+  const { wrapper } = await setup();
+  await setReactionDraft(wrapper, { reactants: ["CCO"], product: "CC=O" });
+  ffResponses(); await wrapper.get("form").trigger("submit"); await flushPromises();
+  await setReactionDraft(wrapper, { pending: true });
+  expect(wrapper.get(".calculation-score strong").text()).toBe("0.450");
+  await setReactionDraft(wrapper, { pending: false, product: "CCOC" });
+  expect(wrapper.find(".calculation-score").exists()).toBe(false);
+  expect(API.post).toHaveBeenCalledTimes(3);
 });
 
 test("same-tick URL updates cannot calculate with previous canvas roles", async () => {
