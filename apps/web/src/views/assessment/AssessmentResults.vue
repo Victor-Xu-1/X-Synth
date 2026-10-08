@@ -1,72 +1,159 @@
 <template>
   <div class="assessment-results">
-    <router-link v-if="typeof result.record_id === 'string'" class="analysis-record-link" :to="`/analyses/${encodeURIComponent(result.record_id)}`"><v-icon icon="mdi-history" size="16" />查看本次记录</router-link>
-    <div class="identity-heading">
-      <SmilesImage :smiles="result.structure.smiles" :width="260" :height="170" :show-error-image="false" />
-      <dl><dt>分子式</dt><dd>{{ result.structure.formula }}</dd><dt>完整记录分子量 / g·mol⁻¹</dt><dd>{{ metricValue(result.structure.molecular_weight_g_mol) }}</dd>
-        <dt>组分 / 形式电荷</dt><dd>{{ result.structure.components }} / {{ result.structure.formal_charge }}</dd></dl>
-    </div>
-    <h2>组分复杂度</h2>
-    <div class="metric-table-scroll">
-      <table class="data-table complexity-table">
-        <thead><tr><th>结构组分</th><th>SA Score<br /><small>1 较易 / 10 较难</small></th><th>SPS<br /><small>拓扑空间复杂度</small></th><th>nSPS<br /><small>按重原子数归一化</small></th><th>Bertz CT<br /><small>连接与元素复杂度</small></th></tr></thead>
-        <tbody><tr v-for="component in result.components" :key="component.index">
-          <td><SmilesImage v-if="result.components.length > 1" :smiles="component.structure.smiles" :width="180" :height="100" :show-error-image="false" />{{ component.structure.formula }}
-            <span v-for="notice in component.notices" :key="notice" class="metric-note">{{ notice }}</span></td>
-          <td>{{ metricValue(component.metrics.sa_score) }}</td><td>{{ metricValue(component.metrics.sps) }}</td><td>{{ metricValue(component.metrics.nsps) }}</td><td>{{ metricValue(component.metrics.bertz_ct) }}</td>
-        </tr></tbody>
-      </table>
-    </div>
-    <h2>完整结构描述符</h2>
-    <dl class="descriptor-grid">
-      <template v-for="row in descriptorRows" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ metricValue(row.value) }}</dd></template>
-    </dl>
-    <ul class="metric-notices"><li v-for="notice in result.notices" :key="notice">{{ notice }}</li></ul>
-    <details class="method-details"><summary>计算方法与许可 · RDKit {{ result.rdkit_version }}</summary>
-      <div v-for="method in result.methods" :key="method.implementation" class="method-row">
-        <strong>{{ method.name }}</strong><span>{{ method.implementation }}</span><span>{{ method.license }}</span>
-        <div><a :href="safeExternalUrl(method.reference_url)" target="_blank" rel="noopener noreferrer">方法来源</a> · <a :href="safeExternalUrl(method.source_url)" target="_blank" rel="noopener noreferrer">实现与许可</a></div>
+    <section class="full-identity" :aria-labelledby="`${id}-identity`">
+      <div class="structure-preview">
+        <SmilesImage :smiles="result.structure.smiles" :width="280" :height="180" :show-error-image="false" allow-copy />
       </div>
-      <p class="workspace-code">{{ result.structure.smiles }}</p>
-    </details>
+      <div class="identity-facts">
+        <h2 :id="`${id}-identity`">完整化合物 · {{ result.structure.formula }}</h2>
+        <code>{{ result.structure.smiles }}</code>
+        <dl class="identity-metrics">
+          <div v-for="row in identityRows" :key="row.key" :data-field="row.key">
+            <dt>{{ row.label }}</dt><dd>{{ metricValue(row.value) }}</dd>
+          </div>
+          <div data-field="unassigned_stereocenters" :class="{ 'stereo-warning': result.descriptors.unassigned_stereocenters > 0 }">
+            <dt>未指定四面体立体中心数</dt><dd>{{ metricValue(result.descriptors.unassigned_stereocenters) }}</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <aside class="assessment-notices" role="note" :aria-labelledby="`${id}-notices`">
+      <h2 :id="`${id}-notices`"><v-icon icon="mdi-information-outline" size="17" aria-hidden="true" />科学解读边界</h2>
+      <ul><li v-for="(notice, index) in result.notices" :key="index">{{ notice }}</li></ul>
+      <ul v-if="componentNotices.length" class="component-notices">
+        <li v-for="notice in componentNotices" :key="notice.key">
+          <strong>组分 {{ notice.index }} · {{ notice.formula }}：</strong>{{ notice.text }}
+        </li>
+      </ul>
+    </aside>
+
+    <WorkbenchTabs :key="readingScope" v-model="section" :items="tabs" label="结构评估阅读分区" v-slot="{ tabId, panelId }">
+      <section v-for="tab in tabs" v-show="section === tab.value" :id="panelId(tab.value)" :key="tab.value"
+        class="assessment-panel" role="tabpanel" :aria-labelledby="tabId(tab.value)" :aria-hidden="section !== tab.value"
+        :inert="section !== tab.value ? '' : undefined" :tabindex="section === tab.value ? 0 : -1" :data-section="tab.value">
+        <template v-if="section === tab.value && tab.value === 'overview'">
+          <section v-if="singleComponent" class="complexity-overview">
+            <h2>单组分复杂度</h2>
+            <dl class="core-metrics">
+              <div v-for="row in complexityRows" :key="row.key" :data-metric="row.key">
+                <dt>{{ row.label }}</dt><dd :class="{ 'metric-undefined': row.value == null }">{{ metricValue(row.value) }}</dd>
+                <small>{{ row.note }}</small>
+              </div>
+            </dl>
+          </section>
+          <p v-else class="component-boundary">复杂度仅按各结构组分报告；不提供整条记录的综合评分。</p>
+          <section>
+            <h2>关键分子描述符 · 完整记录</h2>
+            <dl class="descriptor-grid">
+              <div v-for="row in coreRows" :key="row.key" :data-metric="row.key">
+                <dt>{{ row.label }}</dt><dd>{{ metricValue(row.value) }}</dd>
+              </div>
+            </dl>
+          </section>
+        </template>
+        <AssessmentComponents v-else-if="section === tab.value && tab.value === 'components'" :components="result.components" />
+        <template v-else-if="section === tab.value && tab.value === 'descriptors'">
+          <h2>完整结构描述符 · 全部组分</h2>
+          <dl class="descriptor-grid">
+            <div v-for="row in descriptorRows" :key="row.key" :data-metric="row.key">
+              <dt>{{ row.label }}</dt><dd>{{ metricValue(row.value) }}</dd>
+            </div>
+          </dl>
+        </template>
+        <template v-else-if="section === tab.value && tab.value === 'methods'">
+          <h2>计算方法与许可</h2>
+          <dl class="method-context">
+            <div><dt>RDKit 版本</dt><dd>{{ result.rdkit_version }}</dd></div>
+            <div><dt>评估范围</dt><dd><code>{{ result.scope }}</code></dd></div>
+            <div v-if="typeof result.record_id === 'string'"><dt>记录标识</dt><dd><code>{{ result.record_id }}</code></dd></div>
+          </dl>
+          <section v-for="(method, index) in result.methods" :key="index" class="method-row">
+            <h3>{{ method.name }}</h3>
+            <dl>
+              <div><dt>实现</dt><dd><code>{{ method.implementation }}</code></dd></div>
+              <div><dt>许可</dt><dd>{{ method.license }}</dd></div>
+            </dl>
+            <div class="method-links">
+              <a v-if="safeExternalUrl(method.reference_url)" :href="safeExternalUrl(method.reference_url)" target="_blank" rel="noopener noreferrer">方法来源</a>
+              <span v-else>方法来源未提供</span>
+              <a v-if="safeExternalUrl(method.source_url)" :href="safeExternalUrl(method.source_url)" target="_blank" rel="noopener noreferrer">实现与许可</a>
+              <span v-else>实现链接未提供</span>
+            </div>
+          </section>
+        </template>
+      </section>
+    </WorkbenchTabs>
   </div>
 </template>
+
 <script setup>
-import { computed } from "vue";
+import { computed, ref, useId, watch } from "vue";
 import SmilesImage from "@/components/SmilesImage.vue";
+import WorkbenchTabs from "@/components/WorkbenchTabs.vue";
 import { safeExternalUrl } from "@/common/external-url";
-import { metricValue } from "./result-model";
+import AssessmentComponents from "./AssessmentComponents.vue";
+import { ASSESSMENT_READING_TABS, assessmentComplexityRows, assessmentComponentNotices,
+  assessmentCoreRows, assessmentDescriptorRows, assessmentIdentityRows, assessmentSingleComponent, metricValue } from "./result-model";
+
 const props = defineProps({ result: { type: Object, required: true } });
-const descriptorRows = computed(() => {
-  const s = props.result.structure, d = props.result.descriptors;
-  return [
-    { label: "单同位素质量 / Da", value: s.exact_mass_da }, { label: "重原子数", value: s.heavy_atoms },
-    { label: "氢键供体数", value: d.h_bond_donors }, { label: "氢键受体数", value: d.h_bond_acceptors },
-    { label: "拓扑极性表面积 / Å²", value: d.tpsa_angstrom2 }, { label: "Crippen logP（计算值）", value: d.logp_crippen },
-    { label: "可旋转键数（RDKit 严格定义）", value: d.rotatable_bonds }, { label: "环数", value: d.rings },
-    { label: "芳香环数", value: d.aromatic_rings }, { label: "sp³ 碳占比", value: d.fraction_csp3 },
-    { label: "潜在四面体立体中心数", value: d.potential_stereocenters }, { label: "未指定四面体立体中心数", value: d.unassigned_stereocenters },
-  ];
-});
+const id = `${useId()}-assessment`, tabs = ASSESSMENT_READING_TABS;
+const section = ref("overview"), readingScope = ref(0);
+const identityRows = computed(() => assessmentIdentityRows(props.result.structure));
+const descriptorRows = computed(() => assessmentDescriptorRows(props.result));
+const coreRows = computed(() => assessmentCoreRows(props.result));
+const singleComponent = computed(() => assessmentSingleComponent(props.result));
+const complexityRows = computed(() => singleComponent.value ? assessmentComplexityRows(singleComponent.value) : []);
+const componentNotices = computed(() => assessmentComponentNotices(props.result));
+// Replacing the immutable result also disposes tab focus queued for its predecessor.
+watch(() => props.result, () => { section.value = "overview"; readingScope.value++; }, { flush: "sync" });
 </script>
+
 <style scoped>
-h2 { font-size: 15px; margin: 22px 0 12px; }
-.identity-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; }
-.identity-heading dl { display: grid; grid-template-columns: minmax(120px, 1fr) auto; gap: 8px 16px; font-size: 13px; }
-dt, .metric-note, small { color: var(--ws-muted); }
-dd { margin: 0; font-variant-numeric: tabular-nums; }
-.metric-table-scroll { overflow-x: auto; }
-.complexity-table { min-width: 620px; }
-.complexity-table td { vertical-align: top; font-variant-numeric: tabular-nums; }
-.metric-note { display: block; max-width: 220px; font-size: 12px; margin-top: 6px; }
-.descriptor-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: 12px 20px; font-size: 13px; }
-.metric-notices { padding-left: 20px; color: var(--ws-muted); font-size: 12px; line-height: 1.8; }
-.method-details { font-size: 12px; padding-top: 16px; border-top: 1px solid var(--ws-border); }
-.method-details summary { cursor: pointer; }
-.method-row { display: grid; gap: 5px; margin: 16px 0; overflow-wrap: anywhere; }
-.method-details p { overflow-wrap: anywhere; }
-a { text-decoration: underline; }
-.analysis-record-link { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 12px; }
-@media (max-width: 800px) { .descriptor-grid { grid-template-columns: minmax(0, 1fr) auto; } }
-@media (max-width: 400px) { .identity-heading dl { grid-template-columns: minmax(0, 1fr); } }
+.assessment-results { min-width: 0; container-type: inline-size; color: var(--ws-text); }
+h2 { font-size: 14px; font-weight: 600; margin: 0 0 14px; }
+h3 { font-size: 13px; font-weight: 600; margin: 0 0 12px; }
+.full-identity { display: grid; grid-template-columns: minmax(0, 280px) minmax(0, 1fr); gap: 24px; align-items: center; padding: 6px 0 20px; }
+.structure-preview { width: 280px; max-width: 100%; height: 180px; }
+.structure-preview :deep(.v-img) { max-width: 100% !important; }
+.identity-facts { min-width: 0; }
+.identity-facts h2 { font-size: 16px; margin-bottom: 8px; overflow-wrap: anywhere; }
+code { font-family: var(--ws-font-code); font-size: 11px; overflow-wrap: anywhere; }
+.identity-facts > code { display: block; margin-bottom: 16px; }
+.identity-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 20px; font-size: 12px; margin: 0; }
+.identity-metrics > div, .descriptor-grid > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 12px; min-width: 0; }
+dt, small { color: var(--ws-muted); }
+dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.stereo-warning dt, .stereo-warning dd { color: var(--ws-warning); }
+.assessment-notices { border-block: 1px solid var(--ws-border); padding: 14px 0; margin-bottom: 20px; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.assessment-notices h2 { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 8px; }
+.assessment-notices ul { padding-left: 20px; margin: 0; }
+.component-notices { color: var(--ws-warning); margin-top: 8px !important; }
+.component-notices strong { font-weight: 600; }
+.assessment-panel { min-width: 0; padding: 0 0 12px; }
+.assessment-panel:focus-visible { outline: 2px solid var(--ws-accent); outline-offset: 4px; }
+.complexity-overview { margin-bottom: 24px; }
+.core-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 0; }
+.core-metrics > div { min-width: 0; border-left: 2px solid var(--ws-border); padding-left: 12px; }
+.core-metrics dt { font-size: 12px; }
+.core-metrics dd { font-size: 20px; font-weight: 600; margin: 4px 0; }
+.core-metrics small { display: block; font-size: 11px; }
+.metric-undefined { font-size: 14px !important; color: var(--ws-muted); }
+.descriptor-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 28px; margin: 0; font-size: 13px; }
+.descriptor-grid > div { padding: 12px 0; border-bottom: 1px solid var(--ws-border); }
+.component-boundary { color: var(--ws-warning); font-size: 12px; margin: 0 0 20px; }
+.method-context, .method-row dl { display: grid; gap: 10px; font-size: 12px; margin: 0; }
+.method-context > div, .method-row dl > div { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 16px; }
+.method-row { padding: 20px 0; border-bottom: 1px solid var(--ws-border); overflow-wrap: anywhere; }
+.method-links { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 12px; font-size: 12px; }
+.method-links a { text-decoration: underline; }
+.method-links span { color: var(--ws-muted); }
+@container (max-width: 760px) {
+  .full-identity { grid-template-columns: minmax(0, 220px) minmax(0, 1fr); gap: 16px; }
+  .identity-metrics, .descriptor-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@container (max-width: 520px) {
+  .full-identity { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .core-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 </style>
