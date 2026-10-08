@@ -120,9 +120,10 @@ const submissionReady = computed(
     (!reactionMode.value || !!second.value.trim()),
 );
 let generation = 0,
-  disposed = false;
+  disposed = false, scoredInput = null;
 function invalidateCalculation() {
   generation++;
+  scoredInput = null;
   score.value = null;
   canonicalFirst.value = "";
   canonicalSecond.value = "";
@@ -136,12 +137,15 @@ watch(
   { flush: "sync" },
 );
 watch(
-  [reactionSmiles, moleculeSmiles, first, second, reactionMode],
+  [reactionSmiles, moleculeSmiles, reactionMode, () => canvas.value?.selected],
   invalidateCalculation,
   { flush: "sync" },
 );
-// A hidden, locked editor may recycle without changing its chemical input.
-watch(inputPending, () => { if (score.value === null) invalidateCalculation(); }, { flush: "sync" });
+// Parsing may temporarily clear roles in the hidden, locked editor.
+watch([first, second, inputPending], () => {
+  if (score.value !== null && (inputPending.value || scoredInput?.first === first.value && scoredInput?.second === second.value)) return;
+  invalidateCalculation();
+}, { flush: "sync" });
 async function editInput() {
   invalidateCalculation();
   await nextTick();
@@ -215,6 +219,7 @@ async function calculate() {
       typeof result === "number" ? result : (result?.score ?? result?.scscore);
     if (typeof number !== "number" || !Number.isFinite(number))
       throw new Error("invalid_model_response");
+    scoredInput = { first: reactants, second: product };
     score.value = number;
     canonicalFirst.value = canonical;
     canonicalSecond.value = canonicalProduct;
