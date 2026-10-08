@@ -347,3 +347,53 @@ test("unmount during paging cannot refocus detached controls or restore an old r
   await flushPromises();
   expect(focus).not.toHaveBeenCalled();
 });
+
+test("template detail hides retained query controls and leads with identity then the same preview", async () => {
+  const { wrapper, router } = await setup({ limit: "2", searched: "1", min_count: "4" });
+  const controls = wrapper.get(".template-controls").element;
+  const disclosure = wrapper.get(".template-row-code").element;
+  disclosure.open = true;
+  const scroller = wrapper.get(".workspace-page").element;
+  scroller.scrollTop = 3003;
+  const trigger = wrapper.findAll(".template-open")[1];
+  trigger.element.focus();
+  await trigger.trigger("click");
+  await flushPromises();
+  expect(wrapper.get(".template-controls").element).toBe(controls);
+  expect(wrapper.get(".template-controls").isVisible()).toBe(false);
+  expect(wrapper.get(".tool-layout").classes()).toContain("template-detail-layout");
+  expect(scroller.scrollTop).toBe(0);
+  expect(document.activeElement).toBe(wrapper.get(".template-back").element);
+  const identity = wrapper.get(".template-reading h2").element;
+  const preview = wrapper.get(".template-reading .isolated-preview").element;
+  expect(identity.textContent).toBe(rows[1].template_id);
+  expect(identity.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(wrapper.get(".template-reading pre").text()).toBe(rows[1].reaction_smarts);
+  expect(router.currentRoute.value.query).toMatchObject({ limit: "2", min_count: "4", searched: "1" });
+  await wrapper.get(".template-back").trigger("click");
+  await flushPromises();
+  expect(wrapper.get(".template-controls").element).toBe(controls);
+  expect(wrapper.get(".template-controls").isVisible()).toBe(true);
+  expect(wrapper.get(".template-row-code").element).toBe(disclosure);
+  expect(disclosure.open).toBe(true);
+  expect(document.activeElement.dataset.templateId).toBe(rows[1].template_id);
+  expect(scroller.scrollTop).toBe(3003);
+  expect(API.post).toHaveBeenCalledTimes(1);
+});
+
+test("a detail-only layout removes the old fixed filter track at every viewport", () => {
+  const { descriptor } = parse(readFileSync(resolve(__dirname, "TemplateSearch.vue"), "utf8"));
+  const css = postcss.parse(descriptor.styles[0].content);
+  const rule = css.nodes.find((node) => node.selector === ".tool-layout.template-detail-layout");
+  expect(rule?.nodes.find((node) => node.prop === "grid-template-columns")?.value).toBe("minmax(0, 1fr)");
+});
+
+test("a direct detail error still hides disabled filters and retains the existing back/retry layer", async () => {
+  API.get.mockImplementation(async (path) => path.endsWith("/health")
+    ? { template_count: 252029, sources: ["isolated"] }
+    : Promise.reject(new Error("detail unavailable")));
+  const { wrapper } = await setup({ source: "isolated", id: rows[0].template_id });
+  expect(wrapper.get(".template-controls").isVisible()).toBe(false);
+  expect(wrapper.find(".template-back").exists()).toBe(true);
+  expect(wrapper.get(".tool-error").text()).toContain("模板详情读取失败");
+});

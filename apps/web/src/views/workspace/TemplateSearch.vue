@@ -1,7 +1,8 @@
 <template>
   <ModuleWorkbench title="模板检索">
-    <div class="tool-layout">
+    <div class="tool-layout" :class="{ 'template-detail-layout': isDetail }">
       <form
+        v-show="!isDetail"
         class="tool-input-panel tool-fields template-controls"
         @submit.prevent="changePage(search)"
       >
@@ -61,6 +62,7 @@
       >
         <template v-if="isDetail">
           <v-btn
+            ref="detailBack"
             class="template-back"
             variant="text"
             prepend-icon="mdi-arrow-left"
@@ -77,14 +79,17 @@
             >
           </div>
           <div v-else-if="detail" class="template-reading">
-            <StructurePreview
-              :smiles="detail.reaction_smarts"
-              input-type="template"
-              label="反应模板"
-              :width="900"
-              :height="200"
-            />
-            <TemplateDetails :template="detail" />
+            <TemplateDetails :template="detail">
+              <template #preview>
+                <StructurePreview
+                  :smiles="detail.reaction_smarts"
+                  input-type="template"
+                  label="反应模板"
+                  :width="900"
+                  :height="200"
+                />
+              </template>
+            </TemplateDetails>
           </div>
         </template>
         <div v-show="!isDetail" class="template-list-region">
@@ -184,6 +189,7 @@
 </template>
 <script setup>
 import { computed, nextTick, onUnmounted, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import TemplateDetails from "@/components/templates/TemplateDetails.vue";
 import { useTemplateSearch } from "@/composables/useTemplateSearch";
@@ -221,6 +227,7 @@ const {
   loadDetail,
 } = useTemplateSearch();
 const list = ref(null);
+const route = useRoute(), detailBack = ref(null);
 const pageSummary = ref(null), pageError = ref(null);
 const identity = (row) => templateDetailLocation(row)?.query.id;
 const source = (row) => row.source || row.template_set || row.raw?.template_set;
@@ -238,14 +245,23 @@ async function changePage(operation) {
     target.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 16);
   target.focus({ preventScroll: true });
 }
-function inspect(row, event) {
+async function inspect(row, event) {
   const scroller = event.currentTarget.closest(".workspace-page");
-  returnPoint = {
+  const generation = ++focusGeneration, point = {
     id: identity(row),
+    source: source(row),
     key: pageKey.value,
     top: scroller?.scrollTop || 0,
   };
-  return openTemplate(row);
+  returnPoint = point;
+  await openTemplate(row);
+  await nextTick();
+  if (!active || generation !== focusGeneration || returnPoint !== point || !isDetail.value ||
+      pageKey.value !== point.key || route.query.id !== point.id || route.query.source !== point.source) return;
+  const target = detailBack.value?.$el;
+  if (!target?.isConnected) return;
+  if (scroller?.isConnected) scroller.scrollTop = 0;
+  target.focus({ preventScroll: true });
 }
 watch(
   pageKey,
@@ -289,6 +305,9 @@ const sources = computed(() => [
 ]);
 </script>
 <style scoped>
+.tool-layout.template-detail-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
 .template-controls {
   align-self: start;
   position: static;

@@ -9,7 +9,7 @@ test("reaction icon fonts are discoverable on the element, not only its pseudo-e
     "utf8",
   );
   const arrows = source.match(/<v-icon\b[^>]*icon="mdi-arrow-right"[^>]*\/>/g);
-  expect(arrows).toHaveLength(2);
+  expect(arrows).toHaveLength(3);
   for (const arrow of arrows) {
     expect(arrow).toContain('class="reaction-direction-icon"');
   }

@@ -4,6 +4,7 @@
       <h2>{{ template.template_id }}</h2>
       <span class="workspace-muted">{{ template.count }} 例</span>
     </header>
+    <div v-if="$slots.preview" class="template-preview"><slot name="preview" /></div>
     <dl class="template-metadata">
       <div>
         <dt>来源</dt>
@@ -152,6 +153,9 @@ watch(
   font-size: 16px;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+.template-preview {
+  margin-top: 16px;
 }
 .template-details h3 {
   font-size: 13px;

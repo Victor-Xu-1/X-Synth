@@ -1,6 +1,8 @@
 <template>
   <ModuleWorkbench :title="reactionMode ? '反应可行性' : '结构复杂度'">
     <WorkbenchForm
+      v-show="score === null"
+      :inert="score !== null || undefined"
       class="calculator-input-layout"
       aria-label="计算输入"
       parameter-label="计算参数"
@@ -34,8 +36,10 @@
         </div>
       </template>
       <section
+        ref="inputLayer"
         class="calculator-structure"
         aria-labelledby="calculator-structure-heading"
+        tabindex="-1"
       >
         <h2 id="calculator-structure-heading" class="tool-section-title">
           {{ reactionMode ? "反应结构" : "分子结构" }}
@@ -45,7 +49,7 @@
           ref="canvas"
           v-model="reactionSmiles"
           label="反应结构"
-          :disabled="loading"
+          :disabled="loading || score !== null"
           :require-reactants="true"
           data-cy="calculator-reaction"
         />
@@ -55,52 +59,13 @@
           v-model="moleculeSmiles"
           label="分子结构"
           :canvas-height="480"
-          :disabled="loading"
+          :disabled="loading || score !== null"
           data-cy="calculator-molecule"
         />
       </section>
     </WorkbenchForm>
-    <section
-      class="calculator-results"
-      :aria-busy="loading"
-      aria-label="计算结果"
-    >
-      <div v-if="score === null" class="workspace-empty">
-        <v-icon
-          :icon="
-            reactionMode
-              ? 'mdi-check-decagram-outline'
-              : 'mdi-chart-scatter-plot'
-          "
-          size="30"
-        />
-        <h2>暂无计算结果</h2>
-      </div>
-      <div v-else class="calculation-result">
-        <div class="calculation-structures">
-          <SmilesImage
-            :smiles="canonicalFirst"
-            :width="240"
-            :height="170"
-            :show-error-image="false"
-          />
-          <v-icon v-if="reactionMode" icon="mdi-arrow-right" />
-          <SmilesImage
-            v-if="reactionMode"
-            :smiles="canonicalSecond"
-            :width="240"
-            :height="170"
-            :show-error-image="false"
-          />
-        </div>
-        <div class="calculation-score">
-          <span>{{
-            reactionMode ? "反应模型评分（FF）" : "合成复杂度（SCScore）"
-          }}</span>
-          <strong>{{ score.toFixed(3) }}</strong>
-        </div>
-      </div>
-    </section>
+    <CalculatorResult v-if="score !== null" ref="resultLayer" :reaction-mode="reactionMode"
+      :score="score" :first="canonicalFirst" :second="canonicalSecond" @edit="editInput" />
   </ModuleWorkbench>
 </template>
 <script setup>
@@ -114,14 +79,14 @@ import {
 } from "@/common/reaction-input";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import ReactionInput from "@/components/workspace/ReactionInput.vue";
-import SmilesImage from "@/components/SmilesImage.vue";
+import CalculatorResult from "./CalculatorResult.vue";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import { nativeResult } from "@/common/native-response";
 const route = useRoute(),
   reactionMode = computed(() => route.path === "/feasibility");
 const canvas = ref(null),
-  moleculeInput = ref(null);
+  moleculeInput = ref(null), inputLayer = ref(null), resultLayer = ref(null);
 const reactionSmiles = ref(""),
   moleculeSmiles = ref("");
 const first = computed(() =>
@@ -148,15 +113,17 @@ const displayError = computed(() => prefillError.value || error.value);
 const submissionReady = computed(
   () =>
     !loading.value &&
+    score.value === null &&
     !inputPending.value &&
     !prefillError.value &&
     !!first.value.trim() &&
     (!reactionMode.value || !!second.value.trim()),
 );
 let generation = 0,
-  disposed = false;
+  disposed = false, scoredInput = null;
 function invalidateCalculation() {
   generation++;
+  scoredInput = null;
   score.value = null;
   canonicalFirst.value = "";
   canonicalSecond.value = "";
@@ -170,10 +137,20 @@ watch(
   { flush: "sync" },
 );
 watch(
-  [reactionSmiles, moleculeSmiles, first, second, inputPending, reactionMode],
+  [reactionSmiles, moleculeSmiles, reactionMode, () => canvas.value?.selected],
   invalidateCalculation,
   { flush: "sync" },
 );
+// Parsing may temporarily clear roles in the hidden, locked editor.
+watch([first, second, inputPending], () => {
+  if (score.value !== null && (inputPending.value || scoredInput?.first === first.value && scoredInput?.second === second.value)) return;
+  invalidateCalculation();
+}, { flush: "sync" });
+async function editInput() {
+  invalidateCalculation();
+  await nextTick();
+  if (!disposed) { inputLayer.value?.focus({ preventScroll: true }); inputLayer.value?.scrollIntoView?.({ block: "nearest" }); }
+}
 watch(
   () => [route.path, route.query],
   () => {
@@ -242,9 +219,12 @@ async function calculate() {
       typeof result === "number" ? result : (result?.score ?? result?.scscore);
     if (typeof number !== "number" || !Number.isFinite(number))
       throw new Error("invalid_model_response");
+    scoredInput = { first: reactants, second: product };
     score.value = number;
     canonicalFirst.value = canonical;
     canonicalSecond.value = canonicalProduct;
+    await nextTick();
+    if (!disposed && current === generation) resultLayer.value?.focus();
   } catch (e) {
     if (!disposed && current === generation)
       error.value = errorMessage(e, "模型计算失败。");
@@ -258,9 +238,6 @@ onBeforeUnmount(() => {
 });
 </script>
 <style scoped>
-.calculator-results {
-  min-width: 0;
-}
 .calculator-model {
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr);
@@ -282,31 +259,5 @@ onBeforeUnmount(() => {
 }
 .calculator-parameters :deep(.v-btn__content) {
   white-space: normal;
-}
-.calculator-results {
-  padding-top: 24px;
-}
-.calculation-structures {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 20px;
-  padding: 25px 0;
-}
-.calculation-score {
-  border-top: 1px solid var(--ws-border);
-  padding: 22px 0;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-}
-.calculation-score span {
-  font-size: 13px;
-  color: var(--ws-muted);
-}
-.calculation-score strong {
-  font-size: 28px;
-  font-weight: 500;
 }
 </style>

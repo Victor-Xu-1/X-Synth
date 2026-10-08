@@ -8,8 +8,8 @@ jest.mock("@vue-flow/core", () => ({
   VueFlow: {
     name: "VueFlow",
     props: ["nodes", "edges", "minZoom"],
-    emits: ["node-drag-stop", "connect"],
-    template: "<div />",
+    emits: ["node-drag-stop", "connect", "node-click"],
+    template: '<div><div v-for="node in nodes" :key="node.id" @click="$emit(\'node-click\', { node })"><slot :name="\'node-\' + node.type" :data="node.data" :selected="node.selected" /></div></div>',
   },
   useVueFlow: () => ({
     fitView: jest.fn(),
@@ -17,16 +17,22 @@ jest.mock("@vue-flow/core", () => ({
     zoomOut: jest.fn(),
   }),
   MarkerType: { ArrowClosed: "arrowclosed" },
+  Handle: { template: "<span />" },
+  Position: { Left: "left", Right: "right" },
 }));
 jest.mock("@vue-flow/core/dist/style.css", () => ({}));
 jest.mock("./MoleculeNode.vue", () => ({ template: "<div />" }));
-jest.mock("./ReactionNode.vue", () => ({ template: "<div />" }));
+jest.mock("./ReactionNode.vue", () => jest.requireActual("./ReactionNode.vue"));
 
 const wrappers = [];
 function setup(graph, editable = false) {
   const wrapper = mount(RouteGraph, {
     props: { graph, editable, id: "graph-contract" },
-    global: { stubs: { VBtn: true, VTooltip: true } },
+    global: { stubs: {
+      VBtn: { template: '<button><slot /></button>' },
+      VTooltip: { template: '<span><slot name="activator" :props="{}" /></span>' },
+      VIcon: true,
+    } },
   });
   wrappers.push(wrapper);
   return wrapper;
@@ -112,4 +118,18 @@ test("late drag or connect callbacks cannot write while graph editing is locked"
   expect(wrapper.emitted("update:graph")[0][0].edges).toEqual([
     expect.objectContaining({ source: "a", target: "r" }),
   ]);
+});
+
+test("the reaction detail button uses the existing Vue Flow selection event without rewriting geometry", async () => {
+  const graph = {
+    target_id: "target", edges: [],
+    nodes: [{ id: "reaction", type: "reaction", label: "步骤 1", position: { x: 200, y: 80 } }],
+  };
+  const wrapper = setup(graph);
+  await wrapper.setProps({ reading: true, scores: { reaction: 0 } });
+  await wrapper.get('button[aria-label="查看步骤 1详情"]').trigger("click");
+  expect(wrapper.emitted("select")).toEqual([["reaction"]]);
+  expect(wrapper.emitted("update:graph")).toBeUndefined();
+  expect(graph.nodes[0].position).toEqual({ x: 200, y: 80 });
+  expect(wrapper.getComponent({ name: "VueFlow" }).props("nodes")[0].data.score).toBe(0);
 });

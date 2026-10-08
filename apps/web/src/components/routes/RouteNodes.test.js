@@ -45,3 +45,28 @@ test("molecule identity, dimensions and image failure policy do not change with 
   });
   expect(wrapper.get(".graph-node-smiles").attributes("title")).toBe(smiles);
 });
+
+test.each([true, false])("reaction detail has a native named button in reading mode %s", async (reading) => {
+  const wrapper = setup(ReactionNode, { label: "步骤 3", reading, overview: false, score: 0 });
+  const action = wrapper.get('button[aria-label="查看步骤 3详情"]');
+  expect(action.attributes("type")).toBe("button");
+  expect(action.classes()).toContain("nodrag");
+  expect(action.classes().includes("reaction-disc")).toBe(reading);
+  const keys = [];
+  wrapper.element.addEventListener("keydown", (event) => keys.push(event.key));
+  await action.trigger("keydown", { key: "Enter" });
+  await action.trigger("keydown", { key: " " });
+  await action.trigger("keydown", { key: "Escape" });
+  expect(keys).toEqual(["Escape"]);
+  const click = jest.fn();
+  wrapper.element.addEventListener("click", click);
+  await action.trigger("click");
+  expect(click).toHaveBeenCalledTimes(1);
+  expect(wrapper.get("small").text()).toBe("步骤分数 0.00");
+});
+
+test("overview reaction glyph keeps its reading geometry without another interactive control", () => {
+  const wrapper = setup(ReactionNode, { reading: true, overview: true });
+  expect(wrapper.find("button").exists()).toBe(false);
+  expect(wrapper.get(".reaction-disc").element.tagName).toBe("DIV");
+});

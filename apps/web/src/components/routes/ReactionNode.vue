@@ -1,7 +1,26 @@
 <template>
   <div class="reaction-graph-node" :class="{ selected }">
     <Handle type="target" :position="Position.Left" />
-    <div v-if="data.reading" class="reaction-disc">
+    <v-tooltip v-if="!data.overview" :text="`查看${data.label || '反应'}详情`">
+      <template #activator="{ props }">
+        <v-btn
+          v-bind="props"
+          type="button"
+          class="reaction-detail-action nodrag"
+          :class="{ 'reaction-disc': data.reading }"
+          icon
+          variant="text"
+          :aria-label="`查看${data.label || '反应'}详情`"
+          @keydown.enter.stop
+          @keydown.space.stop
+          @keyup.enter.stop
+          @keyup.space.stop
+        >
+          <v-icon class="reaction-direction-icon" icon="mdi-arrow-right" :size="data.reading ? 22 : 18" />
+        </v-btn>
+      </template>
+    </v-tooltip>
+    <div v-else-if="data.reading" class="reaction-disc">
       <v-icon
         class="reaction-direction-icon"
         icon="mdi-arrow-right"
@@ -36,6 +55,24 @@ defineProps({ data: { type: Object, required: true }, selected: Boolean });
 }
 .selected .reaction-disc {
   color: var(--ws-accent, #0b7163);
+}
+.reaction-detail-action {
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  color: inherit;
+}
+.reaction-detail-action.reaction-disc {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
+}
+.reaction-detail-action:focus-visible {
+  outline: 2px solid var(--ws-accent, #0b7163);
+  outline-offset: 2px;
 }
 .reaction-graph-node > strong {
   max-width: calc(var(--route-reaction-width) - 4px);

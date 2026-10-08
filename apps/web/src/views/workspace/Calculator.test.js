@@ -1,4 +1,4 @@
-import { reactive } from "vue";
+import { defineComponent, reactive, ref, toRef } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import { useRoute } from "vue-router";
 import { API } from "@/common/api";
@@ -10,6 +10,7 @@ import {
 } from "./reaction-canvas.test-support";
 import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import Calculator from "./Calculator.vue";
+import { useReactionDraft } from "@/composables/useReactionDraft";
 
 jest.mock("vue-router", () => ({ useRoute: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn() } }));
@@ -77,6 +78,7 @@ test.each(["/feasibility", "/molcom"])(
       form.get(".workbench-input-area .calculator-structure").exists(),
     ).toBe(true);
     expect(form.find(".calculator-results").exists()).toBe(false);
+    expect(wrapper.find(".calculator-results").exists()).toBe(false);
     const event = new Event("submit", { bubbles: true, cancelable: true });
     form.element.dispatchEvent(event);
     await flushPromises();
@@ -133,6 +135,20 @@ test("FF scores canvas reactants and selected product without imported agents or
   expect(wrapper.text()).not.toContain("实验成功率");
 });
 
+test("a zero score opens a separate reading layer and edit returns to the retained reaction without recalc", async () => {
+  const { wrapper } = await setup();
+  await setReactionDraft(wrapper, { reactants: ["CCO"], product: "CC=O" });
+  ffResponses(0);
+  await wrapper.get("form").trigger("submit"); await flushPromises();
+  expect(wrapper.get("form").attributes("style")).toContain("display: none");
+  expect(wrapper.get(".calculation-score strong").text()).toBe("0.000");
+  await wrapper.findAll("button").find((button) => button.text() === "返回修改").trigger("click");
+  expect(wrapper.get("form").attributes("style") || "").not.toContain("display: none");
+  expect(wrapper.get(".reaction-text").element.value).toBe("CCO>>CC=O");
+  expect(wrapper.find(".calculator-results").exists()).toBe(false);
+  expect(API.post).toHaveBeenCalledTimes(3);
+});
+
 test.each([
   { pending: true, reactants: ["CCO"], product: "CC=O" },
   { pending: false, reactants: [], product: "CC=O" },
@@ -175,15 +191,56 @@ test("one active calculation blocks repeat submits and releases loading after st
   );
 });
 
-test("raw edits clear an existing score even if canvas identities have not changed", async () => {
+test("a late raw canvas update clears an existing score even if canvas identities have not changed", async () => {
   const { wrapper } = await setup();
   await setReactionDraft(wrapper, { reactants: ["CCO"], product: "CC=O" });
   ffResponses();
   await wrapper.get("form").trigger("submit");
   await flushPromises();
   expect(wrapper.find(".calculation-score").exists()).toBe(true);
-  await wrapper.get(".reaction-text").setValue("OCC>>C(C)=O");
+  await wrapper.getComponent(reactionInput).vm.$emit("update:modelValue", "OCC>>C(C)=O");
   expect(wrapper.find(".calculation-score").exists()).toBe(false);
+});
+
+test("read-only editor recycling preserves the score while changed chemical roles invalidate it", async () => {
+  const { wrapper } = await setup();
+  await setReactionDraft(wrapper, { reactants: ["CCO"], product: "CC=O" });
+  ffResponses(); await wrapper.get("form").trigger("submit"); await flushPromises();
+  await setReactionDraft(wrapper, { pending: true });
+  expect(wrapper.get(".calculation-score strong").text()).toBe("0.450");
+  await setReactionDraft(wrapper, { pending: false, product: "CCOC" });
+  expect(wrapper.find(".calculation-score").exists()).toBe(false);
+  expect(API.post).toHaveBeenCalledTimes(3);
+});
+
+test("production draft cache loss during locked board reset preserves the result, but a selected-product change does not", async () => {
+  let boardPending, draft;
+  const DraftHost = defineComponent({
+    props: ["modelValue", "requireReactants"],
+    setup(props, { expose }) {
+      boardPending = ref(false);
+      draft = useReactionDraft({ text: toRef(props, "modelValue"), boardPending, requireReactants: () => props.requireReactants });
+      expose(draft); return {};
+    }, template: '<div />',
+  });
+  const record = (smiles) => ({ index: 1, name: "protocol fixture", smiles, formula: "protocol fixture", atoms: 3, components: 1, molecular_weight: 46 });
+  API.post.mockImplementation((url, body) => Promise.resolve(url.endsWith("reaction-draft")
+    ? { format: body.format, requested: body, input_kind: "reaction", reaction_smiles: body.content,
+      reactants: [record("CCO")], products: [record("CC=O")], agents: [] }
+    : url.endsWith("validate") ? { smiles: body.smiles } : { result: 0.45 }));
+  useRoute.mockReturnValue(reactive({ path: "/feasibility", query: { rxnsmiles: "CCO>>CC=O" } }));
+  const wrapper = mount(Calculator, { global: { stubs: { ...uiStubs, ReactionInput: DraftHost } } }); wrappers.push(wrapper);
+  await draft.validate(); await flushPromises();
+  await wrapper.get("form").trigger("submit"); await flushPromises();
+  expect(wrapper.get(".calculation-score strong").text()).toBe("0.450");
+  boardPending.value = true; await flushPromises();
+  expect(draft.reactants.value).toEqual([]); expect(draft.product.value).toBe("");
+  expect(wrapper.get(".calculation-score strong").text()).toBe("0.450");
+  boardPending.value = false; await draft.validate(); await flushPromises();
+  expect(wrapper.get(".calculation-score strong").text()).toBe("0.450");
+  draft.selected.value = ""; await flushPromises();
+  expect(wrapper.find(".calculation-score").exists()).toBe(false);
+  expect(API.post.mock.calls.filter(([url]) => url.endsWith("fast-filter/call-sync"))).toHaveLength(1);
 });
 
 test("same-tick URL updates cannot calculate with previous canvas roles", async () => {

@@ -1,8 +1,10 @@
 <template>
   <section
+    ref="readerRoot"
     class="route-reader"
     :class="{ compact }"
     aria-label="合成路线阅读工作台"
+    tabindex="-1"
   >
     <RouteFilters
       v-if="view === 'overview'"
@@ -20,6 +22,7 @@
       <span class="reader-selection-count">{{ choices.length }} 条路线</span>
       <span class="reader-selection-picked">已选 {{ picked.length }} 条</span>
       <v-btn
+        class="reader-selection-open"
         prepend-icon="mdi-eye-outline"
         variant="text"
         size="small"
@@ -30,6 +33,7 @@
     </div>
     <div
       v-if="view !== 'overview' && readingChoices.length"
+      ref="routeNavigation"
       class="reader-route-navigation"
     >
       <v-btn
@@ -124,6 +128,7 @@
         v-for="choice in choices"
         :key="choice.route.route_id"
         class="reader-overview-entry"
+        :data-route-id="choice.route.route_id"
         :class="{ picked: picked.includes(choice.route.route_id) }"
       >
           <div class="route-choice-check">
@@ -314,6 +319,8 @@ const view = defineModel("view", { type: String, default: "overview" });
 const filters = ref({ query: "", engine: "", closure: "", sort: "rank" });
 const picked = ref([]),
   readingIds = ref([]),
+  readerRoot = ref(null),
+  routeNavigation = ref(null),
   selectedNode = ref(null),
   readerMain = ref(null),
   inspectorView = ref(null),
@@ -382,6 +389,8 @@ const allSelected = computed(
 const graphId = `reader-${crypto.randomUUID()}`,
   { fitView } = useVueFlow({ id: graphId });
 let generation = 0,
+  layerNavigation = 0,
+  overviewOrigin = null,
   selectionOrigin = null,
   disposed = false;
 function labelFor(choice) {
@@ -399,20 +408,70 @@ function selectAll(value) {
     ? choices.value.map((choice) => choice.route.route_id)
     : [];
 }
-function readSelected() {
-  readingIds.value = [...picked.value];
-  selectedId.value = retainedRouteId(readingChoices.value, selectedId.value);
-  view.value = "graph";
+function scrollOwner() {
+  for (let element = readerRoot.value; element; element = element.parentElement) {
+    if (element.classList.contains("workspace-page") || /auto|scroll/.test(getComputedStyle(element).overflowY))
+      return element;
+  }
+  return null;
 }
-function showAll() {
+function rememberOverview(kind, routeId) {
+  const scroller = scrollOwner(), focused = document.activeElement;
+  const entry = focused?.closest?.(".reader-overview-entry");
+  overviewOrigin = {
+    kind, routeId, candidates: props.candidates, filters: JSON.stringify(filters.value),
+    label: entry?.dataset.routeId === routeId ? focused.getAttribute("aria-label") : null,
+    scroller, top: scroller?.scrollTop || 0,
+  };
+}
+async function revealReading(navigation, routeId) {
+  await nextTick();
+  if (disposed || navigation !== layerNavigation || view.value !== "graph" || routeId !== selectedId.value) return;
+  const target = routeNavigation.value?.querySelector('[aria-selected="true"]');
+  if (!target?.isConnected) return;
+  const scroller = scrollOwner();
+  if (scroller) scroller.scrollTop = 0;
+  else routeNavigation.value.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  target.focus({ preventScroll: true });
+}
+function overviewControl(point) {
+  if (point.kind === "selection") return readerRoot.value?.querySelector(".reader-selection-open");
+  const entry = [...(readerRoot.value?.querySelectorAll(".reader-overview-entry") || [])]
+    .find((element) => element.dataset.routeId === point.routeId);
+  const controls = [...(entry?.querySelectorAll('button, [role="button"]') || [])];
+  return controls.find((element) => point.label && element.getAttribute("aria-label") === point.label)
+    || entry?.querySelector(".overview-open");
+}
+function readSelected() {
+  if (props.busy || !picked.value.length) return;
+  rememberOverview("selection");
+  readingIds.value = [...picked.value];
+  const routeId = retainedRouteId(readingChoices.value, selectedId.value);
+  selectedId.value = routeId;
+  view.value = "graph";
+  return revealReading(++layerNavigation, routeId);
+}
+async function showAll() {
+  const navigation = ++layerNavigation, point = overviewOrigin, routeId = selectedId.value;
+  overviewOrigin = null;
   readingIds.value = [];
   view.value = "overview";
+  await nextTick();
+  if (disposed || navigation !== layerNavigation || view.value !== "overview") return;
+  if (point && (point.candidates !== props.candidates || point.filters !== JSON.stringify(filters.value))) return;
+  const target = overviewControl(point || { kind: "route", routeId }) || readerRoot.value;
+  if (!target?.isConnected) return;
+  if (point?.scroller?.isConnected) point.scroller.scrollTop = point.top;
+  else target.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  target.focus({ preventScroll: true });
 }
 function openRoute(id) {
-  if (props.busy) return;
+  if (props.busy || !choices.value.some((choice) => choice.route.route_id === id)) return;
+  rememberOverview("route", id);
   readingIds.value = [];
   selectedId.value = id;
   view.value = "graph";
+  return revealReading(++layerNavigation, id);
 }
 function moveTab(event, values, current, select) {
   if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -522,6 +581,10 @@ watch(choices, (values) => {
     values.some((choice) => choice.route.route_id === id),
   );
 });
+watch(() => props.candidates, () => {
+  overviewOrigin = null;
+  layerNavigation++;
+}, { flush: "sync" });
 watch(
   readingChoices,
   (values) => {
@@ -544,6 +607,8 @@ watch(view, async (value) => {
 });
 onBeforeUnmount(() => {
   disposed = true;
+  overviewOrigin = null;
+  layerNavigation++;
   selectionOrigin = null;
   generation++;
 });
