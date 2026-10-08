@@ -1,14 +1,6 @@
 <template>
   <module-workbench title="QM 描述符">
-    <div v-if="workspace.loading" class="workspace-loading">
-      <v-progress-linear indeterminate />
-    </div>
-    <div v-else-if="!workspace.can('qm')" class="workspace-empty">
-      <v-icon icon="mdi-server-off" size="32" />
-      <h2>当前服务未启用</h2>
-      <router-link to="/environments?tab=monitor">查看运行监测</router-link>
-    </div>
-    <div v-else class="tool-layout">
+    <div class="tool-layout">
       <section class="tool-input-panel">
         <h2 class="tool-section-title">分子输入</h2>
         <v-form @submit.prevent="predict">
@@ -138,8 +130,7 @@
         </div>
       </section>
     </div>
-  </module-workbench>
-  <v-dialog v-model="dialog" fullscreen @after-enter="resizeViewer">
+    <WorkbenchDialog v-model="dialog" fullscreen @after-enter="resizeViewer">
     <v-card class="qm-visualization" :class="backgroundColor">
       <header class="qm-dialog-header">
         <h2>3D 结构</h2>
@@ -233,7 +224,8 @@
         </section>
       </div>
     </v-card>
-  </v-dialog>
+    </WorkbenchDialog>
+  </module-workbench>
 </template>
 <script setup>
 import { API } from "@/common/api";
@@ -249,6 +241,7 @@ import * as Papa from "papaparse";
 import { useRoute } from "vue-router";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
+import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
 import { useWorkspaceStore } from "@/store/workspace";
 import { saveAs } from "file-saver";
 import { useTheme } from "@/composables/useTheme";
