@@ -89,8 +89,8 @@ const addEntry = async () => {
         if (!scope.active(ticket)) return;
         notify(category === 'chemicals' ? "已成功添加化合物记录。" : "已成功添加反应记录。", "primary");
         activeTab.value = category === 'chemicals' ? 0 : 1;
-        newSmiles.value = ''; newDesc.value = ''; showBanItemDialog.value = false;
         emit("loadCollection", category, ticket);
+        newSmiles.value = ''; newDesc.value = ''; showBanItemDialog.value = false;
     } catch {
         if (scope.active(ticket)) notify("添加记录失败，请重试。", "error");
     } finally {
@@ -99,5 +99,8 @@ const addEntry = async () => {
     }
 }
 if (scope) watch(scope.revision, () => { notice.value = null; noticeOpen.value = false; }, { flush: "sync" });
+watch(showBanItemDialog, (open) => {
+    if (!open) { scope?.cancel(attempt); attempt = null; }
+}, { flush: "sync" });
 onBeforeUnmount(() => scope?.cancel(attempt));
 </script>

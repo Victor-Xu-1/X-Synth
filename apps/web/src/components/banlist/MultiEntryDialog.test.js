@@ -4,6 +4,7 @@ import { API } from "@/common/api";
 import MultiEntryDialog from "./MultiEntryDialog.vue";
 import { ruleRequestTimeoutMs } from "./rule-owner-scope";
 import { deferred, jsonFile, mountRulePage, pendingCount, selectFile, session, upload } from "./banlist.test-support";
+import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
 
 let mockWorkspace, wrapper;
 jest.mock("@/store/workspace", () => ({ useWorkspaceStore: () => mockWorkspace }));
@@ -100,6 +101,34 @@ test("normal close cancels an in-progress file read without leaving shared pendi
   expect(pendingCount(wrapper)).toBe(0); expect(API.post).not.toHaveBeenCalled();
   pending.resolve('[{"smiles":"C"}]'); await flushPromises();
   expect(API.post).not.toHaveBeenCalled(); expect(wrapper.find("aside").exists()).toBe(false);
+});
+
+test("Escape/backdrop model dismissal cancels a delayed file read and cannot start writes afterward", async () => {
+  wrapper = await mountRulePage();
+  await wrapper.get('[data-cy="banlist-add-multiple-entries"]').trigger("click");
+  const pending = deferred();
+  await selectFile(wrapper, jsonFile("[]", { text: () => pending.promise }));
+  const attempt = upload(wrapper); await flushPromises();
+  wrapper.findComponent(MultiEntryDialog).findComponent(WorkbenchDialog).vm.$emit("update:modelValue", false);
+  await flushPromises();
+  expect(pendingCount(wrapper)).toBe(0);
+  pending.resolve('[{"smiles":"C"}]'); await attempt; await flushPromises();
+  expect(API.post).not.toHaveBeenCalled(); expect(wrapper.find("aside").exists()).toBe(false);
+});
+
+test("model dismissal during a batch stops remaining rows and cannot publish a success notice", async () => {
+  wrapper = await mountRulePage();
+  await wrapper.get('[data-cy="banlist-add-multiple-entries"]').trigger("click");
+  const pending = deferred(); API.post.mockReturnValueOnce(pending.promise);
+  await selectFile(wrapper, jsonFile('[{"smiles":"C"},{"smiles":"CC"}]'));
+  const attempt = upload(wrapper); await flushPromises();
+  expect(API.post).toHaveBeenCalledTimes(1);
+  wrapper.findComponent(MultiEntryDialog).findComponent(WorkbenchDialog).vm.$emit("update:modelValue", false);
+  await flushPromises();
+  expect(API.post.mock.calls[0][3].signal.aborted).toBe(true);
+  expect(pendingCount(wrapper)).toBe(0);
+  pending.resolve("OK"); await attempt; await flushPromises();
+  expect(API.post).toHaveBeenCalledTimes(1); expect(wrapper.find("aside").exists()).toBe(false);
 });
 
 test("a valid batch preserves per-row partial failure reporting and releases pending work", async () => {

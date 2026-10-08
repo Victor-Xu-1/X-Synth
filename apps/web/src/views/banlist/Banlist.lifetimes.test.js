@@ -1,4 +1,5 @@
 import { flushPromises } from "@vue/test-utils";
+import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
 import { reactive } from "vue";
 import { API } from "@/common/api";
 import StructureInput from "@/components/workspace/StructureInput.vue";
@@ -176,6 +177,33 @@ test("single entry rejects an unconfirmed structure without incrementing shared 
   await wrapper.findComponent({ name: "BanItemDialog" }).vm.$.setupState.addEntry(); await flushPromises();
   expect(API.post).toHaveBeenCalledTimes(1);
   expect(new URLSearchParams(API.post.mock.calls[0][0].split("?")[1]).get("smiles")).toBe(rule().smiles);
+});
+
+test("single-entry model dismissal retires its pending write without later notices or draft updates", async () => {
+  wrapper = await mountRulePage();
+  await wrapper.get('[data-cy="banlist-add-single-entry"]').trigger("click");
+  await wrapper.get('[data-cy="banlist-new-smiles-input"]').setValue("C");
+  const pending = deferred(); API.post.mockReturnValueOnce(pending.promise);
+  const single = wrapper.findComponent({ name: "BanItemDialog" });
+  const attempt = single.vm.$.setupState.addEntry(); await flushPromises();
+  single.findComponent(WorkbenchDialog).vm.$emit("update:modelValue", false);
+  await flushPromises();
+  expect(API.post.mock.calls[0][3].signal.aborted).toBe(true);
+  expect(pendingCount(wrapper)).toBe(0);
+  pending.resolve("OK"); await attempt; await flushPromises();
+  expect(API.get).toHaveBeenCalledTimes(2);
+  expect(wrapper.find("aside").exists()).toBe(false);
+});
+
+test("successful single-entry closure refreshes its collection before retiring the dialog ticket", async () => {
+  wrapper = await mountRulePage();
+  await wrapper.get('[data-cy="banlist-add-single-entry"]').trigger("click");
+  await wrapper.get('[data-cy="banlist-new-smiles-input"]').setValue("C");
+  await wrapper.findComponent({ name: "BanItemDialog" }).vm.$.setupState.addEntry();
+  await flushPromises();
+  expect(API.get).toHaveBeenCalledTimes(3);
+  expect(pendingCount(wrapper)).toBe(0);
+  expect(wrapper.get("aside").text()).toContain("已成功添加化合物记录");
 });
 
 test.each([null, session("guest_protocol"), { ...session(), workspace_access: false }, { ...session(), mode: "local" }])(

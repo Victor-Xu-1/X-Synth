@@ -26,6 +26,7 @@ export function useRuleUpload({ scope, show, publish }) {
   function closeDialog() {
     cancel(); show.value = false; multiUploadFile.value = null;
   }
+  watch(show, (open) => { if (!open) closeDialog(); }, { flush: "sync" });
   async function uploadMultipleEntries() {
     if (disabled.value || !multiUploadFile.value) return;
     const ticket = scope.begin();
