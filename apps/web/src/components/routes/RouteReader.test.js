@@ -1,5 +1,5 @@
 import { flushPromises, mount } from "@vue/test-utils";
-import { reactive } from "vue";
+import { reactive, ref } from "vue";
 import dagre from "@dagrejs/dagre";
 import { API } from "@/common/api";
 import { oneStepCandidate } from "@/common/workbench-model";
@@ -70,12 +70,20 @@ const stubs = {
   RouteInspector: true,
   RouteEvidencePanel: true,
 };
-const wrappers = [];
+const wrappers = [], scrollFrames = [];
+function scrollFrame(className = "workspace-page") {
+  const frame = document.createElement("main");
+  frame.className = className;
+  frame.style.overflowY = "auto";
+  document.body.appendChild(frame);
+  scrollFrames.push(frame);
+  return frame;
+}
 let layout;
 async function setup(candidates, props = {}, lazyVisible = true, attached = false) {
   const wrapper = mount(RouteReader, {
     props: { candidates, canEdit: true, ...props },
-    attachTo: attached ? document.body : undefined,
+    attachTo: attached === true ? document.body : attached || undefined,
     global: {
       stubs: {
         ...stubs,
@@ -104,6 +112,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
+  scrollFrames.splice(0).forEach((frame) => frame.remove());
   layout.mockRestore();
 });
 
@@ -299,4 +308,121 @@ test("fresh source snapshots and reactive chemistry updates cannot reuse a stale
   await wrapper.setProps({ candidates: [candidate("native-a", "CN")] });
   expect(targetSmiles()).toBe("CN");
   expect(layout).toHaveBeenCalledTimes(3);
+});
+
+test.each(["workspace-page", "preview-scroll"])("explicit lower-route entry reveals navigation and returns its exact origin in %s", async (className) => {
+  const frame = scrollFrame(className);
+  const wrapper = await setup([candidate("native-a"), candidate("native-b", "CCN")], {}, false, frame);
+  frame.scrollTop = 1093;
+  const origin = wrapper.findAll('[aria-label="查看完整路线"]')[1];
+  origin.element.focus();
+  await origin.trigger("click");
+  await flushPromises();
+  const selected = wrapper.get('.reader-route-tabs [aria-selected="true"]');
+  expect(selected.text()).toBe("R002");
+  expect(document.activeElement).toBe(selected.element);
+  expect(frame.scrollTop).toBe(0);
+  await wrapper.findAll("button").find((button) => button.text() === "全部路线").trigger("click");
+  await flushPromises();
+  const restored = wrapper.findAll('[aria-label="查看完整路线"]')[1];
+  expect(document.activeElement).toBe(restored.element);
+  expect(frame.scrollTop).toBe(1093);
+  expect(layout).toHaveBeenCalledTimes(1);
+});
+
+test("multi-route reading restores its selection action and retained picks without a new route store", async () => {
+  const frame = scrollFrame();
+  const wrapper = await setup([candidate("native-a"), candidate("native-b", "CCN"), candidate("native-c", "CCCl")], {}, false, frame);
+  wrapper.vm.pick("native-b", true);
+  wrapper.vm.pick("native-c", true);
+  await flushPromises();
+  frame.scrollTop = 73;
+  const origin = wrapper.findAll("button").find((button) => button.text() === "查看选中路线");
+  origin.element.focus();
+  await origin.trigger("click");
+  await flushPromises();
+  expect(wrapper.findAll('.reader-route-tabs [role="tab"]').map((tab) => tab.text())).toEqual(["R002", "R003"]);
+  expect(document.activeElement).toBe(wrapper.get('.reader-route-tabs [aria-selected="true"]').element);
+  expect(frame.scrollTop).toBe(0);
+  await wrapper.findAll("button").find((button) => button.text() === "全部路线").trigger("click");
+  await flushPromises();
+  expect(document.activeElement.textContent).toBe("查看选中路线");
+  expect(frame.scrollTop).toBe(73);
+  expect(wrapper.findAll(".reader-overview-entry.picked")).toHaveLength(2);
+});
+
+test.each(["route", "selection"])("parent-bound %s entry focuses the requested route after the model update", async (entry) => {
+  const frame = scrollFrame();
+  const parent = mount({
+    components: { RouteReader },
+    setup: () => ({ candidates: [candidate("native-a"), candidate("native-b", "CCN")], selected: ref("native-a"), view: ref("overview") }),
+    template: '<RouteReader :candidates="candidates" v-model:selected-route="selected" v-model:view="view" />',
+  }, { attachTo: frame, global: { stubs } });
+  wrappers.push(parent);
+  await flushPromises();
+  const reader = parent.getComponent(RouteReader);
+  const origin = entry === "route" ? reader.findAll(".overview-open")[1] : reader.get(".reader-selection-open");
+  if (entry === "selection") reader.vm.pick("native-b", true);
+  await flushPromises();
+  frame.scrollTop = 1093;
+  origin.element.focus();
+  await origin.trigger("click");
+  await flushPromises();
+  const selected = reader.get('.reader-route-tabs [aria-selected="true"]');
+  expect(selected.text()).toBe("R002");
+  expect(document.activeElement).toBe(selected.element);
+  expect(frame.scrollTop).toBe(0);
+  await reader.findAll("button").find((button) => button.text() === "全部路线").trigger("click");
+  await flushPromises();
+  expect(document.activeElement).toBe(reader.get(entry === "route" ? '[aria-label="查看R002完整路线"]' : ".reader-selection-open").element);
+  expect(frame.scrollTop).toBe(1093);
+});
+
+test("passive source, route and view updates do not move the user's focus or scroll", async () => {
+  const frame = scrollFrame();
+  const outside = document.createElement("button");
+  frame.appendChild(outside);
+  const wrapper = await setup([candidate("native-a"), candidate("native-b", "CCN")], {}, false, frame);
+  outside.focus();
+  frame.scrollTop = 234;
+  await wrapper.setProps({ view: "graph", selectedRoute: "native-b" });
+  await wrapper.setProps({ candidates: [candidate("native-a"), candidate("native-b", "CN")] });
+  await flushPromises();
+  expect(document.activeElement).toBe(outside);
+  expect(frame.scrollTop).toBe(234);
+});
+
+test("unmount before a requested reading layer settles cannot focus a detached route tab", async () => {
+  const frame = scrollFrame();
+  const wrapper = await setup([candidate("native-a")], {}, false, frame);
+  const focus = jest.spyOn(HTMLElement.prototype, "focus");
+  wrapper.vm.openRoute("native-a");
+  wrapper.unmount();
+  await flushPromises();
+  expect(focus).not.toHaveBeenCalled();
+  focus.mockRestore();
+});
+
+test("a replacement source invalidates a pending entry focus before the new layer settles", async () => {
+  const frame = scrollFrame();
+  const outside = document.createElement("button");
+  frame.appendChild(outside);
+  const wrapper = await setup([candidate("native-a"), candidate("native-b", "CCN")], {}, false, frame);
+  const pending = wrapper.vm.openRoute("native-b");
+  const update = wrapper.setProps({ candidates: [candidate("native-a"), candidate("native-b", "CN")] });
+  outside.focus();
+  frame.scrollTop = 345;
+  await Promise.all([pending, update]);
+  await flushPromises();
+  expect(document.activeElement).toBe(outside);
+  expect(frame.scrollTop).toBe(345);
+});
+
+test("returning from a direct reading view reveals the selected route even without an earlier overview origin", async () => {
+  const frame = scrollFrame();
+  const wrapper = await setup([candidate("native-a"), candidate("native-b", "CCN")],
+    { view: "graph", selectedRoute: "native-b" }, false, frame);
+  await wrapper.findAll("button").find((button) => button.text() === "全部路线").trigger("click");
+  await flushPromises();
+  expect(document.activeElement).toBe(wrapper.findAll(".overview-open")[1].element);
 });
