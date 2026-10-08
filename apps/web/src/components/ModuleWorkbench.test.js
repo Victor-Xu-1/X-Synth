@@ -30,7 +30,7 @@ async function setup(props = {}, slots = { default: () => h(Draft) }) {
     props: { title: "Test workbench", ...props }, slots,
     global: {
       plugins: [createVuetify({ components: { VDefaultsProvider: components.VDefaultsProvider, VDialog: components.VDialog }, theme: false })],
-      stubs: { VIcon: true, VProgressLinear: true, RouterLink: { template: '<a><slot /></a>' } },
+      stubs: { transition: false, VIcon: true, VProgressLinear: true, RouterLink: { template: '<a><slot /></a>' } },
     },
   });
   wrappers.push(wrapper);
@@ -304,7 +304,7 @@ test.each([false, true])("cold unavailable tabs link only to empty guarded panel
 test("returning to an older open dialog restores Escape ownership without cancelling the newer inactive draft", async () => {
   const open = reactive({ a: true, b: true });
   const wrapper = await setup({ modules: [{ value: "a", title: "Alpha" }, { value: "b", title: "Beta" }], activeModule: "a" },
-    { module: ({ value }) => h(WorkbenchDialog, { modelValue: open[value], transition: false, scrim: false,
+    { module: ({ value }) => h(WorkbenchDialog, { modelValue: open[value], transition: { css: false }, scrim: false,
       "onUpdate:modelValue": (next) => { open[value] = next; } },
     { default: () => h("input", { "aria-label": `draft ${value}` }) }) });
   const first = wrapper.get('input[aria-label="draft a"]').element;
@@ -317,6 +317,6 @@ test("returning to an older open dialog restores Escape ownership without cancel
   await flushPromises();
   expect(open.a).toBe(false);
   expect(open.b).toBe(true);
-  expect(first.isConnected).toBe(true);
+  expect(first.isConnected).toBe(false);
   expect(second.isConnected).toBe(true);
 });

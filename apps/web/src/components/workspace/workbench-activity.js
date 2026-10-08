@@ -2,8 +2,12 @@ import { computed, inject, provide, toValue } from "vue";
 
 const workbenchActivity = Symbol("workbench activity");
 
+export function useWorkbenchScope() {
+  return inject(workbenchActivity, null);
+}
+
 export function useWorkbenchActivity() {
-  return inject(workbenchActivity, computed(() => true));
+  return useWorkbenchScope() ?? computed(() => true);
 }
 
 export function provideWorkbenchActivity(active) {

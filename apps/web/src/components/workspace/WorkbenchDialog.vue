@@ -1,5 +1,6 @@
 <template>
-  <v-dialog v-bind="$attrs" :model-value="presentation" :eager="opened || eager" attach
+  <v-dialog v-bind="scoped ? { ...$attrs, attach: true } : $attrs"
+    :model-value="presentation" :eager="eager || (opened && modelValue)"
     @update:model-value="update" @after-enter="enter" @after-leave="leave">
     <template v-for="(_, name) in $slots" #[name]="slotProps">
       <slot :name="name" v-bind="slotProps || {}" />
@@ -9,12 +10,14 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from "vue";
-import { useWorkbenchActivity } from "./workbench-activity";
+import { useWorkbenchScope } from "./workbench-activity";
 
 defineOptions({ inheritAttrs: false });
 const props = defineProps({ modelValue: Boolean, eager: Boolean });
 const emit = defineEmits(["update:modelValue", "afterEnter", "afterLeave"]);
-const activity = useWorkbenchActivity();
+const scope = useWorkbenchScope();
+const scoped = scope !== null;
+const activity = scope ?? computed(() => true);
 const presentation = computed(() => props.modelValue && activity.value);
 const opened = ref(false);
 let suspendedLeave = false, disposed = false;

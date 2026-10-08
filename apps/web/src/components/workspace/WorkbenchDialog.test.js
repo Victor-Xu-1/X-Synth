@@ -13,17 +13,19 @@ const Draft = defineComponent({ setup() {
   onUnmounted(() => unmounts++);
   return () => h("div", [h("input", { type: "file" }), h("input", { type: "radio", checked: true }), h("iframe", { title: "editor lifetime fixture" })]);
 } });
-async function setup(state = reactive({ active: true, open: true }), attrs = {}) {
+async function setup(state = reactive({ active: true, open: true }), attrs = {}, scoped = true) {
   const host = document.createElement("div");
   document.body.appendChild(host);
   hosts.push(host);
   const updates = jest.fn(), left = jest.fn(), entered = jest.fn();
   const wrapper = mount(defineComponent({ setup() {
-    return () => h(WorkbenchScope, { active: state.active }, { default: () => h(WorkbenchDialog,
-      { modelValue: state.open, transition: false, scrim: false, maxWidth: 720, "aria-label": "chemical picker", ...attrs,
+    const dialog = () => h(WorkbenchDialog,
+      { modelValue: state.open, transition: { css: false }, scrim: false, maxWidth: 720, "aria-label": "chemical picker", ...attrs,
         "onUpdate:modelValue": (value) => { updates(value); state.open = value; }, onAfterLeave: left, onAfterEnter: entered },
-      { default: () => h(Draft) }) });
-  } }), { attachTo: host, global: { plugins: [createVuetify({ components: { VDialog: components.VDialog }, theme: false })] } });
+      { default: () => h(Draft) });
+    return () => scoped ? h(WorkbenchScope, { active: state.active }, { default: dialog }) : dialog();
+  } }), { attachTo: host, global: { stubs: { transition: false },
+    plugins: [createVuetify({ components: { VDialog: components.VDialog }, theme: false })] } });
   wrappers.push(wrapper);
   await flushPromises();
   return { wrapper, state, updates, left, entered };
@@ -72,8 +74,33 @@ test("a never-opened inactive dialog does not initialize its subtree until actua
   expect(mounts).toBe(1);
   state.open = false;
   await flushPromises();
-  expect(wrapper.find("input").exists()).toBe(true);
+  expect(wrapper.find("input").exists()).toBe(false);
+  expect(unmounts).toBe(1);
+});
+
+test("normal owner close tears down its file/radio/iframe subtree through actual after-leave", async () => {
+  const { wrapper, state, left } = await setup();
+  const nodes = wrapper.findAll("input, iframe").map((node) => node.element);
+  state.open = false;
+  await flushPromises();
+  expect(wrapper.getComponent(components.VDialog).props("eager")).toBe(false);
+  expect(nodes.every((node) => !node.isConnected)).toBe(true);
+  expect(unmounts).toBe(1);
+  expect(left).toHaveBeenCalledTimes(1);
+  state.open = true;
+  await flushPromises();
+  expect(mounts).toBe(2);
+  expect(wrapper.get("iframe").element).not.toBe(nodes[2]);
+});
+
+test("explicit consumer eager still retains content after normal owner close", async () => {
+  const { wrapper, state, left } = await setup(undefined, { eager: true });
+  const iframe = wrapper.get("iframe").element;
+  state.open = false;
+  await flushPromises();
+  expect(iframe.isConnected).toBe(true);
   expect(unmounts).toBe(0);
+  expect(left).toHaveBeenCalledTimes(1);
 });
 
 test("attributes and normal active Escape/after-leave remain compatible", async () => {
@@ -84,17 +111,31 @@ test("attributes and normal active Escape/after-leave remain compatible", async 
   await flushPromises();
   expect(state.open).toBe(false);
   expect(updates).toHaveBeenCalledTimes(1);
-  wrapper.getComponent(components.VDialog).vm.$emit("afterLeave");
-  expect(left).toHaveBeenCalled();
+  expect(left).toHaveBeenCalledTimes(1);
+  expect(wrapper.find("iframe").exists()).toBe(false);
 });
 
-test("standalone dialogs have active presentation without a provider", async () => {
-  const wrapper = mount(WorkbenchDialog, { props: { modelValue: true, transition: false, scrim: false },
-    slots: { default: () => h(Draft) }, global: { plugins: [createVuetify({ components: { VDialog: components.VDialog }, theme: false })] } });
-  wrappers.push(wrapper);
-  await flushPromises();
+test.each([undefined, true, "#dialog-attach-target"])("outside-scope dialogs preserve native attachment (%s)", async (attach) => {
+  const target = document.createElement("div");
+  target.id = "dialog-attach-target";
+  document.body.appendChild(target);
+  hosts.push(target);
+  const { wrapper, state } = await setup(undefined, attach === undefined ? {} : { attach }, false);
   expect(wrapper.getComponent(components.VOverlay).props("modelValue")).toBe(true);
+  expect(wrapper.getComponent(components.VDialog).props("attach")).toBe(attach ?? false);
   expect(mounts).toBe(1);
+  if (attach === undefined) expect(document.body.querySelector(":scope > .v-overlay-container iframe")).not.toBeNull();
+  if (typeof attach === "string") expect(target.querySelector("iframe")).not.toBeNull();
+  state.open = false;
+  await flushPromises();
+  expect(unmounts).toBe(1);
+  expect(document.querySelector('iframe[title="editor lifetime fixture"]')).toBeNull();
+});
+
+test("a scoped dialog forces gate-local attachment even when a consumer requested body", async () => {
+  const { wrapper } = await setup(undefined, { attach: "body" });
+  expect(wrapper.getComponent(components.VDialog).props("attach")).toBe(true);
+  expect(wrapper.get("iframe").element.isConnected).toBe(true);
 });
 
 test("a delayed suspend after-leave stays suppressed after rapid resume", async () => {
