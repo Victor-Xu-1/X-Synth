@@ -101,6 +101,26 @@ test("a reset during queued layer navigation cannot move focus into the retired 
   expect(wrapper.get('[data-section="inputs"]').isVisible()).toBe(false);
 });
 
+test("same-destination batch resets retire old navigation even when both select Product", async () => {
+  const { wrapper, route } = setup();
+  await wrapper.vm.moveSection(1);
+  const focus = jest.spyOn(wrapper.get('[data-section="product"]').element, "focus");
+  const navigation = wrapper.vm.moveSection(-1);
+  route.query = { smiles: "CCN" };
+  await nextTick(); await navigation;
+  expect(wrapper.vm.section).toBe("product");
+  expect(focus).not.toHaveBeenCalled();
+});
+
+test("rapid navigation returning to the same layer focuses only the latest command", async () => {
+  const { wrapper } = setup();
+  const focus = jest.spyOn(wrapper.get('[data-section="inputs"]').element, "focus");
+  const first = wrapper.vm.moveSection(1), second = wrapper.vm.moveSection(1), latest = wrapper.vm.moveSection(-1);
+  await first; await second; await latest;
+  expect(wrapper.vm.section).toBe("inputs");
+  expect(focus).toHaveBeenCalledTimes(1);
+});
+
 test("a local batch validation error is focused without discarding entered data or submitting", async () => {
   const { wrapper } = setup();
   await wrapper.get('[aria-label="分离产物总质量"]').setValue("-1");

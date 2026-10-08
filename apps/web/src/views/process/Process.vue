@@ -73,8 +73,9 @@ const { result, loading, error, calculate: runCalculation, reset } = useCalculat
   accepts: acceptsProcess, fallback: "批次核算失败，请核对结构、质量、单位与服务。",
   onResult: useAnalysisDelivery("process"),
 });
+let navigation = 0;
 const saved = useAnalysisInput({
-  kind: "process", clear: () => { reset(); Object.assign(form, freshProcessForm()); section.value = "product"; },
+  kind: "process", clear: () => { navigation++; reset(); Object.assign(form, freshProcessForm()); section.value = "product"; },
   apply: (input) => Object.assign(form, restoreProcessForm(input)), prefill: (smiles) => { form.product.smiles = smiles; },
 });
 const disabled = computed(() => loading.value || saved.loading.value || !!saved.error.value);
@@ -91,9 +92,10 @@ async function moveSection(direction) {
   if (disabled.value || pending.value) return;
   const next = sections[sectionIndex.value + direction];
   if (!next) return;
+  const current = ++navigation;
   section.value = next.value;
   await nextTick();
-  if (section.value !== next.value || disabled.value || pending.value) return;
+  if (current !== navigation || section.value !== next.value || disabled.value || pending.value) return;
   inputForm.value?.querySelector(`[data-section="${next.value}"]`)?.focus();
 }
 </script>
