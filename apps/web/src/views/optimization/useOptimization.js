@@ -108,7 +108,7 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
     const inspected = await API.post("/api/v1/optimization/inspect", { content: text });
     if (disposed || ticket !== fileRevision) return;
     const restored = restoreOptimization(input, inspected);
-    content.value = restored.content; table.value = inspected; fileName.value = "已保存的实测 CSV";
+    content.value = restored.content; table.value = inspected; fileName.value = "";
     selectedRows.value = restored.selectedRows; factors.value = restored.factors;
     Object.assign(target, restored.target); batchSize.value = restored.batchSize; seed.value = restored.seed;
     confirmedMeasurements.value = false; confirmedCandidates.value = false;

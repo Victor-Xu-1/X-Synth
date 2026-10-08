@@ -11,7 +11,7 @@
           <input type="file" accept=".csv,text/csv" :aria-label="$tr('选择实测 CSV')" :disabled="disabled"
             @change="chooseFile($event.target.files?.[0])" />
         </label>
-        <span class="opt-file-name">{{ saved.source.value && fileName === '已保存的实测 CSV' ? $tr('已保存的实测 CSV') : fileName || $tr('未选择实测表') }}</span>
+        <span class="opt-file-name">{{ fileName || (saved.source.value ? $tr('已保存的实测 CSV') : $tr('未选择实测表')) }}</span>
         <span v-if="healthLoading" class="opt-runtime" role="status">{{ $tr('核对 BayBE 环境') }}</span>
         <span v-else class="opt-runtime" :class="{ ready: health?.ready }">
           BayBE {{ health?.versions?.baybe || $tr('版本未确认') }} · {{ health?.ready ? $tr('已就绪') : $tr('未就绪') }}
@@ -67,7 +67,7 @@
   </ModuleWorkbench>
 </template>
 <script setup>
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { optimizationMessage } from "./ui-copy";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import WorkbenchTabs from "@/components/WorkbenchTabs.vue";
@@ -79,6 +79,9 @@ import { useAnalysisInput } from "@/composables/useAnalysisInput";
 import { recordPath } from "@/common/analysis-records";
 import { LIMITS } from "./model";
 const workspace = ref(null), section = ref("measurements");
+let navigationEpoch = 0;
+watch(section, () => { navigationEpoch++; }, { flush: "sync" });
+onBeforeUnmount(() => { navigationEpoch++; });
 const sections = [
   { value: "measurements", title: "实测记录" },
   { value: "factors", title: "实验因子" },
@@ -93,17 +96,26 @@ const {
   count, canRecommend, chooseFile, toggleRow, selectPage, toggleFactor, updateTarget,
   updateFactor, refreshHealth, recommend,
 } = optimizer;
+watch(() => table.value?.table_sha256, resetSection, { flush: "sync" });
 const saved = useAnalysisInput({ kind: "optimization", querySeeds: ["smiles"],
-  clear: optimizer.clear, apply: optimizer.restoreInput, prefill: () => {} });
+  clear: resetInput, apply: optimizer.restoreInput, prefill: () => {} });
 const disabled = computed(() => running.value || fileLoading.value || saved.loading.value || !!saved.error.value);
-watch(() => table.value?.table_sha256, () => { section.value = "measurements"; });
+function resetSection() {
+  navigationEpoch++;
+  section.value = "measurements";
+}
+function resetInput() {
+  resetSection();
+  optimizer.clear();
+}
 async function moveSection(offset) {
   if (disabled.value) return;
   const destination = sections[sectionIndex.value + offset]?.value;
   if (!destination) return;
   section.value = destination;
+  const current = ++navigationEpoch;
   await nextTick();
-  if (!disabled.value && section.value === destination) {
+  if (current === navigationEpoch && !disabled.value && section.value === destination) {
     const panel = workspace.value?.querySelector(`[data-section="${destination}"]`);
     panel?.focus({ preventScroll: true });
     panel?.scrollIntoView?.({ block: "nearest" });

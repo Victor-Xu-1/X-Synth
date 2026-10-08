@@ -235,3 +235,25 @@ test("saved restore only inspects data, clears confirmations and cannot overwrit
   expect(state.confirmedMeasurements.value).toBe(false); expect(state.confirmedCandidates.value).toBe(false);
   expect(API.post.mock.calls.every(([url]) => url.endsWith("/inspect"))).toBe(true);
 });
+
+test("restored unnamed CSV has no display sentinel in fileName and a chosen literal sentinel name remains authoritative", async () => {
+  const { state } = setup();
+  const input = { content: CSV, table_sha256: table.table_sha256, selected_rows: [1, 2, 3],
+    factors: [{ name: "temperature", kind: "numerical", values: [10, 20] }],
+    target: { name: "response", kind: "response", direction: "minimize", unit: "mM" }, batch_size: 1, seed: 0,
+    confirmed_measurements: true, confirmed_candidates: true };
+  const original = JSON.stringify(input);
+  API.post.mockResolvedValue(table);
+  await state.restoreInput(input);
+  expect(state.fileName.value).toBe("");
+  expect(state.content.value).toBe(CSV);
+  expect(state.selectedRows.value).toEqual([1, 2, 3]);
+  await state.chooseFile(file("已保存的实测 CSV"));
+  expect(state.fileName.value).toBe("已保存的实测 CSV");
+  expect(state.content.value).toBe(CSV);
+  expect(state.table.value.table_sha256).toBe(table.table_sha256);
+  expect(state.confirmedMeasurements.value).toBe(false);
+  expect(state.confirmedCandidates.value).toBe(false);
+  expect(JSON.stringify(input)).toBe(original);
+  expect(API.post.mock.calls).toEqual(Array.from({ length: 2 }, () => ["/api/v1/optimization/inspect", { content: CSV }]));
+});

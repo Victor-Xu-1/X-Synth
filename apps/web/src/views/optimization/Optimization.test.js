@@ -286,3 +286,73 @@ test("correcting factor validation preserves the open editor and active input", 
   expect(document.activeElement).toBe(input.element);
   expect(wrapper.find(".opt-level-error").exists()).toBe(false);
 });
+
+test("rapid same-destination navigation focuses only the latest factors layer once", async () => {
+  API.post.mockResolvedValue(table);
+  const { wrapper } = await setup({ record: "a".repeat(32) });
+  const focus = jest.spyOn(wrapper.get('[data-section="factors"]').element, "focus");
+  const pending = [wrapper.vm.moveSection(1), wrapper.vm.moveSection(1), wrapper.vm.moveSection(-1)];
+  await Promise.all(pending);
+  expect(wrapper.get('[data-section="factors"]').attributes("hidden")).toBeUndefined();
+  expect(focus).toHaveBeenCalledTimes(1);
+  expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+  expect(wrapper.findAll('tbody input:checked')).toHaveLength(3);
+  expect(API.post).toHaveBeenCalledTimes(1);
+});
+
+test("direct tabs supersede pending adjacent navigation even when they return to its destination", async () => {
+  API.post.mockResolvedValue(table);
+  const { wrapper } = await setup({ record: "a".repeat(32) });
+  const focus = jest.spyOn(wrapper.get('[data-section="factors"]').element, "focus");
+  const pending = wrapper.vm.moveSection(1);
+  const tabs = wrapper.findAll('[role="tab"]');
+  tabs[2].element.click(); tabs[1].element.click();
+  await pending;
+  expect(wrapper.get('[data-section="factors"]').attributes("hidden")).toBeUndefined();
+  expect(focus).not.toHaveBeenCalled();
+});
+
+test("a synchronous CSV SHA reset retires navigation to the same measurements destination", async () => {
+  API.post.mockResolvedValue(table);
+  const { wrapper } = await setup({ record: "a".repeat(32) });
+  await wrapper.findAll('[role="tab"]')[1].trigger("click");
+  const focus = jest.spyOn(wrapper.get('[data-section="measurements"]').element, "focus");
+  const pending = wrapper.vm.moveSection(-1);
+  wrapper.vm.table = { ...table, table_sha256: "b".repeat(64) };
+  await pending;
+  expect(wrapper.get('[data-section="measurements"]').attributes("hidden")).toBeUndefined();
+  expect(focus).not.toHaveBeenCalled();
+  expect(wrapper.findAll('tbody input:checked')).toHaveLength(3);
+  expect(wrapper.get('[aria-label="temperature 候选水平"]').element.value).toBe("10\n20");
+});
+
+test("a context reset retires navigation even when the same CSV SHA is restored within the tick", async () => {
+  API.post.mockResolvedValue(table);
+  const { wrapper } = await setup({ record: "a".repeat(32) });
+  await wrapper.findAll('[role="tab"]')[1].trigger("click");
+  const focus = jest.spyOn(wrapper.get('[data-section="measurements"]').element, "focus");
+  const pending = wrapper.vm.moveSection(-1);
+  wrapper.vm.saved.startNew();
+  wrapper.vm.table = table;
+  await pending;
+  expect(wrapper.get('[data-section="measurements"]').attributes("hidden")).toBeUndefined();
+  expect(focus).not.toHaveBeenCalled();
+  expect(wrapper.findAll('tbody input:checked')).toHaveLength(0);
+  expect(wrapper.findAll(".opt-confirmation input").every(input => !input.element.checked)).toBe(true);
+  expect(API.post).toHaveBeenCalledTimes(1);
+});
+
+test("historical fallback is localized but a subsequently chosen sentinel-named CSV stays literal in English", async () => {
+  API.post.mockResolvedValue(table);
+  const { wrapper } = await setup({ record: "a".repeat(32) });
+  setLocale(DEFAULT_LOCALE, { persist: false }); await flushPromises();
+  expect(wrapper.get(".opt-file-name").text()).toBe("Saved measured CSV");
+  const file = wrapper.get('input[type="file"]');
+  Object.defineProperty(file.element, "files", { configurable: true, value: [{ name: "已保存的实测 CSV", size: CSV.length,
+    arrayBuffer: async () => new TextEncoder().encode(CSV).buffer }] });
+  await file.trigger("change"); await flushPromises();
+  expect(wrapper.vm.saved.source.value.id).toBe("a".repeat(32));
+  expect(wrapper.get(".opt-file-name").text()).toBe("已保存的实测 CSV");
+  expect(wrapper.vm.table.table_sha256).toBe(table.table_sha256);
+  expect(API.post.mock.calls).toEqual(Array.from({ length: 2 }, () => ["/api/v1/optimization/inspect", { content: CSV }]));
+});
