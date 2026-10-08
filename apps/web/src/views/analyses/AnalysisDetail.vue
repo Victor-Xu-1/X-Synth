@@ -40,8 +40,10 @@ const title = computed(() => {
 });
 const editLocation = computed(() => {
   const current = record.value;
-  if (!current || !["process", "assessment"].includes(current.kind)) return null;
-  return { path: analysisKinds[current.kind].to, query: { record: current.id } };
+  if (!current || !["process", "assessment", "conditions", "forward", "impurity"].includes(current.kind)) return null;
+  const location = analysisKinds[current.kind].to;
+  const [path, query] = location.split("?");
+  return { path, query: { ...Object.fromEntries(new URLSearchParams(query || "")), record: current.id } };
 });
 const canExportCsv = computed(() => !loading.value && !error.value &&
   record.value?.kind === "optimization" && record.value.status === "completed" &&

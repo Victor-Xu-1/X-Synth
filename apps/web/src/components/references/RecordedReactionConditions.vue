@@ -16,6 +16,17 @@
         <dd v-else>未记录</dd>
       </div>
     </dl>
+    <details v-if="parameters.some((field) => conditions?.[field.key]?.length)" class="recorded-parameter-source">
+      <summary>条件与加料原始字段</summary>
+      <dl>
+        <template v-for="field in parameters" :key="field.key">
+          <div v-for="(item, index) in conditions?.[field.key] || []" :key="`${field.key}-${index}`">
+            <dt>{{ field.key === 'time' ? recordedTimeLabel(item) : field.label }} · {{ recordedParameter(item) }}</dt>
+            <dd><code>{{ item.source_field }}</code><code v-if="item.details">{{ item.details }}</code></dd>
+          </div>
+        </template>
+      </dl>
+    </details>
     <div v-if="conditions?.inputs?.length" class="recorded-inputs">
       <div
         v-for="(input, index) in conditions.inputs"
@@ -43,6 +54,15 @@
         <span class="recorded-input-amount">{{
           input.amounts.map(recordedParameter).join(" / ") || "用量未记录"
         }}</span>
+        <details class="recorded-input-source">
+          <summary>投料原始字段</summary>
+          <code>{{ input.source_field }}</code>
+          <div v-for="(amount, amountIndex) in input.amounts" :key="amountIndex">
+            <span>{{ recordedParameter(amount) }}</span>
+            <code>{{ amount.source_field }}</code>
+            <code v-if="amount.details">{{ amount.details }}</code>
+          </div>
+        </details>
       </div>
     </div>
     <p v-else class="recorded-inputs-empty">试剂、催化剂与溶剂：未记录</p>
@@ -54,12 +74,9 @@ import {
   recordedTimeLabel,
 } from "@/common/reference-evidence";
 import StructurePreview from "@/components/workspace/StructurePreview.vue";
+import { recordedParameters } from "./reference-record";
 defineProps({ conditions: { type: Object, default: null } });
-const parameters = [
-  { key: "temperature", label: "温度" },
-  { key: "time", label: "时间" },
-  { key: "pressure", label: "压力" },
-];
+const parameters = recordedParameters;
 const roles = {
   REACTANT: "反应物",
   REAGENT: "试剂",
@@ -115,6 +132,31 @@ dd {
   color: var(--ws-muted);
   cursor: pointer;
   font-size: 10px;
+}
+.recorded-input-source {
+  grid-column: 2 / -1;
+}
+.recorded-input-source > div {
+  padding: 6px 0;
+}
+.recorded-parameter-source {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  margin-top: 8px;
+}
+.recorded-parameter-source summary {
+  color: var(--ws-muted);
+  cursor: pointer;
+  padding: 6px 0;
+}
+.recorded-parameter-source dl {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+}
+.recorded-parameter-source code {
+  display: block;
+  white-space: pre-wrap;
 }
 .recorded-input code {
   display: block;

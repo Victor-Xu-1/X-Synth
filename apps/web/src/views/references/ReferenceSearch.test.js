@@ -15,6 +15,7 @@ import {
 } from "../workspace/reaction-canvas.test-support";
 import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import ReferenceSearch from "./ReferenceSearch.vue";
+import "@/components/references/reference-dialog.test-support";
 
 jest.mock("vue-router", () => ({ useRoute: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn() } }));

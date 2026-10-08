@@ -8,11 +8,12 @@
   </template>
   <ImpurityResults v-else-if="kind === 'impurity'" :result="result" />
   <div v-else class="prediction-results">
-    <div class="reaction-identities">
+    <div class="reaction-identities" :class="{ 'has-product': result.product }">
       <div>
         <h2>反应物</h2>
         <SmilesImage :smiles="result.reactants" :width="360" :height="170" :show-error-image="false" allow-copy />
       </div>
+      <v-icon v-if="result.product" icon="mdi-arrow-right" class="reaction-direction" aria-hidden="true" />
       <div v-if="result.product">
         <h2>目标产物</h2>
         <SmilesImage :smiles="result.product" :width="300" :height="170" :show-error-image="false" allow-copy />
@@ -23,6 +24,7 @@
     </p>
     <ConditionRecommendation v-if="kind === 'conditions'" :results="conditionRows" :prediction="result" submitted
       :allow-evaluation="false" :aria-describedby="hasUnconfirmedLabels ? labelNoticeId : undefined" />
+    <ConditionRecordEvaluation v-if="kind === 'conditions'" :result="result" />
     <SynthesisPrediction v-else :results="result.products" :prediction="result" submitted />
   </div>
 </template>
@@ -38,6 +40,7 @@ import ProcessResults from "@/views/process/ProcessResults.vue";
 import RecommendationTable from "@/views/optimization/RecommendationTable.vue";
 import ImpurityResults from "@/views/impurity/ImpurityResults.vue";
 import ConditionRecommendation from "@/views/forward/tab/ConditionRecommendation.vue";
+import ConditionRecordEvaluation from "@/views/forward/ConditionRecordEvaluation.vue";
 import SynthesisPrediction from "@/views/forward/tab/SynthesisPrediction.vue";
 const props = defineProps({ kind: { type: String, required: true }, result: { type: Object, required: true } });
 const renderFailed = ref(false);
@@ -63,7 +66,9 @@ watch(() => [props.kind, props.result], () => { renderFailed.value = false; });
 h2 { font-size: 15px; margin-bottom: 8px; }
 .reaction-identities { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-bottom: 20px; }
 .reaction-identities > div { min-width: 0; }
+.reaction-identities.has-product { grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr); align-items: center; }
+.reaction-direction { color: var(--ws-muted); }
 .reaction-identities :deep(.v-img) { max-width: 100% !important; }
 .condition-label-notice { font-size: 12px; color: var(--ws-warning); margin-bottom: 14px; overflow-wrap: anywhere; }
-@media (max-width: 500px) { .reaction-identities { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 700px) { .reaction-identities, .reaction-identities.has-product { grid-template-columns: minmax(0, 1fr); } .reaction-direction { justify-self: center; transform: rotate(90deg); } }
 </style>

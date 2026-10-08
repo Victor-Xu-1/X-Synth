@@ -60,6 +60,8 @@ export function useReactionPrediction({
   reportError,
   context = [],
   onInvalidate = () => {},
+  onResult,
+  inputContext = () => ({}),
 }) {
   let generation = 0;
   let disposed = false;
@@ -104,6 +106,7 @@ export function useReactionPrediction({
     const payload = {
       ...Object.fromEntries(Object.entries(fields).map(([key, source]) => [key, source.value.trim()])),
       count: number.value,
+      ...inputContext(),
     };
     const current = () => !disposed && requested === generation && input === snapshot();
     pending.value++;
@@ -114,6 +117,7 @@ export function useReactionPrediction({
         results.value = response[resultField];
         prediction.value = response;
         submitted.value = true;
+        if (onResult) await onResult(response);
       }
     } catch (error) {
       if (current()) reportError(errorPrefix, error);

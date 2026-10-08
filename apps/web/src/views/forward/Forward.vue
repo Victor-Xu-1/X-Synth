@@ -1,5 +1,9 @@
 <template>
   <ModuleWorkbench :title="pageTitle" @select-module="replaceRoute">
+    <div v-if="saved.loading.value" class="workspace-loading" role="status">正在读取预测输入</div>
+    <p v-if="saved.error.value" class="tool-error" role="alert">{{ saved.error.value }}<v-btn variant="text" @click="saved.reload">重新读取</v-btn></p>
+    <p v-if="replayNote" class="workspace-muted" role="note">{{ replayNote }}</p>
+    <router-link v-if="displayError && recordPath(currentPrediction?.record_id)" :to="recordPath(currentPrediction.record_id)">打开已保存的结果</router-link>
     <template #actions>
       <v-btn
         to="/analyses"
@@ -117,43 +121,6 @@
         />
       </section>
     </WorkbenchForm>
-    <section
-      class="forward-results"
-      aria-labelledby="result-heading"
-      :aria-busy="busy"
-    >
-      <header class="forward-result-heading">
-        <h2 id="result-heading" class="tool-section-title">
-          {{ needsProduct ? "条件候选" : "产物候选" }}
-        </h2>
-        <span
-          v-if="selectedResults.length && !pendingTasks"
-          class="workspace-muted"
-        >
-          {{ selectedResults.length }} 条
-        </span>
-      </header>
-      <ConditionRecommendation
-        v-if="needsProduct"
-        :results="contextResults"
-        :prediction="conditions.prediction.value"
-        :submitted="conditions.submitted.value"
-        :error="displayError"
-        :pending="pendingTasks"
-        :evaluating="evaluating"
-        :score="reactionScore"
-        :input-pending="inputPending"
-        @evaluate="evaluate"
-      />
-      <SynthesisPrediction
-        v-else
-        :results="forwardResults"
-        :prediction="forward.prediction.value"
-        :submitted="forward.submitted.value"
-        :error="displayError"
-        :pending="pendingTasks"
-      />
-    </section>
   </ModuleWorkbench>
 </template>
 
@@ -161,8 +128,6 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useConfirm } from "vuetify-use-dialog";
-import { API } from "@/common/api";
-import { nativeResult } from "@/common/native-response";
 import { errorMessage } from "@/common/workspace-errors";
 import {
   reactionInputPrefill,
@@ -176,8 +141,10 @@ import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import ReactionInput from "@/components/workspace/ReactionInput.vue";
-import ConditionRecommendation from "./tab/ConditionRecommendation.vue";
-import SynthesisPrediction from "./tab/SynthesisPrediction.vue";
+import { useAnalysisDelivery } from "@/composables/useAnalysisDelivery";
+import { useAnalysisInput } from "@/composables/useAnalysisInput";
+import { predictionReplay } from "./prediction-replay";
+import { recordPath } from "@/common/analysis-records";
 
 const route = useRoute(),
   router = useRouter(),
@@ -207,12 +174,12 @@ const contextResults = ref([]),
   forwardResults = ref([]);
 const numContextResults = ref(10),
   numForwardResults = ref(5);
-const pendingTasks = ref(0),
-  evaluating = ref(false),
-  reactionScore = ref(null);
+const pendingTasks = ref(0);
 const requestError = ref(""),
   prefillError = ref(""),
   prefillPending = ref(false);
+const replayProduct = ref(""), replayNote = ref("");
+const deliverConditions = useAnalysisDelivery("conditions"), deliverForward = useAnalysisDelivery("forward");
 const displayError = computed(() => prefillError.value || requestError.value);
 const inputPending = computed(
   () =>
@@ -221,16 +188,13 @@ const inputPending = computed(
       ? canvas.value?.pending
       : reactantsInput.value?.pending),
 );
-const busy = computed(() => pendingTasks.value > 0 || evaluating.value);
+const busy = computed(() => pendingTasks.value > 0 || saved.loading.value || !!saved.error.value);
 const createConfirm = useConfirm();
-let generation = 0,
-  prefillGeneration = 0,
+let prefillGeneration = 0,
   forwardRevision = 0,
   disposed = false;
 
 function invalidatePresentation() {
-  generation++;
-  reactionScore.value = null;
   requestError.value = "";
 }
 function reportError(prefix, error) {
@@ -251,6 +215,8 @@ const conditions = useConditionPrediction({
   count: numContextResults,
   results: contextResults,
   context: [...shared.context, reactionSmiles, prefillError],
+  inputContext: () => ({ reaction_smiles: reactionSmiles.value }),
+  onResult: deliverConditions,
 });
 const forward = useForwardPrediction({
   ...shared,
@@ -258,11 +224,10 @@ const forward = useForwardPrediction({
   count: numForwardResults,
   results: forwardResults,
   context: [...shared.context, prefillError],
+  onResult: deliverForward,
 });
+const currentPrediction = computed(() => needsProduct.value ? conditions.prediction.value : forward.prediction.value);
 const selected = computed(() => (needsProduct.value ? conditions : forward));
-const selectedResults = computed(() =>
-  needsProduct.value ? contextResults.value : forwardResults.value,
-);
 const countError = computed(() => selected.value.countError.value);
 const resultLimit = computed({
   get: () =>
@@ -294,39 +259,6 @@ async function predict() {
   )
     return;
   await selected.value.predict();
-}
-
-async function evaluate() {
-  await nextTick();
-  if (
-    disposed ||
-    !needsProduct.value ||
-    busy.value ||
-    inputPending.value ||
-    prefillError.value ||
-    !contextReactants.value.trim() ||
-    !product.value.trim() ||
-    !contextResults.value.length ||
-    !workspace.can("fast_filter")
-  )
-    return;
-  const current = ++generation;
-  reactionScore.value = null;
-  requestError.value = "";
-  evaluating.value = true;
-  try {
-    const response = await API.post("/api/fast-filter/call-sync", {
-      smiles: [contextReactants.value, product.value],
-    });
-    const result = nativeResult(response);
-    const score = typeof result === "number" ? result : result?.score;
-    if (!Number.isFinite(score)) throw new Error("反应评分返回格式无效。");
-    if (!disposed && current === generation) reactionScore.value = score;
-  } catch (error) {
-    if (!disposed && current === generation) reportError("反应评分失败", error);
-  } finally {
-    evaluating.value = false;
-  }
 }
 
 async function clear() {
@@ -424,22 +356,35 @@ watch(
   },
   { flush: "sync" },
 );
-watch(() => route.query, prefill, {
-  immediate: true,
-  deep: true,
-  flush: "sync",
+const saved = useAnalysisInput({
+  kind: () => needsProduct.value ? "conditions" : "forward",
+  querySeeds: ["smiles", "rxnsmiles", "reaction_smiles", "reactants", "product"],
+  clear: () => {
+    prefillGeneration++; prefillPending.value = false; prefillError.value = "";
+    conditions.invalidate(); forward.invalidate();
+    reactionSmiles.value = ""; forwardSmiles.value = ""; replayProduct.value = ""; replayNote.value = "";
+  },
+  prefill,
+  apply: (input) => {
+    const restored = predictionReplay(input, needsProduct.value ? "conditions" : "forward");
+    if (needsProduct.value) {
+      numContextResults.value = restored.count; reactionSmiles.value = restored.reaction;
+      replayProduct.value = restored.product; replayNote.value = restored.note;
+    } else { numForwardResults.value = restored.count; forwardSmiles.value = restored.reactants; }
+  },
+});
+watch(() => canvas.value?.parsed, (value) => {
+  if (replayProduct.value && value?.products.some((row) => row.smiles === replayProduct.value)) {
+    canvas.value.selected = replayProduct.value; replayProduct.value = "";
+  }
 });
 onBeforeUnmount(() => {
   disposed = true;
-  generation++;
   prefillGeneration++;
 });
 </script>
 
 <style scoped>
-.forward-results {
-  min-width: 0;
-}
 .forward-advanced {
   font-size: 12px;
   margin-bottom: 24px;
@@ -455,8 +400,7 @@ onBeforeUnmount(() => {
   gap: 12px;
   padding: 12px 0;
 }
-.forward-submit-actions,
-.forward-result-heading {
+.forward-submit-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -467,11 +411,5 @@ onBeforeUnmount(() => {
 }
 .forward-parameters .tool-error {
   overflow-wrap: anywhere;
-}
-.forward-results {
-  padding-top: 24px;
-}
-.forward-result-heading .workspace-muted {
-  font-size: 12px;
 }
 </style>

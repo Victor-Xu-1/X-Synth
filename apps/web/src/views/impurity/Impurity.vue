@@ -25,8 +25,7 @@
                     size="x-small"
                     :aria-label="`添加${group.item}`"
                     :disabled="
-                      loading ||
-                      reading ||
+                      locked ||
                       dirty ||
                       form[group.key].length >= group.maximum
                     "
@@ -44,7 +43,7 @@
                 class="structure-select"
                 :aria-label="`编辑${group.item} ${index + 1}`"
                 :aria-pressed="row.id === selectedId"
-                :disabled="loading || reading || dirty"
+                :disabled="locked || dirty"
                 @click="select(row, group, index)"
               >
                 <SmilesImage
@@ -71,7 +70,7 @@
                     size="x-small"
                     variant="text"
                     :aria-label="`移除${group.item} ${index + 1}`"
-                    :disabled="loading || reading || dirty"
+                    :disabled="locked || dirty"
                     @click="remove(row, group)" /></template
               ></v-tooltip>
             </div>
@@ -84,7 +83,7 @@
               min="1"
               max="10"
               step="1"
-              :disabled="loading || reading"
+              :disabled="locked"
           /></label>
           <p class="workspace-muted">
             每条记录最多 80 个原子；全部输入最多 160
@@ -96,7 +95,7 @@
             variant="flat"
             prepend-icon="mdi-flask-outline"
             :loading="loading"
-            :disabled="loading || reading || pending || !hasStructures"
+            :disabled="locked || pending || !hasStructures"
             >预测可能杂质</v-btn
           >
         </div>
@@ -108,21 +107,21 @@
           ref="canvas"
           v-model="draft"
           :label="selectedLabel"
-          :disabled="loading || reading"
+          :disabled="locked"
           @dirty="dirty = $event"
         />
         <div class="canvas-actions">
           <v-btn
             variant="outlined"
             prepend-icon="mdi-check"
-            :disabled="loading || reading || canvas?.pending"
+            :disabled="locked || canvas?.pending"
             @click="apply"
             >应用结构</v-btn
           >
           <v-btn
             variant="text"
             prepend-icon="mdi-undo"
-            :disabled="loading || reading || !dirty"
+            :disabled="locked || !dirty"
             @click="restore"
             >放弃修改</v-btn
           ><span class="workspace-muted">{{
@@ -135,24 +134,21 @@
         </div>
       </div>
     </WorkbenchForm>
-    <section class="impurity-results-section" aria-live="polite">
+    <section class="impurity-status" aria-live="polite">
+      <p v-if="saved.loading.value" role="status">正在读取杂质分析输入</p>
+      <p v-if="saved.error.value" class="tool-error" role="alert">{{ saved.error.value }}<v-btn variant="text" @click="saved.reload">重新读取</v-btn></p>
       <p v-if="error" class="tool-error" role="alert">{{ error }}</p>
+      <router-link v-if="error && recordPath(result?.record_id)" :to="recordPath(result.record_id)">打开已保存的结果</router-link>
       <p v-if="editError" class="tool-error" role="alert">{{ editError }}</p>
       <div v-if="loading" class="workspace-loading" role="status">
         <v-progress-circular indeterminate size="24" />正在执行五模式、FF
         与原子映射
       </div>
-      <ImpurityResults v-else-if="result" :result="result" />
-      <div v-else class="workspace-empty">
-        <v-icon icon="mdi-flask-outline" size="28" />
-        <h2>暂无杂质模型候选</h2>
-      </div>
     </section>
   </ModuleWorkbench>
 </template>
 <script setup>
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { computed, nextTick, onBeforeUnmount, reactive, ref } from "vue";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import SmilesImage from "@/components/SmilesImage.vue";
@@ -163,11 +159,13 @@ import {
   createForm,
   impurityBody,
   newStructure,
+  restoreImpurityForm,
 } from "./impurity-form";
 import ImpurityStructureEditor from "./ImpurityStructureEditor.vue";
-import ImpurityResults from "./ImpurityResults.vue";
-const route = useRoute(),
-  form = reactive(createForm()),
+import { useAnalysisDelivery } from "@/composables/useAnalysisDelivery";
+import { useAnalysisInput } from "@/composables/useAnalysisInput";
+import { recordPath } from "@/common/analysis-records";
+const form = reactive(createForm()),
   canvas = ref(null);
 const selectedId = ref(form.reactants[0].id),
   selectedLabel = ref("反应物 1"),
@@ -181,7 +179,25 @@ const selected = computed(() =>
     (row) => row.id === selectedId.value,
   ),
 );
-const pending = computed(() => dirty.value || !!canvas.value?.pending);
+let revision = 0, disposed = false;
+function initialize(next) {
+  revision++;
+  Object.assign(form, next);
+  dirty.value = false; reading.value = false;
+  selectedId.value = form.reactants[0].id; selectedLabel.value = "反应物 1";
+  draft.value = form.reactants[0].smiles; editorRevision.value++; editError.value = "";
+}
+const saved = useAnalysisInput({
+  kind: "impurity", querySeeds: ["reactants", "known_product"], clear: () => initialize(createForm()),
+  apply: (input) => initialize(restoreImpurityForm(input)),
+  prefill: (_smiles, query) => {
+    const next = createForm();
+    if (typeof query.reactants === "string") next.reactants[0].smiles = query.reactants;
+    if (typeof query.known_product === "string") next.knownProduct[0].smiles = query.known_product;
+    initialize(next);
+  },
+});
+const pending = computed(() => dirty.value || !!canvas.value?.pending || saved.loading.value || !!saved.error.value);
 const hasStructures = computed(
   () =>
     form.reactants.every((row) => row.smiles.trim()) &&
@@ -189,18 +205,18 @@ const hasStructures = computed(
     form.reagents.every((row) => row.smiles.trim()) &&
     form.solvents.every((row) => row.smiles.trim()),
 );
-const { result, loading, error, calculate, reset } = useCalculation({
+const { loading, error, result, calculate } = useCalculation({
   input: form,
   pending,
   endpoint: "/api/v1/impurities/predict",
   body: () => impurityBody(form),
   accepts: acceptsImpurities,
   fallback: "杂质模型计算未完成，请检查输入与实际模型状态。",
+  onResult: useAnalysisDelivery("impurity"),
 });
-let revision = 0,
-  disposed = false;
+const locked = computed(() => loading.value || reading.value || saved.loading.value || !!saved.error.value);
 function select(row, group, index) {
-  if (loading.value || reading.value || dirty.value) return;
+  if (locked.value || dirty.value) return;
   revision++;
   selectedId.value = row.id;
   selectedLabel.value = `${group.item} ${index + 1}`;
@@ -209,6 +225,7 @@ function select(row, group, index) {
   editError.value = "";
 }
 function restore() {
+  if (locked.value) return;
   revision++;
   draft.value = selected.value?.smiles || "";
   editorRevision.value++;
@@ -216,7 +233,7 @@ function restore() {
   editError.value = "";
 }
 async function apply() {
-  if (loading.value || reading.value || canvas.value?.pending) return false;
+  if (locked.value || canvas.value?.pending) return false;
   const current = ++revision,
     row = selected.value;
   reading.value = true;
@@ -238,15 +255,14 @@ async function apply() {
   }
 }
 async function submit() {
-  if (loading.value || reading.value || pending.value || !hasStructures.value)
+  if (locked.value || pending.value || !hasStructures.value)
     return;
   if (await apply()) await calculate();
 }
 function add(group) {
   if (
     dirty.value ||
-    loading.value ||
-    reading.value ||
+    locked.value ||
     form[group.key].length >= group.maximum
   )
     return;
@@ -257,30 +273,13 @@ function add(group) {
 function remove(row, group) {
   if (
     dirty.value ||
-    loading.value ||
-    reading.value ||
+    locked.value ||
     form[group.key].length <= group.minimum
   )
     return;
   form[group.key] = form[group.key].filter((item) => item.id !== row.id);
   if (selectedId.value === row.id) select(form.reactants[0], GROUPS[0], 0);
 }
-watch(
-  () => [route.query.reactants, route.query.known_product],
-  () => {
-    revision++;
-    reset();
-    Object.assign(form, createForm());
-    if (typeof route.query.reactants === "string")
-      form.reactants[0].smiles = route.query.reactants;
-    if (typeof route.query.known_product === "string")
-      form.knownProduct[0].smiles = route.query.known_product;
-    dirty.value = false;
-    reading.value = false;
-    select(form.reactants[0], GROUPS[0], 0);
-  },
-  { immediate: true },
-);
 onBeforeUnmount(() => {
   disposed = true;
   revision++;
@@ -343,7 +342,7 @@ h2 {
   gap: 7px;
   font-size: 13px;
 }
-.impurity-results-section {
+.impurity-status {
   margin-top: 24px;
   padding-top: 22px;
   border-top: 1px solid var(--ws-border);

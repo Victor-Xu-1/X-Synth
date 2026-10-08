@@ -17,7 +17,7 @@ const multiProduct = {
   query: "CC(=O)C(=Cc1ccncc1)C(C)=O.Cl",
 };
 const boardOf = (page) => page.locator(".reaction-input");
-const rowOf = (page, id) => page.locator(`[data-reference-id="${id}"]`);
+const rowOf = (page, id) => page.locator(`[data-cy="reference-row"][data-reference-id="${id}"]`);
 const proposal = (page) =>
   page.getByRole("dialog").filter({ hasText: "确认参考反应" });
 const arrays = (row) =>
@@ -130,9 +130,6 @@ for (const width of [1440, 390]) {
           input = board.getByRole("textbox"),
           original = await input.inputValue();
         assert.equal(row.products.length, 2);
-        await rowOf(page, row.id)
-          .locator(".reference-citation > summary")
-          .click();
         const download = page.waitForEvent("download");
         await rowOf(page, row.id)
           .getByRole("button", { name: "导出完整反应 RXN", exact: true })

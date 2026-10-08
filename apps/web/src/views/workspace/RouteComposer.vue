@@ -2,7 +2,7 @@
   <section class="route-workbench">
     <WorkbenchForm
       :full-height="mode !== 'import'"
-      :inspector-visible="mode !== 'import'"
+      :inspector-visible="mode !== 'import' && !comparisonVisible"
       :parameter-label="mode === 'manual' ? '候选生成' : '搜索配置'"
       @submit="submit"
     >
@@ -27,18 +27,59 @@
               :value="item.value"
               type="button"
               :prepend-icon="item.icon"
-              :disabled="busy"
+              :disabled="busy || readingStructure"
               >{{ item.title }}</v-btn
             ></v-btn-toggle
           >
         </div>
+        <div
+          v-if="mode === 'manual'"
+          class="manual-view-controls"
+          role="group"
+          aria-label="单步分析视图"
+        >
+          <v-btn
+            variant="text"
+            type="button"
+            prepend-icon="mdi-draw"
+            data-cy="manual-input-tab"
+            :aria-pressed="!comparisonVisible"
+            :disabled="busy || readingStructure"
+            @click="showManualInput"
+            >目标输入</v-btn
+          >
+          <v-btn
+            variant="text"
+            type="button"
+            prepend-icon="mdi-compare"
+            data-cy="manual-comparison-tab"
+            :aria-pressed="comparisonVisible"
+            :disabled="!canCompareManual"
+            @click="showManualComparison"
+            >候选比较<span
+              v-if="draft.manualResult"
+              class="manual-candidate-count"
+              >{{ draft.manualResult.outcomes.length }}</span
+            ></v-btn
+          >
+        </div>
       </template>
       <StructureWorkspace
-        v-show="mode !== 'import'"
+        v-show="mode !== 'import' && !comparisonVisible"
         ref="structure"
-        v-model="draft.smiles"
-        :disabled="busy"
+        v-model="structureSmiles"
+        :disabled="busy || readingStructure"
       />
+      <template v-if="comparisonVisible">
+        <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
+        <ManualCandidateComparison
+          :result="draft.manualResult"
+          :context="draft.manualContext"
+          :busy="busy"
+          @preview="preview"
+          @edit="editCandidate"
+        />
+      </template>
       <template #parameters>
         <div class="workbench-settings">
           <h2>{{ mode === "manual" ? "候选生成" : "搜索配置" }}</h2>
@@ -46,9 +87,13 @@
             v-if="mode === 'auto'"
             v-model:name="draft.name"
             v-model:settings="draft.settings"
-            :disabled="busy"
+            :disabled="busy || readingStructure"
           />
-          <OneStepSettings v-else v-model="draft.manual" :disabled="busy" />
+          <OneStepSettings
+            v-else
+            v-model="draft.manual"
+            :disabled="busy || readingStructure"
+          />
           <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
           <div v-if="!ready" class="workbench-readiness" role="status">
             <span>{{
@@ -68,7 +113,7 @@
               variant="text"
               type="button"
               prepend-icon="mdi-eraser"
-              :disabled="busy"
+              :disabled="busy || readingStructure"
               @click="clearStructure"
               >清空</v-btn
             ><v-btn
@@ -86,13 +131,6 @@
       </template>
     </WorkbenchForm>
     <RouteImportPanel v-if="mode === 'import'" />
-    <ManualOutcomes
-      v-if="mode === 'manual' && draft.manualResult"
-      :result="draft.manualResult"
-      :busy="busy"
-      @preview="preview"
-      @edit="editCandidate"
-    />
     <RoutePreview
       v-model="previewOpen"
       :candidates="previewCandidates"
@@ -101,6 +139,7 @@
   </section>
 </template>
 <script setup>
+import { computed } from "vue";
 import { workbenchModes } from "@/common/workbench-model";
 import { useRouteWorkbench } from "@/composables/useRouteWorkbench";
 import StructureWorkspace from "@/components/workspace/StructureWorkspace.vue";
@@ -108,25 +147,35 @@ import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import RouteSearchSettings from "@/components/workspace/RouteSearchSettings.vue";
 import OneStepSettings from "@/components/workspace/OneStepSettings.vue";
 import RouteImportPanel from "@/components/workspace/RouteImportPanel.vue";
-import ManualOutcomes from "@/components/workspace/ManualOutcomes.vue";
+import ManualCandidateComparison from "@/components/workspace/ManualCandidateComparison.vue";
 import RoutePreview from "@/components/routes/RoutePreview.vue";
 const {
   draft,
   workspace,
   structure,
+  structureSmiles,
+  readingStructure,
   busy,
   error,
   mode,
   ready,
   canSubmit,
+  canCompareManual,
   previewOpen,
   previewCandidates,
   changeMode,
+  showManualInput,
+  showManualComparison,
   clearStructure,
   submit,
   preview,
   editCandidate,
 } = useRouteWorkbench();
+const comparisonVisible = computed(() =>
+  mode.value === "manual" &&
+  draft.manualView === "comparison" &&
+  Boolean(draft.manualResult),
+);
 </script>
 <style scoped>
 .route-workbench {
@@ -165,6 +214,27 @@ const {
   flex-direction: column;
   gap: 24px;
   min-width: 0;
+}
+.manual-view-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 16px;
+  border-bottom: 1px solid var(--ws-border);
+}
+.manual-view-controls .v-btn {
+  min-height: 40px;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  font-size: 13px;
+}
+.manual-view-controls .v-btn[aria-pressed="true"] {
+  color: var(--ws-accent);
+  border-bottom-color: var(--ws-accent);
+}
+.manual-candidate-count {
+  margin-left: 8px;
+  font-family: var(--ws-font-code);
 }
 .workbench-settings h2 {
   font-size: 16px;

@@ -100,6 +100,7 @@ def mock_frontend(monkeypatch, before, after, old_records, new_records):
         "packages/adapters/optimization/runtime.py",
         "apps/api/condition_routes.py",
         "tests/integration/forward_browser.mjs",
+        "tests/integration/impurity_browser.mjs",
         "tests/integration/workbench_shell_browser.mjs",
         "packages/knowledge_base/reaction_library.py",
         "packages/knowledge_base/ord_reader.py",
@@ -172,6 +173,17 @@ def test_platform_benchmark_selects_only_measurement_and_budget_contracts(tmp_pa
     item = snapshot(tmp_path, {**files, path: "pass"})
     profile.guard_paths({path})
     assert profile.python_tests(item, item, {path}) == sorted(expected)
+
+
+def test_condition_replay_contract_does_not_select_unrelated_scientific_suites(tmp_path):
+    path = "apps/api/condition_routes.py"
+    expected = {
+        "tests/unit/test_condition_input_api.py", "tests/unit/test_prediction_input.py",
+        "tests/unit/test_analysis_records.py", "tests/unit/test_native_scientific_boundaries.py",
+        "tests/unit/test_product_api_security.py",
+    }
+    item = snapshot(tmp_path, {**{name: "pass" for name in expected | profile.SCIENTIFIC_TESTS}, path: "pass"})
+    assert set(profile.python_tests(item, item, {path})) == expected
 
 
 def test_template_paging_selects_cursor_api_and_legacy_consumers_only(tmp_path):

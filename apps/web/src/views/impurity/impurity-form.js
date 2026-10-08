@@ -11,6 +11,22 @@ export const GROUPS = [
 export const newStructure = (smiles = "") => ({ id: crypto.randomUUID(), smiles });
 export const createForm = () => ({ reactants: [newStructure()], knownProduct: [newStructure()], reagents: [], solvents: [], count: 5 });
 
+export function restoreImpurityForm(input) {
+  if (!Number.isInteger(input?.count) || input.count < 1 || input.count > 10)
+    throw new CalculationInputError("历史杂质分析的候选数量无效。");
+  const fields = { reactants: "reactants", knownProduct: "known_product", reagents: "reagents", solvents: "solvents" };
+  const restored = { count: input?.count };
+  for (const group of GROUPS) {
+    const values = group.key === "knownProduct" ? [input?.known_product] : input?.[fields[group.key]];
+    if (!Array.isArray(values) || values.length < group.minimum || values.length > group.maximum
+      || values.some((value) => typeof value !== "string" || !value.trim()))
+      throw new CalculationInputError("历史杂质分析缺少完整物料结构。");
+    restored[group.key] = values.map(newStructure);
+  }
+  impurityBody(restored);
+  return restored;
+}
+
 export function impurityBody(form) {
   const values = (key) => form[key].map((row) => {
     if (!row.smiles.trim()) throw new CalculationInputError("请应用全部已添加物料的结构，或移除不参与本次分析的空记录。");

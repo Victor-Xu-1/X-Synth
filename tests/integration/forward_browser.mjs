@@ -4,7 +4,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { nativeResult } from "../../apps/web/src/common/native-response.js";
-import { expect, json, native, parse, run, settled } from "./reaction_browser_support.mjs";
+import { boardReady, choose, expect, identities, json, native, parse, run, settled } from "./reaction_browser_support.mjs";
 
 // Select cases with node --test --test-name-pattern; use a real local runtime and Chrome.
 // Configure X_SYNTH_BROWSER_URL, X_SYNTH_PLAYWRIGHT_MODULE and external X_SYNTH_BROWSER_EVIDENCE.
@@ -101,6 +101,7 @@ async function openWorkspace(page, kind, input = { reactants, product }) {
 }
 
 async function submitPrediction(page, activity, receipt, kind, fields, count, duplicate = false) {
+  const fullReaction = kind === "conditions" ? await page.locator(".reaction-input").getByRole("textbox").inputValue() : null;
   const [response] = await Promise.all([
     page.waitForResponse((response) => new URL(response.url()).pathname === endpoints[kind] &&
       response.request().method() === "POST", { timeout: 120000 }),
@@ -111,11 +112,14 @@ async function submitPrediction(page, activity, receipt, kind, fields, count, du
   ]);
   const data = await json(response);
   receipt.predictions.push({ kind, response: data });
-  assert.deepEqual(activity.calls[kind], [{ ...fields, count }], "one request must bind the settled input and count");
+  const payload = { ...fields, count, ...(fullReaction ? { reaction_smiles: fullReaction } : {}) };
+  assert.deepEqual(activity.calls[kind], [payload], "one request must bind the settled input and count");
   assert.equal(data.model, kind === "conditions" ? "nn_v1" : "graph2smiles_uspto_stereo");
   assert.equal(data.evidence_type, "model_prediction");
   assert.match(data.asset_identity, /^[a-f0-9]{64}$/);
-  await expect(page.locator('[data-cy="submit-button"]')).toBeEnabled({ timeout: 30000 });
+  await page.waitForURL((url) => url.pathname === `/analyses/${data.record_id}`);
+  await expect(page.locator(".analysis-stage")).toContainText("02 / 结果");
+  await expect(page.locator("form")).toHaveCount(0);
   return data;
 }
 
@@ -127,12 +131,18 @@ async function checkRecord(page, data, kind, payload, receipt) {
   assert.equal(typeof data.record_id, "string");
   assert(data.record_id.trim(), "a real analysis record is required");
   const recordPath = `/analyses/${encodeURIComponent(data.record_id)}`;
-  await expect(page.locator(`[data-cy="${kind === "conditions" ? "condition" : "forward"}-record-link"]`))
-    .toHaveAttribute("href", recordPath);
+  assert.equal(new URL(page.url()).pathname, recordPath);
   const record = await json(await page.request.get(`/api/v1${recordPath}`));
   receipt.records.push({ id: record.id, kind: record.kind, status: record.status, inputs: record.inputs, result: record.result });
   const inputs = { ...payload, reactants: await canonical(page, payload.reactants) };
-  if (kind === "conditions") inputs.product = await canonical(page, payload.product);
+  if (kind === "conditions") {
+    inputs.product = await canonical(page, payload.product);
+    const request = receipt.requests.find((row) => row.kind === kind).payload;
+    inputs.reaction_context = {
+      reaction_smiles: (await parse(page, request.reaction_smiles)).reaction_smiles,
+      selected_product: inputs.product,
+    };
+  }
   assert.equal(record.id, data.record_id);
   assert.equal(record.kind, kind);
   assert.equal(record.status, "completed");
@@ -221,11 +231,14 @@ async function saveResults(page, name) {
     "result tables must scroll inside their own region");
   if (!evidence) return;
   await mkdir(evidence, { recursive: true });
-  await page.locator(".forward-results").scrollIntoViewIfNeeded();
-  await page.screenshot({ path: path.join(evidence, `${name}-results.png`) });
+  await page.locator(".prediction-results").scrollIntoViewIfNeeded();
+  await page.evaluate(() => document.fonts.ready);
+  await page.screenshot({ path: path.join(evidence, `${name}-results.png`), fullPage: true, animations: "disabled" });
 }
 
 async function changeInput(page, board, kind, value) {
+  await page.getByRole("link", { name: "返回修改", exact: true }).click();
+  await settled(board);
   await board.getByRole("textbox").fill(value);
   const selectors = kind === "conditions"
     ? ['[data-cy="condition-table"]', '[data-cy="condition-record-link"]', ".condition-result-toolbar", ".condition-provenance"]
@@ -249,6 +262,44 @@ realTest("real model labels are preserved without attempting invalid structure i
     await saveResults(page, "condition-source-labels-1440");
   });
 
+realTest("full reaction replay preserves agents, multiple products and explicit selection", 1440,
+  "condition-full-replay", async (page, activity, receipt) => {
+    const reaction = `${reactants}>O>CO.${product}`;
+    await page.goto(`/forward?${new URLSearchParams({ tab: "context", rxnsmiles: reaction })}`);
+    const board = page.locator(".reaction-input");
+    await boardReady(board);
+    await expect(board.locator(".reaction-role-summary")).toContainText("产物 2");
+    const draft = await parse(page, await board.getByRole("textbox").inputValue());
+    const selected = draft.products.find((row) => row.smiles === product);
+    assert(selected);
+    await expect(page.locator('[data-cy="submit-button"]')).toBeDisabled();
+    const title = `产物 ${selected.index} · ${selected.formula}`;
+    await choose(page, board, title);
+    await settled(board);
+    await page.locator('[data-cy="settings-num-results"] input').fill("3");
+    const fields = { reactants: draft.reactants.map((row) => row.smiles).join("."), product };
+    const data = await submitPrediction(page, activity, receipt, "conditions", fields, 3);
+    const record = await checkRecord(page, data, "conditions", { ...fields, count: 3 }, receipt);
+    await saveResults(page, "full-reaction-desktop");
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "反应条件结果", exact: true })).toBeVisible();
+    expectCalls(activity, 1);
+    await page.getByRole("link", { name: "返回修改", exact: true }).click();
+    await settled(board);
+    const replay = await parse(page, await board.getByRole("textbox").inputValue());
+    assert.deepEqual(identities(replay), identities(draft));
+    const restoredSelection = replay.products.find((row) => row.smiles === product);
+    await expect(board.locator('[data-cy="reaction-product-choice"] input')).toHaveValue(`产物 ${restoredSelection.index} · ${restoredSelection.formula}`);
+    await expect(page.locator('[data-cy="settings-num-results"] input')).toHaveValue("3");
+    await expect(page.locator('[data-cy="submit-button"]')).toBeEnabled();
+    await checkPersisted(page, record, receipt);
+    expectCalls(activity, 1);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await settled(board);
+    await expect(page.locator('[data-cy="submit-button"]')).toBeEnabled();
+    receipt.replay_roles = identities(replay);
+  });
+
 for (const width of [1440, 390]) {
   realTest(`real conditions workspace at ${width}px`, width, "conditions", async (page, activity, receipt) => {
     const { board, fields } = await openWorkspace(page, "conditions");
@@ -267,7 +318,7 @@ for (const width of [1440, 390]) {
     const [response] = await Promise.all([
       page.waitForResponse((response) => new URL(response.url()).pathname === endpoints.ff &&
         response.request().method() === "POST", { timeout: 120000 }),
-      page.locator('[data-cy="evaluate-reaction"]').click(),
+      page.getByRole("button", { name: "评估反应可行性", exact: true }).click(),
     ]);
     const ffResponse = await json(response), result = nativeResult(ffResponse);
     receipt.ff_response = ffResponse;
@@ -275,7 +326,7 @@ for (const width of [1440, 390]) {
     assert(Number.isFinite(score) && score >= 0 && score <= 1);
     assert.deepEqual(activity.calls.ff, [{ smiles: [fields.reactants, fields.product] }],
       "FF must evaluate the same concrete reaction as NN");
-    await expect(page.locator(".condition-result-toolbar")).toContainText(`FF）：${score.toFixed(3)}`);
+    await expect(page.locator(".condition-record-evaluation")).toContainText(`FF）：${score.toFixed(3)}`);
     expectCalls(activity, 1, 0, 1);
     await saveResults(page, `conditions-${width}-ff`);
     await changeInput(page, board, "conditions", "CCO>>CC=O");
