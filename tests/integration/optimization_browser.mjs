@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 // Exercises the selected preview/deployed UI against the real product API.
@@ -51,7 +51,10 @@ try {
     path: join(evidence, "empty-desktop.png"),
     fullPage: true,
   });
-  await page.getByLabel("选择实测 CSV").setInputFiles(dataset);
+  const datasetBytes = await readFile(dataset);
+  const uploadedBytes = datasetBytes.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf]))
+    ? datasetBytes : Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), datasetBytes]);
+  await page.getByLabel("选择实测 CSV").setInputFiles({ name: basename(dataset), mimeType: "text/csv", buffer: uploadedBytes });
   await page.getByText("1728 条记录 · 已选择 0", { exact: true }).waitFor();
   assert.equal(await page.getByLabel("推荐下一批", { exact: true }).count(), 0);
   await page.getByLabel("实测响应列").selectOption("yield");
@@ -118,6 +121,7 @@ try {
     createHash("sha256").update(recorded.inputs.content).digest("hex"),
     recorded.inputs.table_sha256,
   );
+  assert.equal(recorded.inputs.table_sha256, createHash("sha256").update(uploadedBytes).digest("hex"));
   await page.screenshot({
     path: join(evidence, "recommendations-desktop.png"),
     fullPage: true,
@@ -133,7 +137,7 @@ try {
   );
   const originalDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "下载本次原始实测 CSV", exact: true }).click();
-  assert.equal(createHash("sha256").update(await readFile(await (await originalDownload).path())).digest("hex"), recorded.inputs.table_sha256);
+  assert.deepEqual(await readFile(await (await originalDownload).path()), uploadedBytes);
   await page.reload();
   await page.getByRole("heading", { name: "实验优化结果", exact: true }).waitFor();
   assert.equal(submissions, 1);
@@ -145,10 +149,15 @@ try {
   await page.locator(".opt-seed-setting summary").click();
   assert.equal(await page.getByLabel("随机种子", { exact: true }).inputValue(), String(recorded.inputs.seed));
   await page.screenshot({ path: join(evidence, "browser-back-input-desktop.png"), fullPage: true });
+  await page.getByRole("link", { name: "新建优化", exact: true }).click();
+  await page.getByText("尚无已选实验数据", { exact: true }).waitFor();
+  await page.reload();
+  await page.getByText("尚无已选实验数据", { exact: true }).waitFor();
+  assert.equal(await page.locator(".opt-layout").count(), 0);
   await page.goForward();
   await page.getByRole("heading", { name: "实验优化结果", exact: true }).waitFor();
   assert.equal(submissions, 1);
-  checks.push("refresh and browser Back/Forward retain the exact record/input without recomputation; confirmation resets");
+  checks.push("Back restores the exact input with confirmations reset; same-URL New clears recovery, refresh stays fresh; Forward reads saved result without recomputation");
   for (const width of [768, 1920]) {
     await page.setViewportSize({ width, height: 960 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);

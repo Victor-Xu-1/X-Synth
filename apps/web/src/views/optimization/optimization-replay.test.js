@@ -22,6 +22,16 @@ test("restore preserves exact CSV bytes, rows, ordered levels, target/unit/direc
   expect(restored.confirmedMeasurements).toBeUndefined();
 });
 
+test("unselected pending responses do not invalidate an accepted saved selection", () => {
+  const known = input();
+  known.content += '20,b,pending\r\n';
+  const inspected = { ...table, row_count: 4, columns: table.columns.map((column) =>
+    column.name === "response" ? { ...column, numeric: false } : column) };
+  const restored = restoreOptimization(known, inspected);
+  expect(restored.target).toEqual(known.target);
+  expect(restored.selectedRows).toEqual([1, 2, 3]);
+});
+
 test.each([
   { selected_rows: [1, 1, 2] }, { selected_rows: [1, 2, 4] }, { selected_rows: [1, "2", 3] },
   { selected_rows: [1, 2] }, { batch_size: "1" }, { seed: -1 }, { seed: "42" },

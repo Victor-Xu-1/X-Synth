@@ -104,6 +104,16 @@ test("opening/importing only inspects actual file and never chooses rows, factor
   expect(API.post).toHaveBeenCalledTimes(1);
   expect(API.post.mock.calls[0][0]).toBe("/api/v1/optimization/inspect");
 });
+
+test("actual UTF-8 upload decoding preserves the BOM and CRLF bytes sent for inspection", async () => {
+  const { state } = setup();
+  const source = "\ufeff" + CSV.replace(/\n/g, "\r\n");
+  const bytes = new TextEncoder().encode(source);
+  API.post.mockResolvedValueOnce(table);
+  await state.chooseFile({ name: "bom.csv", size: bytes.length, arrayBuffer: async () => bytes.buffer });
+  expect(API.post).toHaveBeenCalledWith("/api/v1/optimization/inspect", { content: source });
+  expect([...new TextEncoder().encode(state.content.value)]).toEqual([...bytes]);
+});
 test("late file reads/inspection cannot replace a more recently selected actual file", async () => {
   const { state } = setup();
   const old = deferred();

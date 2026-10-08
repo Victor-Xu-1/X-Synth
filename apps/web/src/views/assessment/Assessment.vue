@@ -1,8 +1,8 @@
 <template>
   <ModuleWorkbench title="分子合成复杂度评估">
-    <template #actions><v-btn variant="text" prepend-icon="mdi-history" to="/analyses?kind=assessment">评估记录</v-btn></template>
+    <template #actions><v-btn variant="text" prepend-icon="mdi-history" to="/analyses?kind=assessment">评估记录</v-btn><v-btn v-if="saved.source.value || saved.error.value" variant="text" prepend-icon="mdi-plus" to="/assessment" :disabled="loading" @click="saved.startNew">新建评估</v-btn></template>
     <div v-if="saved.loading.value" class="workspace-loading" role="status">正在读取已存结构</div>
-    <div v-if="saved.error.value" class="tool-error" role="alert">{{ saved.error.value }}<v-btn variant="text" @click="saved.reload">重新读取</v-btn><v-btn variant="text" to="/assessment">新建评估</v-btn></div>
+    <div v-if="saved.error.value" class="tool-error" role="alert">{{ saved.error.value }}<v-btn variant="text" @click="saved.reload">重新读取</v-btn></div>
     <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
     <router-link v-if="error && recordPath(result?.record_id)" :to="recordPath(result.record_id)">打开已保存的结果</router-link>
     <WorkbenchForm parameter-label="分子评估参数" @submit="calculate">

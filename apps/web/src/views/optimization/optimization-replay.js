@@ -25,7 +25,7 @@ export function restoreOptimization(input, table) {
       || !Number.isInteger(input.seed) || input.seed < 0 || input.seed > 2 ** 32 - 1
       || input.confirmed_measurements !== true || input.confirmed_candidates !== true) fail();
   const column = (name) => table.columns.find((item) => item.name === name && item.selectable !== false);
-  if (!column(input.target.name)?.numeric || (input.target.kind === "yield_percent"
+  if (!column(input.target.name) || (input.target.kind === "yield_percent"
     && (input.target.unit !== "%" || input.target.direction !== "maximize"))) fail();
   const factors = input.factors.map((factor) => {
     if (!column(factor?.name) || factor.name === input.target.name

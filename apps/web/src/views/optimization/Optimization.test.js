@@ -88,6 +88,27 @@ test("saved replay restores every declared field but requires fresh confirmation
   expect(API.post.mock.calls).toEqual([["/api/v1/optimization/inspect", { content: CSV }]]);
 });
 
+test("same-URL New Optimization clears a history-restored form and its recovery pointer", async () => {
+  window.history.replaceState({ xSynthSubmittedInput: { version: 1, kind: "optimization", id: "a".repeat(32), location: "/optimization" } }, "");
+  API.post.mockResolvedValue(table);
+  const { wrapper } = await setup();
+  expect(wrapper.find(".opt-layout").exists()).toBe(true);
+  await wrapper.findAll("button").find((button) => button.text() === "新建优化").trigger("click");
+  expect(wrapper.find(".opt-layout").exists()).toBe(false);
+  expect(wrapper.text()).toContain("尚无已选实验数据");
+  expect(window.history.state.xSynthSubmittedInput).toBeUndefined();
+});
+
+test("declared response with unselected pending labels remains editable after replay", async () => {
+  const inspected = { ...table, columns: columns.map((column) => column.name === "response"
+    ? { ...column, numeric: false, values: ["0", "2", "3", "pending"] } : column) };
+  API.post.mockResolvedValue(inspected);
+  const { wrapper } = await setup({ record: "a".repeat(32) });
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  expect(wrapper.get('[aria-label="实测响应列"]').element.value).toBe("response");
+  expect(wrapper.findAll('[aria-label="实测响应列"] option').map((option) => option.element.value)).toContain("response");
+});
+
 test("a mismatched saved CSV inspection locks editing and exposes retry", async () => {
   API.post.mockResolvedValue({ ...table, table_sha256: "b".repeat(64) });
   const { wrapper } = await setup({ record: "a".repeat(32) });

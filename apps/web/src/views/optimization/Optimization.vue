@@ -2,7 +2,7 @@
   <ModuleWorkbench title="反应优化">
     <template #actions>
       <v-btn to="/analyses?kind=optimization" variant="text" prepend-icon="mdi-history">研究记录</v-btn>
-      <v-btn v-if="saved.source.value || saved.error.value" to="/optimization" variant="text" prepend-icon="mdi-plus">新建优化</v-btn>
+      <v-btn v-if="saved.source.value || saved.error.value" to="/optimization" variant="text" prepend-icon="mdi-plus" :disabled="running" @click="saved.startNew">新建优化</v-btn>
     </template>
     <div class="optimization-workspace" :aria-busy="disabled">
       <div class="opt-input-bar">

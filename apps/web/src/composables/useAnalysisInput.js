@@ -37,7 +37,19 @@ export function useAnalysisInput({ kind, clear, apply, prefill, querySeeds = ["s
       if (active()) error.value = cause instanceof CalculationInputError ? cause.message : errorMessage(cause, "读取已存输入失败。");
     } finally { if (active()) loading.value = false; }
   }
+  function startNew(event) {
+    if (disposed || event?.ctrlKey || event?.metaKey || event?.shiftKey || event?.altKey || event?.button > 0) return;
+    try {
+      const state = { ...window.history.state };
+      delete state.xSynthSubmittedInput;
+      window.history.replaceState(state, "");
+      generation++; source.value = null; error.value = ""; loading.value = false; clear();
+    } catch (cause) {
+      event?.preventDefault?.();
+      error.value = errorMessage(cause, "清除当前输入失败。");
+    }
+  }
   watch(() => [toValue(kind), route.fullPath, route.query], load, { immediate: true, deep: true });
   onBeforeUnmount(() => { disposed = true; generation++; });
-  return { source, loading, error, reload: load };
+  return { source, loading, error, reload: load, startNew };
 }

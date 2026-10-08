@@ -11,7 +11,7 @@
         >
           <option value="" disabled>未选择</option>
           <option
-            v-for="column in numericColumns"
+            v-for="column in responseColumns"
             :key="column.name"
             :value="column.name"
           >
@@ -187,9 +187,9 @@ defineEmits([
   "update:confirmedCandidates",
   "recommend",
 ]);
-const numericColumns = computed(() =>
+const responseColumns = computed(() =>
   props.columns.filter(
-    (column) => column.numeric && column.selectable !== false,
+    (column) => column.selectable !== false,
   ),
 );
 const factorColumns = computed(() =>

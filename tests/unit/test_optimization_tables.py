@@ -147,12 +147,17 @@ def test_candidate_cardinality_is_checked_before_cartesian_construction():
         OptimizationRequest.model_validate(request_body(factors=factors))
 
 
-def test_only_explicitly_selected_actual_rows_are_used_not_unselected_response_values():
-    prepared = prepare_experiment(OptimizationRequest.model_validate(request_body()))
+@pytest.mark.parametrize("unselected_response", ["4", "pending", ""])
+def test_only_explicitly_selected_actual_rows_are_used_not_unselected_response_values(unselected_response):
+    content = CSV.replace("20,b,4", f"20,b,{unselected_response}")
+    prepared = prepare_experiment(OptimizationRequest.model_validate(request_body(content)))
     assert [row["response"] for row in prepared.measurements] == [1, 2, 3]
     assert prepared.best_observed == 3
     assert prepared.remaining == 3
     assert prepared.candidate_count == 6
+    if unselected_response != "4":
+        with pytest.raises(ValueError, match="完整有限数值"):
+            prepare_experiment(OptimizationRequest.model_validate(request_body(content, selected_rows=[1, 2, 4])))
 
 
 def test_actual_replicates_remain_separate_measurements_but_count_once_in_search_space():

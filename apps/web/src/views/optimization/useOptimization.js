@@ -124,7 +124,7 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
     }
     fileLoading.value = true;
     try {
-      const text = new TextDecoder("utf-8", { fatal: true }).decode(
+      const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
         await file.arrayBuffer(),
       );
       if (disposed || ticket !== fileRevision) return;
