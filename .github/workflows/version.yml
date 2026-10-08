@@ -1,0 +1,43 @@
+name: Merged PR Version
+
+'on':
+  push:
+    branches: [main]
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: x-synth-main-version
+  cancel-in-progress: false
+
+jobs:
+  version:
+    if: >-
+      github.event_name != 'pull_request_target' || github.event.pull_request.merged == true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: read
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout trusted main only (never a PR head)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Test only version arithmetic and actual Git publication
+        run: python -m unittest tests/unit/test_release_version.py tests/unit/test_version_release.py
+      - name: Reconcile merged PRs and publish synchronized version metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -m scripts.operations.version_release --publish

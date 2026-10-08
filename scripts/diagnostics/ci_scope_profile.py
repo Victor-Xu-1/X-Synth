@@ -19,6 +19,12 @@ WORKSPACE_TESTS = {
 SCOPE_TEST = "tests/unit/test_ci_scope.py"
 CONTRACT_TEST = "tests/unit/test_frontend_backend_contract.py"
 VERSION_TEST = "tests/unit/test_product_version.py"
+RELEASE_TESTS = {"tests/unit/test_release_version.py", "tests/unit/test_version_release.py"}
+RELEASE_FILES = {
+    ".github/version-state.json", ".github/workflows/version.yml",
+    "packages/platform/release_version.py", "packages/platform/version.py", "scripts/operations/version_release.py",
+    "scripts/operations/version_release_git.py", "VERSION",
+}
 MANIFESTS = {"pyproject.toml", WEB + "package.json", WEB + "package-lock.json"}
 PYTHON_LOCK = "requirements/orchestrator-linux-py312.lock"
 CI_FILES = {
@@ -311,6 +317,7 @@ def guard_paths(paths: set[str]) -> None:
             | SEARCH_ROUND_FILES
             | ARCHITECTURE_FILES
             | architecture.FILES
+            | RELEASE_FILES
             | {
                 PYTHON_LOCK,
                 "VERSION",
@@ -576,6 +583,8 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
         selected.add("tests/unit/test_public_source_export.py")
     if roots & MANIFESTS or "VERSION" in roots:
         selected.add(VERSION_TEST)
+    if roots & RELEASE_FILES:
+        selected.update(RELEASE_TESTS | {VERSION_TEST})
     missing = selected - after.files
     if missing:
         raise analysis.ScopeError(

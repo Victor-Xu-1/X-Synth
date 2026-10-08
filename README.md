@@ -1,4 +1,4 @@
-# X-Synth v0.1.0
+# X-Synth
 
 X-Synth 是基于 ASKCOS V2 的中文合成研究工作台。X-Synth 负责前后端、
 任务生命周期、私有历史、统一商业库存和路线审查；ASKCOS 负责实际化学模型与搜索。
@@ -6,7 +6,7 @@ X-Synth 是基于 ASKCOS V2 的中文合成研究工作台。X-Synth 负责前�
 
 ## 模块与文件
 
-- `VERSION` 是唯一产品版本来源，当前为 `0.1.0`。
+- `VERSION` 是唯一产品版本来源；每合并一个主线 PR 自动加一个补丁号，补丁满 100、次版本满 10 时进位。详见[版本管理](docs/operations.md#版本管理)。
 - `apps/web` 是原 ASKCOS Vue 工作台的延续，不是第二套 UI。
 - `apps/api` 是唯一产品 API，公开契约为 `/api/v1`。
 - `packages/orchestrator` 管理 SQLite 事务队列、恢复和路线工作流。

@@ -1,4 +1,4 @@
-# X-Synth v0.1.0 Architecture
+# X-Synth Architecture
 
 ## Product Boundary
 
@@ -43,7 +43,8 @@ flowchart TD
 
 | Boundary                        | Authoritative Location                     | Responsibility                                                                                    |
 | ------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| Product version                 | VERSION                                    | Product SemVer; currently 0.1.0                                                                   |
+| Product version                 | VERSION                                    | One increment per merged main PR; patch radix 100, minor radix 10                                 |
+| Release receipts                | .github/version-state.json                 | Baseline and counted PR merge identities; serialized atomic publication, never a second version source |
 | Frontend                        | apps/web                                   | Existing Vue workbench, Chinese UI, editor, history, route viewer                                 |
 | Product API                     | apps/api                                   | Input validation, identity boundary, capability delegation, response models                       |
 | Product jobs                    | packages/orchestrator                      | One lifecycle, resource admission, checkpoints, route workflow                                    |
@@ -70,9 +71,14 @@ configured through explicit operator paths. A source release does not contain
 private data or model weights.
 
 ASKCOS component versions, model checksums, template ordering, database schema
-versions and inventory snapshot versions are independent of product SemVer.
+versions and inventory snapshot versions are independent of the product PR counter.
 The package metadata and frontend lockfile verify VERSION rather than define
 another product version.
+The merged-PR workflow reconciles every reachable uncounted merge since its frozen
+baseline. A temporary Git index creates one fast-forward-only metadata commit;
+repeated events are no-ops, and concurrent changes require a fresh reconciliation.
+The carry rule is project-specific, not a substitute for API/schema compatibility
+governance. See [version operations](operations.md#版本管理).
 
 ## Single Authorities
 
@@ -352,7 +358,7 @@ never become server-assigned task provenance.
 
 The `/api/v1/route-documents` API stores private documents in `workspace.sqlite`
 under the configured state root. Schema version 1 is independent of product
-version 0.1.0. Unknown schema versions are refused before mutation. Save requires
+version in VERSION. Unknown schema versions are refused before mutation. Save requires
 the current revision; conflicts return 409 without losing the unsaved client
 graph. Lists return bounded summaries, not full graphs. Deleting a document
 actually deletes its record; moving a task out of history retains the existing
@@ -460,7 +466,7 @@ directories are apps, packages, configs, requirements, scripts, tests, docs and
 The product API contract is /api/v1; the existing /api native capability and
 result projections serve the ASKCOS-derived UI through that same host. There is
 no separate legacy orchestrator or /synon-api job owner. Job schema 2 and native
-UDS schema 2 are independent of product 0.1.0. First-party dependency authorities
+UDS schema 2 are independent of the product VERSION. First-party dependency authorities
 are one lock per documented process boundary: product, native ASKCOS, TF-Keras
 condition inference, RXNMapper impurity analysis, BayBE optimization and offline
 ORD import, plus apps/web/package-lock.json; upstream
