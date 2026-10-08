@@ -112,7 +112,13 @@ async function load(preserve = true) {
     if (!recordPath(id)) throw new Error("研究记录标识无效。");
     const response = readAnalysisRecord(await API.get(`/api/v1/analyses/${encodeURIComponent(id)}`, null, false,
       { signal, timeoutMs: 15000 }), id);
-    if (active()) loadedRecord.value = response;
+    if (active()) {
+      const previous = record.value;
+      // Preserve child reading state only for a revalidated, unchanged completed snapshot.
+      const unchanged = preserve && previous?.id === response.id && previous.status === "completed" &&
+        response.status === "completed" && JSON.stringify(previous) === JSON.stringify(response);
+      loadedRecord.value = unchanged ? { ...response, result: previous.result } : response;
+    }
   } catch (cause) {
     if (active()) { loadedRecord.value = null; inputOpen.value = false; error.value = API.toErrorObject(cause).string_error; }
   } finally { if (active()) { loading.value = false; reader = null; } }

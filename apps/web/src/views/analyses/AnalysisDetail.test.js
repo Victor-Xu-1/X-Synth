@@ -5,6 +5,7 @@ import { createRouter, createMemoryHistory } from "vue-router";
 import { API } from "@/common/api";
 import { saveAs } from "file-saver";
 import AnalysisDetail from "./AnalysisDetail.vue";
+import AnalysisResult from "./AnalysisResult.vue";
 jest.mock("file-saver", () => ({ saveAs: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn(), delete: jest.fn(),
   toErrorObject: (error) => ({ string_error: error.message }) } }));
@@ -173,12 +174,72 @@ test("same-record refresh retains the result and expanded inputs while locking s
   expect(wrapper.get('[aria-label="下载研究记录"]').attributes("disabled")).toBeDefined();
   expect(wrapper.get(".analysis-body").attributes("inert")).toBeDefined();
   expect(wrapper.attributes("aria-busy")).toBe("true");
-  finishRefresh(known); await flushPromises();
+  finishRefresh(JSON.parse(JSON.stringify(known))); await flushPromises();
   expect(wrapper.get(".read-only-result").element).toBe(resultElement);
   expect(wrapper.get(".submitted-input").element.open).toBe(true);
   expect(JSON.parse(wrapper.get("pre").text())).toEqual(known.inputs);
   expect(wrapper.get(".analysis-body").attributes("inert")).toBeUndefined();
   expect(wrapper.get('[aria-label="下载研究记录"]').attributes("disabled")).toBeUndefined();
+});
+
+test("an independently parsed identical completed DTO retains the scientific result reference, not the response envelope", async () => {
+  const known = { ...record(), kind: "process", result: {
+    values: [0, null, ""], provenance: { revision: "unit-contract-only" },
+  } };
+  const refreshed = JSON.parse(JSON.stringify(known));
+  API.get.mockResolvedValueOnce(known).mockResolvedValueOnce(refreshed);
+  const { wrapper } = await setup();
+  const previousRecord = wrapper.vm.record;
+  const previousResult = wrapper.getComponent(AnalysisResult).props("result");
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  expect(wrapper.getComponent(AnalysisResult).props("result")).toBe(previousResult);
+  expect(wrapper.vm.record).not.toBe(previousRecord);
+  expect(wrapper.vm.record).toEqual(refreshed);
+});
+
+test.each([
+  ["nested result value", (value) => { value.result.values[0] = 1; }],
+  ["result provenance", (value) => { value.result.provenance.revision = "changed-unit-contract"; }],
+  ["original input", (value) => { value.inputs.note = "changed input"; }],
+  ["record kind", (value) => { value.kind = "assessment"; }],
+  ["completion metadata", (value) => { value.finished = "2026-10-04T00:01:00Z"; }],
+])("same-ID refresh publishes a fresh result reference when %s changes", async (_, change) => {
+  const known = { ...record(), kind: "process", result: {
+    values: [0, null, ""], provenance: { revision: "unit-contract-only" },
+  } };
+  const refreshed = JSON.parse(JSON.stringify(known)); change(refreshed);
+  API.get.mockResolvedValueOnce(known).mockResolvedValueOnce(refreshed);
+  const { wrapper } = await setup();
+  const previousResult = wrapper.getComponent(AnalysisResult).props("result");
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  expect(wrapper.getComponent(AnalysisResult).props("result")).not.toBe(previousResult);
+  expect(wrapper.vm.record).toEqual(refreshed);
+});
+
+test("an identical result from a different record never inherits the previous result reference", async () => {
+  const known = { ...record(), kind: "process", result: { values: [0, null, ""] } };
+  const next = { ...JSON.parse(JSON.stringify(known)), id: "record-b" };
+  API.get.mockResolvedValueOnce(known).mockResolvedValueOnce(next);
+  const { wrapper, router } = await setup();
+  const previousResult = wrapper.getComponent(AnalysisResult).props("result");
+  await router.replace("/analyses/record-b"); await flushPromises();
+  expect(wrapper.getComponent(AnalysisResult).props("result")).not.toBe(previousResult);
+  expect(wrapper.vm.record).toEqual(next);
+});
+
+test.each(["running", "failed", "interrupted"])("a completed snapshot retires on transition to %s and cannot reuse its result after recovery", async (status) => {
+  const known = { ...record(), kind: "process", result: { values: [0, null, ""] } };
+  API.get.mockResolvedValueOnce(known).mockResolvedValueOnce({ ...record("record-a", status), kind: "process" })
+    .mockResolvedValueOnce(JSON.parse(JSON.stringify(known)));
+  const { wrapper } = await setup();
+  const previousResult = wrapper.getComponent(AnalysisResult).props("result");
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  expect(wrapper.findComponent(AnalysisResult).exists()).toBe(false);
+  expect(wrapper.vm.record.status).toBe(status);
+  expect(wrapper.find('[aria-label="下载研究记录"]').exists()).toBe(false);
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  expect(wrapper.getComponent(AnalysisResult).props("result")).not.toBe(previousResult);
+  expect(wrapper.vm.record).toEqual(known);
 });
 
 test("a failed same-record refresh removes all prior result, inputs, metadata and snapshot actions", async () => {
