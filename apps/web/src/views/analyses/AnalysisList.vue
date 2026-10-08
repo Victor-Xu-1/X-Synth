@@ -31,25 +31,38 @@
       <table class="data-table" data-cy="analysis-list">
         <thead><tr><th scope="col">{{ $tr('结构') }}</th><th scope="col">{{ $tr('研究类型') }}</th><th scope="col">{{ $tr('状态') }}</th>
           <th scope="col">{{ $tr('提交时间') }}</th><th scope="col">{{ $tr('操作') }}</th></tr></thead>
-        <tbody><tr v-for="row in rows" :key="row.id" :data-record-id="row.id">
+        <tbody><tr v-for="(row, index) in rows" :key="row.id" :data-record-id="row.id"
+          :class="{ 'analysis-row--without-structure': !row.structure }">
           <td class="history-structure">
-            <router-link :to="detailLocation(row.id)" :aria-label="openLabel(row)" class="analysis-identity">
-              <SmilesImage v-if="row.structure" class="analysis-thumbnail" :smiles="row.structure"
-                :width="112" :height="72" :show-error-image="false" />
-              <span v-if="row.structure" class="workspace-code analysis-structure-text" :title="row.structure">{{ row.structure }}</span>
-              <span v-else class="analysis-kind-identity">{{ $tr(analysisKinds[row.kind].title) }}</span>
-            </router-link>
+            <div v-if="row.structure" class="analysis-identity">
+              <SmilesImage class="analysis-thumbnail" :smiles="row.structure"
+                :width="216" :height="88" :show-error-image="false" />
+              <router-link :to="detailLocation(row.id)" :aria-label="openLabel(row)" class="analysis-preview-link" />
+            </div>
+            <span v-else class="analysis-nonchemical">
+              <v-icon :icon="row.kind === 'optimization' ? 'mdi-table-large' : 'mdi-molecule-off'" size="24" aria-hidden="true" />
+              <span>{{ row.kind === 'optimization' ? $tr('实测 CSV') : $tr('结构未提供') }}</span>
+            </span>
           </td>
-          <td class="analysis-kind"><router-link :to="detailLocation(row.id)">{{ $tr(analysisKinds[row.kind].title) }}</router-link></td>
+          <td class="analysis-kind"><router-link :id="`${historyId}-kind-${index}`" :to="detailLocation(row.id)">{{ $tr(analysisKinds[row.kind].title) }}</router-link></td>
           <td class="analysis-state"><span class="state-badge" :class="row.status">{{ $tr(analysisStatuses[row.status]) }}</span></td>
-          <td class="analysis-time"><time :datetime="row.created" :title="recordDate(row.created)">{{ recordDate(row.created) }}</time></td>
+          <td class="analysis-time"><time :id="`${historyId}-time-${index}`" :datetime="row.created" :title="recordDate(row.created)">{{ recordDate(row.created) }}</time></td>
           <td class="analysis-actions">
-            <v-tooltip :text="openLabel(row)">
-              <template #activator="{ props }">
-                <v-btn v-bind="props" icon="mdi-open-in-new" size="small" variant="text" :to="detailLocation(row.id)"
-                  :aria-label="openLabel(row)" />
-              </template>
-            </v-tooltip>
+            <div class="analysis-row-actions">
+              <v-tooltip :text="openLabel(row)">
+                <template #activator="{ props }">
+                  <v-btn v-bind="props" class="analysis-open" icon="mdi-chevron-right" variant="text" :to="detailLocation(row.id)"
+                    :aria-label="openLabel(row)" />
+                </template>
+              </v-tooltip>
+              <v-tooltip :text="$tr('详情')">
+                <template #activator="{ props }">
+                  <v-btn v-bind="props" class="analysis-summary" icon="mdi-information-outline" variant="text"
+                    :aria-label="$tr('详情')" :aria-describedby="`${historyId}-kind-${index} ${historyId}-time-${index}`"
+                    @click="showSummary(row, $event)" />
+                </template>
+              </v-tooltip>
+            </div>
           </td>
         </tr></tbody>
       </table>
@@ -65,18 +78,23 @@
           :disabled="loading || page * analysisPageSize >= total" @click="setPage(page + 1)" />
       </template></v-tooltip>
     </nav>
+    <AnalysisHistoryDetails v-if="summaryRecord" v-model="summaryOpen" :record="summaryRecord" @after-leave="restoreSummaryFocus" />
   </section>
 </template>
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { uiText } from "@/i18n";
 import { API } from "@/common/api";
 import { analysisKinds, analysisStatuses, recordDate, analysisPageSize, analysisQuery,
   listQuery, readAnalysisList, recordPath } from "@/common/analysis-records";
 import SmilesImage from "@/components/SmilesImage.vue";
+import AnalysisHistoryDetails from "./AnalysisHistoryDetails.vue";
 const route = useRoute(), router = useRouter();
 const rows = ref([]), total = ref(null), loading = ref(false), error = ref("");
+const historyId = useId(), summaryId = ref(""), summaryOpen = ref(false);
+const summaryRecord = computed(() => rows.value.find((row) => row.id === summaryId.value) ?? null);
+let summaryFocus;
 const kind = computed({
   get: () => typeof route.query.kind === "string" ? route.query.kind : "",
   set: (value) => router.replace({ path: "/analyses", query: { ...route.query, ...listQuery(value, 1) } }),
@@ -88,6 +106,13 @@ let displayedQuery = null;
 const openLabel = (row) => uiText("打开{name}记录，{date}",
   { name: uiText(analysisKinds[row.kind].title), date: recordDate(row.created) });
 const detailLocation = (id) => ({ path: recordPath(id), query: listQuery(kind.value, page.value) });
+function showSummary(row, event) {
+  summaryId.value = row.id; summaryFocus = event.currentTarget; summaryOpen.value = true;
+}
+function restoreSummaryFocus() {
+  if (summaryFocus?.isConnected) summaryFocus.focus({ preventScroll: true });
+  summaryFocus = null;
+}
 function setPage(value) {
   if (loading.value) return;
   router.replace({ path: "/analyses", query: { ...route.query, ...listQuery(kind.value, value) } });
@@ -116,7 +141,10 @@ async function refresh() {
     if (active()) error.value = API.toErrorObject(cause).string_error;
   } finally { if (active()) loading.value = false; }
 }
-watch(() => [route.query.kind, route.query.page], refresh, { immediate: true });
+watch(() => [route.query.kind, route.query.page], () => {
+  summaryOpen.value = false; summaryId.value = ""; summaryFocus = null;
+  refresh();
+}, { immediate: true });
 onMounted(() => { timer = window.setInterval(() => {
   if (!loading.value && rows.value.some((row) => row.status === "running")) refresh();
 }, 10000); });
@@ -133,9 +161,9 @@ onBeforeUnmount(() => { disposed = true; generation++; window.clearInterval(time
 .analysis-heading { margin-bottom: 20px; }
 .analysis-heading h1 { font-size: 24px; }
 .analysis-heading :deep(.v-btn) {
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
   border-radius: 6px;
   color: var(--ws-muted);
 }
@@ -168,45 +196,72 @@ onBeforeUnmount(() => { disposed = true; generation++; window.clearInterval(time
 .analysis-table-scroll:focus-visible { outline: 2px solid var(--ws-accent, #0b7163); outline-offset: 2px; }
 .data-table { width: 100%; table-layout: fixed; }
 .data-table th { white-space: nowrap; background: var(--ws-muted-surface); }
-.data-table th:first-child { width: 42%; }
-.data-table th:nth-child(2) { width: 16%; }
-.data-table th:nth-child(3) { width: 96px; }
-.data-table th:last-child { width: 56px; }
+.data-table th:first-child { width: 30%; }
+.data-table th:nth-child(3) { width: 112px; }
+.data-table th:nth-child(4) { width: 184px; }
+.data-table th:last-child { width: 112px; }
 .data-table td { padding: 12px; overflow-wrap: anywhere; }
 .data-table tbody tr:last-child td { border-bottom: 0; }
-.analysis-identity { display: flex; align-items: center; gap: 12px; min-width: 0; color: var(--ws-text); text-decoration: none; }
-.analysis-thumbnail { width: 112px; height: 72px; flex: 0 0 112px; }
-.analysis-structure-text { min-width: 0; font-size: 12px; line-height: 18px; color: var(--ws-muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
-.analysis-kind-identity { font-weight: 500; min-height: 72px; display: flex; align-items: center; }
-.analysis-kind a { color: var(--ws-text); text-decoration: none; }
-.analysis-identity:hover,
+.data-table tbody tr:hover,
+.data-table tbody tr:focus-within { background: var(--ws-muted-surface); }
+.analysis-identity { position: relative; display: flex; align-items: center; min-width: 0; width: fit-content; max-width: 100%; border-radius: 4px; }
+.analysis-preview-link { position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
+.analysis-thumbnail { width: 216px; height: 88px; max-width: 100%; }
+.analysis-thumbnail :deep(.v-img) { width: 100% !important; height: 100% !important; max-width: 100%; }
+.analysis-thumbnail :deep(.structure-error-state) { position: relative; z-index: 2; gap: 2px; padding: 2px; }
+.analysis-thumbnail :deep(.structure-error-state > .v-icon),
+.analysis-thumbnail :deep(.structure-error-state > span) { display: none; }
+.analysis-thumbnail :deep(.structure-error-state strong) { font-size: 12px; }
+.analysis-thumbnail :deep(.structure-error-state .v-btn) { width: 44px; height: 44px; }
+.analysis-nonchemical { display: flex; align-items: center; gap: 12px; min-height: 44px; color: var(--ws-muted); font-size: 12px; }
+.analysis-nonchemical .v-icon { flex-shrink: 0; }
+.analysis-kind a { display: flex; align-items: center; min-height: 44px; width: fit-content; max-width: 100%; color: var(--ws-text); text-decoration: none; font-weight: 500; line-height: 1.4; border-radius: 4px; }
 .analysis-kind a:hover { color: var(--ws-accent, #0b7163); }
+.analysis-preview-link:focus-visible,
+.analysis-kind a:focus-visible,
+.analysis-history :deep(.v-btn:not(:disabled):focus-visible) { outline: 2px solid var(--ws-accent); outline-offset: 2px; }
 .analysis-time { color: var(--ws-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.analysis-time time { display: block; line-height: 1.5; }
 .analysis-state .state-badge { white-space: nowrap; }
 .state-badge.completed { color: var(--ws-accent, #0b7163); background: var(--ws-accent-soft); }
 .state-badge.running { color: var(--ws-warning, #946516); background: color-mix(in srgb, var(--ws-warning, #946516) 9%, var(--ws-surface)); }
 .state-badge.failed { color: var(--ws-danger); background: var(--ws-danger-soft); }
 .state-badge.interrupted { color: var(--ws-info); background: var(--ws-info-soft); }
 .analysis-actions :deep(.v-btn),
-.analysis-pagination :deep(.v-btn) { width: 32px; height: 32px; min-width: 32px; color: var(--ws-muted); border-radius: 6px; }
+.analysis-pagination :deep(.v-btn) { width: 44px; height: 44px; min-width: 44px; color: var(--ws-muted); border-radius: 6px; }
+.analysis-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0; }
+.analysis-actions :deep(.analysis-open) { color: var(--ws-accent); }
 .analysis-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--ws-border); font-size: 12px; color: var(--ws-muted); font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) {
   .analysis-history { padding: 18px 16px; }
   .analysis-filters :deep(.v-input) { flex: 1 1 100%; }
 }
-@container (max-width: 680px) {
+@container (max-width: 780px) {
   .data-table,
   .data-table tbody { display: block; width: 100%; }
   .data-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  .data-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto 32px; gap: 8px 12px; padding: 12px; border-bottom: 1px solid var(--ws-border); }
+  .data-table tbody tr { display: grid; grid-template-columns: 216px minmax(0, 1fr) 44px; grid-template-rows: auto auto auto; align-items: center; gap: 0 12px; padding: 10px 12px; border-bottom: 1px solid var(--ws-border); }
   .data-table tbody tr:last-child { border-bottom: 0; }
   .data-table td { padding: 0; border: 0; min-width: 0; }
-  .history-structure { grid-column: 1 / -1; grid-row: 1; }
-  .analysis-kind { grid-column: 1; grid-row: 2; }
+  .history-structure { grid-column: 1; grid-row: 1 / 4; }
+  .analysis-kind { grid-column: 2; grid-row: 1; }
   .analysis-state { grid-column: 2; grid-row: 2; }
-  .analysis-time { grid-column: 1 / 3; grid-row: 3; }
-  .analysis-actions { grid-column: 3; grid-row: 2 / 4; align-self: start; }
-  .analysis-identity { align-items: flex-start; }
-  .analysis-kind-identity { min-height: 0; }
+  .analysis-time { grid-column: 2; grid-row: 3; }
+  .analysis-actions { grid-column: 3; grid-row: 1 / 4; }
+  .analysis-row-actions { flex-direction: column; }
+  .analysis-row--without-structure { grid-template-columns: 96px minmax(0, 1fr) 44px; }
+  .analysis-nonchemical { flex-direction: column; align-items: flex-start; gap: 6px; }
+}
+@container (max-width: 480px) {
+  .data-table tbody tr { grid-template-columns: 128px minmax(0, 1fr) 44px; gap: 0 8px; padding: 10px 8px; }
+  .analysis-thumbnail { width: 128px; }
+  .analysis-row--without-structure { grid-template-columns: 64px minmax(0, 1fr) 44px; }
+  .analysis-nonchemical { font-size: 11px; line-height: 1.4; }
+}
+@container (max-width: 320px) {
+  .data-table tbody tr { grid-template-columns: 104px minmax(0, 1fr) 44px; gap: 0 6px; }
+  .analysis-thumbnail { width: 104px; }
+  .analysis-row--without-structure { grid-template-columns: 48px minmax(0, 1fr) 44px; }
+  .analysis-kind a { font-size: 13px; }
 }
 </style>
