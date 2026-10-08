@@ -1,7 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { defineComponent, h, onMounted, onUnmounted, ref } from "vue";
 import { buildCatalog } from "./catalog";
-import { DEFAULT_LOCALE, i18n, initializeLocale, LOCALE_KEY, setLocale, uiText, useUiLanguage } from "./index";
+import { DEFAULT_LOCALE, i18n, initializeLocale, LOCALE_KEY, LOCALES, setLocale, uiText, useUiLanguage } from "./index";
 
 afterEach(() => initializeLocale(null));
 
@@ -14,6 +14,18 @@ test("English is the production default and Chinese uses the same reactive langu
   setLocale("zh-CN", { persist: false });
   expect(useUiLanguage().widgetLocale.value).toBe("zhHans");
   expect(uiText("工艺核算")).toBe("工艺核算");
+});
+
+test("the language registry has a catalog and native widget locale for each selectable language", () => {
+  expect(new Set(LOCALES.map((item) => item.value)).size).toBe(LOCALES.length);
+  expect(LOCALES[0].value).toBe(DEFAULT_LOCALE);
+  for (const choice of LOCALES) {
+    expect(choice.label.trim()).not.toBe("");
+    expect(choice.widgetLocale.trim()).not.toBe("");
+    expect(Object.keys(i18n.global.getLocaleMessage(choice.value)).length).toBeGreaterThan(0);
+    setLocale(choice.value, { persist: false });
+    expect(useUiLanguage().widgetLocale.value).toBe(choice.widgetLocale);
+  }
 });
 
 test("only the dedicated nonsecret preference is read or saved, and unsupported values never enable another language", () => {

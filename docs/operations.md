@@ -194,6 +194,14 @@ python -m scripts.operations.serve_platform \
 
 启动前选空闲端口。监督器只管理自己创建的进程，故障服务最多重启三次，不使用全局
 pkill。每模型一个 worker、统一 CPU 线程预算。WSL 长任务应留在持久终端或管理服务中。
+
+升级涉及前端依赖时，先按已核验提交的 `apps/web/package-lock.json` 在独立 Node 环境
+执行 `npm ci` 并构建，不在正式服务或其他任务共用的 `node_modules` 上直接安装。
+核对新环境的锁文件与目标提交一致后，等待任务队列空闲、备份私有库，保留旧依赖目录
+及旧构建资产，再切换正式依赖和源码。部署后的 API、前端版本与 main 提交必须一致；
+回滚使用保留的依赖和匹配资产，不覆盖任务、文档和研究记录。界面语言及其保存规则见
+[工作台工作流](workspace-workflows.md#界面语言)。
+
 原生地址由 `packages/platform/native_endpoints.py` 统一定义；覆盖端口时使用对应的
 `X_SYNTH_*_URL`，启动、网关模块配置和就绪探针同步采用该地址。受监督部署只接受
 不同端口的 IPv4 回环 HTTP 地址，不允许地址携带凭据或路径。
