@@ -1,6 +1,7 @@
 import { onBeforeUnmount, ref, unref, watch } from "vue";
 import { API } from "@/common/api";
 import { errorMessage } from "@/common/workspace-errors";
+import { uiText } from "@/i18n";
 import { activeTaskStates } from "@/common/task-state";
 import { unifiedRouteStatusEndpoint } from "@/common/unified-route";
 import { readSelectedRoutes } from "@/common/route-details";
@@ -208,7 +209,7 @@ export function useTaskActions({
       !task?.result_id ||
       pending.value[task.result_id] ||
       !activeTaskStates.includes(task.result_state) ||
-      !confirm("取消当前任务？")
+      !confirm(uiText("取消当前任务？"))
     )
       return;
     return run(
@@ -271,7 +272,7 @@ export function useTaskActions({
     }
     if (
       action === "archive" &&
-      !confirm(`将 ${body.items.length} 个任务归档到回收箱？`)
+      !confirm(uiText("将 {count} 个任务归档到回收箱？", { count: body.items.length }))
     )
       return false;
     const current = ++actionGeneration;
@@ -455,7 +456,7 @@ export function useTaskActions({
       groupPending.value ||
       !Number.isSafeInteger(group.revision) ||
       group.revision < 0 ||
-      !confirm(`解散分组“${group.name}”？组内任务将回到未分组。`)
+      !confirm(uiText("解散分组“{name}”？组内任务将回到未分组。", { name: group.name }))
     )
       return false;
     groupPending.value = true;

@@ -14,7 +14,7 @@ export default [
   ["保存的路线", "Saved routes"], ["页面未找到", "Page not found"],
   ["此页面不存在", "This page does not exist"], ["任务历史", "Task history"],
   ["用户与权限", "Users and permissions"], ["研究记录详情", "Analysis record details"],
-  ["任务详情", "Task details"], ["路线编辑", "Route editing"], ["一步逆合成", "One-step retrosynthesis"],
+  ["任务详情", "Task details"], ["路线编辑", "Route editor"], ["一步逆合成", "One-step retrosynthesis"],
   ["反应可行性", "Reaction feasibility"], ["参考反应检索", "Reference reaction search"],
   ["商业原料", "Commercial starting materials"], ["杂质分析", "Impurity analysis"],
   ["正向合成与条件", "Forward synthesis and conditions"], ["溶解度与溶剂", "Solubility and solvents"],

@@ -72,7 +72,7 @@ export default [
   ["当前页未读取", "Current page not loaded"], ["返回首页", "First page"],
   ["检索模板记录", "Searching template records"], ["模板知识库", "Template knowledge base"],
   ["没有匹配的模板", "No matching templates"], ["模板 {value}", "Template {value}"],
-  ["{count} 例", "{count} examples"], ["查看模板详情", "View template details"],
+  ["{count} 例", "{count} example | {count} examples"], ["查看模板详情", "View template details"],
   ["查看模板 {value}", "View template {value}"], ["SMARTS 与模板标识", "SMARTS and template identity"],
   ["{count} 条模板记录", "{count} template records"], ["全部来源", "All sources"],
   ["保存的路线", "Saved routes"], ["刷新文档", "Refresh documents"], ["新建路线", "New route"],

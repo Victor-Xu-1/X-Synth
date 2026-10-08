@@ -1,6 +1,7 @@
 import { mount, flushPromises } from "@vue/test-utils";
 import { defineComponent, h } from "vue";
-import SystemDialogText, { systemConfirm } from "./SystemDialogText.vue";
+import LocalizedDialogText from "./LocalizedDialogText.vue";
+import { localizedConfirm } from "./localized-confirm";
 import BanNotice from "@/components/banlist/BanNotice.vue";
 import { initializeLocale, setLocale } from "@/i18n";
 
@@ -10,7 +11,7 @@ const stubs = { VCardTitle: { template: "<h2><slot /></h2>" }, VBtn: { props: ["
 test("open confirmation title, named counts and buttons react without invoking its callbacks", async () => {
   initializeLocale(null);
   const cancel = jest.fn(), confirm = jest.fn();
-  const options = systemConfirm("删除账号", "确定删除 {count} 个账号？此操作无法撤销。", { count: 2 }, { width: 440 });
+  const options = localizedConfirm("删除账号", "确定删除 {count} 个账号？此操作无法撤销。", { count: 2 }, { width: 440 });
   const wrapper = mount(defineComponent({ setup: () => () => h("section", [
     h(options.titleComponent, options.titleComponentProps), h(options.contentComponent, options.contentComponentProps),
     h(options.actionsContentComponent, { cancel, confirm, confirmationButtonDisabled: false }),
@@ -47,7 +48,7 @@ test("notification close labels and full named messages switch while the same me
 test("confirmation actions keep their disabled guard and only invoke the selected callback", async () => {
   initializeLocale(null);
   const cancel = jest.fn(), confirm = jest.fn();
-  const options = systemConfirm("删除规则", "确定删除此条禁用规则？");
+  const options = localizedConfirm("删除规则", "确定删除此条禁用规则？");
   const wrapper = mount(options.actionsContentComponent, { props: { cancel, confirm, confirmationButtonDisabled: true }, global: { stubs } });
   await wrapper.findAll("button")[1].trigger("click");
   expect(confirm).not.toHaveBeenCalled();
@@ -61,7 +62,7 @@ test("confirmation actions keep their disabled guard and only invoke the selecte
 
 test("a user-provided value is not translated or interpreted as a source phrase", () => {
   initializeLocale(null);
-  const wrapper = mount(SystemDialogText, { props: { source: "管理账号 {username}", values: { username: "工艺核算" } }, global: { stubs } });
+  const wrapper = mount(LocalizedDialogText, { props: { source: "管理账号 {username}", values: { username: "工艺核算" } }, global: { stubs } });
   expect(wrapper.text()).toBe("Manage account 工艺核算");
   wrapper.unmount();
 });

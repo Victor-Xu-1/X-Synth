@@ -15,7 +15,7 @@ const files = [
   "views/login/AccountLoginForm.vue", "views/login/AuthHeader.vue", "views/login/AdminLogin.vue", "views/login/SSOLogin.vue", "views/login/SSOLogout.vue", "views/login/SSOCallback.vue",
   "views/admin/Admin.vue", "views/admin/AccountUserDialog.vue", "views/banlist/Banlist.vue", "views/notfound/NotFound.vue",
   "components/banlist/BanItemDialog.vue", "components/banlist/MultiEntryDialog.vue", "components/banlist/BanNotice.vue",
-  "layouts/default/SystemConfirmActions.vue",
+  "components/LocalizedConfirmActions.vue",
 ];
 function walkJs(node, visit) {
   if (!node || typeof node !== "object") return;

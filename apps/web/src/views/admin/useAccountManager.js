@@ -3,7 +3,7 @@ import { API } from "@/common/api";
 import { loadAccounts, mutateAccount, saveAccount } from "./account-api";
 import { canEditAccount, canMutateAccounts, nativeAccountAuthority } from "./account-access";
 import { uiText } from "@/i18n";
-import { systemConfirm } from "@/layouts/default/SystemDialogText.vue";
+import { localizedConfirm } from "@/components/localized-confirm";
 
 export function useAccountManager({ workspace, router, confirm }) {
   const authority = computed(() => nativeAccountAuthority(workspace));
@@ -90,7 +90,7 @@ export function useAccountManager({ workspace, router, confirm }) {
     const targets = [...names], ticket = generation;
     confirming.value = true;
     try {
-      const accepted = await confirm(systemConfirm(
+      const accepted = await confirm(localizedConfirm(
         action === "delete" ? "删除账号" : "修改账号状态",
         action === "delete" ? "确定删除 {count} 个账号？此操作无法撤销。" : "确定修改 {count} 个账号的状态或权限？",
         { count: targets.length }, { width: 440 },

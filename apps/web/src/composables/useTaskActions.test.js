@@ -1,6 +1,7 @@
 import { defineComponent, nextTick, ref } from "vue";
 import { mount, flushPromises } from "@vue/test-utils";
 import { useTaskActions } from "./useTaskActions";
+import { setLocale } from "@/i18n";
 
 const row = {
   result_id: "history-task",
@@ -58,6 +59,27 @@ function setupActions(api, options = {}) {
 }
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
+});
+
+test("native confirmations follow the selected language without translating group names or mutating declined actions", async () => {
+  const completed = { ...row, result_state: "completed" };
+  const api = { post: jest.fn(), delete: jest.fn() };
+  const { actions, confirm } = setupActions(api, { rows: ref([completed]),
+    selection: ref([{ id: row.result_id, revision: row.history_revision }]) });
+  confirm.mockReturnValue(false);
+  setLocale("en", { persist: false });
+  actions.cancel(row);
+  expect(confirm).toHaveBeenLastCalledWith("Cancel the current task?");
+  expect(await actions.batch("archive")).toBe(false);
+  expect(confirm).toHaveBeenLastCalledWith("Archive 1 task to the trash?");
+  const group = { id: "g-1", name: "工艺核算", revision: 3 };
+  expect(await actions.deleteGroup(group)).toBe(false);
+  expect(confirm).toHaveBeenLastCalledWith("Dissolve group “工艺核算”? Its tasks will become ungrouped.");
+  setLocale("zh-CN", { persist: false });
+  expect(await actions.deleteGroup(group)).toBe(false);
+  expect(confirm).toHaveBeenLastCalledWith("解散分组“工艺核算”？组内任务将回到未分组。");
+  expect(api.post).not.toHaveBeenCalled(); expect(api.delete).not.toHaveBeenCalled();
+  expect(group.name).toBe("工艺核算");
 });
 
 test("late detail responses cannot replace the selected task", async () => {

@@ -44,7 +44,7 @@ export default [
   ["使用步骤", "Used in steps"], ["采购目录", "Procurement catalogue"], ["查看{name}", "View {name}"],
   ["无精确匹配", "No exact match"], ["目录号未记录", "Catalogue ID not recorded"],
   ["查询中", "Searching"], ["未查询", "Not queried"], ["采购记录：{name}", "Procurement records: {name}"],
-  ["节点分析", "Node analysis"], ["一步分析", "One-step analysis"], ["结构复杂度", "Structural complexity"],
+  ["节点分析", "Node analysis"], ["一步分析", "One-step analysis"], ["结构复杂度", "Molecular complexity"],
   ["反应 SMILES", "Reaction SMILES"], ["导出 RXN", "Export RXN"], ["反应可行性", "Reaction feasibility"],
   ["路线预览", "Route preview"], ["{count} 条路线", "Routes: {count}"], ["打开详情", "Open details"],
   ["合成路线阅读工作台", "Synthesis route reader"], ["全选当前路线", "Select all current routes"],

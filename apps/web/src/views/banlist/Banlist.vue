@@ -130,7 +130,7 @@ import MultiEntryDialog from "@/components/banlist/MultiEntryDialog";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import { useWorkspaceStore } from "@/store/workspace";
 import { formatUiDate, uiText } from "@/i18n";
-import { systemConfirm } from "@/layouts/default/SystemDialogText.vue";
+import { localizedConfirm } from "@/components/localized-confirm";
 
 const workspace = useWorkspaceStore();
 const confirm = useConfirm();
@@ -213,7 +213,7 @@ const deleteEntry = async (id, category) => {
   pendingTasks.value++;
   requestErrorSource.value = "";
   try {
-    const accepted = await confirm(systemConfirm("删除规则", "确定删除此条禁用规则？", {}, { width: 420 }));
+    const accepted = await confirm(localizedConfirm("删除规则", "确定删除此条禁用规则？", {}, { width: 420 }));
     if (!accepted) return;
     await API.delete(
       `/api/banlist/${category}/delete?_id=${encodeURIComponent(id)}`,
@@ -231,7 +231,7 @@ const deleteAll = async () => {
   pendingTasks.value++;
   requestErrorSource.value = "";
   try {
-    const accepted = await confirm(systemConfirm("清空全部规则", "确定删除全部化学品与反应禁用规则？此操作无法撤销。", {}, { width: 440 }));
+    const accepted = await confirm(localizedConfirm("清空全部规则", "确定删除全部化学品与反应禁用规则？此操作无法撤销。", {}, { width: 440 }));
     if (!accepted) return;
     const failed = [];
     for (const [category, items] of [

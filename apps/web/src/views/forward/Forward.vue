@@ -128,6 +128,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useConfirm } from "vuetify-use-dialog";
+import { localizedConfirm } from "@/components/localized-confirm";
 import { uiText } from "@/i18n";
 import { predictionMessage } from "./ui-copy";
 import { errorMessage } from "@/common/workspace-errors";
@@ -265,13 +266,7 @@ async function predict() {
 
 async function clear() {
   if (busy.value || inputPending.value) return;
-  const confirmed = await createConfirm({
-    title: uiText("请确认"),
-    content: uiText("清空当前反应结构与结果？"),
-    confirmationText: uiText("确定"),
-    cancellationText: uiText("取消"),
-    dialogProps: { width: "auto" },
-  });
+  const confirmed = await createConfirm(localizedConfirm("请确认", "清空当前反应结构与结果？", {}, { width: "auto" }));
   if (!confirmed || disposed || busy.value || inputPending.value) return;
   conditions.invalidate();
   forward.invalidate();

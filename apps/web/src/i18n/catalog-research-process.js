@@ -18,7 +18,7 @@ export default [
   ["{role} {index}：未提供结构，不推断化学身份或分子量。", "{role} {index}: no structure is provided; chemical identity and molecular weight are not inferred."],
   ["工艺物料核算", "Process material accounting"], ["批次录入 · {current} / {total}", "Batch entry · {current} / {total}"],
   ["已有批次", "Existing batch"], ["新建批次", "New batch"], ["正在读取批次输入", "Reading batch inputs"],
-  ["重新读取", "Read again"], ["打开已保存的结果", "Open saved results"],
+  ["重新读取", "Reload"], ["打开已保存的结果", "Open saved result"],
   ["批次录入分区", "Batch input sections"], ["产物与批次", "Product and batch"],
   ["产物结构与分离数据", "Product structure and isolation data"], ["产物完整结构", "Complete product structure"],
   ["分离产物", "Isolated product"], ["分离产物总质量", "Total isolated product mass"], ["未录入", "Not entered"],
