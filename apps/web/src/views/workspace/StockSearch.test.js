@@ -1,4 +1,4 @@
-import { nextTick, reactive } from "vue";
+import { defineComponent, h, nextTick, reactive, ref } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import { useRoute } from "vue-router";
 import { API } from "@/common/api";
@@ -9,13 +9,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "@vue/compiler-sfc";
 import postcss from "postcss";
+import { randomUUID } from "node:crypto";
 
 jest.mock("vue-router", () => ({ useRoute: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 jest.mock("@/store/workspace", () => ({ useWorkspaceStore: jest.fn() }));
 jest.mock("@/components/workspace/StructureInput.vue", () => ({
-  name: "StructureInput",
-  template: "<div />",
+  name: "StructureInput", template: "<div />",
 }));
 jest.mock("@/components/workspace/StructurePreview.vue", () => ({
   name: "StructurePreview", props: ["smiles", "label", "inputType"],
@@ -23,32 +23,57 @@ jest.mock("@/components/workspace/StructurePreview.vue", () => ({
 }));
 const snapshot = "a".repeat(64),
   otherSnapshot = "b".repeat(64);
+let inputPending;
 const stubs = {
   ModuleWorkbench: { template: "<section><slot /></section>" },
-  StructureInput: {
+  StructureInput: defineComponent({
+    name: "StructureInput",
     props: ["modelValue"],
     emits: ["update:modelValue"],
-    template:
-      '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
-  },
+    setup(props, { emit, expose }) {
+      const pending = ref(false);
+      inputPending = pending;
+      expose({ pending });
+      return () => h("textarea", { value: props.modelValue,
+        onInput: (event) => emit("update:modelValue", event.target.value) });
+    },
+  }),
   VBtn: { template: "<button><slot /></button>" },
   VIcon: true,
   VProgressCircular: true,
 };
-const wrappers = [];
-function setup() {
-  const route = reactive({ query: { smiles: "CCO", snapshot } });
+const wrappers = [], hosts = [];
+function setup(query = { smiles: "CCO", snapshot }) {
+  const route = reactive({ query });
   useRoute.mockReturnValue(route);
   useWorkspaceStore.mockReturnValue({ health: {} });
-  const wrapper = mount(StockSearch, { global: { stubs } });
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  hosts.push(host);
+  const wrapper = mount(StockSearch, { attachTo: host, global: { stubs } });
   wrappers.push(wrapper);
   return { route, wrapper };
 }
+function tab(wrapper, name) {
+  return wrapper.findAll('[role="tab"]').find((item) => item.text() === name);
+}
+function panel(wrapper, name) {
+  return wrapper.get(`#${tab(wrapper, name).attributes("aria-controls")}`);
+}
+async function lookup(wrapper, records = [{ smiles: "CCO", source: "supplier-a", catalog_id: "record-a" }], canonical = "CCO") {
+  API.post.mockResolvedValueOnce({ smiles: canonical }).mockResolvedValueOnce({ snapshot, results: { [canonical]: records } });
+  await wrapper.get("form").trigger("submit");
+  await flushPromises();
+}
+beforeAll(() => Object.defineProperty(globalThis.crypto, "randomUUID", { configurable: true, value: randomUUID }));
 beforeEach(() => {
   jest.clearAllMocks();
   API.post.mockReset();
 });
-afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
+afterEach(() => {
+  wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
+  hosts.splice(0).forEach((host) => host.remove());
+});
 
 test("route prefill performs no lookup and a changed query resets both input and expected snapshot", async () => {
   const { route, wrapper } = setup();
@@ -143,8 +168,8 @@ test("matched stock structure uses the shared read-only preview without changing
   expect(API.post).toHaveBeenCalledTimes(2);
 });
 
-test("catalogue evidence reserves a readable column and unbroken link label on mobile", () => {
-  const { descriptor } = parse(readFileSync(resolve(__dirname, "StockSearch.vue"), "utf8"));
+test("catalogue records wrap at 390 without truncating identity or breaking the evidence link", () => {
+  const { descriptor } = parse(readFileSync(resolve(__dirname, "../../components/stock/StockRecordList.vue"), "utf8"));
   const css = postcss.parse(descriptor.styles[0].content);
   const declarations = (selector) => Object.fromEntries(
     css.nodes.find((rule) => rule.selector === selector)?.nodes
@@ -152,8 +177,10 @@ test("catalogue evidence reserves a readable column and unbroken link label on m
   );
   expect(declarations(".catalog-link")["white-space"]).toBe("nowrap");
   expect(declarations(".catalog-link").display).toBe("inline-flex");
-  expect(declarations(".stock-evidence-cell")["min-width"]).toBe("100px");
-  expect(declarations(".stock-records-scroll")["overflow-x"]).toBe("auto");
+  expect(declarations(".stock-record dd")["overflow-wrap"]).toBe("anywhere");
+  const narrow = css.nodes.find((rule) => rule.type === "atrule" && rule.params === "(max-width: 480px)");
+  expect(narrow.nodes[0].nodes.find((node) => node.prop === "grid-template-columns").value).toBe("minmax(0, 1fr)");
+  expect(css.toString()).not.toMatch(/min-width:\s*(560|220)px/);
 });
 
 test("catalogue lead time is shown unchanged and is never a live dispatch promise", async () => {
@@ -166,4 +193,185 @@ test("catalogue lead time is shown unchanged and is never a live dispatch promis
   expect(wrapper.get(".stock-lead-time").text()).toBe("7-21days");
   expect(wrapper.text()).toContain("非实时供货承诺");
   expect(wrapper.find(".stock-snapshot-warning").exists()).toBe(false);
+});
+
+test("cold query has linked reading layers with no visible blank output or premature supplier evidence", () => {
+  const { wrapper } = setup({});
+  expect(wrapper.findAll('[role="tab"]')).toHaveLength(3);
+  expect(panel(wrapper, "查询").isVisible()).toBe(true);
+  expect(panel(wrapper, "目录记录").isVisible()).toBe(false);
+  expect(panel(wrapper, "证据详情").isVisible()).toBe(false);
+  expect(tab(wrapper, "目录记录").element.disabled).toBe(true);
+  expect(tab(wrapper, "证据详情").element.disabled).toBe(true);
+  expect(wrapper.get('[data-cy="stock-search-submit"]').element.disabled).toBe(true);
+  wrapper.findAll('[role="tab"]').forEach((item) => {
+    expect(document.getElementById(item.attributes("aria-controls")).getAttribute("aria-labelledby")).toBe(item.attributes("id"));
+  });
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test("completed lookup opens records, keeps the query draft mounted and edit restores source focus", async () => {
+  const { wrapper } = setup({ smiles: "OCC", snapshot });
+  const input = wrapper.get("textarea").element;
+  await lookup(wrapper);
+  expect(panel(wrapper, "查询").isVisible()).toBe(false);
+  expect(panel(wrapper, "目录记录").isVisible()).toBe(true);
+  expect(wrapper.get("textarea").element).toBe(input);
+  expect(input.value).toBe("OCC");
+  expect(document.activeElement).toBe(wrapper.get('[data-cy="stock-match-heading"]').element);
+  await wrapper.get('[data-cy="stock-edit-query"]').trigger("click");
+  expect(panel(wrapper, "查询").isVisible()).toBe(true);
+  expect(document.activeElement).toBe(input);
+  expect(input.value).toBe("OCC");
+  expect(API.post).toHaveBeenCalledTimes(2);
+});
+
+test("selected record opens separate evidence and returning restores its exact list control", async () => {
+  const { wrapper } = setup();
+  await lookup(wrapper, [{ smiles: "CCO", source: "supplier-a", catalog_id: "first" },
+    { smiles: "CCO", source: "supplier-b", catalog_id: "second" }]);
+  const origin = wrapper.findAll('[data-cy="stock-record-details"]')[1];
+  origin.element.focus();
+  await origin.trigger("click");
+  await flushPromises();
+  expect(panel(wrapper, "证据详情").isVisible()).toBe(true);
+  expect(panel(wrapper, "目录记录").isVisible()).toBe(false);
+  expect(panel(wrapper, "证据详情").text()).toContain("second");
+  expect(panel(wrapper, "证据详情").text()).not.toContain("first");
+  expect(panel(wrapper, "证据详情").text()).toContain(snapshot);
+  expect(document.activeElement).toBe(wrapper.get('[data-cy="stock-evidence-heading"]').element);
+  await wrapper.get('[data-cy="stock-back-records"]').trigger("click");
+  expect(document.activeElement).toBe(origin.element);
+  expect(API.post).toHaveBeenCalledTimes(2);
+});
+
+test("no-match presents the query structure without any supplier or purchasable success", async () => {
+  const { wrapper } = setup();
+  await lookup(wrapper, []);
+  expect(panel(wrapper, "目录记录").text()).toContain("未找到精确目录记录");
+  expect(wrapper.getComponent({ name: "StructurePreview" }).props("label")).toBe("查询结构");
+  expect(wrapper.find('[data-cy="stock-record-details"]').exists()).toBe(false);
+  expect(panel(wrapper, "目录记录").text()).not.toContain("精确结构匹配");
+  await tab(wrapper, "证据详情").trigger("click");
+  expect(panel(wrapper, "证据详情").text()).toContain(snapshot);
+  expect(panel(wrapper, "证据详情").text()).toContain("无精确目录记录");
+});
+
+test("pending confirmation gates lookup and invalidates old evidence without clearing its source", async () => {
+  const { wrapper } = setup();
+  inputPending.value = true;
+  await nextTick();
+  await wrapper.get("form").trigger("submit");
+  expect(API.post).not.toHaveBeenCalled();
+  inputPending.value = false;
+  await nextTick();
+  await lookup(wrapper);
+  inputPending.value = true;
+  await nextTick();
+  expect(wrapper.text()).not.toContain("record-a");
+  expect(tab(wrapper, "证据详情").element.disabled).toBe(true);
+  expect(wrapper.get("textarea").element.value).toBe("CCO");
+  inputPending.value = false;
+  await nextTick();
+  expect(tab(wrapper, "目录记录").element.disabled).toBe(true);
+});
+
+test("editing then restoring the same source does not resurrect old evidence, and new query drops only task context", async () => {
+  const { wrapper } = setup();
+  await lookup(wrapper);
+  await wrapper.get('[data-cy="stock-edit-query"]').trigger("click");
+  await wrapper.get("textarea").setValue("O");
+  await wrapper.get("textarea").setValue("CCO");
+  expect(wrapper.text()).not.toContain("record-a");
+  expect(tab(wrapper, "目录记录").element.disabled).toBe(true);
+  await lookup(wrapper);
+  await wrapper.get('[data-cy="stock-new-query"]').trigger("click");
+  expect(wrapper.get("textarea").element.value).toBe("");
+  expect(document.activeElement).toBe(wrapper.get("textarea").element);
+  expect(wrapper.text()).not.toContain("record-a");
+  await wrapper.get("textarea").setValue("CCO");
+  await lookup(wrapper);
+  await tab(wrapper, "证据详情").trigger("click");
+  expect(panel(wrapper, "证据详情").text()).not.toContain("任务快照 SHA256");
+});
+
+test("return and source replacement during lookup reject late errors and do not navigate or clear new text", async () => {
+  const { wrapper } = setup();
+  let reject;
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockReturnValueOnce(new Promise((_, no) => { reject = no; }));
+  await wrapper.get("form").trigger("submit");
+  await flushPromises();
+  expect(panel(wrapper, "目录记录").text()).toContain("正在检索目录记录");
+  await wrapper.get('[data-cy="stock-edit-query"]').trigger("click");
+  await wrapper.get("textarea").setValue("O");
+  reject(new Error("stale failure"));
+  await flushPromises();
+  expect(panel(wrapper, "查询").isVisible()).toBe(true);
+  expect(wrapper.get("textarea").element.value).toBe("O");
+  expect(wrapper.text()).not.toContain("stale failure");
+  expect(tab(wrapper, "目录记录").element.disabled).toBe(true);
+});
+
+test("lookup failure is distinct from no-match and can be retried through the unchanged lookup chain", async () => {
+  const { wrapper } = setup();
+  API.post.mockRejectedValueOnce(new Error(JSON.stringify({ detail: "catalog unavailable" })));
+  await wrapper.get("form").trigger("submit");
+  await flushPromises();
+  expect(panel(wrapper, "目录记录").text()).toContain("catalog unavailable");
+  expect(panel(wrapper, "目录记录").text()).not.toContain("未找到精确目录记录");
+  expect(tab(wrapper, "证据详情").element.disabled).toBe(true);
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({ snapshot, results: { CCO: [] } });
+  await wrapper.get('[data-cy="stock-retry"]').trigger("click");
+  await flushPromises();
+  expect(panel(wrapper, "目录记录").text()).toContain("未找到精确目录记录");
+});
+
+test("native reading tabs use roving keyboard focus and skip evidence until a confirmed response", async () => {
+  const { wrapper } = setup();
+  const query = tab(wrapper, "查询");
+  query.element.focus();
+  await query.trigger("keydown", { key: "End" });
+  expect(document.activeElement).toBe(query.element);
+  await lookup(wrapper);
+  query.element.focus();
+  await query.trigger("keydown", { key: "End" });
+  await flushPromises();
+  expect(document.activeElement).toBe(tab(wrapper, "证据详情").element);
+  expect(panel(wrapper, "证据详情").isVisible()).toBe(true);
+  await tab(wrapper, "证据详情").trigger("keydown", { key: "Home" });
+  expect(panel(wrapper, "查询").isVisible()).toBe(true);
+});
+
+test("a current completion after returning to query does not steal input focus or force result navigation", async () => {
+  const { wrapper } = setup();
+  let resolveLookup;
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockReturnValueOnce(new Promise((yes) => { resolveLookup = yes; }));
+  await wrapper.get("form").trigger("submit");
+  await flushPromises();
+  await wrapper.get('[data-cy="stock-edit-query"]').trigger("click");
+  const input = wrapper.get("textarea").element;
+  expect(document.activeElement).toBe(input);
+  resolveLookup({ snapshot, results: { CCO: [{ smiles: "CCO", catalog_id: "record-a" }] } });
+  await flushPromises();
+  expect(panel(wrapper, "查询").isVisible()).toBe(true);
+  expect(document.activeElement).toBe(input);
+  expect(tab(wrapper, "目录记录").element.disabled).toBe(false);
+});
+
+test("new unconfirmed input rejects an outstanding catalog success even when source text is unchanged", async () => {
+  const { wrapper } = setup();
+  let resolveLookup;
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockReturnValueOnce(new Promise((yes) => { resolveLookup = yes; }));
+  await wrapper.get("form").trigger("submit");
+  await flushPromises();
+  inputPending.value = true;
+  await nextTick();
+  resolveLookup({ snapshot, results: { CCO: [{ smiles: "CCO", catalog_id: "stale-record" }] } });
+  await flushPromises();
+  inputPending.value = false;
+  await nextTick();
+  expect(wrapper.get("textarea").element.value).toBe("CCO");
+  expect(wrapper.text()).not.toContain("stale-record");
+  expect(tab(wrapper, "目录记录").element.disabled).toBe(true);
+  expect(panel(wrapper, "查询").isVisible()).toBe(true);
 });
