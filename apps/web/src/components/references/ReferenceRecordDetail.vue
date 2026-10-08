@@ -8,20 +8,30 @@
       </div>
       <v-btn icon="mdi-close" variant="text" size="small" :aria-label="$tr('关闭参考记录详情')" data-cy="reference-detail-close" @click="$emit('close')" />
     </header>
+    <WorkbenchTabs v-model="panel" :items="panels" label="参考反应结果" v-slot="{ tabId, panelId }">
     <div class="reference-detail-body">
+      <section :id="panelId('reaction')" v-show="panel === 'reaction'" role="tabpanel"
+        :aria-labelledby="tabId('reaction')" :aria-hidden="panel !== 'reaction' || undefined" :inert="panel !== 'reaction' || undefined">
       <StructurePreview :smiles="referenceReactionDrawing(record)" input-type="reaction" label="参考反应结构" :width="900" :height="160" />
       <section class="reference-detail-section" :aria-label="$tr('报道收率')">
         <h3>{{ $tr('报道收率') }}</h3>
         <ReferenceRecordYields :measurements="record.reported_yields" :products="record.products" />
       </section>
-      <section class="reference-detail-section" :aria-label="$tr('记录条件与投料')">
+      </section>
+      <section :id="panelId('conditions')" v-show="panel === 'conditions'" role="tabpanel"
+        :aria-labelledby="tabId('conditions')" :aria-hidden="panel !== 'conditions' || undefined" :inert="panel !== 'conditions' || undefined"
+        class="reference-detail-section" :aria-label="$tr('记录条件与投料')">
         <h3>{{ $tr('记录条件与投料') }}</h3>
         <RecordedReactionConditions :conditions="record.conditions" />
       </section>
-      <section class="reference-detail-section reference-procedure" :aria-label="$tr('实验记录')">
+      <section :id="panelId('procedure')" v-show="panel === 'procedure'" role="tabpanel"
+        :aria-labelledby="tabId('procedure')" :aria-hidden="panel !== 'procedure' || undefined" :inert="panel !== 'procedure' || undefined"
+        class="reference-detail-section reference-procedure" :aria-label="$tr('实验记录')">
         <h3>{{ $tr('实验记录') }}</h3>
         <p>{{ record.procedure || $tr('未记录') }}</p>
       </section>
+      <section :id="panelId('source')" v-show="panel === 'source'" role="tabpanel"
+        :aria-labelledby="tabId('source')" :aria-hidden="panel !== 'source' || undefined" :inert="panel !== 'source' || undefined">
       <details class="reference-detail-section reference-citation" open>
         <summary>{{ $tr('引用与原始记录') }}</summary>
         <dl class="reference-provenance">
@@ -39,7 +49,9 @@
         <summary>{{ $tr('原始反应 SMILES') }}</summary>
         <code class="reference-raw">{{ record.reaction_smiles }}</code>
       </details>
+      </section>
     </div>
+    </WorkbenchTabs>
     <footer class="reference-detail-actions">
       <slot name="actions" />
       <p v-if="actionError" class="tool-error" role="alert">{{ $tr(actionError) }}</p>
@@ -48,12 +60,13 @@
   </section>
 </template>
 <script setup>
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import { evidenceCitations } from "@/common/reference-evidence";
 import { referenceReactionDrawing } from "@/common/reaction-references";
 import StructurePreview from "@/components/workspace/StructurePreview.vue";
 import RecordedReactionConditions from "./RecordedReactionConditions.vue";
 import ReferenceRecordYields from "./ReferenceRecordYields.vue";
+import WorkbenchTabs from "@/components/WorkbenchTabs.vue";
 import { referenceCitationLabel, referenceRecordedValue as recordedValue, referenceRecordEvidence, referenceRecordProvenance, referenceRecordTitle } from "./reference-record";
 const props = defineProps({
   record: { type: Object, required: true },
@@ -64,14 +77,24 @@ const props = defineProps({
 defineEmits(["close"]);
 const citations = computed(() => evidenceCitations(props.record));
 const provenance = computed(() => referenceRecordProvenance(props.record));
+const panel = ref("reaction");
+const panels = [
+  { value: "reaction", title: "参考反应" },
+  { value: "conditions", title: "记录条件与投料" },
+  { value: "procedure", title: "实验记录" },
+  { value: "source", title: "引用与原始记录" },
+];
+watch(() => props.record.id, () => { panel.value = "reaction"; });
 </script>
 <style scoped>
 .reference-record-detail { display: flex; flex-direction: column; min-width: 0; max-height: calc(100dvh - 48px); color: var(--ws-text); background: var(--ws-surface); border: 1px solid var(--ws-border); border-radius: var(--ws-radius, 6px); overflow: hidden; }
-.reference-detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--ws-border); }
+.reference-detail-heading { display: flex; flex-shrink: 0; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--ws-border); }
 .reference-detail-identity { min-width: 0; }
 .reference-detail-heading h2 { margin: 4px 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
 .reference-detail-heading p, .reference-detail-heading span { font-size: 12px; color: var(--ws-muted); margin: 0; }
-.reference-detail-body { min-height: 0; overflow-y: auto; padding: 12px 20px; overscroll-behavior: contain; }
+.reference-detail-body { height: min(520px, calc(100dvh - 220px)); min-height: 0; overflow-y: auto; padding: 12px 20px; overscroll-behavior: contain; }
+.reference-record-detail > :deep(.workspace-tabs) { flex-shrink: 0; padding: 0 20px; border-bottom: 1px solid var(--ws-border); }
+.reference-detail-body > .reference-detail-section { border-top: 0; padding-top: 4px; }
 .reference-detail-section { padding: 16px 0; border-top: 1px solid var(--ws-border); font-size: 12px; overflow-wrap: anywhere; }
 .reference-detail-section h3, summary { font-size: 13px; font-weight: 600; }
 .reference-detail-section h3 { margin: 0 0 8px; }

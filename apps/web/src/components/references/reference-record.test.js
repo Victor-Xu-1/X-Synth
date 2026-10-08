@@ -46,12 +46,12 @@ test("yield-product identity uses entire verified records, not disconnected frag
   expect(referenceYieldProduct({}, products)).toBe("关联产物未记录");
 });
 
-test("record title follows citation identity without inventing a document", () => {
+test("record title prioritizes a provided patent over a dataset DOI without inventing or discarding citation identity", () => {
   const record = { id: "source-record", doi: "10.1000/test", patent_number: "US123", provenance: { dataset_name: "Dataset" } };
-  expect(referenceRecordTitle(record)).toBe("10.1000/test");
-  delete record.doi;
   expect(referenceRecordTitle(record)).toBe("US123");
   delete record.patent_number;
+  expect(referenceRecordTitle(record)).toBe("10.1000/test");
+  delete record.doi;
   expect(referenceRecordTitle(record)).toBe("Dataset");
   delete record.provenance.dataset_name;
   expect(referenceRecordTitle(record)).toBe("source-record");

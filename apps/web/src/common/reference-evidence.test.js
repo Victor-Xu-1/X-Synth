@@ -14,6 +14,17 @@ import {
   yieldAnalysisLabel,
 } from "./reference-evidence";
 
+test("a dataset DOI cannot hide an explicitly provided patent or publication citation", () => {
+  const record = { doi: "10.6084/m9.figshare.5104873.v1", patent_number: "US07544831B2",
+    patent_url: "https://patents.google.com/patent/US07544831B2",
+    publication_url: "https://example.org/original-publication", source_url: "https://example.org/source-data" };
+  const before = JSON.stringify(record);
+  expect(evidenceCitations(record).map(citation => citation.url)).toEqual([
+    record.patent_url, "https://doi.org/" + record.doi, record.publication_url, record.source_url,
+  ]);
+  expect(JSON.stringify(record)).toBe(before);
+});
+
 const original = JSON.parse(
   readFileSync(
     resolve(

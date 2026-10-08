@@ -48,7 +48,9 @@
         :class="{ ready: online && workspace.ready, offline: !online }"
         role="status"
         aria-live="polite"
-        ><i aria-hidden="true" />{{ $tr(statusLabel) }}</span
+        :aria-label="$tr(statusLabel)"
+        :title="$tr(statusLabel)"
+        ><i aria-hidden="true" /><span class="service-label">{{ $tr(statusLabel) }}</span></span
       >
       <LanguageMenu />
       <v-tooltip :text="$tr('环境部署')"

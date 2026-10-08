@@ -17,9 +17,12 @@ async function setup(url = "/analyses") {
   ] });
   await router.push(url);
   const wrapper = mount(AnalysisList, { global: { plugins: [router], stubs: {
-    VBtn: { props: ["disabled", "loading"], template: '<button :disabled="disabled || loading"><slot /></button>' },
+    VBtn: { props: ["disabled", "loading", "icon"], template: '<button :disabled="disabled || loading" :data-icon="icon"><slot /></button>' },
     VProgressLinear: true,
     VIcon: true,
+    WorkbenchDialog: { props: ["modelValue"], emits: ["update:modelValue", "afterLeave"],
+      watch: { modelValue(value, previous) { if (previous && !value) this.$emit("afterLeave"); } },
+      template: '<section v-if="modelValue" role="dialog"><slot /></section>' },
     VTooltip: { template: '<div><slot name="activator" :props="{}" /></div>' },
     VSelect: { props: ["modelValue", "items", "itemTitle"], emits: ["update:modelValue"], template:
       `<select aria-label="研究类型" :value="modelValue" @change="$emit('update:modelValue', $event.target.value)">
@@ -52,7 +55,8 @@ test("English loading, record states and selectors switch reactively without ref
   await flushPromises();
   expect(wrapper.get("tbody tr").element).toBe(record.element);
   expect(record.get(".analysis-state").text()).toBe("Interrupted");
-  expect(record.get(".analysis-structure-text").text()).toBe(smiles);
+  await record.get(".analysis-summary").trigger("click");
+  expect(wrapper.get(".analysis-structure-text").text()).toBe(smiles);
   expect(wrapper.get(".analysis-filters [role=status]").text()).toBe("Total calculations: 1");
   expect(router.currentRoute.value.query).toEqual({});
   expect(API.get).toHaveBeenCalledTimes(1);
@@ -66,6 +70,60 @@ test("one mount reads one page only; history never executes or deletes", async (
   expect(API.get.mock.calls).toEqual([["/api/v1/analyses", { limit: 25, offset: 0 }]]);
   expect(wrapper.get("tbody tr").attributes("data-record-id")).toBe("record-a");
   expect(API.post).not.toHaveBeenCalled(); expect(API.delete).not.toHaveBeenCalled();
+});
+
+test("chemical previews lead the row without promoting raw SMILES to a record title", async () => {
+  const smiles = "[13CH3][C@@H](O)C(=O)[O-].[Na+]";
+  API.get.mockResolvedValueOnce(data([{ ...row("chemical"), kind: "assessment", structure: smiles }]));
+  const { wrapper } = await setup();
+  const identity = wrapper.get(".analysis-identity");
+  expect(identity.text()).not.toContain(smiles);
+  expect(identity.get("[data-smiles]").attributes("data-smiles")).toBe(smiles);
+  expect(Number(identity.get("[data-smiles]").attributes("width"))).toBeGreaterThanOrEqual(200);
+  expect(Number(identity.get("[data-smiles]").attributes("height"))).toBeGreaterThanOrEqual(88);
+});
+
+test("structure-free optimization has one type label and no invented chemical title or counts", async () => {
+  API.get.mockResolvedValueOnce(data());
+  const { wrapper } = await setup();
+  const record = wrapper.get("tbody tr");
+  expect(record.text().match(/实验优化/g)).toHaveLength(1);
+  expect(record.get(".analysis-nonchemical").text()).toBe("实测 CSV");
+  expect(record.find("[data-smiles]").exists()).toBe(false);
+  expect(record.find(".analysis-kind-identity").exists()).toBe(false);
+});
+
+test("the actual record action signals same-tab navigation and preserves return context", async () => {
+  API.get.mockResolvedValueOnce(data([{ ...row("chemical"), kind: "assessment", structure: "CCO" }], 26));
+  const { wrapper } = await setup("/analyses?kind=assessment&page=2");
+  const action = wrapper.get(".analysis-open");
+  expect(action.attributes("data-icon")).toBe("mdi-chevron-right");
+  expect(action.attributes("target")).toBeUndefined();
+  expect(wrapper.get(".analysis-kind a").attributes("href")).toBe("/analyses/chemical?kind=assessment&page=2");
+});
+
+test("row action keyboard order matches the mobile visual order", async () => {
+  API.get.mockResolvedValueOnce(data());
+  const { wrapper } = await setup();
+  expect(wrapper.findAll(".analysis-row-actions button").map(button => button.attributes("data-icon")))
+    .toEqual(["mdi-chevron-right", "mdi-information-outline"]);
+});
+
+test("a failed structure image can retry without following the record link", async () => {
+  API.get.mockResolvedValueOnce(data([{ ...row("chemical"), kind: "assessment", structure: "CCO" }]));
+  const { wrapper, router } = await setup();
+  const retry = document.createElement("button");
+  wrapper.get("[data-smiles]").element.appendChild(retry);
+  retry.click(); await flushPromises();
+  expect(router.currentRoute.value.fullPath).toBe("/analyses");
+  expect(API.get).toHaveBeenCalledTimes(1);
+});
+
+test("preview navigation does not nest image retry controls inside a link", async () => {
+  API.get.mockResolvedValueOnce(data([{ ...row("chemical"), kind: "assessment", structure: "CCO" }]));
+  const { wrapper } = await setup("/analyses?kind=assessment");
+  expect(wrapper.get("[data-smiles]").element.closest("a")).toBeNull();
+  expect(wrapper.get(".analysis-preview-link").attributes("href")).toBe("/analyses/chemical?kind=assessment");
 });
 test("filter changes reset pagination, hide old records, and preserve URL context on detail links", async () => {
   API.get.mockResolvedValueOnce(data([row()], 26));
@@ -130,12 +188,72 @@ test("readable research rows preserve exact chemical identity, real states and c
   const { wrapper } = await setup("/analyses?page=2");
   const records = wrapper.findAll("tbody tr");
   expect(records[0].get("[data-smiles]").attributes("data-smiles")).toBe(smiles);
-  expect(records[0].get(".analysis-structure-text").text()).toBe(smiles);
+  await records[0].get(".analysis-summary").trigger("click");
+  expect(wrapper.get(".analysis-structure-text").text()).toBe(smiles);
   expect(records[0].get(".analysis-state .state-badge").classes()).toContain("interrupted");
   expect(records[0].get(".analysis-state").text()).toBe("已中断");
-  expect(records[0].get(".analysis-identity").attributes("href")).toBe("/analyses/chemical?page=2");
+  expect(records[0].get(".analysis-preview-link").attributes("href")).toBe("/analyses/chemical?page=2");
   expect(records[1].find("[data-smiles]").exists()).toBe(false);
   expect(records[1].get(".analysis-state").text()).toBe("未完成");
+});
+
+test("row details disclose only actual snapshot fields, do not refetch, and restore keyboard focus", async () => {
+  const smiles = "[13CH3][C@@H](O)C(=O)[O-].[Na+]";
+  const snapshot = { ...row("原始用户 record", "failed"), kind: "assessment", structure: smiles,
+    finished: "2026-10-04T00:01:00Z", error: '<b>原始错误 alpha</b>' };
+  const response = data([snapshot]);
+  const unchanged = JSON.stringify(response);
+  API.get.mockResolvedValueOnce(response);
+  const { wrapper, router } = await setup();
+  document.body.appendChild(wrapper.element);
+  const opener = wrapper.get(".analysis-summary");
+  opener.element.focus();
+  await opener.trigger("click");
+  const dialog = wrapper.get('[role="dialog"]');
+  expect(dialog.get(".analysis-structure-text").text()).toBe(smiles);
+  expect(dialog.get(".history-record-id").text()).toBe(snapshot.id);
+  expect(dialog.findAll("time").map(time => time.attributes("datetime"))).toEqual([snapshot.created, snapshot.finished]);
+  expect(dialog.get(".history-record-error").text()).toBe(snapshot.error);
+  expect(dialog.find(".history-record-error b").exists()).toBe(false);
+  expect(dialog.find("input, textarea, select").exists()).toBe(false);
+  expect(API.get).toHaveBeenCalledTimes(1);
+  expect(API.post).not.toHaveBeenCalled(); expect(API.delete).not.toHaveBeenCalled();
+  expect(router.currentRoute.value.fullPath).toBe("/analyses");
+  await dialog.get('[aria-label="关闭"]').trigger("click");
+  await flushPromises();
+  expect(document.activeElement).toBe(opener.element);
+  expect(JSON.stringify(response)).toBe(unchanged);
+});
+
+test("missing structures and optional details stay absent rather than acquiring made-up scientific data", async () => {
+  API.get.mockResolvedValueOnce(data([{ ...row("no-structure"), kind: "conditions" }]));
+  const { wrapper } = await setup();
+  expect(wrapper.get(".analysis-nonchemical").text()).toBe("结构未提供");
+  await wrapper.get(".analysis-summary").trigger("click");
+  const dialog = wrapper.get('[role="dialog"]');
+  expect(dialog.find("[data-smiles]").exists()).toBe(false);
+  expect(dialog.find(".analysis-structure-text").exists()).toBe(false);
+  expect(dialog.find(".history-record-error").exists()).toBe(false);
+  expect(dialog.findAll("time")).toHaveLength(1);
+  expect(dialog.text()).not.toContain("模型");
+  expect(dialog.text()).not.toContain("收率");
+});
+
+test("open row details react to locale and current snapshots, then release on query change", async () => {
+  API.get.mockResolvedValueOnce(data([{ ...row("polling", "running"), kind: "assessment", structure: "CCO" }]));
+  const { wrapper, router } = await setup();
+  await wrapper.get(".analysis-summary").trigger("click");
+  setLocale("en", { persist: false }); await flushPromises();
+  expect(wrapper.get('[role="dialog"] h2').text()).toBe("Molecular assessment record");
+  expect(wrapper.get(".history-record-status").text()).toBe("Computing");
+  API.get.mockResolvedValueOnce(data([{ ...row("polling"), kind: "assessment", structure: "CCO", finished: "2026-10-04T00:01:00Z" }]));
+  await wrapper.get('[aria-label="Refresh analysis record"]').trigger("click"); await flushPromises();
+  expect(wrapper.get(".history-record-status").text()).toBe("Completed");
+  expect(wrapper.get('[role="dialog"]').findAll("time")).toHaveLength(2);
+  API.get.mockResolvedValueOnce(data());
+  await router.replace("/analyses?kind=optimization"); await flushPromises();
+  expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+  expect(API.get).toHaveBeenCalledTimes(3);
 });
 
 test("same-page refresh retains readable results and truthful counts; a failed read does not imply emptiness", async () => {

@@ -1,5 +1,10 @@
 <template>
   <ModuleWorkbench title="参考反应检索">
+    <WorkbenchTabs v-model="layer" :items="layers" label="参考反应检索" v-slot="{ tabId, panelId }">
+    <section :id="panelId('query')" ref="queryPanel" data-cy="reference-query-panel" v-show="layer === 'query'"
+      role="tabpanel" :aria-labelledby="tabId('query')" :inert="layer !== 'query' || undefined"
+      :aria-hidden="layer !== 'query' || undefined">
+    <WorkbenchScope :active="layer === 'query'">
     <section
       v-if="prefill || prefillError"
       class="reference-prefill"
@@ -128,12 +133,29 @@
           ref="canvas"
           v-model="reactionSmiles"
           label="反应结构"
-          :disabled="loading"
+          :disabled="loading || layer !== 'query'"
           :require-reactants="false"
           data-cy="reference-reaction"
         />
       </section>
     </WorkbenchForm>
+    </WorkbenchScope>
+    <v-btn v-if="searched" variant="text" prepend-icon="mdi-arrow-right" data-cy="reference-open-results"
+      :disabled="blocked" @click="openResults">{{ $tr('参考反应结果') }}</v-btn>
+    </section>
+    <section :id="panelId('records')" class="reference-reading" data-cy="reference-reading" v-show="layer === 'records'"
+      role="tabpanel" :aria-labelledby="tabId('records')" :inert="layer !== 'records' || undefined"
+      :aria-hidden="layer !== 'records' || undefined" :aria-busy="loading">
+      <header class="reference-reading-heading">
+        <h2 ref="readingHeading" tabindex="-1">{{ $tr('参考反应结果') }}</h2>
+        <div class="reference-reading-actions">
+          <v-btn variant="text" prepend-icon="mdi-pencil-outline" data-cy="reference-edit-query"
+            :disabled="loading" @click="editQuery">{{ $tr('返回修改') }}</v-btn>
+          <v-btn v-if="error" variant="text" prepend-icon="mdi-refresh" :disabled="!canSearch"
+            @click="search">{{ $tr('重试') }}</v-btn>
+        </div>
+      </header>
+      <ReferenceQuerySummary v-if="actualInput" :query="actualInput" />
     <ReferenceResults
       class="reference-search-results"
       :response="result"
@@ -145,6 +167,8 @@
       allow-canvas-reuse
       @load-reaction="loadReaction"
     />
+    </section>
+    </WorkbenchTabs>
   </ModuleWorkbench>
 </template>
 
@@ -164,11 +188,16 @@ import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import ReactionInput from "@/components/workspace/ReactionInput.vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import ReferenceResults from "@/components/references/ReferenceResults.vue";
+import ReferenceQuerySummary from "@/components/references/ReferenceQuerySummary.vue";
+import WorkbenchTabs from "@/components/WorkbenchTabs.vue";
+import WorkbenchScope from "@/components/workspace/WorkbenchScope.vue";
 
 const route = useRoute();
 const reactionSmiles = ref(""),
   limit = ref(20);
 const canvas = ref(null);
+const layer = ref("query"), queryPanel = ref(null), readingHeading = ref(null);
+let navigationGeneration = 0, disposed = false;
 const product = computed(() => canvas.value?.product || "");
 const reactants = computed(() => canvas.value?.reactants || []);
 const prefill = ref(null),
@@ -219,6 +248,32 @@ const {
   invalidationBlocked,
   context: [reactionSmiles],
 });
+const layers = computed(() => [
+  { value: "query", title: "查询", disabled: loading.value },
+  { value: "records", title: "参考反应结果", disabled: !searched.value || blocked.value },
+]);
+watch(searched, (value) => { if (!value) layer.value = "query"; }, { flush: "sync" });
+watch(layer, () => { navigationGeneration++; }, { flush: "sync" });
+async function focusLayer(expected, target) {
+  const generation = ++navigationGeneration;
+  await nextTick();
+  const element = target();
+  if (disposed || generation !== navigationGeneration || layer.value !== expected || !element?.isConnected
+    || element.disabled || element.closest('[hidden],[inert]')) return;
+  element.focus({ preventScroll: true });
+  element.scrollIntoView?.({ block: "nearest" });
+}
+function openResults() {
+  if (!searched.value || blocked.value) return;
+  layer.value = "records";
+  focusLayer("records", () => readingHeading.value);
+}
+function editQuery() {
+  if (loading.value) return;
+  layer.value = "query";
+  focusLayer("query", () => queryPanel.value?.querySelector("textarea"));
+}
+onBeforeUnmount(() => { disposed = true; navigationGeneration++; });
 watch(
   () => route.query,
   () => {
@@ -250,7 +305,10 @@ function discardPrefill() {
 }
 async function search() {
   await nextTick();
-  await searchReferences();
+  if (!canSearch.value) return;
+  const request = searchReferences();
+  openResults();
+  await request;
 }
 async function loadReaction(records) {
   const response = result.value,
@@ -270,7 +328,11 @@ async function loadReaction(records) {
   const generation = ++proposalGeneration;
   // A staged reference does not revise chemistry until the existing canvas accepts it.
   referenceProposal.value = true;
+  layer.value = "query";
+  await nextTick();
   try {
+    if (generation !== proposalGeneration || response !== result.value || original !== reactionSmiles.value
+      || loading.value || prefill.value || prefillError.value || !canvas.value) return;
     await canvas.value.importRecords(records);
   } finally {
     if (generation === proposalGeneration && !inputPending.value)
@@ -280,6 +342,14 @@ async function loadReaction(records) {
 </script>
 
 <style scoped>
+.reference-reading { min-width: 0; padding: 24px 32px; }
+.reference-reading-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.reference-reading-heading h2 { margin: 0; font-size: 18px; scroll-margin-top: calc(var(--ws-header-height) + 16px); }
+.reference-reading-actions { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+@media (max-width: 700px) {
+  .reference-reading { padding: 20px 16px; }
+  .reference-reading-heading { flex-wrap: wrap; }
+}
 .reference-source {
   font-size: 12px;
   margin: 14px 0 24px;

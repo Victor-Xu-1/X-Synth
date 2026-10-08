@@ -497,6 +497,15 @@ supplier/database dumps. Third-party notices are retained beside their sources.
 Acceptance targets are measured against the actual configured snapshot and
 models, not mocked latency. Targets are not claims of an already-passed run.
 
+Public workbench delivery stays within the existing static-file authority. Only
+public text/WASM assets negotiate bounded deterministic gzip; private API and
+identity/scientific payloads are not compressed by this path. Representation-specific
+validators, Vary, HEAD, identity ranges, path containment and SPA fallbacks remain
+explicit contracts. AssetCacheLimits shares the platform performance-policy module:
+16 MiB/128 cached entries, 8 MiB source file, eight admitted cold requests and one
+compressor per API process. Warm bytes are reused; overload never launches unbounded
+work, and no compression policy changes a chemistry/search budget or scientific result.
+
 | Path                        | Acceptance Target                                                         | Evidence                                                            |
 | --------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | Warm exact stock lookup     | p95 <= 25 ms                                                              | At least 100 real accepted structures plus misses                   |

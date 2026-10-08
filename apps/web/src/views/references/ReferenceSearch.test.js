@@ -17,6 +17,8 @@ import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import ReferenceSearch from "./ReferenceSearch.vue";
 import { setLocale } from "@/i18n";
 import "@/components/references/reference-dialog.test-support";
+import { randomUUID } from "node:crypto";
+Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID, configurable: true });
 
 jest.mock("vue-router", () => ({ useRoute: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn() } }));
@@ -47,6 +49,46 @@ const ready = {
   reason: null,
 };
 const wrappers = [];
+test("a new link during input-layer reactivation cannot dispatch an old reference import", async () => {
+  const { wrapper, route } = await setup();
+  await setReactionDraft(wrapper, { product: "CC=O", reactants: ["CCO"] });
+  API.post.mockResolvedValue(packet()); await wrapper.vm.search(); await flushPromises();
+  const draft = reactionDraft(wrapper); draft.importRecords = jest.fn().mockResolvedValue(true);
+  const proposal = wrapper.vm.loadReaction({ reactants: ["CCO"], products: ["CC=O"], agents: [] });
+  await nextTick();
+  route.query = { reaction_smiles: "CCN>>CC=N" };
+  await proposal; await flushPromises();
+  expect(draft.importRecords).not.toHaveBeenCalled();
+});
+test("a submitted query opens a separate reading layer without replacing its chemistry canvas or issuing another search", async () => {
+  const { wrapper } = await setup();
+  await setReactionDraft(wrapper, { product: "CC=O", reactants: ["CCO"] });
+  const canvas = wrapper.getComponent(reactionInput).element;
+  const held = deferred(); API.post.mockReturnValueOnce(held.promise);
+  const search = wrapper.vm.search(); await flushPromises();
+  expect(wrapper.get('[data-cy="reference-reading"]').attributes("aria-hidden")).toBeUndefined();
+  expect(wrapper.get('[data-cy="reference-query-panel"]').attributes("inert")).toBeDefined();
+  expect(wrapper.getComponent(reactionInput).element).toBe(canvas);
+  held.resolve(packet()); await search; await flushPromises();
+  expect(wrapper.get('[data-cy="reference-query-summary"]').text()).toContain("产物结构精确匹配");
+  await wrapper.get('[data-cy="reference-edit-query"]').trigger("click");
+  expect(wrapper.get('[data-cy="reference-reading"]').attributes("aria-hidden")).toBe("true");
+  expect(wrapper.getComponent(reactionInput).element).toBe(canvas);
+  expect(reactionDraft(wrapper).product.value).toBe("CC=O");
+  await wrapper.get('[data-cy="reference-open-results"]').trigger("click");
+  expect(API.post).toHaveBeenCalledTimes(1);
+  expect(wrapper.findAll('[data-cy="reference-row"]')).toHaveLength(1);
+});
+
+test("a changed query immediately retires its reading layer and never presents stale records", async () => {
+  const { wrapper } = await setup();
+  await setReactionDraft(wrapper, { product: "CC=O", reactants: ["CCO"] });
+  API.post.mockResolvedValue(packet()); await wrapper.vm.search(); await flushPromises();
+  expect(wrapper.get('[data-cy="reference-reading"]').attributes("aria-hidden")).toBeUndefined();
+  await setReactionDraft(wrapper, { product: "CCN" });
+  expect(wrapper.get('[data-cy="reference-reading"]').attributes("aria-hidden")).toBe("true");
+  expect(wrapper.find('[data-cy="reference-row"]').exists()).toBe(false);
+});
 test("retrieval copy changes language without replacing the selected reaction or issuing a search", async () => {
   API.get.mockResolvedValue(ready);
   const { wrapper } = await setup();

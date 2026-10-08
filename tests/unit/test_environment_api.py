@@ -14,6 +14,7 @@ from packages.platform import (
     native_capability_catalog,
 )
 from packages.platform.environments import ENGINE_SERVICES, environment_snapshot
+from packages.platform.version import product_version
 
 
 def snapshot(health, runtime=None, models="pistachio,pistachio_ringbreaker"):
@@ -90,7 +91,8 @@ def test_real_environment_api_is_authenticated_read_only_and_shares_runtime(tmp_
     result = response.json()
     assert result["schema_version"] == 1
     assert result["platform"]["name"] == "X-Synth"
-    assert result["platform"]["version"] == "0.1.0"
+    assert result["platform"]["version"] == product_version()
+    assert result["platform"]["version"] == result["health"]["version"]
     assert len(result["engines"]) == 1
     assert result["engines"][0]["id"] == "askcos_v2"
     assert result["health"]["service"] == "x-synth"

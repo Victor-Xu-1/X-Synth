@@ -49,8 +49,8 @@
         v-if="detailRecord"
         :record="detailRecord"
         :title-id="detailTitleId"
-        :action-error="actionError"
-        :notice="notice"
+        :action-error="messageRecord === detailRecord.id ? actionError : ''"
+        :notice="messageRecord === detailRecord.id ? notice : ''"
         @close="closeDetail"
       >
         <template #actions>
@@ -100,6 +100,7 @@ const checked = computed(() => {
 const visibleError = computed(() => props.error || (props.response && !checked.value
   ? "参考反应返回格式无效，未展示结果。" : ""));
 const action = ref(null), actionError = ref(""), notice = ref("");
+const messageRecord = ref(null);
 const selectedId = ref(null);
 const detailId = "reference-detail-" + useId();
 const detailTitleId = detailId + "-title";
@@ -115,6 +116,7 @@ watch(
     action.value = null;
     actionError.value = "";
     notice.value = "";
+    messageRecord.value = null;
   },
   { deep: true, flush: "sync" },
 );
@@ -170,6 +172,7 @@ async function operate(row, kind) {
   action.value = { id: row.id, kind };
   actionError.value = "";
   notice.value = "";
+  messageRecord.value = row.id;
   try {
     if (kind === "copy") {
       if (!navigator.clipboard?.writeText) throw new ReferenceContractError("当前环境无法使用剪贴板。");

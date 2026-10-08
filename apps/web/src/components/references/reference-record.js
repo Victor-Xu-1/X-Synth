@@ -41,7 +41,7 @@ export function referenceYieldAnalysisLabel(measurement) {
 }
 
 export function referenceRecordTitle(row) {
-  return row.doi || row.patent_number || row.provenance.dataset_name || row.id;
+  return row.patent_number || row.doi || row.provenance.dataset_name || row.id;
 }
 
 export function referenceCitationLabel(citation, row) {
