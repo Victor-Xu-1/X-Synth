@@ -37,6 +37,8 @@ test("named chemical-data parameters retain zero, complete structures and user t
   expect(uiText("{filename} · {count} 条结构", { filename, count: 2 })).toBe(`${filename} · 2 structures`);
   expect(uiText("{filename} · {count} 条结构", { filename, count: 1 })).toBe(`${filename} · 1 structure`);
   expect(uiText("{filename} · {count} 条结构", { filename, count: 0 })).toBe(`${filename} · 0 structures`);
+  expect(uiText("{count} 项投料", { count: 1 })).toBe("1 input material");
+  expect(uiText("{count} 项其他出料", { count: 0 })).toBe("0 other outputs");
   const identity = "[13CH3][C@H]([NH3+])CO.[Cl-]";
   expect(uiText("放大{label}", { label: identity })).toBe(`Enlarge ${identity}`);
   setLocale("zh-CN", { persist: false });

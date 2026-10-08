@@ -26,7 +26,7 @@ export default [
   ["录入实验收率 / %", "Entered experimental yield / %"], ["质量纯度 ≠ HPLC 面积纯度", "Mass purity ≠ HPLC area purity"],
   ["投料", "Inputs"], ["投料与计量", "Inputs and stoichiometry"], ["投料与收率依据", "Inputs and yield basis"],
   ["其他出料", "Other outputs"], ["已包含全部投料、试剂、溶剂、水及后处理物料", "All inputs, reagents, solvents, water and work-up materials are included"],
-  ["{count} 项投料", "{count} input materials"], ["{count} 项其他出料", "{count} other outputs"],
+  ["{count} 项投料", "{count} input material | {count} input materials"], ["{count} 项其他出料", "{count} other output | {count} other outputs"],
   ["完整投料边界", "Complete input boundary"], ["未确认投料边界", "Unconfirmed input boundary"],
   ["核算批次", "Calculate batch"], ["缺少产物结构。", "Product structure is missing."],
   ["批次核算失败，请核对结构、质量、单位与服务。", "Batch calculation failed. Check structures, masses, units and services."],
