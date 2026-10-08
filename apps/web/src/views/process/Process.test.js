@@ -15,8 +15,6 @@ jest.mock("@/components/SmilesImage.vue", () => ({ name: "SmilesImage", template
 const wrappers = [], push = jest.fn();
 const recordId = "b".repeat(32);
 const tabs = {
-  VTabs: { props: ["modelValue"], emits: ["update:modelValue"], template: '<div><slot /></div>' },
-  VTab: { props: ["value"], template: '<button type="button"><slot /></button>' },
   VDialog: { props: ["modelValue"], template: '<div v-if="modelValue"><slot /></div>' },
 };
 beforeEach(() => {
@@ -27,7 +25,7 @@ beforeEach(() => {
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
 function setup(query = { smiles: "CCO" }) {
   const route = reactive({ query }); useRoute.mockReturnValue(route);
-  const wrapper = mount(Process, { global: { stubs: { ...calculationStubs, ...tabs } } });
+  const wrapper = mount(Process, { attachTo: document.body, global: { stubs: { ...calculationStubs, ...tabs } } });
   wrappers.push(wrapper); return { wrapper, route };
 }
 async function fillMasses(wrapper) {
@@ -48,6 +46,32 @@ test("input has purposeful sections and no empty result pane or per-row drawing 
   expect(wrapper.findAll('[role="tabpanel"]')).toHaveLength(3);
   expect(wrapper.findAllComponents({ name: "StructureInput" })).toHaveLength(1);
   expect(wrapper.get('[aria-label="投料 1 质量"]').element.value).toBe("");
+});
+
+test("adjacent input navigation keeps entered quantities and focuses the selected layer", async () => {
+  const { wrapper } = setup(); await fillMasses(wrapper);
+  await wrapper.get('[data-section-next]').trigger("click"); await nextTick();
+  expect(wrapper.get('[data-section="inputs"]').isVisible()).toBe(true);
+  expect(document.activeElement).toBe(wrapper.get('[data-section="inputs"]').element);
+  expect(wrapper.get('[data-section="product"]').isVisible()).toBe(false);
+  expect(wrapper.get('[aria-label="分离产物总质量"]').element.value).toBe("20");
+  await wrapper.get('[data-section-next]').trigger("click"); await nextTick();
+  expect(wrapper.get('[data-section="outputs"]').isVisible()).toBe(true);
+  expect(wrapper.find('[data-section-next]').exists()).toBe(false);
+  await wrapper.get('[data-section-previous]').trigger("click"); await nextTick();
+  expect(wrapper.get('[data-section="inputs"]').isVisible()).toBe(true);
+  expect(wrapper.get('[aria-label="投料 1 质量"]').element.value).toBe("100");
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test("unconfirmed material edits lock layer navigation instead of hiding an open chemical editor", async () => {
+  const { wrapper } = setup();
+  await wrapper.get('[data-section-next]').trigger("click"); await nextTick();
+  await wrapper.get('[aria-label="编辑投料 1 结构"]').trigger("click");
+  expect(wrapper.get('[data-section-next]').attributes("disabled")).toBeDefined();
+  expect(wrapper.get('[data-section-previous]').attributes("disabled")).toBeDefined();
+  await wrapper.get('[aria-label="关闭物料绘图"]').trigger("click");
+  expect(wrapper.get('[data-section-next]').attributes("disabled")).toBeUndefined();
 });
 
 test("actual RDKit computation opens only the saved result page without seeded purity or yield", async () => {
