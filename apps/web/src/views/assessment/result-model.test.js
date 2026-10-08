@@ -39,6 +39,13 @@ test("single-component summary is the actual component and never produces an agg
   expect(assessmentSingleComponent({ ...results.salt, structure: { ...results.salt.structure, components: 1 } })).toBeNull();
 });
 
+test("atom count is labeled as a molecular-graph count without inferring formula hydrogens", () => {
+  const row = assessmentIdentityRows(results.chiral.structure).find((item) => item.key === "atoms");
+  expect(results.chiral.structure.formula).toBe("C3H7NO2");
+  expect(row.value).toBe(6);
+  expect(row.label).toBe("结构图原子数");
+});
+
 test("real sodium component zero complexity is not missing and does not acquire an SA score", () => {
   const ion = results.salt.components.find((component) => component.structure.smiles === "[Na+]");
   const values = Object.fromEntries(assessmentComplexityRows(ion).map((row) => [row.key, row.value]));

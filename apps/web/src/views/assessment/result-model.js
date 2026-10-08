@@ -34,7 +34,7 @@ export const ASSESSMENT_COMPLEXITY_METRICS = [
 
 const identityFields = [
   ["molecular_weight_g_mol", "分子量 / g·mol⁻¹"], ["exact_mass_da", "单同位素质量 / Da"],
-  ["components", "组分数"], ["formal_charge", "形式电荷"], ["atoms", "原子数"], ["heavy_atoms", "重原子数"],
+  ["components", "组分数"], ["formal_charge", "形式电荷"], ["atoms", "结构图原子数"], ["heavy_atoms", "重原子数"],
 ];
 const descriptorFields = [
   ["exact_mass_da", "单同位素质量 / Da", "structure"], ["heavy_atoms", "重原子数", "structure"],
