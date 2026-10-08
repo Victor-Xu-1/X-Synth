@@ -12,10 +12,13 @@ import keycloakPlugin from "./keycloak";
 import timeago from "vue-timeago3";
 import zhCN from "date-fns/locale/zh-CN";
 import { createGtag } from "vue-gtag";
+import language, { initializeLocale } from "@/i18n";
 
 export function registerPlugins(app) {
+  initializeLocale();
   // order is important
   app
+    .use(language)
     .use(vuetify)
     .use(pinia)
     .use(timeago, {
