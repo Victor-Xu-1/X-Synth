@@ -10,6 +10,7 @@ test.each([
   "ReferenceRecordSummary.vue",
   "ReferenceRecordDetail.vue",
   "ReferenceRecordYields.vue",
+  "ReferenceQuerySummary.vue",
 ])("owned component compiles its script, template and scoped styles: %s", (filename) => {
   const source = readFileSync(resolve(__dirname, filename), "utf8");
   const { descriptor, errors } = parse(source, { filename });

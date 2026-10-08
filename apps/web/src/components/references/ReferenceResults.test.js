@@ -8,6 +8,8 @@ import { deferred, uiStubs } from "@/views/workspace/reaction-canvas.test-suppor
 import { referenceDialogStub } from "./reference-dialog.test-support";
 import ReferenceResults from "./ReferenceResults.vue";
 import { initializeLocale, setLocale } from "@/i18n";
+import { randomUUID } from "node:crypto";
+Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID, configurable: true });
 
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 jest.mock("@/common/chemical-files", () => ({ downloadChemicalFile: jest.fn() }));
@@ -21,6 +23,41 @@ const deposited = JSON.parse(readFileSync(resolve(
   __dirname, "../../../../../tests/fixtures/reactions/ord-astra-zeneca.json",
 ), "utf8"));
 const wrappers = [];
+test("detail reading partitions preserve every original field and reset navigation for a different record", async () => {
+  const first = clone(deposited), second = clone(deposited);
+  second.id += "-other"; second.provenance.record_id = second.id;
+  const response = packet([first, second]), before = JSON.stringify(response), wrapper = setup(response);
+  let detail = await openDetail(wrapper, 0);
+  expect(detail.findAll('[role="tab"]')).toHaveLength(4);
+  await detail.get('[role="tab"]:nth-child(3)').trigger("click");
+  expect(detail.get('.reference-procedure').attributes("aria-hidden")).toBeUndefined();
+  expect(detail.get('.reference-procedure p').element.textContent).toBe(first.procedure);
+  const body = detail.get('.reference-detail-body').element;
+  await detail.get('[role="tab"]:nth-child(2)').trigger("click");
+  expect(detail.get('.reference-detail-body').element).toBe(body);
+  expect(detail.findAll('.recorded-input')).toHaveLength(first.conditions.inputs.length);
+  await wrapper.get('[data-cy="reference-detail-close"]').trigger("click");
+  detail = await openDetail(wrapper, 1);
+  expect(detail.get('[role="tab"]:nth-child(1)').attributes("aria-selected")).toBe("true");
+  expect(JSON.stringify(response)).toBe(before); expect(API.post).not.toHaveBeenCalled();
+});
+test.each(["resolve", "reject"])("a late record-A export %s cannot publish a notice or error inside record B", async outcome => {
+  const first = clone(deposited), second = clone(deposited);
+  second.id += "-other"; second.provenance.record_id = second.id;
+  const wrapper = setup(packet([first, second]));
+  const held = deferred(); API.post.mockReturnValueOnce(held.promise);
+  await openDetail(wrapper, 0);
+  await wrapper.get('[data-cy="reference-record-detail"] [data-cy="reference-export"]').trigger("click");
+  await wrapper.get('[data-cy="reference-detail-close"]').trigger("click");
+  await openDetail(wrapper, 1);
+  if (outcome === "resolve") held.resolve({ format: "rxn", content: "isolated transport response" });
+  else held.reject(new Error("isolated source-A failure"));
+  await flushPromises();
+  const detail = wrapper.get('[data-cy="reference-record-detail"]');
+  expect(detail.attributes("data-reference-id")).toBe(second.id);
+  expect(detail.find('.reference-detail-notice').exists()).toBe(false);
+  expect(detail.find('[role="alert"]').exists()).toBe(false);
+});
 const clone = (value) => JSON.parse(JSON.stringify(value));
 function packet(records = [clone(deposited)], options = {}) {
   const query = { product: records[0]?.products.join(".") || deposited.products[0], reactants: [] };

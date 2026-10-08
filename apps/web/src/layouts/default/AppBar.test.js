@@ -76,6 +76,9 @@ test("service readiness, loading and offline states remain distinct", async () =
   expect(wrapper.get('[role="status"]').text()).toBe("网络离线");
   expect(wrapper.get('[role="status"]').classes()).not.toContain("ready");
   expect(wrapper.get('[aria-label="环境部署"]').attributes("data-to")).toBe("/environments");
+  expect(wrapper.get('[role="status"]').attributes("aria-label")).toBe("网络离线");
+  expect(wrapper.get('[role="status"]').attributes("title")).toBe("网络离线");
+  expect(wrapper.get('.service-label').text()).toBe("网络离线");
 });
 
 test("a known core failure is not disguised as connecting while an optional refresh continues", async () => {

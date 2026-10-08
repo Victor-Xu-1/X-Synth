@@ -208,10 +208,10 @@ export function evidenceCitations(row) {
     const url = safeExternalUrl(value);
     if (url && !links.some((link) => link.url === url)) links.push({ kind, label, url });
   };
+  add("article", row?.patent_number || "查看专利", row?.patent_url);
   if (row?.doi && /^10\.\d{4,9}\/\S+$/i.test(row.doi))
     add("article", row.doi, `https://doi.org/${row.doi}`);
-  if (!links.length) add("article", row?.patent_number || "查看专利", row?.patent_url);
-  if (!links.length) add("article", "查看原始文献", row?.publication_url);
+  add("article", "查看原始文献", row?.publication_url);
   add("data", "查看原始数据集", row?.source_url);
   return links;
 }

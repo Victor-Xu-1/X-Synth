@@ -1,4 +1,6 @@
 import { defineComponent, h, ref } from "vue";
+import { randomUUID } from "node:crypto";
+Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID, configurable: true });
 import { flushPromises, mount } from "@vue/test-utils";
 import { API } from "@/common/api";
 import { downloadChemicalFile } from "@/common/chemical-files";

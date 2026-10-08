@@ -6,21 +6,7 @@ from dataclasses import dataclass
 
 import anyio
 import anyio.to_thread
-
-
-@dataclass(frozen=True)
-class AssetCacheLimits:
-    max_bytes: int = 16 * 1024 * 1024
-    max_entries: int = 128
-    max_file_bytes: int = 8 * 1024 * 1024
-    min_file_bytes: int = 1024
-    max_pending: int = 8
-
-    def __post_init__(self) -> None:
-        if any(value <= 0 for value in (
-            self.max_bytes, self.max_entries, self.max_file_bytes, self.max_pending
-        )) or self.min_file_bytes < 0:
-            raise ValueError("Asset cache limits must be positive")
+from packages.platform.performance import AssetCacheLimits
 
 
 def file_identity(value: os.stat_result) -> tuple[int, ...]:

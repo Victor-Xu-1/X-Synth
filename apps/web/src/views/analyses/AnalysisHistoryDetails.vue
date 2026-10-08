@@ -46,7 +46,6 @@ header :deep(.v-btn) { flex-shrink: 0; width: 44px; height: 44px; min-width: 44p
 .history-record-body { overflow-y: auto; padding: 20px; }
 .history-record-preview { width: 100%; height: 220px; margin-bottom: 20px; }
 .history-record-preview :deep(.v-img) { width: 100% !important; height: 100% !important; }
-.history-record-preview :deep(.structure-error-state > span) { display: none; }
 .history-record-preview :deep(.structure-error-state .v-btn) { width: 44px; height: 44px; }
 dl { display: grid; gap: 14px; margin: 0; }
 dl > div { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 8px 16px; }
