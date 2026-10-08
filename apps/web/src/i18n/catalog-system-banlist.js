@@ -1,4 +1,8 @@
 export default [
+  ["禁用规则文件不能为空，大小不超过 2 MiB。", "The exclusion rules file must be nonempty and no larger than 2 MiB."],
+  ["禁用规则文件读取失败或超时，请重新选择文件后重试。", "Could not read the exclusion rules file, or the read timed out. Select the file again and retry."],
+  ["禁用规则文件应包含 1 至 100 条记录。", "The exclusion rules file must contain between 1 and 100 records."],
+  ["第 {index} 条禁用规则无效。SMILES 必须为非空字符串（最多 5000 字符），说明必须为字符串（最多 1000 字符），active 必须为布尔值。", "Exclusion rule {index} is invalid. SMILES must be a nonempty string (at most 5000 characters), description must be a string (at most 1000 characters), and active must be a boolean."],
   ["化学品", "Chemicals"], ["反应", "Reaction"], ["已启用", "Enabled"], ["已停用", "Disabled"],
   ["启用", "Enabled"], ["创建时间", "Created"], ["描述", "Description"],
   ["规则加载失败，请检查身份权限与后端服务状态。", "Could not load rules. Check identity permissions and backend service status."],

@@ -101,7 +101,9 @@ test("native model flows and outer capability gates remain unchanged", () => {
   expect(screening).toContain("createScreenSubmission");
   expect(read("SolProp.vue")).toContain('disabled: !workspace.can("solubility")');
   expect(read("SolProp.vue")).toContain('<template #module="{ value }">');
-  expect(read("../banlist/Banlist.vue")).toContain('disabled: !workspace.can("native_account")');
+  expect(read("../banlist/Banlist.vue")).toContain('disabled: !allowed.value');
+  expect(read("../banlist/useBanlist.js")).toContain("provideRuleOwnerScope(workspace)");
+  expect(read("../../components/banlist/rule-owner-scope.js")).toContain("nativeAccountAuthority(workspace)");
 });
 
 test("QM URL prefill only populates and requires explicit submission", () => {
