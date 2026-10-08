@@ -8,7 +8,7 @@
       </header>
       <div v-if="saved.loading.value" class="workspace-loading" role="status">{{ $tr('正在读取批次输入') }}</div>
       <div v-if="saved.error.value" class="tool-error" role="alert">{{ $tr(saved.error.value) }}<v-btn variant="text" size="small" @click="saved.reload">{{ $tr('重新读取') }}</v-btn><v-btn variant="text" size="small" to="/process" @click="saved.startNew">{{ $tr('新建批次') }}</v-btn></div>
-      <div v-if="error" class="tool-error" role="alert">{{ processMessage(error) }}</div>
+      <div v-if="error" ref="errorSummary" class="tool-error" role="alert" tabindex="-1">{{ processMessage(error) }}</div>
       <router-link v-if="error && recordPath(result?.record_id)" :to="recordPath(result.record_id)">{{ $tr('打开已保存的结果') }}</router-link>
       <WorkbenchTabs v-model="section" :items="sections" :label="$tr('批次录入分区')" :disabled="disabled || pending" v-slot="{ tabId, panelId }">
       <section v-show="section === 'product'" data-section="product" class="batch-panel" role="tabpanel" tabindex="-1" :id="panelId('product')" :aria-labelledby="tabId('product')" :inert="section !== 'product' || undefined">
@@ -58,7 +58,7 @@ import { freshProcessForm, restoreProcessForm } from "./process-draft";
 import MaterialTable from "./MaterialTable.vue";
 import YieldBasisFields from "./YieldBasisFields.vue";
 
-const section = ref("product"), inputForm = ref(null);
+const section = ref("product"), inputForm = ref(null), errorSummary = ref(null);
 const sections = [
   { value: "product", title: "产物与批次", heading: "产物结构与分离数据" },
   { value: "inputs", title: "投料与计量", heading: "投料与收率依据" },
@@ -68,7 +68,7 @@ const sectionIndex = computed(() => sections.findIndex((item) => item.value === 
 const productInput = ref(null), materialInputs = ref(null), outputInputs = ref(null);
 const form = reactive(freshProcessForm());
 const pending = computed(() => !!(productInput.value?.pending || materialInputs.value?.pending || outputInputs.value?.pending));
-const { result, loading, error, calculate, reset } = useCalculation({
+const { result, loading, error, calculate: runCalculation, reset } = useCalculation({
   input: form, pending, endpoint: "/api/v1/process/metrics", body: () => processBody(form),
   accepts: acceptsProcess, fallback: "批次核算失败，请核对结构、质量、单位与服务。",
   onResult: useAnalysisDelivery("process"),
@@ -78,6 +78,15 @@ const saved = useAnalysisInput({
   apply: (input) => Object.assign(form, restoreProcessForm(input)), prefill: (smiles) => { form.product.smiles = smiles; },
 });
 const disabled = computed(() => loading.value || saved.loading.value || !!saved.error.value);
+let submission = 0;
+async function calculate() {
+  if (disabled.value || pending.value) return;
+  const current = ++submission;
+  await runCalculation();
+  await nextTick();
+  if (current !== submission || !error.value || disabled.value || pending.value || !errorSummary.value?.isConnected) return;
+  errorSummary.value.focus();
+}
 async function moveSection(direction) {
   if (disabled.value || pending.value) return;
   const next = sections[sectionIndex.value + direction];
@@ -105,6 +114,7 @@ h3 { font-size: 15px; margin: 0 0 4px; }
 .scientific-note { font-size: 12px; color: var(--ws-muted); border-top: 1px solid var(--ws-border); padding-top: 16px; margin: 4px 0 0; }
 .boundary-label { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.7; padding-top: 20px; }
 .boundary-label input { margin-top: 4px; flex: none; }
+.tool-error:focus-visible { outline: 2px solid var(--ws-danger); outline-offset: 4px; }
 .process-actions { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 18px; padding: 20px 0; border-top: 1px solid var(--ws-border); }
 .batch-outline { display: flex; flex-wrap: wrap; gap: 8px 20px; color: var(--ws-muted); font-size: 12px; }
 .batch-section-navigation { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-left: auto; }

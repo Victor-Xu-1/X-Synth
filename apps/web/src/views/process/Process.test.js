@@ -101,6 +101,21 @@ test("a reset during queued layer navigation cannot move focus into the retired 
   expect(wrapper.get('[data-section="inputs"]').isVisible()).toBe(false);
 });
 
+test("a local batch validation error is focused without discarding entered data or submitting", async () => {
+  const { wrapper } = setup();
+  await wrapper.get('[aria-label="分离产物总质量"]').setValue("-1");
+  const original = JSON.stringify(wrapper.vm.form);
+  await wrapper.get("form").trigger("submit"); await flushPromises();
+  const alert = wrapper.get('[role="alert"]');
+  expect(document.activeElement === alert.element).toBe(true);
+  expect(alert.attributes("tabindex")).toBe("-1");
+  expect(JSON.stringify(wrapper.vm.form)).toBe(original);
+  expect(API.post).not.toHaveBeenCalled();
+  const focus = jest.spyOn(alert.element, "focus");
+  await wrapper.get("form").trigger("submit"); await flushPromises();
+  expect(focus).toHaveBeenCalledTimes(1);
+});
+
 test("actual RDKit computation opens only the saved result page without seeded purity or yield", async () => {
   const { wrapper } = setup(); await fillMasses(wrapper); compute();
   await wrapper.get("form").trigger("submit"); await flushPromises();
