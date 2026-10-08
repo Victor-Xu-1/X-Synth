@@ -15,17 +15,26 @@ export function previewAspectRatio(graph, nodeSize) {
   return (right - left) / (bottom - top);
 }
 
-export function useRouteViewportFit(surface, fitView, options) {
-  let active = true, pending = null, lastSize = null;
-  function fit() {
+export function useRouteViewport(surface, fitView, options) {
+  let active = true, pending = null, lastSize = null, focusOptions = null, duration = 0;
+  function schedule(animation = 0, explicit = false) {
     if (!active) return Promise.resolve();
+    if (explicit || !pending) duration = animation;
     if (!pending) pending = nextTick().then(() => {
       pending = null;
       if (!active) return;
       const bounds = surface.value?.getBoundingClientRect();
-      if (bounds?.width > 0 && bounds.height > 0) return fitView(options());
+      if (bounds?.width > 0 && bounds.height > 0) return fitView({ ...options(), ...focusOptions, duration });
     });
     return pending;
+  }
+  function fit() {
+    focusOptions = null;
+    return schedule(0, true);
+  }
+  function focus(nodes, settings) {
+    focusOptions = { ...settings, nodes: [...nodes] };
+    return schedule(settings.duration ?? 0, true);
   }
   useResizeObserver(surface, ([entry]) => {
     const bounds = entry?.contentRect;
@@ -36,8 +45,8 @@ export function useRouteViewportFit(surface, fitView, options) {
     const size = `${bounds.width}:${bounds.height}`;
     if (size === lastSize) return;
     lastSize = size;
-    fit();
+    schedule();
   });
   onScopeDispose(() => { active = false; });
-  return fit;
+  return { fit, focus };
 }

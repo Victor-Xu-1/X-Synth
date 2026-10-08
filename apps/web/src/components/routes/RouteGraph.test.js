@@ -108,6 +108,27 @@ test("editable position and note updates retain the user's viewport until explic
   expect(wrapper.emitted("update:graph")).toBeUndefined();
 });
 
+test("an explicit step focus wins over a coalesced reveal and survives resize until the user fits the complete route", async () => {
+  const graph = { target_id: "target", nodes: [{ id: "target", type: "molecule", position: { x: 0, y: 0 } }], edges: [] };
+  const wrapper = setup(graph);
+  const bounds = { width: 700, height: 360 };
+  jest.spyOn(wrapper.element, "getBoundingClientRect").mockImplementation(() => bounds);
+  await flushPromises();
+  const resize = mockResize.mock.calls[0][1];
+  mockFitView.mockClear();
+  resize([{ contentRect: { ...bounds } }]);
+  await wrapper.vm.focus(["target"], { padding: 0.45, maxZoom: 1, duration: 150 });
+  expect(mockFitView).toHaveBeenLastCalledWith({ nodes: ["target"], padding: 0.45, maxZoom: 1, duration: 150 });
+  mockFitView.mockClear();
+  bounds.width = 320;
+  resize([{ contentRect: { ...bounds } }]);
+  await flushPromises();
+  expect(mockFitView).toHaveBeenLastCalledWith({ nodes: ["target"], padding: 0.45, maxZoom: 1, duration: 0 });
+  await wrapper.vm.fit();
+  expect(mockFitView).toHaveBeenLastCalledWith({ padding: 0.12, maxZoom: 1.25, duration: 0 });
+  expect(wrapper.emitted("update:graph")).toBeUndefined();
+});
+
 test.each(["overview", "reading", "editable"])(
   "%s can fit a wide route below the former fixed zoom floor",
   async (mode) => {

@@ -56,7 +56,7 @@ import { VueFlow, useVueFlow, MarkerType } from "@vue-flow/core";
 import "@vue-flow/core/dist/style.css";
 import MoleculeNode from "./MoleculeNode.vue";
 import ReactionNode from "./ReactionNode.vue";
-import { previewAspectRatio, useRouteViewportFit } from "./route-viewport";
+import { previewAspectRatio, useRouteViewport } from "./route-viewport";
 import {
   canConnect,
   layoutGraph,
@@ -76,7 +76,7 @@ const props = defineProps({
 const emit = defineEmits(["update:graph", "select", "select-edge", "error"]);
 const surface = ref(null);
 const { fitView, zoomIn, zoomOut } = useVueFlow({ id: props.id });
-const fit = useRouteViewportFit(surface, fitView, () => ({
+const { fit, focus } = useRouteViewport(surface, fitView, () => ({
   padding: 0.12, maxZoom: props.overview ? 1 : 1.25, duration: 0,
 }));
 const incomingNodeIds = computed(() =>
@@ -168,7 +168,7 @@ watch([
   geometryKey,
 ], fit);
 onMounted(fit);
-defineExpose({ fit, arrange, element: surface });
+defineExpose({ fit, focus, arrange, element: surface });
 </script>
 <style>
 .route-graph-surface {
