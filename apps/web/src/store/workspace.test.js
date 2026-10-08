@@ -74,6 +74,34 @@ test("concurrent callers await one shared readiness refresh", async () => {
   expect(global.fetch).toHaveBeenCalledTimes(5);
 });
 
+test("a core-only caller shares the same probes and resolves before optional work", async () => {
+  const workspace = useWorkspaceStore();
+  let finish;
+  global.fetch.mockImplementation(async (url) => url === "/api/v1/references/status"
+    ? new Promise((resolve) => { finish = () => resolve({ ok: true, json: async () => healthy[url] }); })
+    : { ok: true, json: async () => healthy[url] });
+  const all = workspace.refresh(true);
+  await workspace.refreshCore(true);
+  expect(global.fetch).toHaveBeenCalledTimes(5);
+  expect(workspace.ready).toBe(true); expect(workspace.loading).toBe(true);
+  expect(workspace.probing.references).toBe(true);
+  finish(); await all;
+  expect(workspace.loading).toBe(false);
+});
+
+test("core-only readiness still exposes failed identity without awaiting optional timeout", async () => {
+  const workspace = useWorkspaceStore();
+  let finish;
+  global.fetch.mockImplementation(async (url) => url === "/api/v1/references/status"
+    ? new Promise((resolve) => { finish = () => resolve({ ok: true, json: async () => healthy[url] }); })
+    : { ok: url !== "/api/v1/session", json: async () => healthy[url] });
+  const all = workspace.refresh(true);
+  await workspace.refreshCore(true);
+  expect(workspace.session).toBeNull(); expect(workspace.ready).toBe(false);
+  expect(workspace.error).toBeTruthy(); expect(workspace.loading).toBe(true);
+  finish(); await all;
+});
+
 test("readiness timeout clears old success and always releases loading", async () => {
   const workspace = useWorkspaceStore();
   await workspace.refresh(true);

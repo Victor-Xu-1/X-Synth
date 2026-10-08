@@ -2,7 +2,7 @@ import { reactive } from "vue";
 import router from "./index";
 import { sectionNavigation } from "@/common/workspace-navigation";
 
-const mockWorkspace = reactive({ session: null, error: "", refresh: jest.fn(), can: jest.fn() });
+const mockWorkspace = reactive({ session: null, error: "", refreshCore: jest.fn(), can: jest.fn() });
 jest.mock("@/store/workspace", () => ({ useWorkspaceStore: () => mockWorkspace }));
 jest.mock("@/common/workspace-session", () => ({ hasWorkspaceAccess: jest.fn().mockResolvedValue(true) }));
 jest.mock("vue-router", () => ({
@@ -15,7 +15,7 @@ const guard = (to) => router.beforeEach.mock.calls[0][0](to);
 const session = (updates = {}) => ({ mode: "askcos", owner: "researcher", administrator: false, workspace_access: true, ...updates });
 beforeEach(() => {
   mockWorkspace.session = session(); mockWorkspace.error = "";
-  mockWorkspace.refresh.mockReset().mockResolvedValue(undefined);
+  mockWorkspace.refreshCore.mockReset().mockResolvedValue(undefined);
   mockWorkspace.can.mockReset().mockReturnValue(true);
   localStorage.clear();
 });
@@ -27,7 +27,7 @@ test("the existing native self-service branch is not hidden by the administrator
 test.each([false, true])("server-verified native account access works for administrator=%s without inferring authority from browser storage", async (administrator) => {
   mockWorkspace.session = session({ administrator });
   expect(await guard(destination())).toBeUndefined();
-  expect(mockWorkspace.refresh).toHaveBeenCalledWith(true);
+  expect(mockWorkspace.refreshCore).toHaveBeenCalledWith(true);
 });
 
 test.each([
@@ -39,7 +39,7 @@ test.each([
 });
 
 test("a failed authoritative refresh cannot reuse an old native account role", async () => {
-  mockWorkspace.refresh.mockRejectedValue(new Error("protocol unavailable"));
+  mockWorkspace.refreshCore.mockRejectedValue(new Error("protocol unavailable"));
   expect(await guard(destination())).toEqual({ name: "登录", query: { redirect: "/admin" } });
 });
 

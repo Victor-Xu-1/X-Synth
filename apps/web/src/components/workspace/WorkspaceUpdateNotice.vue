@@ -15,7 +15,9 @@ const workspace = useWorkspaceStore(), route = useRoute();
 const newVersion = computed(() => workspace.error ? null : newerWorkspaceVersion(__X_SYNTH_VERSION__, workspace.health?.version));
 const freshPath = computed(() => {
   const path = route.fullPath;
-  return typeof path === "string" && path.startsWith("/") && !path.startsWith("//") && !/[\\\x00-\x1f\x7f]/.test(path) ? path : "/";
+  if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return "/";
+  const control = [...path].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127);
+  return control ? "/" : path;
 });
 </script>
 

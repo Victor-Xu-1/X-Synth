@@ -275,7 +275,7 @@ evidence and survive JSON, editor, RXN and model-input round trips.
 
 ## Workspace Interaction and Documents
 
-The layout shell owns navigation, theme and live readiness only. Task composition,
+The layout shell owns navigation, theme, live readiness and same-origin release discovery. Task composition,
 task history, result detail, route documents and graph editing are separate pages.
 The sidebar exposes design, tasks/routes, stock lookup, reactions/conditions,
 structure tools, batch process accounting and measured-data experimental optimization.
@@ -287,6 +287,18 @@ workspace links preserve chemical prefill. There is no additional portal, result
 portal or bypass execution path. Research calculations use one owned analysis repository,
 separate from route jobs and editable route documents. Editing and step-wise design remain actions
 inside the route workflow; task detail and editor retain their immersive canvas.
+The workspace publishes core health and session as one replacing snapshot before independent
+optional probes settle. Full refresh and core-only callers share the same requests and deadline;
+native account entry awaits the core pair rather than unrelated knowledge/optimization latency.
+Initialized workbench slots survive background checks and recoverable unavailability under a
+hidden/inert overlay and focus gate. Feature/path changes dispose the prior scope; account identity
+or authority changes immediately clear private account state and invalidate late continuations.
+One shared tab component binds keyboard selection, panel IDs and roving focus. Process input uses
+three retained sections with adjacent navigation; calculations still publish only owned immutable
+analysis records and open their distinct result page, never a second empty output surface.
+The version notice consumes the existing health version and VERSION-derived frontend value, not
+another polling service. A newer confirmed release opens the current same-origin route separately;
+it never automatically reloads or copies an unsubmitted chemical draft.
 The structure-first composer has three explicit modes: route search, one-step
 analysis, and X-Synth JSON import. `/retro` redirects to `/?mode=manual`; the
 replaced standalone one-step page is removed. There is one route handler per page.

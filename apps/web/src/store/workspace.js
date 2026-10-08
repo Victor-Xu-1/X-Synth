@@ -62,6 +62,9 @@ export const useWorkspaceStore = defineStore("workspace", {
     refresh(force = false) {
       return refreshWorkspace(this, force);
     },
+    refreshCore(force = false) {
+      return refreshWorkspace(this, force, true);
+    },
     can(feature) {
       return !feature || this.features[feature] === true;
     },

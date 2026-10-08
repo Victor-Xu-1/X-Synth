@@ -39,8 +39,8 @@ async function read(store, field, path, headers, signal) {
   }
 }
 
-export function refreshWorkspace(store, force = false) {
-  if (refreshes.has(store)) return refreshes.get(store);
+export function refreshWorkspace(store, force = false, coreOnly = false) {
+  if (refreshes.has(store)) return refreshes.get(store)[coreOnly ? "core" : "all"];
   if (!force && Date.now() - store.refreshed < 10000) return;
   store.loading = true;
   store.probing = Object.fromEntries([...core, ...optional].map(([field]) => [field, true]));
@@ -67,6 +67,6 @@ export function refreshWorkspace(store, force = false) {
     store.loading = false;
     refreshes.delete(store);
   });
-  refreshes.set(store, pending);
-  return pending;
+  refreshes.set(store, { core: coreReady, all: pending });
+  return coreOnly ? coreReady : pending;
 }

@@ -224,7 +224,7 @@ router.beforeEach(async (to) => {
   if (to.meta.accountSelfService) {
     try {
       const workspace = useWorkspaceStore();
-      await workspace.refresh(true);
+      await workspace.refreshCore(true);
       if (!nativeAccountAuthority(workspace))
         return { name: "登录", query: { redirect: to.fullPath } };
     } catch {

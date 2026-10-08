@@ -21,6 +21,13 @@ const read = (file) =>
 test("retired unreachable error view stays removed", () => {
   expect(fs.existsSync(path.resolve(__dirname, "../error/Error.vue"))).toBe(false);
 });
+test("native account view delegates to verified session authority rather than duplicating local UI gates", () => {
+  expect(read("admin/Admin.vue")).toContain("useAccountManager");
+  expect(read("admin/useAccountManager.js")).toContain("nativeAccountAuthority(workspace)");
+  expect(read("admin/account-access.js")).toContain('workspace.can("native_account")');
+  expect(read("admin/account-access.js")).toContain('session?.mode !== "askcos"');
+  expect(read("admin/account-access.js")).toContain("session.workspace_access !== true");
+});
 test.each(views)("compiles owned UI %s without legacy ornaments", (file) => {
   const source = read(file);
   const { descriptor, errors } = parse(source, { filename: file });
@@ -51,7 +58,6 @@ test.each([
   "solprop/SolProp.vue",
   "qm/QM.vue",
   "banlist/Banlist.vue",
-  "admin/Admin.vue",
 ])("keeps %s behind real workspace capability checks", (file) => {
   expect(read(file)).toContain("useWorkspaceStore");
   expect(read(file)).toContain("workspace.can(");
