@@ -89,6 +89,18 @@ test("unconfirmed material edits lock layer navigation instead of hiding an open
   expect(wrapper.get('[data-section-next]').attributes("disabled")).toBeUndefined();
 });
 
+test("a reset during queued layer navigation cannot move focus into the retired input layer", async () => {
+  const { wrapper, route } = setup();
+  const target = wrapper.get('[data-section="inputs"]').element;
+  const focus = jest.spyOn(target, "focus");
+  const navigation = wrapper.vm.moveSection(1);
+  route.query = { smiles: "CCN" };
+  await nextTick(); await navigation;
+  expect(wrapper.vm.section).toBe("product");
+  expect(focus).not.toHaveBeenCalled();
+  expect(wrapper.get('[data-section="inputs"]').isVisible()).toBe(false);
+});
+
 test("actual RDKit computation opens only the saved result page without seeded purity or yield", async () => {
   const { wrapper } = setup(); await fillMasses(wrapper); compute();
   await wrapper.get("form").trigger("submit"); await flushPromises();

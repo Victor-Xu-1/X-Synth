@@ -84,6 +84,7 @@ async function moveSection(direction) {
   if (!next) return;
   section.value = next.value;
   await nextTick();
+  if (section.value !== next.value || disabled.value || pending.value) return;
   inputForm.value?.querySelector(`[data-section="${next.value}"]`)?.focus();
 }
 </script>
