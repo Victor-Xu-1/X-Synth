@@ -8,6 +8,9 @@ import { useWorkbenchActivity } from "@/components/workspace/workbench-activity"
 import WorkbenchScope from "@/components/workspace/WorkbenchScope.vue";
 import { uiText } from "@/i18n";
 import { solubilityContextText, solubilityFieldCaption } from "./ui-copy";
+import * as submissionAttempts from "./submission-attempt";
+import * as submissions from "./submission";
+import * as submissionFiles from "./submission-file";
 
 const runCeleryTask = jest.fn(), confirm = jest.fn(), wrappers = [];
 const files = ["../qm/QM.vue", "tabs/SolubilityPredictView.vue", "tabs/SolventScreenView.vue"];
@@ -26,6 +29,9 @@ function optionsOf(file) {
     if (id === "vue") return Vue;
     if (id === "@/i18n") return { uiText };
     if (id === "../ui-copy") return { solubilityContextText, solubilityFieldCaption };
+    if (id === "../submission-attempt") return submissionAttempts;
+    if (id === "../submission") return submissions;
+    if (id === "../submission-file") return submissionFiles;
     if (id === "vue-router") return { useRoute: () => ({ query: {} }) };
     if (id === "@/common/api") return { API: { runCeleryTask, toErrorObject: () => ({ string_error: "failed" }) } };
     if (id === "@/store/workspace") return { useWorkspaceStore: () => ({ can: () => true, refresh: async () => {} }) };
@@ -55,6 +61,8 @@ function setup(file) {
     state.solute = "CCO";
     state.solvent = "O";
     state.structurePending = false;
+    state.temperatureList = [298];
+    state.solventList = ["O"];
   } else state.smiles.value = "CCO";
   return { state, wrapper };
 }
@@ -66,7 +74,7 @@ test.each([
   [files[0], "predict", "resolve"], [files[0], "predict", "reject"],
   [files[1], "predict", "resolve"], [files[1], "predict", "reject"],
   [files[1], "predictBatch", "resolve"], [files[1], "predictBatch", "reject"],
-  [files[2], "predictBatch", "resolve"], [files[2], "predictBatch", "reject"],
+  [files[2], "predict", "resolve"], [files[2], "predict", "reject"],
 ])("%s %s disposes its poll and ignores late %s without touching remote operations", async (file, method, outcome) => {
   let resolve, reject;
   runCeleryTask.mockImplementation(() => new Promise((yes, no) => { resolve = yes; reject = no; }));
@@ -89,7 +97,7 @@ test.each([
 });
 
 test.each([
-  [files[0], "predict"], [files[1], "predict"], [files[1], "predictBatch"], [files[2], "predictBatch"],
+  [files[0], "predict"], [files[1], "predict"], [files[1], "predictBatch"], [files[2], "predict"],
 ])("%s %s still publishes a successful result while mounted", async (file, method) => {
   const result = { smiles: "CCO", solute: "CCO" };
   runCeleryTask.mockResolvedValue(file === files[0] ? { result: [result] } : [result]);
