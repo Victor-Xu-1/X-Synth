@@ -1,8 +1,8 @@
 <template>
-  <v-dialog v-model="open" max-width="1100">
+  <WorkbenchDialog v-model="open" max-width="1100" :aria-labelledby="titleId">
     <v-card class="document-preview-dialog">
       <header class="document-preview-heading">
-        <strong>{{ document?.title }}</strong>
+        <h2 :id="titleId">{{ document?.title }}</h2>
         <div class="page-actions">
           <v-btn
             :to="`/editor/${document.id}`"
@@ -23,6 +23,7 @@
         <div class="document-preview-canvas">
           <RouteGraph
             v-if="document"
+            toolbar
             :graph="graph"
             :scores="document.prediction_scores"
             @select="selected = $event"
@@ -39,15 +40,17 @@
         />
       </div>
     </v-card>
-  </v-dialog>
+  </WorkbenchDialog>
 </template>
 <script setup>
 import RouteGraph from "./RouteGraph.vue";
 import RouteInspector from "./RouteInspector.vue";
-import { computed, ref, watch } from "vue";
+import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
+import { computed, ref, useId, watch } from "vue";
 import { layoutGraph } from "@/common/route-graph";
 const open = defineModel({ type: Boolean, default: false });
 const props = defineProps({ document: Object });
+const titleId = useId();
 const selected = ref(null);
 const graph = computed(() =>
   !props.document
@@ -67,6 +70,14 @@ watch(
 );
 </script>
 <style scoped>
+.document-preview-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+  background: var(--ws-surface);
+  color: var(--ws-text);
+}
 .document-preview-heading {
   display: flex;
   align-items: center;
@@ -76,19 +87,31 @@ watch(
   border-bottom: 1px solid var(--ws-border);
   font-size: 14px;
   min-width: 0;
+  flex-shrink: 0;
 }
-.document-preview-heading strong {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+.document-preview-heading h2 {
+  min-width: 0;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  flex: 1;
+  max-height: 25dvh;
+  overflow: auto;
 }
+.document-preview-heading .page-actions { flex-shrink: 0; }
 .document-preview-canvas {
-  height: 65dvh;
-  min-height: 340px;
+  height: 100%;
+  min-height: 0;
 }
 .document-preview-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  height: 65dvh;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 .document-preview-body > :deep(.route-inspector) {
   position: static;
@@ -97,8 +120,12 @@ watch(
   max-height: 65dvh;
 }
 @media (max-width: 700px) {
+  .document-preview-heading { flex-wrap: wrap; padding: 12px; gap: 8px; }
+  .document-preview-heading h2 { flex-basis: 100%; }
+  .document-preview-heading .page-actions { width: 100%; justify-content: flex-end; gap: 8px; }
   .document-preview-body {
     grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: minmax(0, auto);
   }
   .document-preview-body > :deep(.route-inspector) {
     width: 100%;

@@ -96,7 +96,20 @@ for (const [file, source] of Object.entries(sources)) {
     }
   }
   for (const script of scripts) {
-    try { walk(parse(script, { sourceType: 'unambiguous', plugins: ['importAttributes'] })); }
+    try {
+      const tree = parse(script, { sourceType: 'unambiguous', plugins: ['importAttributes'] });
+      walk(tree);
+      const body = tree.program.body;
+      if (file.startsWith('apps/web/src/i18n/catalog-') && !tree.program.directives.length && body.length === 1 &&
+          body[0].type === 'ExportDefaultDeclaration' && body[0].declaration.type === 'ArrayExpression') {
+        const pairs = body[0].declaration.elements;
+        if (pairs.every(pair => pair?.type === 'ArrayExpression' && pair.elements.length === 2 &&
+            pair.elements.every(item => item?.type === 'StringLiteral'))) {
+          const entries = pairs.map(pair => pair.elements.map(item => item.value));
+          if (new Set(entries.map(([key]) => key)).size === entries.length) record.catalog = Object.fromEntries(entries);
+        }
+      }
+    }
     catch (error) { throw new Error(`${file}: ${error.message}`); }
   }
   output[file] = record;
@@ -127,6 +140,20 @@ def parse_frontend(snapshot) -> dict:
             "Frontend AST parser failed: " + (exc.stderr or str(exc)).strip()
         ) from exc
     return json.loads(result.stdout)
+
+
+def additive_catalog_checks(path: str, old: dict, new: dict, files: set[str]) -> set[str]:
+    """Literal additions do not change existing messages; retain aggregate validation."""
+    if not path.startswith(SOURCE + "i18n/catalog-"):
+        return set()
+    previous, current = old.get("catalog"), new.get("catalog")
+    if not isinstance(previous, dict) or not isinstance(current, dict):
+        return set()
+    if any(key not in current or current[key] != value for key, value in previous.items()):
+        return set()
+    family = PurePosixPath(path).stem.split("-")[1]
+    checks = {SOURCE + "i18n/catalog.test.js", SOURCE + f"i18n/catalog-{family}.test.js"}
+    return checks if checks <= files else set()
 
 
 def local_module(owner: str, specifier: str, files: set[str]) -> str | None:

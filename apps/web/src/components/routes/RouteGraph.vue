@@ -1,7 +1,7 @@
 <template>
   <div
     class="route-graph-surface"
-    :class="{ overview, reading }"
+    :class="{ overview, reading, toolbar: toolbar && !overview }"
     :style="nodeDimensions"
     ref="surface"
     data-cy="route-graph"
@@ -33,6 +33,7 @@
       <template #node-reaction="props"
         ><ReactionNode v-bind="props"
       /></template>
+    </VueFlow>
       <div v-if="!overview" class="route-viewport-controls">
         <v-tooltip v-for="tool in tools" :key="tool.label" :text="$tr(tool.label)"
           ><template #activator="{ props }"
@@ -47,7 +48,6 @@
       </div>
       <div v-if="!overview" class="route-graph-counter">
         {{ $tr('{count} 化合物 · {count2} 反应', { count: graph.nodes.filter((node) => node.type === "molecule").length, count2: graph.nodes.filter((node) => node.type === "reaction").length }) }}</div>
-    </VueFlow>
   </div>
 </template>
 <script setup>
@@ -69,6 +69,7 @@ const props = defineProps({
   overview: Boolean,
   reading: Boolean,
   generatedStepLabels: Boolean,
+  toolbar: Boolean,
   scores: { type: Object, default: () => ({}) },
   catalogPrices: { type: Object, default: () => ({}) },
   id: { type: String, default: () => `route-${crypto.randomUUID()}` },
@@ -165,6 +166,7 @@ const geometryKey = computed(() => JSON.stringify(props.graph.nodes.map(node => 
 watch([
   () => props.graph.target_id,
   () => props.reading,
+  () => props.toolbar,
   geometryKey,
 ], fit);
 onMounted(fit);
@@ -304,6 +306,9 @@ defineExpose({ fit, focus, arrange, element: surface });
   background: var(--ws-surface);
   padding: 2px;
 }
+.route-graph-surface.toolbar { display: flex; flex-direction: column; padding-top: 56px; min-height: 0; }
+.route-graph-surface.toolbar > .vue-flow { flex: 1 1 auto; min-height: 0; }
+.toolbar .route-viewport-controls { top: 8px; right: 12px; flex-direction: row; }
 .route-graph-surface.overview {
   background: var(--ws-bg);
   height: auto;

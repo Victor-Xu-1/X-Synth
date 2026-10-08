@@ -551,6 +551,34 @@ def test_unchanged_shared_helper_does_not_select_sibling_consumers(tmp_path, mon
     assert profile.frontend_tests(item, item, {shared})[0] == sorted([direct_test, sibling_test])
 
 
+@pytest.mark.parametrize("change", ["added", "modified", "removed", "executable"])
+def test_literal_catalog_additions_keep_integrity_checks_without_unrelated_consumers(
+    tmp_path, monkeypatch, change
+):
+    resource = profile.SOURCE + "i18n/catalog-routes-errors.js"
+    registry = profile.SOURCE + "i18n/catalog.js"
+    integrity = profile.SOURCE + "i18n/catalog.test.js"
+    family = profile.SOURCE + "i18n/catalog-routes.test.js"
+    unrelated = profile.SOURCE + "views/process/Process.test.js"
+    paths = (resource, registry, integrity, family, unrelated)
+    before = snapshot(tmp_path, {path: "before" for path in paths})
+    after = snapshot(tmp_path, {path: "after" for path in paths})
+    original = {"old message": "Existing translation"}
+    modified = {
+        "added": {**original, "new message": "New translation"},
+        "modified": {"old message": "Changed translation"},
+        "removed": {},
+        "executable": None,
+    }[change]
+    old = {resource: {**record(), "catalog": original}, registry: record(["./catalog-routes-errors"]),
+           integrity: record(["./catalog"]), family: record(["./catalog"]), unrelated: record(["@/i18n/catalog"])}
+    new = {**old, resource: {**record(), "catalog": modified}}
+    monkeypatch.setattr(dependencies, "parse_frontend", lambda item: old if item is before else new)
+    selected = profile.frontend_tests(before, after, {resource})[0]
+    expected = [integrity, family] if change == "added" else [integrity, family, unrelated]
+    assert selected == sorted(expected)
+
+
 def test_frontend_real_python_consumers_prepare_product_dependencies():
     assert {
         profile.SOURCE + "views/assessment/Assessment.test.js",

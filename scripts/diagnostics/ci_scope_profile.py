@@ -706,12 +706,21 @@ def frontend_tests(before, after, paths: set[str]) -> tuple[list[str], dict]:
         return [], {}
     graph = defaultdict(set)
     current_graph = {}
+    old_records = {}
+    catalog_checks = set()
     importers = {name: set() for name in dependencies}
     for snapshot in (before, after):
         records = analysis.parse_frontend(snapshot)
+        if snapshot is before:
+            old_records = records
         snapshot_graph = analysis.frontend_graph(records, snapshot.files)
         if snapshot is after:
             current_graph = snapshot_graph
+            for path in set(roots):
+                checks = analysis.additive_catalog_checks(path, old_records.get(path, {}), records.get(path, {}), after.files)
+                if checks:
+                    roots.remove(path)
+                    catalog_checks.update(checks)
         for owner, related in snapshot_graph.items():
             graph[owner].update(related)
         for owner, record in records.items():
@@ -761,6 +770,7 @@ def frontend_tests(before, after, paths: set[str]) -> tuple[list[str], dict]:
     selected = {
         path for path in reached if path.endswith(".test.js") and path in after.files
     }
+    selected.update(catalog_checks)
     for dependency in direct:
         paired_test = str(PurePosixPath(dependency).with_suffix(".test.js"))
         if paired_test in after.files and paired_test in inverse[dependency]:

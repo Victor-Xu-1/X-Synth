@@ -6,16 +6,19 @@ import { parse, compileScript, compileStyle, compileTemplate } from "@vue/compil
 import { API } from "@/common/api";
 import RouteDocuments from "./RouteDocuments.vue";
 import DocumentPreview from "@/components/routes/DocumentPreview.vue";
+import { setLocale } from "@/i18n";
 
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn(), delete: jest.fn() } }));
+jest.mock("@vueuse/core", () => ({ useResizeObserver: jest.fn() }));
 jest.mock("@/components/SmilesImage.vue", () => ({
-  props: ["smiles"], template: '<div :data-smiles="smiles" />',
+  props: ["smiles"], template: '<div :data-smiles="smiles"><button aria-label="重试结构加载" /></div>',
 }));
 jest.mock("@/components/routes/DocumentPreview.vue", () => ({
   props: ["modelValue", "document"], template: "<div />",
 }));
 
 const stubs = {
+  VDialog: { props: ["modelValue"], template: '<div v-if="modelValue" role="dialog"><slot /></div>' },
   VBtn: { props: ["disabled", "loading", "to"], template: '<button :disabled="disabled || loading" :data-to="to"><slot /></button>' },
   VTooltip: { template: '<div><slot name="activator" :props="{}" /></div>' },
   VMenu: { template: '<div><slot name="activator" :props="{}" /><slot /></div>' },
@@ -35,6 +38,8 @@ const row = (id = "document-a", patch = {}) => ({
   id, title: "先导系列路线", target_smiles: "CCO", reaction_count: 2,
   modified: "2026-10-04T00:00:00Z", ...patch,
 });
+const savedDocument = (id = "document-a") => ({ ...row(id), revision: 0,
+  graph: { target_id: "target", nodes: [{ id: "target", type: "molecule", smiles: "CCO", position: { x: 10, y: 10 } }], edges: [] } });
 const wrappers = [];
 async function setup() {
   const router = createRouter({ history: createMemoryHistory(), routes: [
@@ -76,6 +81,32 @@ test("one page reads once; long names, chemical identity and all operations rema
   expect(menuItem(wrapper, "删除文档").exists()).toBe(true);
   expect(API.post).not.toHaveBeenCalled();
   expect(API.delete).not.toHaveBeenCalled();
+});
+
+test("structure inspection and drawing retry are separate from the editor navigation", async () => {
+  const wrapper = await setup();
+  const retry = wrapper.get('[aria-label="重试结构加载"]');
+  expect(retry.element.closest("a")).toBeNull();
+  expect(wrapper.get('[aria-label="放大目标化合物"]').exists()).toBe(true);
+  await retry.trigger("click");
+  expect(wrapper.vm.$router.currentRoute.value.path).toBe("/documents");
+  expect(API.post).not.toHaveBeenCalled();
+  expect(API.delete).not.toHaveBeenCalled();
+});
+
+test("English and Chinese inspection labels update without translating a saved title or structure", async () => {
+  const wrapper = await setup();
+  const title = wrapper.get(".document-title-cell strong").text();
+  const smiles = wrapper.get(".workspace-code").text();
+  setLocale("en", { persist: false });
+  await flushPromises();
+  expect(wrapper.get('[aria-label="Enlarge Target compound"]').exists()).toBe(true);
+  expect(wrapper.get(".document-title-cell strong").text()).toBe(title);
+  expect(wrapper.get(".workspace-code").text()).toBe(smiles);
+  expect(API.get).toHaveBeenCalledTimes(1);
+  setLocale("zh-CN", { persist: false });
+  await flushPromises();
+  expect(wrapper.get('[aria-label="放大目标化合物"]').exists()).toBe(true);
 });
 
 test("unread, empty and failed states stay distinct and loading never displays an empty table", async () => {
@@ -139,7 +170,7 @@ test("preview pending state blocks duplicate operations and opens only the retri
   expect(menuItem(wrapper, "删除文档").element.disabled).toBe(true);
   await preview.trigger("click");
   expect(API.get).toHaveBeenCalledTimes(2);
-  const document = { ...row(), graph: { nodes: [], edges: [] } };
+  const document = savedDocument();
   finish(document);
   await flushPromises();
   expect(wrapper.findComponent(DocumentPreview).props()).toMatchObject({ modelValue: true, document });
@@ -156,11 +187,21 @@ test("preview failure keeps loaded records and a direct retry remains possible",
   expect(wrapper.get('[role="alert"]').text()).toContain("预览读取失败");
   expect(wrapper.findAll("tbody tr")).toHaveLength(1);
   expect(wrapper.findComponent(DocumentPreview).exists()).toBe(false);
-  API.get.mockResolvedValueOnce(row());
+  API.get.mockResolvedValueOnce(savedDocument());
   await wrapper.get('[aria-label="预览文档：先导系列路线"]').trigger("click");
   await flushPromises();
   expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   expect(wrapper.findComponent(DocumentPreview).props("modelValue")).toBe(true);
+});
+
+test("preview rejects another document's response without opening or replacing a route", async () => {
+  const wrapper = await setup();
+  API.get.mockResolvedValueOnce(savedDocument("document-b"));
+  await wrapper.get('[aria-label="预览文档：先导系列路线"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.get('[role="alert"]').text()).toContain("路线文档标识与请求不一致");
+  expect(wrapper.findComponent(DocumentPreview).exists()).toBe(false);
+  expect(wrapper.findAll("tbody tr")).toHaveLength(1);
 });
 
 test("background refresh keeps loaded routes readable and disables deletion until it settles", async () => {

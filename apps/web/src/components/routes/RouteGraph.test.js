@@ -13,7 +13,7 @@ jest.mock("@vue-flow/core", () => ({
     name: "VueFlow",
     props: ["nodes", "edges", "minZoom"],
     emits: ["node-drag-stop", "connect", "node-click"],
-    template: '<div><div v-for="node in nodes" :key="node.id" @click="$emit(\'node-click\', { node })"><slot :name="\'node-\' + node.type" :data="node.data" :selected="node.selected" /></div></div>',
+    template: '<div><div v-for="node in nodes" :key="node.id" @click="$emit(\'node-click\', { node })"><slot :name="\'node-\' + node.type" :data="node.data" :selected="node.selected" /></div><slot /></div>',
   },
   useVueFlow: () => ({
     fitView: mockFitView,
@@ -43,6 +43,17 @@ function setup(graph, editable = false) {
 }
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
 beforeEach(() => { mockFitView.mockClear(); mockResize.mockClear(); });
+
+test("optional toolbar keeps viewport actions outside the molecule pan-and-zoom surface", async () => {
+  const wrapper = setup({ target_id: "target", nodes: [{ id: "target", type: "molecule", position: { x: 20, y: 20 } }], edges: [] });
+  expect(wrapper.classes()).not.toContain("toolbar");
+  await wrapper.setProps({ toolbar: true });
+  expect(wrapper.classes()).toContain("toolbar");
+  const actions = wrapper.get(".route-viewport-controls");
+  expect(wrapper.getComponent({ name: "VueFlow" }).element.contains(actions.element)).toBe(false);
+  expect(actions.findAll("button")).toHaveLength(3);
+  expect(wrapper.emitted("update:graph")).toBeUndefined();
+});
 
 test("a resized or revealed canvas refits the whole graph and ignores zero-size or disposed callbacks", async () => {
   const graph = { target_id: "target", nodes: [{ id: "target", type: "molecule", position: { x: 0, y: 0 } }], edges: [] };
