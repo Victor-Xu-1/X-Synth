@@ -60,7 +60,10 @@ test.each([
   "banlist/Banlist.vue",
 ])("keeps %s behind real workspace capability checks", (file) => {
   expect(read(file)).toContain("useWorkspaceStore");
-  expect(read(file)).toContain("workspace.can(");
+  if (file === "banlist/Banlist.vue") {
+    expect(read(file)).toContain("useBanlist({ workspace, confirm })");
+    expect(read("banlist/useBanlist.js")).toContain("provideRuleOwnerScope(workspace)");
+  } else expect(read(file)).toContain("workspace.can(");
 });
 test("Forward has one URL-derived mode and retains query inputs", () => {
   const source = read("forward/Forward.vue");
