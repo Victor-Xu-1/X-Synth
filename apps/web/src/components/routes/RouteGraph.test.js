@@ -5,6 +5,9 @@ import { initializeLocale, setLocale } from "@/i18n";
 
 Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID });
 
+const mockFitView = jest.fn();
+const mockResize = jest.fn();
+jest.mock("@vueuse/core", () => ({ useResizeObserver: (...args) => mockResize(...args) }));
 jest.mock("@vue-flow/core", () => ({
   VueFlow: {
     name: "VueFlow",
@@ -13,7 +16,7 @@ jest.mock("@vue-flow/core", () => ({
     template: '<div><div v-for="node in nodes" :key="node.id" @click="$emit(\'node-click\', { node })"><slot :name="\'node-\' + node.type" :data="node.data" :selected="node.selected" /></div></div>',
   },
   useVueFlow: () => ({
-    fitView: jest.fn(),
+    fitView: mockFitView,
     zoomIn: jest.fn(),
     zoomOut: jest.fn(),
   }),
@@ -39,6 +42,71 @@ function setup(graph, editable = false) {
   return wrapper;
 }
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
+beforeEach(() => { mockFitView.mockClear(); mockResize.mockClear(); });
+
+test("a resized or revealed canvas refits the whole graph and ignores zero-size or disposed callbacks", async () => {
+  const graph = { target_id: "target", nodes: [{ id: "target", type: "molecule", position: { x: 0, y: 0 } }], edges: [] };
+  const wrapper = setup(graph);
+  const bounds = { width: 900, height: 360 };
+  jest.spyOn(wrapper.element, "getBoundingClientRect").mockImplementation(() => bounds);
+  await flushPromises();
+  expect(mockResize).toHaveBeenCalledTimes(1);
+  const resize = mockResize.mock.calls[0][1];
+  const notify = () => resize([{ contentRect: { ...bounds } }]);
+  mockFitView.mockClear();
+  bounds.width = 320;
+  notify(); notify();
+  await flushPromises();
+  expect(mockFitView).toHaveBeenCalledTimes(1);
+  expect(mockFitView).toHaveBeenCalledWith({ padding: 0.12, maxZoom: 1.25, duration: 0 });
+  mockFitView.mockClear();
+  bounds.width = 0;
+  notify();
+  await flushPromises();
+  expect(mockFitView).not.toHaveBeenCalled();
+  bounds.width = 320;
+  notify();
+  await flushPromises();
+  expect(mockFitView).toHaveBeenCalledTimes(1);
+  mockFitView.mockClear();
+  bounds.width = 700;
+  notify();
+  wrapper.unmount();
+  await flushPromises();
+  expect(mockFitView).not.toHaveBeenCalled();
+  expect(wrapper.emitted("update:graph")).toBeUndefined();
+});
+
+test("a read-only replacement with the same target fits new geometry but scientific scores and language do not reset zoom", async () => {
+  const graph = { target_id: "target", nodes: [{ id: "target", type: "molecule", position: { x: 0, y: 0 } }], edges: [] };
+  const wrapper = setup(graph);
+  jest.spyOn(wrapper.element, "getBoundingClientRect").mockReturnValue({ width: 700, height: 360 });
+  await flushPromises();
+  mockFitView.mockClear();
+  await wrapper.setProps({ graph: { ...graph, nodes: [{ ...graph.nodes[0], position: { x: 900, y: 80 } }] } });
+  await flushPromises();
+  expect(mockFitView).toHaveBeenCalledTimes(1);
+  mockFitView.mockClear();
+  await wrapper.setProps({ scores: { target: 0 } });
+  setLocale("en", { persist: false });
+  await flushPromises();
+  expect(mockFitView).not.toHaveBeenCalled();
+  expect(wrapper.emitted("update:graph")).toBeUndefined();
+});
+
+test("editable position and note updates retain the user's viewport until explicitly arranged or fitted", async () => {
+  const graph = { target_id: "target", nodes: [{ id: "target", type: "molecule", position: { x: 0, y: 0 } }], edges: [] };
+  const wrapper = setup(graph, true);
+  jest.spyOn(wrapper.element, "getBoundingClientRect").mockReturnValue({ width: 700, height: 360 });
+  await flushPromises();
+  mockFitView.mockClear();
+  await wrapper.setProps({ graph: { ...graph, nodes: [{ ...graph.nodes[0], note: "原始备注", position: { x: 900, y: 80 } }] } });
+  await flushPromises();
+  expect(mockFitView).not.toHaveBeenCalled();
+  await wrapper.vm.fit();
+  expect(mockFitView).toHaveBeenCalledTimes(1);
+  expect(wrapper.emitted("update:graph")).toBeUndefined();
+});
 
 test.each(["overview", "reading", "editable"])(
   "%s can fit a wide route below the former fixed zoom floor",

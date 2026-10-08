@@ -99,9 +99,7 @@
   background: var(--ws-canvas);
 }
 .reader-overview-entry {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
-  align-items: start;
+  position: relative;
   min-width: 0;
   padding: 0 16px;
   border: 1px solid var(--ws-border);
@@ -112,18 +110,20 @@
   border-color: var(--ws-accent, #0b7163);
 }
 .route-choice-check {
-  grid-column: 1;
+  position: absolute;
+  top: 13px;
+  left: 10px;
   min-width: 0;
-  margin-top: 13px;
 }
 .reader-overview-entry > :deep(.route-overview-list) {
-  grid-column: 2;
   min-width: 0;
   width: 100%;
-  padding: 0 0 0 12px;
+  padding: 0;
+}
+.reader-overview-entry :deep(.route-overview header) {
+  padding-left: 36px;
 }
 .reader-overview-entry > :deep(.route-review-summary) {
-  grid-column: 1 / -1;
   padding: 10px 0;
 }
 .reader-detail-body {
@@ -271,11 +271,10 @@
     gap: 12px;
   }
   .reader-overview-entry {
-    grid-template-columns: 28px minmax(0, 1fr);
     padding: 0 10px;
   }
-  .reader-overview-entry > :deep(.route-overview-list) {
-    padding-left: 8px;
+  .route-choice-check {
+    left: 4px;
   }
   .reader-evidence,
   .reader-catalog-status,

@@ -72,7 +72,7 @@
         class="overview-route-graph"
         :aria-label="$tr('{index} 完整路线缩略图', { index: routeLabel(choice.originalIndex) })"
       >
-        <v-lazy height="100%" :min-height="360" :options="{ rootMargin: '250px' }" transition="fade-transition">
+        <v-lazy :min-height="160" :options="{ rootMargin: '250px' }" transition="fade-transition">
           <RouteGraph
           :graph="choice.prepared.graph"
           :scores="choice.prepared.scores"
