@@ -81,6 +81,15 @@
     <div v-if="loading" class="workspace-empty">
       <v-progress-circular indeterminate size="24" /><span>{{ $tr('加载路线') }}</span>
     </div>
+    <div v-else-if="!document && route.params.id" class="editor-start editor-unavailable">
+      <v-icon icon="mdi-file-alert-outline" size="30" />
+      <h1>{{ $tr('路线文档加载失败。') }}</h1>
+      <div class="page-actions">
+        <v-btn variant="outlined" prepend-icon="mdi-refresh" data-cy="document-load-retry"
+          @click="load(route.params.id)">{{ $tr('重试') }}</v-btn>
+        <v-btn variant="text" to="/documents">{{ $tr('已保存路线') }}</v-btn>
+      </div>
+    </div>
     <div v-else-if="!document" class="editor-start">
       <v-icon icon="mdi-vector-polyline-edit" size="30" />
       <h1>{{ $tr('新建路线文档') }}</h1>

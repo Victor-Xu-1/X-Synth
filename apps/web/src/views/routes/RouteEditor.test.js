@@ -127,6 +127,19 @@ test("a loaded document has one named page heading while retaining its editable 
   expect(wrapper.get("h1").text()).toBe(name);
   expect(wrapper.get(".editor-graph").exists()).toBe(true);
 });
+
+test("a failed saved-document read offers a retry rather than a new-route creation form", async () => {
+  API.get.mockRejectedValueOnce(new Error("read failed"));
+  const { wrapper } = await setup();
+  expect(wrapper.find(".editor-create-form").exists()).toBe(false);
+  expect(wrapper.get(".editor-unavailable h1").text()).toBe("路线文档加载失败。");
+  await wrapper.get('[data-cy="document-load-retry"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.find(".editor-unavailable").exists()).toBe(false);
+  expect(wrapper.get(".editor-graph").exists()).toBe(true);
+  expect(API.post).not.toHaveBeenCalled();
+  expect(API.put).not.toHaveBeenCalled();
+});
 async function setup(state = "source_copy", identifier = documentId) {
   const router = { replace: jest.fn().mockResolvedValue(undefined) };
   const route = reactive({ params: { id: identifier } });
