@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import postcss from "postcss";
 import vuetify from "@/plugins/vuetify";
+import { DEFAULT_LOCALE, LOCALES } from "@/i18n";
 
 jest.mock("@mdi/font/css/materialdesignicons.css", () => ({}));
 jest.mock("vuetify/styles", () => ({}));
@@ -133,7 +134,8 @@ test.each([
       contrast(palette["--ws-accent"], palette["--ws-header"]),
     ).toBeGreaterThanOrEqual(4.5);
     expect(vuetify.theme.themes.dark.dark).toBe(true);
-    expect(vuetify.locale.locale).toBe("zhHans");
+    expect(DEFAULT_LOCALE).toBe("en");
+    expect(vuetify.locale.locale).toBe(LOCALES.find((item) => item.value === DEFAULT_LOCALE).widgetLocale);
     expect(vuetify.locale.fallback).toBe("en");
   },
 );

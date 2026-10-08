@@ -1,6 +1,8 @@
 /** @jest-environment node */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { parseExpression } from "@babel/parser";
+import { setLocale, uiText } from "@/i18n";
 import {
   compileScript,
   compileStyle,
@@ -392,7 +394,7 @@ test("URL task ids are validated without interpolating path or query fragments",
   ])
     expect(taskIdentifier(value)).toBe("");
 });
-test("step scores use a neutral Chinese label without asserting FF provenance", () => {
+test("step scores use neutral bilingual labels without asserting FF provenance", () => {
   const { descriptor } = parse(source("components/routes/RouteStepList.vue"));
   const pending = [descriptor.template.ast];
   let score;
@@ -414,16 +416,17 @@ test("step scores use a neutral Chinese label without asserting FF provenance", 
     pending.push(...(node.children || []));
   }
   expect(score).toBeDefined();
-  expect(
-    score.children
-      .filter((node) => node.type === 2)
-      .map((node) => node.content)
-      .join("")
-      .trim(),
-  ).toBe("步骤分数");
-  expect(score.children.find((node) => node.type === 5).content.content).toBe(
-    "step.confidence",
-  );
+  const expression = parseExpression(score.children.find((node) => node.type === 5).content.content);
+  expect(expression.callee.name).toBe("$tr");
+  expect(expression.arguments[0].value).toBe("步骤分数 {value}");
+  const value = expression.arguments[1].properties.find((property) => property.key.name === "value").value;
+  expect(value.callee.name).toBe("$tr");
+  expect(value.arguments[0].object.name).toBe("step");
+  expect(value.arguments[0].property.name).toBe("confidence");
+  setLocale("zh-CN", { persist: false });
+  expect(uiText(expression.arguments[0].value, { value: "0.123" })).toBe("步骤分数 0.123");
+  setLocale("en", { persist: false });
+  expect(uiText(expression.arguments[0].value, { value: "0.123" })).toBe("Step score 0.123");
 });
 test.each([
   "views/workspace/TaskDetail.vue",

@@ -95,8 +95,9 @@ test("prominent workspace templates stay backend-neutral while environment cards
     "<RouteReader",
   );
   expect(source("components/routes/RouteStepList.vue")).toContain(
-    "engineLabel",
+    "engineUiLabel",
   );
+  expect(source("components/routes/route-ui-text.js")).toContain("engineLabel(engine)");
 });
 
 test("legacy status redirects without a competing page and shell links enter the environment module", () => {

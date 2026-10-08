@@ -129,7 +129,6 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useConfirm } from "vuetify-use-dialog";
 import { localizedConfirm } from "@/components/localized-confirm";
-import { uiText } from "@/i18n";
 import { predictionMessage } from "./ui-copy";
 import { errorMessage } from "@/common/workspace-errors";
 import {
