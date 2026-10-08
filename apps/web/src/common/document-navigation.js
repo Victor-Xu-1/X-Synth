@@ -1,4 +1,5 @@
 import { inputOccurrences } from "./route-input-occurrences";
+import { uiText } from "@/i18n";
 
 const DOCUMENT_ID = /^[a-f0-9]{32}$/;
 const LEAVE_MESSAGE = "存在未保存修改，仍要离开？";
@@ -12,7 +13,7 @@ export function createDocumentNavigation({ isDirty, snapshot, confirm }) {
     if (!isDirty()) return true;
     if (approved?.path === to?.path && approved.snapshot === snapshot())
       return true;
-    return confirm(LEAVE_MESSAGE);
+    return confirm(uiText(LEAVE_MESSAGE));
   }
   function invalidate() {
     generation++;
@@ -24,7 +25,7 @@ export function createDocumentNavigation({ isDirty, snapshot, confirm }) {
     const isCurrent = () => alive && current === generation;
     pending = true;
     try {
-      if (isDirty() && !confirm("存在未保存修改，仍要打开文件并替换当前路线？"))
+      if (isDirty() && !confirm(uiText("存在未保存修改，仍要打开文件并替换当前路线？")))
         return false;
       if (!isCurrent()) return false;
       const acceptedSnapshot = snapshot();
@@ -35,7 +36,7 @@ export function createDocumentNavigation({ isDirty, snapshot, confirm }) {
       if (
         snapshot() !== acceptedSnapshot &&
         isDirty() &&
-        !confirm(LEAVE_MESSAGE)
+        !confirm(uiText(LEAVE_MESSAGE))
       )
         return false;
       if (!isCurrent()) return false;
@@ -117,6 +118,6 @@ export function documentOrigin(document) {
   if (hasIndex) query.route_index = String(index);
   return {
     to: { path: "/results/" + source.job_id, query },
-    label: hasIndex ? "原始任务 · R" + (index + 1) : "原始任务",
+    label: hasIndex ? uiText("原始任务 · R{index}", { index: index + 1 }) : uiText("原始任务"),
   };
 }
