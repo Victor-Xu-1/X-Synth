@@ -1,4 +1,4 @@
-import { computed, readonly, ref } from "vue";
+import { computed, readonly, ref, watchEffect } from "vue";
 import { createI18n } from "vue-i18n";
 import { messages } from "./catalog";
 
@@ -62,6 +62,12 @@ export function useUiLanguage() {
 export function formatUiDate(value, options = { hour12: false }) {
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? uiText("未提供") : date.toLocaleString(i18n.global.locale.value, options);
+}
+
+export function useUiPageTitle(route, target = typeof document === "undefined" ? null : document) {
+  watchEffect(() => {
+    if (target) target.title = `${uiText(route.meta.title || "工作区")} - X-Synth`;
+  });
 }
 
 export default { install(app) { app.use(i18n); app.config.globalProperties.$tr = uiText; } };
