@@ -72,6 +72,7 @@ try {
   const response = await reply;
   assert.equal(response.status(), 200);
   const result = await response.json();
+  await page.waitForURL((url) => url.pathname === "/analyses/" + result.record_id);
   await page.locator(".impurity-result").waitFor();
   assert.deepEqual(result.inputs, { reactants: ["CC(=O)Cl", "CN"], known_product: "CNC(C)=O", reagents: [], solvents: ["CO"], count: 10 });
   assert.deepEqual(result.execution.modes_completed, [1, 2, 3, 4, 5]);
@@ -102,8 +103,7 @@ try {
   await renderedStructure(".major-reference");
   await page.locator(".impurity-result > header").scrollIntoViewIfNeeded();
   await page.screenshot({ path: output + "-desktop.png", fullPage: true, animations: "disabled" });
-  await page.locator(`.impurity-result a[href="/analyses/${result.record_id}"]`).click();
-  await page.waitForURL(base + "/analyses/" + result.record_id);
+  await page.reload();
   await page.locator(".impurity-result").waitFor();
   assert.equal(requests.length, 1, "History must render stored results without recalculating.");
   assert.match(await page.locator(".major-reference").innerText(), /用户提供的主产物基准/);

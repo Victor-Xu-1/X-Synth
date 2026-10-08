@@ -119,6 +119,19 @@ test("missing or non-optimization CSV has no export action", async () => {
   expect(wrapper.find('[aria-label="导出下一批实验 CSV"]').exists()).toBe(false);
 });
 
+test.each([
+  ["conditions", "/forward", { tab: "context", record: "record-a" }],
+  ["forward", "/forward", { tab: "forward", record: "record-a" }],
+  ["impurity", "/impurity", { record: "record-a" }],
+])("%s returns to the exact input mode without recomputing", async (kind, path, query) => {
+  API.get.mockResolvedValue({ ...record(), kind });
+  const { wrapper } = await setup();
+  const edit = wrapper.findAll("button").find((button) => button.text() === "返回修改");
+  expect(edit.attributes("to")).toBeDefined();
+  expect(wrapper.vm.editLocation).toEqual({ path, query });
+  expect(API.post).not.toHaveBeenCalled(); expect(API.get).toHaveBeenCalledTimes(1);
+});
+
 test("navigation and failed reads immediately remove the previous record's CSV export", async () => {
   const known = { ...record(), kind: "optimization", result: {
     engine: "BayBE", empirically_confirmed: false, csv_content: "stored protocol bytes",

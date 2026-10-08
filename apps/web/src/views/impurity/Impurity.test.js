@@ -1,15 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { defineComponent, nextTick, reactive, ref } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { API } from "@/common/api";
 import { calculationStubs } from "../assessment/test-support";
 import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import Impurity from "./Impurity.vue";
 import { acceptsImpurities, createForm, impurityBody } from "./impurity-form";
 
-jest.mock("vue-router", () => ({ useRoute: jest.fn() }));
-jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
+jest.mock("vue-router", () => ({ useRoute: jest.fn(), useRouter: jest.fn() }));
+jest.mock("@/common/api", () => ({ API: { post: jest.fn(), get: jest.fn() } }));
 jest.mock("@/components/SmilesImage.vue", () => ({
   name: "SmilesImage",
   template: "<div />",
@@ -51,6 +51,8 @@ afterAll(() => {
 });
 beforeEach(() => {
   API.post.mockReset();
+  API.get.mockReset();
+  useRouter.mockReturnValue({ push: jest.fn().mockResolvedValue(undefined) });
 });
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
@@ -99,6 +101,27 @@ test("an empty form and structure-only prefill never calculate automatically", a
   await wrapper.get("form").trigger("submit");
   expect(API.post).not.toHaveBeenCalled();
   expect(wrapper.find(".impurity-result").exists()).toBe(false);
+});
+
+test("loading and failed saved inputs lock editing and inference until a successful explicit reload", async () => {
+  let finish;
+  API.get.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  const { wrapper } = await setup({ record: "saved-input" });
+  await flushPromises();
+  expect(wrapper.get("textarea").element.disabled).toBe(true);
+  expect(wrapper.get('input[type="number"]').element.disabled).toBe(true);
+  await wrapper.get("form").trigger("submit"); expect(API.post).not.toHaveBeenCalled();
+  finish({ id: "wrong-id", kind: "impurity", status: "completed", created: "2026-10-08T00:00:00Z", inputs: {}, result: {} });
+  await flushPromises();
+  expect(wrapper.get('[role="alert"]').text()).toContain("读取已存输入失败");
+  expect(wrapper.get("textarea").element.disabled).toBe(true);
+  API.get.mockResolvedValue({ id: "saved-input", kind: "impurity", status: "completed", created: "2026-10-08T00:00:00Z",
+    inputs: { reactants: ["CCO"], known_product: "CC=O", reagents: [], solvents: [], count: 3 }, result: {} });
+  await wrapper.get('[role="alert"] button').trigger("click"); await flushPromises();
+  expect(wrapper.get("textarea").element.disabled).toBe(false);
+  expect(wrapper.get("textarea").element.value).toBe("CCO");
+  expect(wrapper.get('input[type="number"]').element.value).toBe("3");
+  expect(API.post).not.toHaveBeenCalled();
 });
 
 test("unapplied drawing changes block inference and record switching", async () => {

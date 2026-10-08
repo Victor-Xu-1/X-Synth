@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from packages.adapters.askcos.conditions import ConditionAdapter, ConditionModelError
 from packages.workspace.http_validation import WorkspaceRoute
+from packages.workspace.prediction_input import condition_input_context
 from packages.workspace.structure_validation import (
     MAX_SMILES_LENGTH,
     canonical_structure,
@@ -20,6 +21,7 @@ class ConditionBody(BaseModel):
     reactants: str = Field(min_length=1, max_length=MAX_SMILES_LENGTH)
     product: str = Field(min_length=1, max_length=MAX_SMILES_LENGTH)
     count: int = Field(default=5, ge=1, le=20)
+    reaction_smiles: str | None = Field(default=None, min_length=1, max_length=MAX_SMILES_LENGTH)
 
 
 def condition_router(*, transport, budget, read_health, run_analysis):
@@ -43,17 +45,17 @@ def condition_router(*, transport, budget, read_health, run_analysis):
             product = canonical_structure(
                 body.product, max_atoms=budget.max_structure_atoms
             )[0]
+            context = condition_input_context(body.reaction_smiles, reactants, product, max_atoms=budget.max_structure_atoms)
         except ValueError as exc:
             raise HTTPException(422, "无法解析反应物或产物结构。") from exc
         try:
+            inputs = {"reactants": reactants, "product": product, "count": body.count}
+            if context is not None:
+                inputs["reaction_context"] = context
             return run_analysis(
                 owner=principal.owner,
                 kind="conditions",
-                inputs={
-                    "reactants": reactants,
-                    "product": product,
-                    "count": body.count,
-                },
+                inputs=inputs,
                 execute=lambda: adapter.predict(
                     reactants=reactants, product=product, count=body.count
                 ),

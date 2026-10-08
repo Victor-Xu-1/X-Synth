@@ -243,6 +243,8 @@ function cancelImport() {
   fileError.value = "";
 }
 defineExpose({
+  parsed,
+  selected,
   pending,
   product,
   reactants,

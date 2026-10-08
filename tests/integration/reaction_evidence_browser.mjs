@@ -153,22 +153,24 @@ for (const width of [1440, 390]) {
           deposited.provenance.source_sha256,
           fixture.provenance.source_sha256,
         );
-        const row = page.locator(`[data-reference-id="${fixture.id}"]`);
+        const row = page.locator(`[data-cy="reference-row"][data-reference-id="${fixture.id}"]`);
         await expect(row).toBeVisible();
         await expect(row).toContainText("65.39 %");
         await expect(row).toContainText("110 ± 10 °C");
-        await expect(row.locator(".recorded-input")).toHaveCount(5);
+        await expect(row.locator(".recorded-input")).toHaveCount(0);
         await realStructure(row);
-        for (const input of await row.locator(".recorded-input").all())
+        await row.locator('[data-cy="reference-details"]').click();
+        const detail = page.locator('[data-cy="reference-record-detail"]');
+        await expect(detail.locator(".recorded-input")).toHaveCount(5);
+        for (const input of await detail.locator(".recorded-input").all())
           await realStructure(input);
-        await row.getByText("引用与原始记录", { exact: true }).click();
-        await expect(
-          row.getByRole("link", { name: "查看原始文献", exact: true }),
-        ).toHaveAttribute("href", fixture.publication_url);
-        await expect(row.locator(".reference-procedure")).toContainText(
+        await expect(detail.locator(`a[href="${fixture.publication_url}"]`)).toBeVisible();
+        await expect(detail.locator(".reference-procedure")).toContainText(
           "dioxane",
         );
-        await expect(row).toContainText("CC-BY-SA-4.0");
+        await expect(detail).toContainText("CC-BY-SA-4.0");
+        await detail.getByRole("button", { name: "关闭参考记录详情", exact: true }).click();
+        await expect(row.locator('[data-cy="reference-details"]')).toBeFocused();
         await row.scrollIntoViewIfNeeded();
         assert.equal(
           await row.evaluate((item) => item.scrollWidth > item.clientWidth + 1),

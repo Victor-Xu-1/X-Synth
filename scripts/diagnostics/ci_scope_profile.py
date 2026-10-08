@@ -332,6 +332,7 @@ def guard_paths(paths: set[str]) -> None:
             "tests/integration/test_optimization_published.py",
             "tests/integration/optimization_browser.mjs",
             "tests/integration/forward_browser.mjs",
+            "tests/integration/impurity_browser.mjs",
             "tests/integration/analysis_browser.mjs",
             "tests/integration/task_workspace_browser.mjs",
             "tests/integration/route_reading_browser.mjs",
@@ -418,7 +419,15 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
     selected.update(architecture.related_tests(roots))
     if roots & ENVIRONMENT_FILES:
         selected.add("tests/unit/test_environment_api.py")
-    if roots & SCIENTIFIC_FILES or any(
+    if "apps/api/condition_routes.py" in roots:
+        selected.update({
+            "tests/unit/test_condition_input_api.py",
+            "tests/unit/test_prediction_input.py",
+            "tests/unit/test_analysis_records.py",
+            "tests/unit/test_native_scientific_boundaries.py",
+            "tests/unit/test_product_api_security.py",
+        })
+    if roots & (SCIENTIFIC_FILES - {"apps/api/condition_routes.py"}) or any(
         path.startswith("packages/adapters/optimization/") for path in roots
     ):
         selected.update(SCIENTIFIC_TESTS)

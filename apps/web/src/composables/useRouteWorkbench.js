@@ -25,22 +25,46 @@ export function useRouteWorkbench() {
     error = ref("");
   const previewOpen = ref(false),
     previewCandidates = ref([]);
+  const seedError = ref(false);
+  const readingStructure = ref(false);
+  let activeStructureRead = null;
+  const structureSmiles = computed({
+    get: () => draft.smiles,
+    set: (value) => {
+      if (!activeStructureRead) draft.smiles = value;
+      else if (activeStructureRead.current()) {
+        if (activeStructureRead.request)
+          draft.applyManualRead(activeStructureRead.request, value);
+        else draft.smiles = value;
+      }
+    },
+  });
   const mode = computed(() => normalizeMode(route.query.mode));
   const ready = computed(() =>
     mode.value === "manual" ? workspace.can("retro") : workspace.ready,
   );
   const canSubmit = computed(() =>
     ready.value &&
+    !seedError.value &&
     !busy.value &&
+    !readingStructure.value &&
     mode.value !== "import" &&
     Boolean(structure.value) &&
     !structure.value.pending &&
     typeof draft.smiles === "string" &&
     Boolean(draft.smiles.trim()),
   );
+  const canCompareManual = computed(() =>
+    mode.value === "manual" &&
+    Boolean(draft.manualResult) &&
+    Boolean(structure.value) &&
+    !structure.value.pending &&
+    !busy.value &&
+    !readingStructure.value &&
+    !seedError.value,
+  );
   let lifetime = 0;
-  let appliedSeed = null,
-    seedError = false;
+  let appliedSeed = null;
   watch(
     () => route.query,
     (query) => {
@@ -53,11 +77,11 @@ export function useRouteWorkbench() {
             draft.settings = defaultSearchSettings();
             appliedSeed = "";
           }
-          seedError = false;
+          seedError.value = false;
           error.value = "";
           return;
         }
-        if (seed.key === appliedSeed && !seedError) return;
+        if (seed.key === appliedSeed && !seedError.value) return;
         lifetime++;
         busy.value = false;
         draft.smiles = seed.smiles;
@@ -65,18 +89,48 @@ export function useRouteWorkbench() {
         draft.settings = seed.settings;
         appliedSeed = seed.key;
         error.value = "";
-        seedError = false;
+        seedError.value = false;
       } catch (e) {
         lifetime++;
         busy.value = false;
-        seedError = true;
+        seedError.value = true;
         error.value = errorMessage(e, "任务参数无法读取。");
       }
     },
-    { immediate: true },
+    { immediate: true, flush: "sync" },
   );
+  watch(
+    mode,
+    () => {
+      lifetime++;
+      busy.value = false;
+      previewOpen.value = false;
+    },
+    { flush: "sync" },
+  );
+  watch(
+    [() => draft.manualResult, canCompareManual],
+    () => {
+      previewOpen.value = false;
+      previewCandidates.value = [];
+    },
+    { flush: "sync" },
+  );
+  watch(
+    () => structure.value?.pending,
+    (pending) => {
+      if (pending && !busy.value) draft.invalidateManual();
+    },
+    { flush: "sync" },
+  );
+  function showManualInput() {
+    if (!busy.value && !readingStructure.value) draft.manualView = "input";
+  }
+  function showManualComparison() {
+    if (canCompareManual.value) draft.manualView = "comparison";
+  }
   function changeMode(value) {
-    if (busy.value) return;
+    if (busy.value || readingStructure.value) return;
     error.value = "";
     return router.replace({
       path: "/",
@@ -84,18 +138,30 @@ export function useRouteWorkbench() {
     });
   }
   async function clearStructure() {
-    if (busy.value) return;
+    if (busy.value || readingStructure.value) return;
     error.value = "";
-    await structure.value?.clear();
-    draft.smiles = "";
+    const generation = lifetime,
+      revision = draft.manualRevision;
+    try {
+      await structure.value?.clear();
+      if (generation === lifetime && revision === draft.manualRevision)
+        draft.smiles = "";
+    } catch (e) {
+      if (generation === lifetime && revision === draft.manualRevision)
+        error.value = errorMessage(e, "结构清空失败，请检查画板。");
+    }
   }
   async function submit() {
-    if (!canSubmit.value || seedError)
-      return;
-    busy.value = true;
-    error.value = "";
+    if (!canSubmit.value) return;
     const generation = lifetime;
     const selectedMode = mode.value;
+    const manualRequest =
+      selectedMode === "manual" ? draft.beginManualRequest() : null;
+    const current = () =>
+      generation === lifetime &&
+      (!manualRequest || manualRequest.revision === draft.manualRevision);
+    busy.value = true;
+    error.value = "";
     try {
       const request =
         selectedMode === "auto"
@@ -105,13 +171,28 @@ export function useRouteWorkbench() {
               settings: draft.settings,
             })
           : null;
-      const smiles = await structure.value?.read();
+      let smiles;
+      readingStructure.value = true;
+      activeStructureRead = { request: manualRequest, current };
+      try {
+        smiles = await structure.value?.read();
+      } finally {
+        activeStructureRead = null;
+        readingStructure.value = false;
+      }
       if (!smiles)
         throw new Error(JSON.stringify({ detail: "目标结构为空或无法读取。" }));
       if (generation !== lifetime) return;
       if (selectedMode === "manual") {
-        const result = await expandMolecule(API, { smiles, ...draft.manual });
-        if (generation === lifetime) draft.manualResult = result;
+        if (!current()) {
+          error.value = "目标或参数已更新，请重新生成候选。";
+          return;
+        }
+        const result = await expandMolecule(API, {
+          smiles,
+          ...manualRequest.settings,
+        });
+        if (current()) draft.publishManualResult(manualRequest, result);
         return;
       }
       const canonical = await API.post("/api/v1/structure/validate", {
@@ -127,30 +208,43 @@ export function useRouteWorkbench() {
       if (generation === lifetime)
         await router.push(`/results/${result.job_id}`);
     } catch (e) {
-      if (generation === lifetime)
+      if (current())
         error.value = errorMessage(e, "任务提交失败。");
     } finally {
       if (generation === lifetime) busy.value = false;
     }
   }
+  function currentCandidate(index) {
+    if (!canCompareManual.value)
+      throw new Error(JSON.stringify({
+        detail: "候选已失效或结构尚未确认，请重新生成候选。",
+      }));
+    return oneStepCandidate(draft.manualResult, index);
+  }
   function preview(index) {
-    previewCandidates.value = [oneStepCandidate(draft.manualResult, index)];
-    previewOpen.value = true;
+    try {
+      previewCandidates.value = [currentCandidate(index)];
+      previewOpen.value = true;
+    } catch (e) {
+      error.value = errorMessage(e, "候选无法预览，请重新生成候选。");
+    }
   }
   async function editCandidate(index) {
-    if (busy.value) return;
-    busy.value = true;
+    if (busy.value || readingStructure.value) return;
     error.value = "";
-    const generation = lifetime;
+    const generation = lifetime,
+      revision = draft.manualRevision;
     try {
-      const candidate = oneStepCandidate(draft.manualResult, index);
+      const candidate = currentCandidate(index);
+      busy.value = true;
       const value = await API.post("/api/v1/route-documents", {
         title: `一步候选 ${index + 1}`,
         graph: cleanGraph(graphFromCandidate(candidate)),
       });
-      if (generation === lifetime) await router.push(`/editor/${value.id}`);
+      if (generation === lifetime && revision === draft.manualRevision)
+        await router.push(`/editor/${value.id}`);
     } catch (e) {
-      if (generation === lifetime)
+      if (generation === lifetime && revision === draft.manualRevision)
         error.value = errorMessage(e, "候选路线打开失败。");
     } finally {
       if (generation === lifetime) busy.value = false;
@@ -158,21 +252,26 @@ export function useRouteWorkbench() {
   }
   onBeforeUnmount(() => lifetime++);
   onBeforeRouteLeave(async () => {
-    if (!busy.value && mode.value !== "import")
+    if (!busy.value && !readingStructure.value && mode.value !== "import")
       await structure.value?.capture();
   });
   return {
     draft,
     workspace,
     structure,
+    structureSmiles,
+    readingStructure,
     busy,
     error,
     mode,
     ready,
     canSubmit,
+    canCompareManual,
     previewOpen,
     previewCandidates,
     changeMode,
+    showManualInput,
+    showManualComparison,
     clearStructure,
     submit,
     preview,

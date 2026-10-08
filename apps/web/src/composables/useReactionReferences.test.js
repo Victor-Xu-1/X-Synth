@@ -8,6 +8,7 @@ import {
 } from "@/common/reaction-references";
 import ReferenceResults from "@/components/references/ReferenceResults.vue";
 import ReactionReferences from "@/components/references/ReactionReferences.vue";
+import { referenceDialogStub } from "@/components/references/reference-dialog.test-support";
 import { useReactionReferences } from "./useReactionReferences";
 
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn() } }));
@@ -81,6 +82,7 @@ function deferred() {
 }
 const wrappers = [];
 const stubs = {
+  VDialog: referenceDialogStub,
   VBtn: {
     props: ["disabled", "loading", "type"],
     template:
@@ -423,7 +425,7 @@ describe("shared reaction references", () => {
 });
 
 describe("reference records", () => {
-  test("reference magnification receives verified role arrays rather than the raw mapped string", () => {
+  test("reference magnification receives verified role arrays rather than the raw mapped string", async () => {
     const response = packet();
     response.results[0].reaction_smiles = "[CH3:1][CH2:2]O>>[CH3:1][CH:2]=O";
     const wrapper = mounted(ReferenceResults, {
@@ -432,6 +434,8 @@ describe("reference records", () => {
     const preview = wrapper.getComponent({ name: "StructurePreview" });
     expect(preview.props("inputType")).toBe("reaction");
     expect(preview.props("smiles")).toBe("CCO>>CC=O");
+    expect(wrapper.find(".reference-raw").exists()).toBe(false);
+    await wrapper.get('[data-cy="reference-details"]').trigger("click");
     expect(wrapper.get(".reference-raw").text()).toBe(response.results[0].reaction_smiles);
     expect(API.post).not.toHaveBeenCalled();
   });
@@ -463,7 +467,7 @@ describe("reference records", () => {
     expect(wrapper.find("a").exists()).toBe(false);
     expect(wrapper.text()).not.toMatch(/实验成功率|预测条件|实验步骤/);
   });
-  test("patent links use safeExternalUrl and retain paragraph/year and raw reaction", () => {
+  test("patent links use safeExternalUrl and retain paragraph/year and raw reaction", async () => {
     const response = packet(),
       row = response.results[0];
     Object.assign(row, {
@@ -480,6 +484,7 @@ describe("reference records", () => {
     expect(wrapper.get("a").attributes("rel")).toBe("noopener noreferrer");
     expect(wrapper.text()).toContain("[0012]");
     expect(wrapper.text()).toContain("2016");
+    await wrapper.get('[data-cy="reference-details"]').trigger("click");
     expect(wrapper.get(".reference-raw").text()).toBe(row.reaction_smiles);
   });
   test("noncanonical requested input retains canonical metadata rendering without extra API calls", () => {

@@ -148,6 +148,9 @@ const ketcherFrameStyle = computed(() => {
 const syncKetcherLayout = () => {
   const frame = ketcherFrame.value;
   if (!frame || !frame.getClientRects().length) return;
+  // Ketcher 2.13 registers its resize handler before its native editor exists.
+  // Keep the iframe viewport stable until that initialization has completed.
+  if (!ketcherIframe.value?.contentWindow?.ketcher?.editor) return;
 
   const availableWidth = Math.max(
     props.fillHeight || props.compact || props.reaction

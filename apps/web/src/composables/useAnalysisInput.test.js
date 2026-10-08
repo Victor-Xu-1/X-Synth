@@ -24,7 +24,7 @@ test("browser Back restores only a pointer bound to the exact originating page a
 test("a pointer for a different input URL cannot overwrite a fresh target", async () => {
   window.history.replaceState({ xSynthSubmittedInput: { version: 1, kind: "process", id: "old", location: "/process?smiles=CCO" } }, "");
   setup({ smiles: "CCN" }, "/process?smiles=CCN"); await flushPromises();
-  expect(API.get).not.toHaveBeenCalled(); expect(prefill).toHaveBeenCalledWith("CCN");
+  expect(API.get).not.toHaveBeenCalled(); expect(prefill).toHaveBeenCalledWith("CCN", { smiles: "CCN" });
 });
 test("stale record reads and unmounted views do not overwrite the current form", async () => {
   let finish;
