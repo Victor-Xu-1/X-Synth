@@ -19,7 +19,7 @@
     <WorkbenchDialog :model-value="!!editing" :aria-label="editorLabel" @update:model-value="(value) => { if (!value) close(); }" @after-leave="returnFocus" max-width="820" scrollable>
       <section v-if="editing" class="material-editor" :aria-label="editorLabel">
         <header><h2>{{ editorLabel }}</h2><v-btn type="button" icon="mdi-close" variant="text" :aria-label="$tr('关闭物料绘图')" @click="close" /></header>
-        <div class="material-editor-body" :inert="saving || undefined"><StructureInput ref="structureInput" v-model="draft" :label="$tr('物料与结构')" :disabled="disabled" :canvas-height="380" />
+        <div class="material-editor-body" :inert="saving || undefined"><StructureInput ref="structureInput" v-model="draft" :label="$tr('分子结构')" :disabled="disabled" :canvas-height="380" />
           <p v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</p></div>
         <footer>
           <v-tooltip :text="$tr('清除结构')"><template #activator="{ props: tip }">

@@ -66,6 +66,6 @@ test("material editor has an accessible compact clear action and a distinct appl
   expect(clear.attributes("icon")).toBe("mdi-eraser");
   expect(clear.attributes("type")).toBe("button");
   expect(wrapper.get(".material-apply").text()).toBe("应用结构");
-  expect(wrapper.getComponent(Input).props("label")).toBe("物料与结构");
+  expect(wrapper.getComponent(Input).props("label")).toBe("分子结构");
   expect(wrapper.vm.rows[0].smiles).toBe("CCO");
 });
