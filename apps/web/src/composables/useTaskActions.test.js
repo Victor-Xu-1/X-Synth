@@ -139,6 +139,26 @@ test.each(["info", "preview", "rerun"])("changing the history collection invalid
   expect(api.post).not.toHaveBeenCalled();
 });
 
+test.each(["preview", "rerun"])("the new %s intent survives closing another task's open information dialog", async action => {
+  const request = deferred();
+  const second = { ...row, result_id: "second-task", description: "Task B", target_smiles: "CCN" };
+  const secondSettings = { ...settings, smiles: "CCN" };
+  const routes = [{ route_id: "second-route", target_smiles: "CCN", steps: [] }];
+  const api = { get: jest.fn().mockResolvedValueOnce({ ...row, settings }).mockReturnValueOnce(request.promise) };
+  const { actions, router } = setupActions(api);
+  await actions.info(row);
+  const pending = actions[action](second);
+  await nextTick();
+  request.resolve({ ...second, settings: secondSettings, result: { unified_route_pool: { selected_routes: routes } } });
+  expect(await pending).toBe(true);
+  expect(actions.showInfo.value).toBe(false);
+  if (action === "preview") {
+    expect(actions.showPreview.value).toBe(true);
+    expect(actions.previewJob.value).toBe(second.result_id);
+    expect(actions.previewRoutes.value).toEqual(routes);
+  } else expect(router.push).toHaveBeenCalledTimes(1);
+});
+
 test("changing cards/list presentation retains the current task dialog, metadata draft and pending information read", async () => {
   const request = deferred(), historyContext = ref(previewContext);
   const { actions } = setupActions({ get: jest.fn().mockReturnValue(request.promise) }, { historyContext });
