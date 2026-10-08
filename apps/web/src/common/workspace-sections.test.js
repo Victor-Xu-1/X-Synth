@@ -194,9 +194,10 @@ test("environment controls are separate and feature-gated", () => {
   expect(
     sectionNavigation(
       { path: "/admin", query: {} },
-      { administrator: true },
+      { native_account: true, administrator: false },
     ).items.map((item) => item.title),
-  ).toEqual(["环境部署", "用户与权限"]);
+  ).toEqual(["环境部署", "账号管理", "禁用规则"]);
+  expect(sectionNavigation({ path: "/admin", query: {} }, { administrator: true })).toBeNull();
 });
 
 test.each([

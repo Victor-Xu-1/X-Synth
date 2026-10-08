@@ -9,7 +9,8 @@ jest.mock("@/components/workspace/BrandMark.vue", () => ({
   template: '<img class="x-synth-brand-mark" alt="" :width="size" />',
 }));
 const mockRoute = reactive({ path: "/", query: {}, meta: { title: "路线设计" } });
-const mockWorkspace = reactive({ ready: false, loading: false, local: true, features: {} });
+const mockWorkspace = reactive({ ready: false, loading: false, local: true, error: "", coreChecking: false,
+  checking: () => mockWorkspace.coreChecking, features: {} });
 let wrapper;
 const stubs = {
   RouterLink: { props: ["to"], template: '<a :href="to"><slot /></a>' },
@@ -23,7 +24,7 @@ const stubs = {
 };
 beforeEach(() => {
   Object.assign(mockRoute, { path: "/", query: {}, meta: { title: "路线设计" } });
-  Object.assign(mockWorkspace, { ready: false, loading: false, local: true, features: {} });
+  Object.assign(mockWorkspace, { ready: false, loading: false, local: true, error: "", coreChecking: false, features: {} });
   wrapper = mount(AppBar, { global: { stubs } });
 });
 afterEach(() => wrapper.unmount());
@@ -63,6 +64,7 @@ test("an unavailable tool does not manufacture an available navigation family", 
 test("service readiness, loading and offline states remain distinct", async () => {
   expect(wrapper.get('[role="status"]').text()).toBe("服务未就绪");
   mockWorkspace.loading = true;
+  mockWorkspace.coreChecking = true;
   await nextTick();
   expect(wrapper.get('[role="status"]').text()).toBe("连接中");
   mockWorkspace.ready = true;
@@ -72,6 +74,18 @@ test("service readiness, loading and offline states remain distinct", async () =
   expect(wrapper.get('[role="status"]').text()).toBe("网络离线");
   expect(wrapper.get('[role="status"]').classes()).not.toContain("ready");
   expect(wrapper.get('[aria-label="环境部署"]').attributes("data-to")).toBe("/environments");
+});
+
+test("a known core failure is not disguised as connecting while an optional refresh continues", async () => {
+  mockWorkspace.loading = true; mockWorkspace.error = "无法连接工作区服务";
+  await nextTick();
+  expect(wrapper.get('[role="status"]').text()).toBe("服务未就绪");
+});
+
+test("a confirmed not-ready core is not connecting while unrelated optional work is still loading", async () => {
+  mockWorkspace.loading = true; mockWorkspace.coreChecking = false;
+  await nextTick();
+  expect(wrapper.get('[role="status"]').text()).toBe("服务未就绪");
 });
 
 test("navigation toggle exposes drawer state without adding a navigation implementation", async () => {

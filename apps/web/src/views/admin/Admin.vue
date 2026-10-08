@@ -2,7 +2,7 @@
   <module-workbench title="账号管理">
     <template #actions>
       <v-btn
-        v-if="workspace.can('native_account')"
+        v-if="allowed"
         variant="text"
         prepend-icon="mdi-refresh"
         :loading="dataLoading"
@@ -11,10 +11,10 @@
         >刷新</v-btn
       >
     </template>
-    <div v-if="workspace.loading" class="workspace-loading" role="status">
+    <div v-if="workspace.loading && !workspace.session && !workspace.refreshed" class="workspace-loading" role="status">
       <v-progress-linear indeterminate />
     </div>
-    <div v-else-if="!workspace.can('native_account')" class="workspace-empty">
+    <div v-else-if="!allowed" class="workspace-empty">
       <v-icon icon="mdi-account-off-outline" size="32" />
       <h2>当前工作区未启用账号服务</h2>
       <router-link to="/">返回工作区</router-link>
@@ -25,7 +25,7 @@
         {{ notice }}
       </p>
       <v-progress-linear v-if="dataLoading" indeterminate color="primary" />
-      <template v-else-if="currentUser">
+      <template v-if="currentUser">
         <template v-if="isAdmin">
           <div class="account-toolbar">
             <v-select
@@ -234,7 +234,9 @@
       </template>
     </template>
     <account-user-dialog
+      v-if="allowed"
       v-model="editorOpen"
+      :context-key="contextKey"
       :mode="editorMode"
       :username="selectedUser?.username || ''"
       :initial-email="selectedUser?.email || ''"
@@ -246,36 +248,24 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useConfirm } from "vuetify-use-dialog";
-import { API } from "@/common/api";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import { useWorkspaceStore } from "@/store/workspace";
 import AccountUserDialog from "./AccountUserDialog.vue";
-import { loadAccounts, mutateAccount, saveAccount } from "./account-api";
+import { useAccountManager } from "./useAccountManager";
 
 const workspace = useWorkspaceStore();
 const router = useRouter();
 const confirm = useConfirm();
-const currentUser = ref(null);
-const isAdmin = ref(false);
-const users = ref([]);
-const selection = ref([]);
+const {
+  allowed, contextKey, currentUser, isAdmin, users, selection, dataLoading, saving, busy,
+  dataError, notice, editorOpen, editorMode, selectedUser, editorError,
+  fetchData, openEditor, submitEditor, applyAction,
+} = useAccountManager({ workspace, router, confirm });
 const filterSelected = ref(null);
 const filterInactive = ref(false);
-const dataLoading = ref(false);
-const saving = ref(false);
-const confirming = ref(false);
-const busy = computed(
-  () => dataLoading.value || saving.value || confirming.value,
-);
-const dataError = ref("");
-const notice = ref("");
-const editorOpen = ref(false);
-const editorMode = ref("new");
-const selectedUser = ref(null);
-const editorError = ref("");
 const accountLabels = { Admin: "管理员", Normal: "普通用户", Guest: "访客" };
 const filterOptions = Object.entries(accountLabels).map(([key, title]) => ({
   key,
@@ -341,117 +331,6 @@ const formatDate = (value) => {
     : date.toLocaleString("zh-CN");
 };
 
-const fetchData = async () => {
-  if (!workspace.can("native_account") || dataLoading.value) return;
-  dataLoading.value = true;
-  dataError.value = "";
-  try {
-    const result = await loadAccounts();
-    currentUser.value = result.current;
-    isAdmin.value = result.admin;
-    users.value = result.users;
-    selection.value = selection.value.filter((name) =>
-      users.value.some((user) => user.username === name),
-    );
-  } catch {
-    currentUser.value = null;
-    users.value = [];
-    selection.value = [];
-    dataError.value = "账号信息加载失败，请检查身份权限与认证服务状态。";
-  } finally {
-    dataLoading.value = false;
-  }
-};
-
-const openEditor = (mode, user = null) => {
-  if (busy.value || !workspace.can("native_account")) return;
-  editorMode.value = mode;
-  selectedUser.value = user;
-  editorError.value = "";
-  editorOpen.value = true;
-};
-
-const submitEditor = async (values) => {
-  if (busy.value || !workspace.can("native_account")) return;
-  saving.value = true;
-  editorError.value = "";
-  try {
-    if (editorMode.value === "email") {
-      values.disabled = selectedUser.value.disabled === true;
-      if (typeof selectedUser.value.full_name === "string")
-        values.full_name = selectedUser.value.full_name;
-    }
-    await saveAccount(editorMode.value, values);
-    editorOpen.value = false;
-    notice.value = "账号信息已保存。";
-    await fetchData();
-  } catch {
-    editorError.value = "保存失败，请检查输入、身份权限与认证服务状态。";
-  } finally {
-    saving.value = false;
-  }
-};
-
-const applyAction = async (names, action) => {
-  if (busy.value || !workspace.can("native_account") || !names.length) return;
-  const targets = [...names];
-  confirming.value = true;
-  try {
-    const accepted = await confirm({
-      title: action === "delete" ? "删除账号" : "修改账号状态",
-      content:
-        action === "delete"
-          ? `确定删除 ${targets.length} 个账号？此操作无法撤销。`
-          : `确定修改 ${targets.length} 个账号的状态或权限？`,
-      dialogProps: { width: 440 },
-    });
-    if (!accepted) return;
-    saving.value = true;
-    dataError.value = "";
-    notice.value = "";
-    let completed = 0;
-    let signOut = false;
-    for (const name of targets) {
-      try {
-        const profile =
-          users.value.find((user) => user.username === name) ||
-          currentUser.value;
-        await mutateAccount(name, action, profile);
-        completed++;
-        if (
-          name === currentUser.value.username &&
-          ["delete", "disable"].includes(action)
-        )
-          signOut = true;
-      } catch {
-        dataError.value = "部分账号操作失败，请刷新后检查权限与账号状态。";
-      }
-    }
-    notice.value = `已完成 ${completed} / ${targets.length} 项操作。`;
-    selection.value = [];
-    if (signOut) {
-      API.clearAuthState();
-      await router.replace("/login");
-    } else {
-      const mutationError = dataError.value;
-      await fetchData();
-      if (mutationError) dataError.value = mutationError;
-    }
-  } catch {
-    dataError.value = "账号操作未完成，请刷新后重试。";
-  } finally {
-    saving.value = false;
-    confirming.value = false;
-  }
-};
-
-watch(
-  () => workspace.can("native_account"),
-  (allowed) => {
-    if (allowed) fetchData();
-  },
-  { immediate: true },
-);
 onMounted(() => workspace.refresh());
 </script>
 

@@ -115,3 +115,19 @@ test("does not serialize missing profile fields as literal null query values", a
     true,
   );
 });
+
+test("a lost caller identity stops between native read stages", async () => {
+  let current = true;
+  API.get.mockImplementationOnce(async () => { current = false; return { username: "researcher" }; });
+  await expect(loadAccounts({ active: () => current })).rejects.toThrow("superseded");
+  expect(API.get).toHaveBeenCalledTimes(1);
+});
+
+test("profile identity and role must match the verified product session before private list reads", async () => {
+  const authority = { owner: "researcher", administrator: false };
+  API.get.mockResolvedValueOnce({ username: "another" });
+  await expect(loadAccounts({ authority })).rejects.toThrow("identity mismatch");
+  API.get.mockReset().mockResolvedValueOnce({ username: "researcher" }).mockResolvedValueOnce(true);
+  await expect(loadAccounts({ authority })).rejects.toThrow("role mismatch");
+  expect(API.get.mock.calls.some(([path]) => path.endsWith("get-all-users"))).toBe(false);
+});

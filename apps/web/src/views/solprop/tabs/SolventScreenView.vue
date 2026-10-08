@@ -1,5 +1,6 @@
 <template>
   <v-container fluid style="min-height: calc(100vh-50px)">
+    <section v-if="requestError" class="mb-4" aria-label="溶剂筛选错误"><ErrorDialog :error-obj="requestError" /></section>
     <v-row class="justify-center align-center">
       <v-col cols="12" md="12" class="pa-0">
         <v-sheet elevation="2" class="pa-10" rounded="lg">
@@ -120,7 +121,7 @@
       </v-col>
     </v-row>
 
-    <v-dialog v-model="customDialog" persistent max-width="600px">
+    <WorkbenchDialog v-model="customDialog" persistent max-width="600px">
       <v-card>
         <v-card-title>
           保存溶剂集合
@@ -141,9 +142,9 @@
             :disabled="loading || structurePending || !newSolventSetNameValid">保存</v-btn>
         </v-card-actions>
       </v-card>
-    </v-dialog>
+    </WorkbenchDialog>
 
-    <v-dialog v-model="showUploadModal" max-width="600px">
+    <WorkbenchDialog v-model="showUploadModal" max-width="600px">
       <v-card>
         <v-card-title class="mt-2">
           <v-col cols="12">上传文件</v-col>
@@ -171,9 +172,9 @@
             @click="() => { showUploadModal = false; handleUploadSubmit() }">上传</v-btn>
         </v-card-actions>
       </v-card>
-    </v-dialog>
+    </WorkbenchDialog>
 
-    <v-dialog v-model="dialog" width="auto" class="justify-center align-center">
+    <WorkbenchDialog v-model="dialog" width="auto" class="justify-center align-center">
       <v-card>
         <v-card-title class="headline">
           附加参数
@@ -212,7 +213,13 @@
           </v-btn>
         </v-card-actions>
       </v-card>
-    </v-dialog>
+    </WorkbenchDialog>
+
+    <WorkbenchDialog v-model="clearDialog" max-width="420" aria-label="清空筛选结果">
+      <v-card><v-card-title>清空筛选结果</v-card-title><v-card-text>这会清空当前所有结果，是否继续？</v-card-text>
+        <v-card-actions><v-spacer /><v-btn variant="text" @click="clearDialog = false">取消</v-btn>
+          <v-btn variant="text" @click="clear(true)">清空结果</v-btn></v-card-actions></v-card>
+    </WorkbenchDialog>
 
   </v-container>
   <solubility-modal :visible="showInfo" width="auto" @close-dialog="$event => showInfo = $event"></solubility-modal>
@@ -221,6 +228,8 @@
 <script>
 import { onBeforeUnmount, ref } from "vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";
+import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
+import { useWorkbenchActivity } from "@/components/workspace/workbench-activity";
 import SmilesImage from "@/components/SmilesImage";
 import SolubilityModal from '@/components/solprop/SolubilityModal'
 import { API } from "@/common/api";
@@ -232,7 +241,6 @@ import 'chart.js/auto';
 import { Bar, Line } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale } from 'chart.js'
 import emptyChart from '@/assets/emptyChart.svg'
-import { useConfirm } from 'vuetify-use-dialog';
 import ErrorDialog from '@/components/ErrorDialog'
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale)
@@ -244,7 +252,9 @@ export default {
     SolubilityModal,
     'bar-chart': Bar,
     'line-chart': Line,
-    StructureInput
+    StructureInput,
+    WorkbenchDialog,
+    ErrorDialog
   },
   data() {
     return {
@@ -274,17 +284,18 @@ export default {
       selectedUnits: 'mg/mL',
       unitOptions: ['log10(mol/L)', 'mg/mL'],
       loading: false,
+      requestError: null,
+      clearDialog: false,
       emptyChartSrc: emptyChart,
       showInfo: false,
       showUploadModal: false,
     }
   },
   setup() {
-    const createConfirm = useConfirm();
     const pollingLifetime = new AbortController();
     onBeforeUnmount(() => pollingLifetime.abort());
     return {
-      createConfirm,
+      workbenchActive: useWorkbenchActivity(),
       pollingSignal: pollingLifetime.signal,
       soluteInput: ref(null),
       selectedSolventInput: ref(null),
@@ -477,20 +488,17 @@ export default {
   },
   methods: {
     async clear(skipConfirm = false) {
+      if (!this.workbenchActive) return
       if (!skipConfirm) {
-        const isConfirmed = await this.createConfirm({
-          title: '请确认',
-          content: '这会清空当前所有结果，是否继续？',
-          dialogProps: { width: "auto" }
-        });
-        if (!isConfirmed) {
-          return;
-        }
+        this.clearDialog = true
+        return
       }
+      this.clearDialog = false
       this.results = []
     },
     predict() {
-      if (this.loading || this.structurePending || !this.solute.trim()) return
+      if (!this.workbenchActive || this.loading || this.structurePending || !this.solute.trim()) return
+      this.requestError = null
       this.loading = true
       this.results = []
       let promises = []
@@ -511,12 +519,9 @@ export default {
         promises.push(this.predictBatch(tasks))
       }
       return Promise.all(promises)
-        .catch(async error => {
+        .catch(error => {
           if (this.pollingSignal.aborted) return
-          const errorObj = API.toErrorObject(error, '溶剂筛选失败，请检查输入、模型服务和后端任务状态。')
-          const isConfirmed = await this.createConfirm({ title: "提示", contentComponent: ErrorDialog, contentComponentProps: { errorObj: errorObj }, dialogProps: { width: "auto" } })
-          if (!isConfirmed)
-            return
+          this.requestError = API.toErrorObject(error, '溶剂筛选失败，请检查输入、模型服务和后端任务状态。')
         })
         .finally(() => { if (!this.pollingSignal.aborted) this.loading = false })
     },

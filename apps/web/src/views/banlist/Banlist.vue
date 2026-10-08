@@ -5,15 +5,6 @@
     :active-module="activeModule"
     @select-module="setActiveModule"
   >
-    <div v-if="workspace.loading" class="workspace-loading">
-      <v-progress-linear indeterminate />
-    </div>
-    <div v-else-if="!workspace.can('native_account')" class="workspace-empty">
-      <v-icon icon="mdi-server-off" size="32" />
-      <h2>当前工作区未启用禁用规则服务</h2>
-      <router-link to="/environments?tab=monitor">查看运行监测</router-link>
-    </div>
-    <template v-else>
       <div class="banlist-toolbar">
         <v-select
           v-model="filterActive"
@@ -124,7 +115,6 @@
         v-model:pendingTasks="pendingTasks"
         @loadCollection="loadCollection"
       />
-    </template>
   </module-workbench>
 </template>
 
@@ -161,7 +151,7 @@ const banModules = computed(() =>
       title: "反应",
       disabled: !workspace.can("native_account"),
     },
-  ].filter((module) => !module.disabled),
+  ],
 );
 const filterOptions = [
   { key: "all", title: "全部" },

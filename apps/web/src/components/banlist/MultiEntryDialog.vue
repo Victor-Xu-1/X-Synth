@@ -1,5 +1,5 @@
 <template>
-    <v-dialog v-model="showMultiEntryDialog" max-width="600px">
+    <WorkbenchDialog v-model="showMultiEntryDialog" max-width="600px">
         <v-card>
             <v-card-title class="mt-2">
                 <v-col cols="12">上传禁用列表 JSON</v-col>
@@ -28,11 +28,12 @@
                     @click="uploadMultipleEntries">上传</v-btn>
             </v-card-actions>
         </v-card>
-    </v-dialog>
+    </WorkbenchDialog>
 </template>
 
 <script setup>
 import { ref } from 'vue';
+import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
 import { API } from "@/common/api";
 import { useSnackbar } from 'vuetify-use-dialog';
 

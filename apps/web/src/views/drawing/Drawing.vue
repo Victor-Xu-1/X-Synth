@@ -1,22 +1,11 @@
 <template>
   <module-workbench title="结构绘制">
-    <div
-      v-if="workspace.loading && !workspace.refreshed"
-      class="workspace-loading"
-      role="status"
-    >
-      <v-progress-linear indeterminate /><span>连接结构服务</span>
-    </div>
-    <div v-else-if="!workspace.can('drawing')" class="workspace-empty">
-      <v-icon icon="mdi-server-off" size="32" />
-      <h2>当前结构服务未启用</h2>
-      <router-link to="/environments?tab=monitor">查看运行监测</router-link>
-    </div>
-    <div v-else class="drawing-layout">
+    <div class="drawing-layout">
       <section class="drawing-editor">
         <div class="drawing-file-actions">
           <span class="field-label">化合物结构文件</span>
           <MoleculeFileControls
+            ref="files"
             :smiles="smiles || ''"
             :disabled="busy"
             :read-structure="readDrawing"
@@ -31,12 +20,12 @@
             placeholder="分子 / 反应 SMILES"
             variant="outlined"
             density="comfortable"
-            :disabled="busy || fileBusy"
+            :disabled="busy || inputPending"
             clearable
             data-cy="draw-enter-smiles"
           />
         </v-form>
-        <div :inert="fileBusy || busy || undefined">
+        <div :inert="files?.hasPending || busy || undefined">
           <inline-ketcher-editor
             ref="editor"
             v-model:smiles="smiles"
@@ -53,7 +42,7 @@
                 icon="mdi-eraser"
                 aria-label="清空画板"
                 variant="text"
-                :disabled="busy || fileBusy"
+                :disabled="busy || inputPending"
                 @click="clearEditor"
               />
             </template>
@@ -63,7 +52,7 @@
             variant="flat"
             prepend-icon="mdi-check"
             :loading="applying"
-            :disabled="canonicalizing || fileBusy"
+            :disabled="canonicalizing || inputPending"
             data-cy="draw-apply-btn"
             @click="applyStructure"
             >应用结构</v-btn
@@ -72,7 +61,7 @@
             variant="outlined"
             prepend-icon="mdi-auto-fix"
             :loading="canonicalizing"
-            :disabled="applying || fileBusy || !smiles?.trim()"
+            :disabled="applying || inputPending || !smiles?.trim()"
             data-cy="draw-canonicalize-btn"
             @click="canonicalize"
             >标准化</v-btn
@@ -121,7 +110,9 @@ import { useWorkspaceStore } from "@/store/workspace";
 const workspace = useWorkspaceStore();
 const route = useRoute();
 const editor = ref(null);
+const files = ref(null);
 const fileBusy = ref(false);
+const inputPending = computed(() => fileBusy.value || files.value?.hasPending === true || editor.value?.pending === true);
 const readDrawing = () => editor.value?.readSmilesFromEditor();
 const smiles = ref(
   typeof route.query.smiles === "string" ? route.query.smiles : "",
@@ -140,7 +131,7 @@ const commitStructure = (value) => {
 };
 
 const applyStructure = async () => {
-  if (busy.value || !workspace.can("drawing")) return;
+  if (busy.value || inputPending.value || !workspace.can("drawing")) return;
   applying.value = true;
   errorMessage.value = "";
   notice.value = "";
@@ -157,7 +148,7 @@ const applyStructure = async () => {
 };
 
 const clearEditor = async () => {
-  if (busy.value) return;
+  if (busy.value || inputPending.value || !workspace.can("drawing")) return;
   applying.value = true;
   errorMessage.value = "";
   notice.value = "";
@@ -172,7 +163,7 @@ const clearEditor = async () => {
 };
 
 const canonicalize = async () => {
-  if (busy.value || !workspace.can("drawing") || !smiles.value?.trim()) return;
+  if (busy.value || inputPending.value || !workspace.can("drawing") || !smiles.value?.trim()) return;
   canonicalizing.value = true;
   errorMessage.value = "";
   notice.value = "";

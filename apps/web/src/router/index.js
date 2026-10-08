@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { hasWorkspaceAccess } from "@/common/workspace-session";
 import { reactionWorkspaceRedirect } from "@/common/workspace-navigation";
+import { useWorkspaceStore } from "@/store/workspace";
+import { nativeAccountAuthority } from "@/views/admin/account-access";
 
 const account = (path, name, component) => ({
   path,
@@ -16,7 +18,8 @@ const workspacePages = [
     meta: {
       title: "用户与权限",
       nativeAccount: true,
-      feature: "administrator",
+      accountSelfService: true,
+      feature: "native_account",
     },
   },
   {
@@ -218,11 +221,22 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
+  if (to.meta.accountSelfService) {
+    try {
+      const workspace = useWorkspaceStore();
+      await workspace.refreshCore(true);
+      if (!nativeAccountAuthority(workspace))
+        return { name: "登录", query: { redirect: to.fullPath } };
+    } catch {
+      return { name: "登录", query: { redirect: to.fullPath } };
+    }
+  }
   const authenticated = !!localStorage.getItem("accessToken");
-  if (to.meta.nativeAccount && !authenticated)
+  if (to.meta.nativeAccount && !to.meta.accountSelfService && !authenticated)
     return { name: "登录", query: { redirect: to.fullPath } };
   if (
     to.meta.workspace &&
+    !to.meta.accountSelfService &&
     !to.meta.public &&
     !authenticated &&
     !(await hasWorkspaceAccess())

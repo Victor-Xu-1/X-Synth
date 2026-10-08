@@ -5,14 +5,23 @@ export function accountType(user) {
   return user.is_superuser === true ? "Admin" : "Normal";
 }
 
-export async function loadAccounts() {
-  const current = await API.get("/api/user/get-current-user", null, false);
-  if (!current?.username) throw new Error("Missing current user");
-  const admin = await API.get("/api/user/am-i-superuser", null, false);
+export async function loadAccounts({ authority, active = () => true, signal } = {}) {
+  const read = async (path) => {
+    if (!active()) throw new Error("Account read superseded");
+    const value = signal ? await API.get(path, null, false, { signal }) : await API.get(path, null, false);
+    if (!active()) throw new Error("Account read superseded");
+    return value;
+  };
+  const current = await read("/api/user/get-current-user");
+  if (typeof current?.username !== "string" || !current.username.trim()) throw new Error("Missing current user");
+  if (authority && (current.username !== authority.owner || current.disabled === true || accountType(current) === "Guest"))
+    throw new Error("Account identity mismatch");
+  const admin = await read("/api/user/am-i-superuser");
   if (typeof admin !== "boolean")
     throw new Error("Invalid permission response");
+  if (authority && admin !== authority.administrator) throw new Error("Account role mismatch");
   const users = admin
-    ? await API.get("/api/user/get-all-users", null, false)
+    ? await read("/api/user/get-all-users")
     : [];
   if (!Array.isArray(users)) throw new Error("Invalid account list");
   return {

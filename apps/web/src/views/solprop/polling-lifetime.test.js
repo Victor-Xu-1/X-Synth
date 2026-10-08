@@ -4,6 +4,8 @@ import { compileScript, parse } from "@vue/compiler-sfc";
 import { transformSync } from "@babel/core";
 import * as Vue from "vue";
 import { mount } from "@vue/test-utils";
+import { useWorkbenchActivity } from "@/components/workspace/workbench-activity";
+import WorkbenchScope from "@/components/workspace/WorkbenchScope.vue";
 
 const runCeleryTask = jest.fn(), confirm = jest.fn(), wrappers = [];
 const files = ["../qm/QM.vue", "tabs/SolubilityPredictView.vue", "tabs/SolventScreenView.vue"];
@@ -26,6 +28,7 @@ function optionsOf(file) {
     if (id === "@/composables/useTheme") return { useTheme: () => ({ isDark: Vue.ref(false) }) };
     if (id === "vuetify-use-dialog") return { useConfirm: () => confirm };
     if (id === "chart.js") return { Chart: { register() {} } };
+    if (id === "@/components/workspace/workbench-activity") return { useWorkbenchActivity };
     return {};
   };
   new Function("require", "module", "exports", code)(requireMock, module, module.exports);
@@ -90,4 +93,55 @@ test.each([
   await state[method]([{ solute: "CCO", solvent: "O", temp: 298 }]);
   expect(file === files[0] ? state.results.value : state.results).toHaveLength(1);
   expect(confirm).not.toHaveBeenCalled();
+});
+
+test.each([
+  [files[1], "predict"], [files[1], "predictBatch"], [files[2], "predict"],
+])("%s %s preserves a late error in its inactive pane without an application-root modal", async (file, method) => {
+  let reject;
+  runCeleryTask.mockImplementation(() => new Promise((yes, no) => { reject = no; }));
+  const { state } = setup(file);
+  state.workbenchActive = true;
+  state.temperatureList = [298];
+  state.solventList = ["O"];
+  const pending = Promise.resolve(state[method]([{ solute: "CCO", solvent: "O", temp: 298 }])).catch(() => {});
+  expect(runCeleryTask).toHaveBeenCalledTimes(1);
+  state.workbenchActive = false;
+  reject(new Error("late native error"));
+  await pending;
+  expect(confirm).not.toHaveBeenCalled();
+  expect(state.requestError).toEqual({ string_error: "failed" });
+  expect(state.pollingSignal.aborted).toBe(false);
+  state.workbenchActive = true;
+  expect(state.requestError).toEqual({ string_error: "failed" });
+});
+
+test.each([files[1], files[2]])("%s consumes reactive scope and preserves an inline late failure through suspend/resume", async (file) => {
+  const active = Vue.ref(true), options = optionsOf(file);
+  const Leaf = Vue.defineComponent({ ...options, created: undefined,
+    render() { return Vue.h("pre", { hidden: !this.workbenchActive }, JSON.stringify(this.requestError)); } });
+  const wrapper = mount(Vue.defineComponent({ setup: () => () => Vue.h(WorkbenchScope, { active: active.value },
+    { default: () => Vue.h(Leaf) }) }));
+  wrappers.push(wrapper);
+  const leaf = wrapper.getComponent(Leaf);
+  Object.assign(leaf.vm, { selectedModel: "legacy", solute: "CCO", solvent: "O", solvents: "O", temperatures: "298" });
+  let reject;
+  runCeleryTask.mockImplementation(() => new Promise((yes, no) => { reject = no; }));
+  const pending = leaf.vm.predict();
+  expect(runCeleryTask).toHaveBeenCalledTimes(1);
+  active.value = false;
+  await Vue.nextTick();
+  expect(leaf.vm.workbenchActive).toBe(false);
+  reject(new Error("late native error"));
+  await pending;
+  await Vue.nextTick();
+  expect(confirm).not.toHaveBeenCalled();
+  expect(leaf.vm.requestError).toEqual({ string_error: "failed" });
+  expect(leaf.vm.pollingSignal.aborted).toBe(false);
+  expect(leaf.get("pre").isVisible()).toBe(false);
+  active.value = true;
+  await Vue.nextTick();
+  expect(leaf.get("pre").text()).toContain("failed");
+  expect(leaf.get("pre").isVisible()).toBe(true);
+  expect(runCeleryTask).toHaveBeenCalledTimes(1);
 });

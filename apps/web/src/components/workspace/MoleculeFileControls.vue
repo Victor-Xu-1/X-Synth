@@ -47,7 +47,7 @@
       hidden
       @change="importFile"
     />
-    <v-dialog
+    <WorkbenchDialog
       :model-value="dialog"
       max-width="660"
       @update:model-value="cancel"
@@ -103,8 +103,8 @@
           >
         </v-card-actions>
       </v-card>
-    </v-dialog>
-    <v-dialog
+    </WorkbenchDialog>
+    <WorkbenchDialog
       :model-value="Boolean(error)"
       max-width="430"
       @update:model-value="error = ''"
@@ -116,11 +116,12 @@
           ><v-spacer /><v-btn @click="error = ''">关闭</v-btn></v-card-actions
         >
       </v-card>
-    </v-dialog>
+    </WorkbenchDialog>
   </div>
 </template>
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from "vue";
+import WorkbenchDialog from "./WorkbenchDialog.vue";
 import { API } from "@/common/api";
 import { errorMessage } from "@/common/workspace-errors";
 import {

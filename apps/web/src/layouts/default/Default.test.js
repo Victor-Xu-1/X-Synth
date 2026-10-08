@@ -37,6 +37,7 @@ const stubs = {
       '<aside class="workspace-sidebar"><a href="/">首页</a><button @click="$emit(\'navigate\')">关闭导航</button></aside>',
   },
   WorkspaceSectionNav: { template: "<nav />" },
+  WorkspaceUpdateNotice: { template: "<div />" },
   RouterView: { template: '<button class="page-action">Page</button>' },
 };
 beforeEach(() => {
