@@ -6,6 +6,7 @@ import { parse } from "@vue/compiler-sfc";
 import postcss from "postcss";
 import { API } from "@/common/api";
 import TemplateSearch from "./TemplateSearch.vue";
+import { initializeLocale, setLocale } from "@/i18n";
 
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn() } }));
 jest.mock("@/components/ModuleWorkbench.vue", () => ({
@@ -95,6 +96,22 @@ test("a direction missing from the index is not represented as an ordinary no-ma
   expect(wrapper.get('button[type="submit"]').element.disabled).toBe(true);
   const direction = wrapper.findAllComponents(stubs.VSelect).find((field) => field.props("label") === "反应方向");
   expect(direction.props("items").find((item) => item.value === "forward").props.disabled).toBe(true);
+});
+
+test("English index coverage explains a missing direction and changes language without a query or filter reset", async () => {
+  initializeLocale(null);
+  API.get.mockResolvedValue({ template_count: 252029, sources: ["isolated"], directions: { retro: 252029 } });
+  const { wrapper, router } = await setup({ direction: "forward", searched: "1" });
+  expect(wrapper.get('p[role="status"]').text()).toBe("The current index contains no Forward templates.");
+  const button = wrapper.get('button[type="submit"]');
+  expect(button.element.disabled).toBe(true);
+  setLocale("zh-CN", { persist: false });
+  await flushPromises();
+  expect(wrapper.get('p[role="status"]').text()).toBe("当前索引未包含正向模板。");
+  expect(wrapper.get('button[type="submit"]').element).toBe(button.element);
+  expect(router.currentRoute.value.query).toEqual({ direction: "forward", searched: "1" });
+  expect(API.get).toHaveBeenCalledTimes(1);
+  expect(API.post).not.toHaveBeenCalled();
 });
 
 test("list and detail reuse template-aware previews while original SMARTS and identities remain exact", async () => {

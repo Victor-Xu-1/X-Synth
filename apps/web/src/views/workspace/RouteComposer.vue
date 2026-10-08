@@ -7,9 +7,9 @@
       @submit="submit"
     >
       <template #heading>
-        <h1>路线设计</h1>
+        <h1>{{ $tr('路线设计') }}</h1>
         <v-btn variant="text" prepend-icon="mdi-history" to="/results"
-          >任务记录</v-btn
+          >{{ $tr('任务记录') }}</v-btn
         >
       </template>
       <template #modes>
@@ -19,7 +19,7 @@
             mandatory
             divided
             variant="text"
-            aria-label="路线设计模式"
+            :aria-label="$tr('路线设计模式')"
             @update:model-value="changeMode"
             ><v-btn
               v-for="item in workbenchModes"
@@ -28,7 +28,7 @@
               type="button"
               :prepend-icon="item.icon"
               :disabled="busy || readingStructure"
-              >{{ item.title }}</v-btn
+              >{{ $tr(item.title) }}</v-btn
             ></v-btn-toggle
           >
         </div>
@@ -36,7 +36,7 @@
           v-if="mode === 'manual'"
           class="manual-view-controls"
           role="group"
-          aria-label="单步分析视图"
+          :aria-label="$tr('单步分析视图')"
         >
           <v-btn
             variant="text"
@@ -46,7 +46,7 @@
             :aria-pressed="!comparisonVisible"
             :disabled="busy || readingStructure"
             @click="showManualInput"
-            >目标输入</v-btn
+            >{{ $tr('目标输入') }}</v-btn
           >
           <v-btn
             variant="text"
@@ -56,7 +56,7 @@
             :aria-pressed="comparisonVisible"
             :disabled="!canCompareManual"
             @click="showManualComparison"
-            >候选比较<span
+            >{{ $tr('候选比较') }}<span
               v-if="draft.manualResult"
               class="manual-candidate-count"
               >{{ draft.manualResult.outcomes.length }}</span
@@ -71,7 +71,7 @@
         :disabled="busy || readingStructure"
       />
       <template v-if="comparisonVisible">
-        <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
+        <div v-if="error" class="tool-error" role="alert">{{ searchErrorText(error) }}</div>
         <ManualCandidateComparison
           :result="draft.manualResult"
           :context="draft.manualContext"
@@ -82,7 +82,7 @@
       </template>
       <template #parameters>
         <div class="workbench-settings">
-          <h2>{{ mode === "manual" ? "候选生成" : "搜索配置" }}</h2>
+          <h2>{{ mode === "manual" ? $tr('候选生成') : $tr('搜索配置') }}</h2>
           <RouteSearchSettings
             v-if="mode === 'auto'"
             v-model:name="draft.name"
@@ -94,17 +94,17 @@
             v-model="draft.manual"
             :disabled="busy || readingStructure"
           />
-          <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
+          <div v-if="error" class="tool-error" role="alert">{{ searchErrorText(error) }}</div>
           <div v-if="!ready" class="workbench-readiness" role="status">
             <span>{{
-              workspace.loading ? "连接计算服务" : "计算服务未就绪"
+              workspace.loading ? $tr('连接计算服务') : $tr('计算服务未就绪')
             }}</span
             ><v-btn
               variant="text"
               type="button"
               size="small"
               icon="mdi-refresh"
-              aria-label="重新检查服务"
+              :aria-label="$tr('重新检查服务')"
               @click="workspace.refresh(true)"
             />
           </div>
@@ -115,7 +115,7 @@
               prepend-icon="mdi-eraser"
               :disabled="busy || readingStructure"
               @click="clearStructure"
-              >清空</v-btn
+              >{{ $tr('清空') }}</v-btn
             ><v-btn
               color="primary"
               variant="flat"
@@ -124,7 +124,7 @@
               :loading="busy"
               :disabled="!canSubmit"
               data-cy="home-build-tree"
-              >{{ mode === "manual" ? "生成候选" : "生成路线" }}</v-btn
+              >{{ mode === "manual" ? $tr('生成候选') : $tr('生成路线') }}</v-btn
             >
           </div>
         </div>
@@ -134,7 +134,7 @@
     <RoutePreview
       v-model="previewOpen"
       :candidates="previewCandidates"
-      title="一步逆合成候选"
+      :title="$tr('一步逆合成候选')"
     />
   </section>
 </template>
@@ -142,6 +142,7 @@
 import { computed } from "vue";
 import { workbenchModes } from "@/common/workbench-model";
 import { useRouteWorkbench } from "@/composables/useRouteWorkbench";
+import { searchErrorText } from "@/components/workspace/workspace-ui-text";
 import StructureWorkspace from "@/components/workspace/StructureWorkspace.vue";
 import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import RouteSearchSettings from "@/components/workspace/RouteSearchSettings.vue";
@@ -243,6 +244,7 @@ const comparisonVisible = computed(() =>
 }
 .workbench-submit {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
   padding-top: 24px;
@@ -253,14 +255,16 @@ const comparisonVisible = computed(() =>
   font-size: 14px;
 }
 .workbench-submit .v-btn[type="submit"] {
-  width: 140px;
-  max-width: 60%;
+  min-width: min(140px, 100%);
+  max-width: 100%;
 }
 .workbench-submit .v-btn[type="button"] {
   padding: 0 10px;
 }
 .workbench-readiness {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
   align-items: center;
   justify-content: space-between;
   font-size: 14px;

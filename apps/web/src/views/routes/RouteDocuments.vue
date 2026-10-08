@@ -1,10 +1,10 @@
 <template>
   <section class="standard-page document-history" :aria-busy="loading">
     <header class="page-heading document-heading">
-      <h1>保存的路线</h1>
+      <h1>{{ $tr('保存的路线') }}</h1>
       <div class="page-actions">
-        <v-tooltip text="刷新文档"><template #activator="{ props }">
-          <v-btn v-bind="props" icon="mdi-refresh" variant="text" aria-label="刷新文档"
+        <v-tooltip :text="$tr('刷新文档')"><template #activator="{ props }">
+          <v-btn v-bind="props" icon="mdi-refresh" variant="text" :aria-label="$tr('刷新文档')"
             :loading="loading" :disabled="loading || actionBusy" @click="refresh" />
         </template></v-tooltip>
         <v-btn
@@ -12,53 +12,53 @@
           variant="flat"
           prepend-icon="mdi-plus"
           to="/editor"
-          >新建路线</v-btn
+          >{{ $tr('新建路线') }}</v-btn
         >
       </div>
     </header>
-    <div v-if="rows.length" class="document-toolbar" role="search" aria-label="筛选保存的路线">
-      <v-text-field v-model="query" class="document-search" label="搜索名称或结构"
-        aria-label="搜索保存的路线" prepend-inner-icon="mdi-magnify" variant="outlined"
+    <div v-if="rows.length" class="document-toolbar" role="search" :aria-label="$tr('筛选保存的路线')">
+      <v-text-field v-model="query" class="document-search" :label="$tr('搜索名称或结构')"
+        :aria-label="$tr('搜索保存的路线')" prepend-inner-icon="mdi-magnify" variant="outlined"
         density="compact" hide-details clearable />
-      <p role="status">{{ more ? `已加载 ${rows.length} 条路线` : `共 ${rows.length} 条路线` }}</p>
+      <p role="status">{{ more ? $tr('已加载 {count} 条路线', { count: rows.length }) : $tr('共 {count} 条路线', { count: rows.length }) }}</p>
     </div>
     <div v-if="error" class="tool-error document-error" role="alert">
-      <span>{{ error }}</span>
+      <span>{{ $tr(error) }}</span>
       <v-btn variant="text" size="small" prepend-icon="mdi-refresh" :disabled="loading || actionBusy"
-        @click="read(failedAppend)">重试</v-btn>
+        @click="read(failedAppend)">{{ $tr('重试') }}</v-btn>
     </div>
     <div v-if="actionError" class="tool-error document-error" role="alert">
-      <span>{{ actionError }}</span>
+      <span>{{ $tr(actionError) }}</span>
     </div>
     <div class="document-progress">
-      <v-progress-linear v-show="loading" indeterminate height="2" aria-label="读取保存的路线" />
+      <v-progress-linear v-show="loading" indeterminate height="2" :aria-label="$tr('读取保存的路线')" />
     </div>
-    <div v-if="loading && !rows.length" class="workspace-loading document-loading" role="status">正在读取保存的路线</div>
+    <div v-if="loading && !rows.length" class="workspace-loading document-loading" role="status">{{ $tr('正在读取保存的路线') }}</div>
     <div v-else-if="!rows.length && !error" class="workspace-empty document-empty" role="status">
       <v-icon icon="mdi-file-document-outline" size="30" />
-      <h2>暂无保存的路线</h2>
-      <v-btn variant="outlined" prepend-icon="mdi-plus" to="/editor">新建路线</v-btn>
+      <h2>{{ $tr('暂无保存的路线') }}</h2>
+      <v-btn variant="outlined" prepend-icon="mdi-plus" to="/editor">{{ $tr('新建路线') }}</v-btn>
     </div>
     <div v-else-if="rows.length && !filtered.length" class="workspace-empty document-empty" role="status">
       <v-icon icon="mdi-magnify" size="30" />
-      <h2>{{ more ? "已加载路线中无匹配项" : "没有匹配的路线" }}</h2>
-      <v-btn variant="text" prepend-icon="mdi-filter-remove-outline" @click="query = ''">清除筛选</v-btn>
+      <h2>{{ more ? $tr('已加载路线中无匹配项') : $tr('没有匹配的路线') }}</h2>
+      <v-btn variant="text" prepend-icon="mdi-filter-remove-outline" @click="query = ''">{{ $tr('清除筛选') }}</v-btn>
     </div>
-    <div v-if="filtered.length" class="document-table-scroll" role="region" aria-label="保存的路线列表" tabindex="0">
+    <div v-if="filtered.length" class="document-table-scroll" role="region" :aria-label="$tr('保存的路线列表')" tabindex="0">
       <table class="data-table document-table">
         <thead>
           <tr>
-            <th scope="col">路线</th>
-            <th scope="col">反应</th>
-            <th scope="col">更新时间</th>
-            <th scope="col">操作</th>
+            <th scope="col">{{ $tr('路线') }}</th>
+            <th scope="col">{{ $tr('反应') }}</th>
+            <th scope="col">{{ $tr('更新时间') }}</th>
+            <th scope="col">{{ $tr('操作') }}</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="row in filtered" :key="row.id" :data-document-id="row.id">
             <td class="document-identity-cell">
               <router-link :to="`/editor/${row.id}`" class="document-title-cell"
-                :aria-label="`打开编辑：${row.title}`" @click.capture="preserveStructureControl"
+                :aria-label="$tr('打开编辑：{name}', { name: row.title })" @click.capture="preserveStructureControl"
                 ><SmilesImage
                   class="document-thumbnail"
                   :smiles="row.target_smiles"
@@ -72,25 +72,25 @@
                 </div></router-link
               >
             </td>
-            <td class="document-count-cell"><span class="document-mobile-label" aria-hidden="true">反应</span>{{ row.reaction_count }}</td>
+            <td class="document-count-cell"><span class="document-mobile-label" aria-hidden="true">{{ $tr('反应') }}</span>{{ row.reaction_count }}</td>
             <td class="workspace-muted document-time-cell"><time :datetime="row.modified" :title="taskTimestampLabel(row.modified)">{{ displayTime(row.modified) }}</time></td>
             <td class="document-action-cell">
               <div class="document-row-actions">
-                <v-tooltip :text="`预览：${row.title}`"><template #activator="{ props }">
+                <v-tooltip :text="$tr('预览：{name}', { name: row.title })"><template #activator="{ props }">
                   <v-btn v-bind="props" icon="mdi-eye-outline" size="small" variant="text"
-                    :aria-label="`预览文档：${row.title}`" :disabled="actionBusy"
+                    :aria-label="$tr('预览文档：{name}', { name: row.title })" :disabled="actionBusy"
                     :loading="previewing === row.id" @click="preview(row)" />
                 </template></v-tooltip>
                 <v-menu :disabled="actionBusy">
                   <template #activator="{ props: menuProps }">
-                    <v-tooltip text="更多路线操作"><template #activator="{ props: tooltipProps }">
+                    <v-tooltip :text="$tr('更多路线操作')"><template #activator="{ props: tooltipProps }">
                       <v-btn v-bind="mergeProps(menuProps, tooltipProps)" icon="mdi-dots-horizontal" size="small" variant="text"
-                        :aria-label="`更多路线操作：${row.title}`" :disabled="actionBusy" :loading="removing === row.id" />
+                        :aria-label="$tr('更多路线操作：{name}', { name: row.title })" :disabled="actionBusy" :loading="removing === row.id" />
                     </template></v-tooltip>
                   </template>
-                  <v-list density="compact" class="document-action-menu" role="menu" :aria-label="`路线操作：${row.title}`">
-                    <v-list-item role="menuitem" title="打开编辑" prepend-icon="mdi-pencil-outline" :to="`/editor/${row.id}`" :disabled="actionBusy" />
-                    <v-list-item role="menuitem" title="删除文档" prepend-icon="mdi-trash-can-outline" :disabled="actionBusy || loading" @click="remove(row)" />
+                  <v-list density="compact" class="document-action-menu" role="menu" :aria-label="$tr('路线操作：{name}', { name: row.title })">
+                    <v-list-item role="menuitem" :title="$tr('打开编辑')" prepend-icon="mdi-pencil-outline" :to="`/editor/${row.id}`" :disabled="actionBusy" />
+                    <v-list-item role="menuitem" :title="$tr('删除文档')" prepend-icon="mdi-trash-can-outline" :disabled="actionBusy || loading" @click="remove(row)" />
                   </v-list>
                 </v-menu>
               </div>
@@ -101,7 +101,7 @@
     </div>
     <footer v-if="more" class="document-pagination">
       <v-btn variant="text" prepend-icon="mdi-chevron-down" :loading="loading" :disabled="loading || actionBusy"
-        @click="loadMore">加载更多</v-btn>
+        @click="loadMore">{{ $tr('加载更多') }}</v-btn>
     </footer>
     <DocumentPreview
       v-if="previewDocument"
@@ -113,6 +113,7 @@
 <script setup>
 import { computed, mergeProps, onMounted, onBeforeUnmount, ref } from "vue";
 import { API } from "@/common/api";
+import { uiText } from "@/i18n";
 import { errorMessage } from "@/common/workspace-errors";
 import { displayTime } from "@/common/task-state";
 import { preserveStructureControl, taskTimestampLabel } from "@/common/task-history-view";
@@ -182,7 +183,7 @@ async function preview(row) {
 }
 async function remove(row) {
   if (disposed || actionBusy.value || loading.value) return;
-  if (!window.confirm(`永久删除“${row.title}”？此操作不可撤销。`)) return;
+  if (!window.confirm(uiText("永久删除“{name}”？此操作不可撤销。", { name: row.title }))) return;
   removing.value = row.id;
   actionError.value = "";
   try {

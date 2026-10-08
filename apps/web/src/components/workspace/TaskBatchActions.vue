@@ -1,29 +1,29 @@
 <template>
-  <div ref="toolbar" class="task-batch-actions" role="group" aria-label="批量任务操作" tabindex="-1">
+  <div ref="toolbar" class="task-batch-actions" role="group" :aria-label="$tr('批量任务操作')" tabindex="-1">
     <v-checkbox-btn
       :model-value="allSelected"
       :indeterminate="count > 0 && !allSelected"
       :disabled="busy || !loaded || !pageSize"
-      aria-label="全选当前页"
+      :aria-label="$tr('全选当前页')"
       density="compact"
       @update:model-value="$emit('select-page', Boolean($event))"
     />
     <span class="batch-count" role="status">{{
-      !loaded ? "" : count ? `已选 ${count} 项` : `本页 ${pageSize} 项`
+      !loaded ? "" : count ? $tr('已选 {count} 项', { count: count }) : $tr('本页 {page} 项', { page: pageSize })
     }}</span>
     <div v-if="count > 0" ref="tools" class="batch-tools">
       <v-menu v-if="!archived" :disabled="busy || !count">
         <template #activator="{ props: menuProps }">
-          <v-tooltip text="批量移至分组"><template #activator="{ props: tooltipProps }">
+          <v-tooltip :text="$tr('批量移至分组')"><template #activator="{ props: tooltipProps }">
             <v-btn v-bind="mergeProps(menuProps, tooltipProps)" icon="mdi-folder-move-outline"
-              variant="text" size="small" aria-label="批量移至分组" :disabled="busy || !count" />
+              variant="text" size="small" :aria-label="$tr('批量移至分组')" :disabled="busy || !count" />
           </template></v-tooltip>
         </template>
-        <v-list density="compact" class="batch-group-menu" role="menu" aria-label="所选任务移至分组">
+        <v-list density="compact" class="batch-group-menu" role="menu" :aria-label="$tr('所选任务移至分组')">
           <v-list-item
             role="menuitem"
-            title="未分组"
-            aria-label="未分组"
+            :title="$tr('未分组')"
+            :aria-label="$tr('未分组')"
             :disabled="busy || !count"
             prepend-icon="mdi-folder-outline"
             @click="$emit('group', null)"
@@ -40,12 +40,12 @@
           />
         </v-list>
       </v-menu>
-      <v-tooltip :text="archived ? '恢复所选任务' : '移入回收箱'">
+      <v-tooltip :text="archived ? $tr('恢复所选任务') : $tr('移入回收箱')">
         <template #activator="{ props }">
           <v-btn
             v-bind="props"
             :icon="archived ? 'mdi-delete-restore' : 'mdi-trash-can-outline'"
-            :aria-label="archived ? '恢复所选任务' : '所选任务移入回收箱'"
+            :aria-label="archived ? $tr('恢复所选任务') : $tr('所选任务移入回收箱')"
             variant="text"
             size="small"
             :disabled="busy || !count || (!archived && !archivable)"
@@ -54,14 +54,14 @@
           />
         </template>
       </v-tooltip>
-      <v-tooltip text="清空选择">
+      <v-tooltip :text="$tr('清空选择')">
         <template #activator="{ props }">
           <v-btn
             v-bind="props"
             icon="mdi-selection-remove"
             variant="text"
             size="small"
-            aria-label="清空选择"
+            :aria-label="$tr('清空选择')"
             :disabled="busy || !count"
             @click="$emit('clear')"
           />

@@ -1,18 +1,18 @@
 <template>
   <section ref="region" class="calculator-results" tabindex="-1" aria-labelledby="calculator-result-title">
-    <header><div><span class="result-stage">02 / 计算结果</span><h2 id="calculator-result-title">{{ reactionMode ? '反应模型评分' : '结构复杂度评分' }}</h2></div>
-      <v-btn variant="text" prepend-icon="mdi-pencil-outline" @click="$emit('edit')">返回修改</v-btn>
+    <header><div><span class="result-stage">{{ $tr('02 / 计算结果') }}</span><h2 id="calculator-result-title">{{ reactionMode ? $tr('反应模型评分') : $tr('结构复杂度评分') }}</h2></div>
+      <v-btn variant="text" prepend-icon="mdi-pencil-outline" @click="$emit('edit')">{{ $tr('返回修改') }}</v-btn>
     </header>
     <div class="calculation-structures" :class="{ reaction: reactionMode }">
       <SmilesImage :smiles="first" :width="240" :height="170" :show-error-image="false" allow-copy />
       <v-icon v-if="reactionMode" class="reaction-arrow" icon="mdi-arrow-right" aria-hidden="true" />
       <SmilesImage v-if="reactionMode" :smiles="second" :width="240" :height="170" :show-error-image="false" allow-copy />
     </div>
-    <div class="calculation-score"><span>{{ reactionMode ? '反应模型评分（FF）' : '合成复杂度（SCScore）' }}</span><strong>{{ score.toFixed(3) }}</strong></div>
-    <p class="score-status">模型计算值 · 未经实验验证</p>
-    <details><summary>计算依据</summary><dl><dt>模型</dt><dd>{{ reactionMode ? 'FF' : 'SCScore' }}</dd>
-      <dt>{{ reactionMode ? '反应物完整结构' : '化合物完整结构' }}</dt><dd><code>{{ first }}</code></dd>
-      <template v-if="reactionMode"><dt>所选产物完整结构</dt><dd><code>{{ second }}</code></dd></template>
+    <div class="calculation-score"><span>{{ reactionMode ? $tr('反应模型评分（FF）') : $tr('合成复杂度（SCScore）') }}</span><strong>{{ score.toFixed(3) }}</strong></div>
+    <p class="score-status">{{ $tr('模型计算值 · 未经实验验证') }}</p>
+    <details><summary>{{ $tr('计算依据') }}</summary><dl><dt>{{ $tr('模型') }}</dt><dd>{{ reactionMode ? 'FF' : 'SCScore' }}</dd>
+      <dt>{{ reactionMode ? $tr('反应物完整结构') : $tr('化合物完整结构') }}</dt><dd><code>{{ first }}</code></dd>
+      <template v-if="reactionMode"><dt>{{ $tr('所选产物完整结构') }}</dt><dd><code>{{ second }}</code></dd></template>
     </dl></details>
   </section>
 </template>

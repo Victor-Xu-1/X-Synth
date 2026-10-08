@@ -2,11 +2,11 @@
   <v-dialog v-model="open" max-width="760" scrollable>
     <v-card class="expansion-dialog"
       ><header class="page-heading">
-        <h2>继续逆合成</h2>
+        <h2>{{ $tr('继续逆合成') }}</h2>
         <v-btn
           icon="mdi-close"
           variant="text"
-          aria-label="关闭候选"
+          :aria-label="$tr('关闭候选')"
           @click="open = false"
         />
       </header>
@@ -14,34 +14,32 @@
         <v-select
           v-model="model"
           :items="models"
-          label="模型"
+          :label="$tr('模型')"
           variant="outlined"
           density="compact"
           hide-details
           :disabled="loading"
         /><v-btn color="primary" type="submit" variant="flat" :loading="loading"
-          >搜索候选</v-btn
+          >{{ $tr('搜索候选') }}</v-btn
         >
       </form>
       <p class="workspace-code expansion-target">{{ node?.smiles }}</p>
-      <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
+      <div v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</div>
       <div class="expansion-results">
-        <div v-if="searched && !outcomes.length" class="workspace-empty">
-          当前模型没有返回候选
-        </div>
+        <div v-if="searched && !outcomes.length" class="workspace-empty">{{ $tr('当前模型没有返回候选') }}</div>
         <article
           v-for="(item, index) in outcomes"
           :key="item.outcome"
           class="expansion-result"
         >
           <div>
-            <strong>候选 {{ index + 1 }}</strong
+            <strong>{{ $tr('候选 {index}', { index: index + 1 }) }}</strong
             ><span
               v-if="Number.isFinite(item.plausibility)"
               class="workspace-muted"
               >FF {{ item.plausibility.toFixed(3) }}</span
             ><v-btn variant="outlined" size="small" @click="choose(item)"
-              >加入路线</v-btn
+              >{{ $tr('加入路线') }}</v-btn
             >
           </div>
           <SmilesImage

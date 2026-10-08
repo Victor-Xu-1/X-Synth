@@ -1,6 +1,6 @@
 <template>
   <section class="route-editor-workspace">
-    <h1 v-if="document" class="document-heading">{{ title || '未命名路线' }}</h1>
+    <h1 v-if="document" class="document-heading">{{ title || $tr('未命名路线') }}</h1>
     <header class="route-editor-toolbar">
       <div class="route-editor-name">
         <input
@@ -8,17 +8,17 @@
           v-model="title"
           class="document-title-input"
           :disabled="editingLocked"
-          aria-label="路线名称"
+          :aria-label="$tr('路线名称')"
           maxlength="160"
           @input="dirty = true"
-        /><strong v-else>路线编辑</strong
-        ><span class="state-badge" role="status">{{ persistenceLabel }}</span>
+        /><strong v-else>{{ $tr('路线编辑') }}</strong
+        ><span class="state-badge" role="status">{{ $tr(persistenceLabel) }}</span>
       </div>
       <div class="page-actions">
         <v-tooltip
           v-for="action in editActions"
           :key="action.label"
-          :text="action.label"
+          :text="$tr(action.label)"
           ><template #activator="{ props }"
             ><v-btn
               v-bind="props"
@@ -26,7 +26,7 @@
               size="small"
               variant="text"
               :disabled="action.disabled || editingLocked"
-              :aria-label="action.label"
+              :aria-label="$tr(action.label)"
               @click="runEditAction(action)" /></template
         ></v-tooltip>
         <v-menu
@@ -36,20 +36,20 @@
               prepend-icon="mdi-download"
               variant="text"
               :disabled="!document || importing || applying"
-              >导出路线</v-btn
+              >{{ $tr('导出路线') }}</v-btn
             ></template
           ><v-list density="compact"
             ><v-list-item
-              title="路线文档（X-Synth JSON）"
+              :title="$tr('路线文档（X-Synth JSON）')"
               @click="exportDocument" /><v-list-item
-              title="路线图（PNG）"
+              :title="$tr('路线图（PNG）')"
               @click="exportImage" /></v-list
         ></v-menu>
         <v-btn
           variant="outlined"
           :disabled="!document || editingLocked"
           @click="saveDocument(true)"
-          >另存副本</v-btn
+          >{{ $tr('另存副本') }}</v-btn
         >
         <v-btn
           color="primary"
@@ -58,35 +58,35 @@
           :disabled="!document || !dirty || editingLocked"
           :loading="saving"
           @click="saveDocument(false)"
-          >保存</v-btn
+          >{{ $tr('保存') }}</v-btn
         >
       </div>
     </header>
     <div v-if="document" class="route-document-source">
-      <span class="state-badge">{{ sourceStateLabel }}</span>
+      <span class="state-badge">{{ $tr(sourceStateLabel) }}</span>
       <router-link v-if="origin" :to="origin.to">
         {{ origin.label }} <v-icon icon="mdi-arrow-top-right" size="14" />
       </router-link>
     </div>
     <div v-if="error" class="route-editor-error" role="alert">
-      {{ error
+      {{ $tr(error)
       }}<v-btn
         icon="mdi-close"
         size="x-small"
         variant="text"
-        aria-label="关闭错误"
+        :aria-label="$tr('关闭错误')"
         @click="error = ''"
       />
     </div>
     <div v-if="loading" class="workspace-empty">
-      <v-progress-circular indeterminate size="24" /><span>加载路线</span>
+      <v-progress-circular indeterminate size="24" /><span>{{ $tr('加载路线') }}</span>
     </div>
     <div v-else-if="!document" class="editor-start">
       <v-icon icon="mdi-vector-polyline-edit" size="30" />
-      <h1>新建路线文档</h1>
+      <h1>{{ $tr('新建路线文档') }}</h1>
       <form @submit.prevent="createDocument" class="editor-create-form">
         <label
-          ><span class="field-label">名称</span
+          ><span class="field-label">{{ $tr('名称') }}</span
           ><input
             class="workspace-input"
             v-model="newTitle"
@@ -106,18 +106,18 @@
             type="submit"
             :disabled="!newSmiles.trim() || importing || newStructure?.pending"
             :loading="saving"
-            >创建路线</v-btn
+            >{{ $tr('创建路线') }}</v-btn
           ><v-btn
             variant="text"
             prepend-icon="mdi-folder-open-outline"
             :disabled="saving || importing"
             @click="fileInput.click()"
-            >打开路线文档</v-btn
+            >{{ $tr('打开路线文档') }}</v-btn
           >
         </div>
       </form>
       <router-link to="/documents" class="workspace-muted"
-        >已保存路线</router-link
+        >{{ $tr('已保存路线') }}</router-link
       >
     </div>
     <div v-else class="route-editor-canvas">
@@ -169,7 +169,7 @@
     />
     <v-dialog v-model="moleculeDialog" max-width="560"
       ><v-card
-        ><v-card-title>添加中间体或原料</v-card-title
+        ><v-card-title>{{ $tr('添加中间体或原料') }}</v-card-title
         ><v-card-text>
           <StructureInput
             ref="moleculeStructure"
@@ -178,11 +178,11 @@
             :disabled="validating"
           />
           <div v-if="error" class="tool-error" role="alert">
-            {{ error }}
+            {{ $tr(error) }}
           </div> </v-card-text
         ><v-card-actions
           ><v-spacer /><v-btn variant="text" @click="moleculeDialog = false"
-            >取消</v-btn
+            >{{ $tr('取消') }}</v-btn
           ><v-btn
             color="primary"
             @click="insertMolecule"
@@ -190,7 +190,7 @@
               !moleculeSmiles.trim() || validating || moleculeStructure?.pending
             "
             :loading="validating"
-            >添加</v-btn
+            >{{ $tr('添加') }}</v-btn
           ></v-card-actions
         ></v-card
       ></v-dialog
@@ -214,6 +214,7 @@ import ManualReactionDialog from "@/components/routes/ManualReactionDialog.vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import { useWorkspaceStore } from "@/store/workspace";
 import { API } from "@/common/api";
+import { uiText } from "@/i18n";
 import {
   importRouteDocument,
   routeDocumentPayload,
@@ -265,11 +266,12 @@ const {
   cancelValidation,
   removeSelected,
 } = useRouteDocument();
+const initialDraftTitle = ref(uiText("未命名路线"));
 const canvas = ref(null),
   importing = ref(false),
   applying = ref(false),
   fileInput = ref(null),
-  newTitle = ref("未命名路线"),
+  newTitle = ref(initialDraftTitle.value),
   newSmiles = ref(""),
   moleculeDialog = ref(false),
   reactionDialog = ref(false),
@@ -294,7 +296,7 @@ const hasUnsavedChanges = computed(
       !loading.value &&
       Boolean(
         newSmiles.value.trim() ||
-        (newTitle.value.trim() && newTitle.value !== "未命名路线"),
+        (newTitle.value.trim() && newTitle.value !== initialDraftTitle.value),
       )),
 );
 const documentNavigation = createDocumentNavigation({
@@ -395,7 +397,12 @@ watch(
     reactionDialog.value = false;
     expandDialog.value = false;
     if (identifier) load(identifier);
-    else clear();
+    else {
+      clear();
+      initialDraftTitle.value = uiText("未命名路线");
+      newTitle.value = initialDraftTitle.value;
+      newSmiles.value = "";
+    }
   },
   { immediate: true, flush: "sync" },
 );
@@ -431,7 +438,7 @@ watch(
 );
 async function createDocument() {
   if (newStructure.value?.pending) return;
-  const value = await create(newSmiles.value, newTitle.value);
+  const value = await create(newSmiles.value, newTitle.value || initialDraftTitle.value);
   if (value) router.replace(`/editor/${value.id}`);
 }
 async function saveDocument(asCopy) {

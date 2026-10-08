@@ -1,59 +1,54 @@
 <template>
-  <section class="route-evidence" aria-label="路线来源与验证记录">
+  <section class="route-evidence" :aria-label="$tr('路线来源与验证记录')">
     <dl v-if="facts.length" class="evidence-facts">
       <template v-for="fact in facts" :key="fact.label">
-        <dt>{{ fact.label }}</dt>
-        <dd>{{ fact.value }}</dd>
+        <dt>{{ $tr(fact.label) }}</dt>
+        <dd>{{ controlledValues.has(fact.label) ? $tr(fact.value) : fact.value }}</dd>
       </template>
     </dl>
-    <p v-if="candidate?.metadata?.forward_validation_method === 'native_template_reconstruction'" class="evidence-boundary">
-      模板重构仅核对结构一致性，不代表独立正向预测或实验验证。
-    </p>
-    <p v-if="candidate?.metadata?.forward_validation_method === 'native_template_or_exact_record_consistency'" class="evidence-boundary">
-      原始记录一致性仅核对反应物和产物身份，不代表独立正向预测或当前条件的实验验证。
-    </p>
-    <p v-if="candidate?.metadata?.forward_validation_method === 'graph2smiles_top1_or_record_supported_candidate'" class="evidence-boundary">
-      非第一名的正向候选仅在完整反应身份、原始条件及正收率记录一致时获得支持；不代表当前实验已验证。
-    </p>
+    <p v-if="candidate?.metadata?.forward_validation_method === 'native_template_reconstruction'" class="evidence-boundary">{{ $tr('模板重构仅核对结构一致性，不代表独立正向预测或实验验证。') }}</p>
+    <p v-if="candidate?.metadata?.forward_validation_method === 'native_template_or_exact_record_consistency'" class="evidence-boundary">{{ $tr('原始记录一致性仅核对反应物和产物身份，不代表独立正向预测或当前条件的实验验证。') }}</p>
+    <p v-if="candidate?.metadata?.forward_validation_method === 'graph2smiles_top1_or_record_supported_candidate'" class="evidence-boundary">{{ $tr('非第一名的正向候选仅在完整反应身份、原始条件及正收率记录一致时获得支持；不代表当前实验已验证。') }}</p>
     <section v-if="materials.length" class="evidence-section">
-      <h3>起始原料 <span>{{ materials.length }}</span></h3>
+      <h3>{{ $tr('起始原料') }}<span>{{ materials.length }}</span></h3>
       <ul class="evidence-values">
         <li v-for="smiles in materials" :key="smiles"><code>{{ smiles }}</code></li>
       </ul>
     </section>
     <section v-if="sources.length" class="evidence-section">
-      <h3>闭合来源 <span>{{ sources.length }}</span></h3>
+      <h3>{{ $tr('闭合来源') }}<span>{{ sources.length }}</span></h3>
       <ul class="evidence-values">
         <li v-for="source in sources" :key="source"><code>{{ source }}</code></li>
       </ul>
-      <p class="evidence-boundary">目录记录不代表实时库存或供货承诺。</p>
+      <p class="evidence-boundary">{{ $tr('目录记录不代表实时库存或供货承诺。') }}</p>
     </section>
     <section v-if="references.length" class="evidence-section">
-      <h3>证据引用 <span>{{ references.length }}</span></h3>
+      <h3>{{ $tr('证据引用') }}<span>{{ references.length }}</span></h3>
       <ul class="evidence-values">
         <li v-for="reference in references" :key="reference"><code>{{ reference }}</code></li>
       </ul>
     </section>
     <details v-if="models.length" class="evidence-section">
-      <summary>模型来源 · {{ models.length }}</summary>
+      <summary>{{ $tr('模型来源 · {count}', { count: models.length }) }}</summary>
       <dl v-for="(model, index) in models" :key="index" class="evidence-facts model-facts">
         <template v-for="fact in model" :key="fact.label">
-          <dt>{{ fact.label }}</dt>
+          <dt>{{ $tr(fact.label) }}</dt>
           <dd>{{ fact.value }}</dd>
         </template>
       </dl>
     </details>
     <details v-if="metadata" class="evidence-section raw-evidence">
-      <summary>原始 metadata</summary>
+      <summary>{{ $tr('原始 metadata') }}</summary>
       <pre>{{ metadata }}</pre>
     </details>
-    <p v-if="candidate && !facts.length && !sources.length && !references.length && !metadata" class="evidence-boundary">未记录来源或验证证据</p>
+    <p v-if="candidate && !facts.length && !sources.length && !references.length && !metadata" class="evidence-boundary">{{ $tr('未记录来源或验证证据') }}</p>
   </section>
 </template>
 <script setup>
 import { computed } from "vue";
 import { forwardEvidence, modelEvidence, recordEvidence } from "@/common/route-details";
 const props = defineProps({ candidate: Object, step: Object });
+const controlledValues = new Set(["验证方法", "模板重构", "验证记录", "独立正向预测"]);
 const stringList = (value) => Array.isArray(value) ? [...new Set(value.filter((item) => typeof item === "string" && item
   .trim()))] : [];
 const facts = computed(() => [...recordEvidence(props.step || props.candidate), ...forwardEvidence(props.candidate)]);

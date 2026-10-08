@@ -1,28 +1,28 @@
 <template>
-  <div class="metric-table-scroll" role="region" aria-label="逐组分复杂度指标" tabindex="0">
+  <div class="metric-table-scroll" role="region" :aria-label="$tr('逐组分复杂度指标')" tabindex="0">
     <table class="data-table complexity-table">
-      <caption>复杂度按结构组分分别报告</caption>
+      <caption>{{ $tr('复杂度按结构组分分别报告') }}</caption>
       <thead>
         <tr>
-          <th scope="col">结构组分</th>
+          <th scope="col">{{ $tr('结构组分') }}</th>
           <th v-for="metric in metrics" :key="metric.key" scope="col">
-            {{ metric.label }}<small>{{ metric.note }}</small>
+            {{ $tr(metric.label) }}<small>{{ $tr(metric.note) }}</small>
           </th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="component in components" :key="component.index" :data-component-index="component.index">
           <th scope="row" class="component-identity">
-            <strong>组分 {{ component.index }} · {{ component.structure.formula }}</strong>
+            <strong>{{ $tr('组分 {index} · {value}', { index: component.index, value: component.structure.formula }) }}</strong>
             <div v-if="components.length > 1" class="component-preview">
               <SmilesImage :smiles="component.structure.smiles" :width="200" :height="110" :show-error-image="false" allow-copy />
             </div>
             <code>{{ component.structure.smiles }}</code>
             <details>
-              <summary>组分结构事实</summary>
+              <summary>{{ $tr('组分结构事实') }}</summary>
               <dl>
                 <div v-for="row in assessmentIdentityRows(component.structure)" :key="row.key" :data-field="row.key">
-                  <dt>{{ row.label }}</dt><dd>{{ metricValue(row.value) }}</dd>
+                  <dt>{{ $tr(row.label) }}</dt><dd>{{ metricValue(row.value) }}</dd>
                 </div>
               </dl>
             </details>

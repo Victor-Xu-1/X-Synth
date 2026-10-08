@@ -1,5 +1,6 @@
-import { recordedNumber } from "@/common/reference-evidence";
+import { evidenceSourceLabel, recordedNumber, recordedParameter, yieldAnalysisLabel } from "@/common/reference-evidence";
 import { recordedValue } from "@/common/reaction-references";
+import { uiText } from "@/i18n";
 
 export const recordedParameters = [
   { key: "temperature", label: "温度" },
@@ -7,28 +8,65 @@ export const recordedParameters = [
   { key: "pressure", label: "压力" },
 ];
 
+export function referenceRecordedValue(value) {
+  return value === null || value === undefined || value === "" ? uiText("未记录") : recordedValue(value);
+}
+
+export function referenceSourceLabel(value) {
+  if (value?.source || value?.sources?.some((item) => item.ready)) return evidenceSourceLabel(value);
+  return uiText("参考来源");
+}
+
+export function referenceParameterValue(item) {
+  const text = recordedParameter(item);
+  if (text === "未记录") return uiText(text);
+  if (item.unit !== "UNSPECIFIED") return text;
+  const precision = item.precision == null ? "" : ` ± ${recordedNumber(item.precision)}`;
+  return uiText("{value} 单位未记录", { value: recordedNumber(item.value) + precision });
+}
+
+export function referenceYieldAnalysisLabel(measurement) {
+  const label = yieldAnalysisLabel(measurement);
+  if (!measurement.analysis) return uiText(label);
+  let value;
+  try { value = JSON.parse(measurement.analysis); }
+  catch { return label; }
+  if (value === null) return label;
+  if (!value.analysis_record_present) return uiText(label);
+  if (value.type && typeof value.type !== "string") return label;
+  const method = value.type === "UNSPECIFIED" ? uiText("分析方法未记录") : value.type;
+  return value.is_of_isolated_species === true
+    ? method ? uiText("{method} · 分离产品", { method }) : uiText("分离产品")
+    : method || "";
+}
+
 export function referenceRecordTitle(row) {
   return row.doi || row.patent_number || row.provenance.dataset_name || row.id;
 }
 
+export function referenceCitationLabel(citation, row) {
+  if (citation.label === row.doi || citation.label === row.patent_number) return citation.label;
+  return uiText(citation.label);
+}
+
 export function referenceRecordEvidence(row) {
-  return {
+  return uiText({
     structured_reaction_record: "结构化记录",
     patent_reaction_extraction: "专利抽取",
-  }[row.provenance.evidence_type] || "来源记录";
+  }[row.provenance.evidence_type] || "来源记录");
 }
 
 export function referenceYieldValue(measurement) {
-  if (!Number.isFinite(measurement.value)) return "未记录";
+  if (!Number.isFinite(measurement.value)) return uiText("未记录");
   const value = measurement.method === "ord_product_measurement"
     ? recordedNumber(measurement.value) : recordedValue(measurement.value);
-  return `${value} ${measurement.unit || "单位未记录"}`;
+  return `${value} ${measurement.unit || uiText("单位未记录")}`;
 }
 
 export function referenceYieldProduct(measurement, products) {
-  if (!measurement.product_smiles) return "关联产物未记录";
+  if (!measurement.product_smiles) return uiText("关联产物未记录");
   const index = products.indexOf(measurement.product_smiles);
-  return index < 0 ? "其他产物记录" : `产物 ${index + 1}`;
+  return index < 0 ? uiText("其他产物记录") : uiText("产物 {index}", { index: index + 1 });
 }
 
 export function referenceRecordProvenance(row) {

@@ -1,6 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import RouteGraph from "./RouteGraph.vue";
 import { randomUUID } from "node:crypto";
+import { initializeLocale, setLocale } from "@/i18n";
 
 Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID });
 
@@ -132,4 +133,21 @@ test("the reaction detail button uses the existing Vue Flow selection event with
   expect(wrapper.emitted("update:graph")).toBeUndefined();
   expect(graph.nodes[0].position).toEqual({ x: 200, y: 80 });
   expect(wrapper.getComponent({ name: "VueFlow" }).props("nodes")[0].data.score).toBe(0);
+});
+
+test("language switches update generated captions without replacing flow nodes, geometry, scores or raw graph labels", async () => {
+  initializeLocale(null);
+  const graph = { target_id: "target", edges: [], nodes: [{ id: "reaction", type: "reaction", label: "步骤 1", position: { x: 200, y: 80 } }] };
+  const before = JSON.stringify(graph), wrapper = setup(graph);
+  await wrapper.setProps({ generatedStepLabels: true, scores: { reaction: 0 } });
+  const flow = wrapper.getComponent({ name: "VueFlow" }), nodes = flow.props("nodes");
+  expect(wrapper.get("strong").text()).toBe("Step 1");
+  setLocale("zh-CN", { persist: false });
+  await flushPromises();
+  expect(flow.props("nodes")).toBe(nodes);
+  expect(nodes[0].data.label).toBe("步骤 1");
+  expect(nodes[0].data.score).toBe(0);
+  expect(wrapper.get("strong").text()).toBe("步骤 1");
+  expect(wrapper.emitted("update:graph")).toBeUndefined();
+  expect(JSON.stringify(graph)).toBe(before);
 });

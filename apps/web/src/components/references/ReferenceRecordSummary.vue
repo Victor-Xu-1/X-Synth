@@ -6,19 +6,19 @@
           <span>{{ record.provenance.source }}</span>
           <span>{{ referenceRecordEvidence(record) }}</span>
           <span v-if="record.year">{{ record.year }}</span>
-          <span v-if="record.paragraph">段落 {{ record.paragraph }}</span>
+          <span v-if="record.paragraph">{{ $tr('段落 {value}', { value: record.paragraph }) }}</span>
         </div>
         <strong>{{ referenceRecordTitle(record) }}</strong>
         <div v-if="citations.length" class="reference-links">
           <a v-for="citation in citations" :key="citation.url" :href="citation.url" target="_blank" rel="noopener noreferrer">
-            {{ citation.kind === 'data' ? '原始数据' : citation.label }}
+            {{ citation.kind === 'data' ? $tr('原始数据') : referenceCitationLabel(citation, record) }}
           </a>
         </div>
       </div>
       <span
         :class="['reference-scope', { complete: record.match_scope === 'reaction_identity' }]"
-        :title="record.match_scope === 'reaction_identity' ? '反应物与产物结构一致' : '仅产物结构一致'"
-      >{{ record.match_scope === 'reaction_identity' ? '全反应一致' : '仅产物一致' }}</span>
+        :title="record.match_scope === 'reaction_identity' ? $tr('反应物与产物结构一致') : $tr('仅产物结构一致')"
+      >{{ record.match_scope === 'reaction_identity' ? $tr('全反应一致') : $tr('仅产物一致') }}</span>
     </header>
     <div class="reference-record-layout">
       <v-lazy :min-height="142">
@@ -30,21 +30,21 @@
           :height="110"
         />
       </v-lazy>
-      <section class="reference-record-facts" aria-label="报道收率">
-        <h4>报道收率</h4>
+      <section class="reference-record-facts" :aria-label="$tr('报道收率')">
+        <h4>{{ $tr('报道收率') }}</h4>
         <ReferenceRecordYields :measurements="record.reported_yields" :products="record.products" compact />
       </section>
     </div>
     <dl class="reference-comparison-conditions">
       <div v-for="field in recordedParameters" :key="field.key">
-        <dt>{{ field.label }}</dt>
+        <dt>{{ $tr(field.label) }}</dt>
         <dd v-if="record.conditions?.[field.key]?.length">
           <span v-for="(item, index) in record.conditions[field.key].slice(0, 2)" :key="index">
-            {{ field.key === 'time' ? `${recordedTimeLabel(item)} ` : '' }}{{ recordedParameter(item) }}
+            {{ field.key === 'time' ? $tr('{label} {value}', { label: $tr(recordedTimeLabel(item)), value: recordedParameter(item) }) : recordedParameter(item) }}
           </span>
-          <small v-if="record.conditions[field.key].length > 2">另 {{ record.conditions[field.key].length - 2 }} 项</small>
+          <small v-if="record.conditions[field.key].length > 2">{{ $tr('另 {count} 项', { count: record.conditions[field.key].length - 2 }) }}</small>
         </dd>
-        <dd v-else>未记录</dd>
+        <dd v-else>{{ $tr('未记录') }}</dd>
       </div>
     </dl>
     <footer class="reference-row-actions">
@@ -55,20 +55,20 @@
         prepend-icon="mdi-text-box-search-outline"
         aria-haspopup="dialog"
         :aria-controls="detailId"
-        :aria-label="`查看参考记录详情：${referenceRecordTitle(record)}`"
+        :aria-label="$tr('查看参考记录详情：{name}', { name: referenceRecordTitle(record) })"
         data-cy="reference-details"
         @click="$emit('open', record, $event)"
-      >记录详情</v-btn>
+      >{{ $tr('记录详情') }}</v-btn>
     </footer>
   </div>
 </template>
 <script setup>
 import { computed } from "vue";
-import { evidenceCitations, recordedParameter, recordedTimeLabel } from "@/common/reference-evidence";
+import { evidenceCitations, recordedTimeLabel } from "@/common/reference-evidence";
 import { referenceReactionDrawing } from "@/common/reaction-references";
 import StructurePreview from "@/components/workspace/StructurePreview.vue";
 import ReferenceRecordYields from "./ReferenceRecordYields.vue";
-import { recordedParameters, referenceRecordEvidence, referenceRecordTitle } from "./reference-record";
+import { recordedParameters, referenceCitationLabel, referenceParameterValue as recordedParameter, referenceRecordEvidence, referenceRecordTitle } from "./reference-record";
 const props = defineProps({
   record: { type: Object, required: true },
   detailId: { type: String, required: true },

@@ -9,7 +9,7 @@
         :model-value="checked"
         :disabled="disabled"
         density="compact"
-        :aria-label="`选择任务：${taskTitle(task)}`"
+        :aria-label="$tr('选择任务：{name}', { name: taskTitle(task) })"
         @update:model-value="$emit('check', Boolean($event))"
       />
       <router-link
@@ -29,7 +29,7 @@
       :to="taskDetailLocation(task, historyContext)"
       class="task-card-link"
       @click.capture="preserveStructureControl"
-      :aria-label="`打开路线结果：${taskTitle(task)}`"
+      :aria-label="$tr('打开路线结果：{name}', { name: taskTitle(task) })"
     >
       <div class="task-card-structure">
         <SmilesImage
@@ -42,15 +42,15 @@
       </div>
       <div class="task-card-meta">
         <span class="task-route-count">{{
-          count === null ? "路线数未记录" : `${count} 条路线`
+          count === null ? $tr('路线数未记录') : $tr('{count} 条路线', { count: count })
         }}</span>
-        <span class="task-card-group" :title="groupName">{{ groupName }}</span>
-        <span v-if="sourceLabel !== '路线记录'" class="task-card-source" :title="sourceLabel">{{ sourceLabel }}</span>
+        <span class="task-card-group" :title="groupName || $tr('未分组')">{{ groupName || $tr('未分组') }}</span>
+        <span v-if="hasSource" class="task-card-source" :title="sourceLabel">{{ sourceLabel }}</span>
       </div>
     </router-link>
     <footer class="task-card-footer">
-      <time :datetime="task.modified" :title="`更新时间：${taskTimestampLabel(task.modified)}`">
-        {{ task.modified ? displayTime(task.modified) : "时间未记录" }}
+      <time :datetime="task.modified" :title="$tr('更新时间：{name}', { name: taskTimestampLabel(task.modified) })">
+        {{ task.modified ? displayTime(task.modified) : $tr('时间未记录') }}
       </time>
       <TaskActions
         :task="task"
@@ -99,7 +99,7 @@ const props = defineProps({
   disabled: Boolean,
   archived: Boolean,
   groups: { type: Array, default: () => [] },
-  groupName: { type: String, default: "未分组" },
+  groupName: { type: String, default: "" },
   historyContext: { type: Object, default: null },
 });
 defineEmits([
@@ -115,6 +115,9 @@ defineEmits([
 ]);
 const count = computed(() => taskRouteCount(props.task));
 const sourceLabel = computed(() => taskSourceLabel(props.task));
+const hasSource = computed(() => Array.isArray(props.task.tags) && props.task.tags.some(
+  (tag) => typeof tag === "string" && !/^askcos(?: v2)?$/i.test(tag),
+));
 const active = computed(() =>
   activeTaskStates.includes(props.task.result_state),
 );

@@ -1,7 +1,7 @@
 <template>
-  <section class="route-materials" aria-label="路线物料清单">
+  <section class="route-materials" :aria-label="$tr('路线物料清单')">
     <header>
-      <h2>起始原料</h2>
+      <h2>{{ $tr('起始原料') }}</h2>
       <div class="page-actions">
         <v-btn
           prepend-icon="mdi-flask-outline"
@@ -9,13 +9,13 @@
           :loading="loading"
           :disabled="!rows.length || loading"
           @click="lookup"
-          >核对采购目录</v-btn
+          >{{ $tr('核对采购目录') }}</v-btn
         >
         <v-btn
           icon="mdi-download-outline"
           variant="text"
-          title="导出物料 CSV"
-          aria-label="导出物料 CSV"
+          :title="$tr('导出物料 CSV')"
+          :aria-label="$tr('导出物料 CSV')"
           :disabled="!rows.length"
           @click="exportCsv"
         />
@@ -24,27 +24,27 @@
     <p v-if="snapshot" class="workspace-muted" role="status">
       {{
         expectedSnapshot && snapshot !== expectedSnapshot
-          ? "目录快照已变化，不能替代原任务证据"
-          : "已核对当前供应商目录快照"
+          ? $tr('目录快照已变化，不能替代原任务证据')
+          : $tr('已核对当前供应商目录快照')
       }}
     </p>
-    <p v-if="error" class="tool-error" role="alert">{{ error }}</p>
+    <p v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</p>
     <div class="materials-scroll">
       <table class="data-table">
         <thead>
           <tr>
-            <th>原料</th>
-            <th>使用步骤</th>
-            <th>采购目录</th>
-            <th>操作</th>
+            <th>{{ $tr('原料') }}</th>
+            <th>{{ $tr('使用步骤') }}</th>
+            <th>{{ $tr('采购目录') }}</th>
+            <th>{{ $tr('操作') }}</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in rows" :key="row.smiles">
+          <tr v-for="(row, index) in rows" :key="row.smiles">
             <td>
               <button
                 class="material-structure"
-                :aria-label="`查看${row.label}`"
+                :aria-label="$tr('查看{name}', { name: materialUiLabel(row, index, graph) })"
                 @click="$emit('select', row.nodeId)"
               >
                 <SmilesImage
@@ -52,24 +52,24 @@
                   :width="180"
                   :height="100"
                   :show-error-image="false"
-                /><strong>{{ row.label }}</strong>
+                /><strong>{{ materialUiLabel(row, index, graph) }}</strong>
               </button>
               <details>
                 <summary>SMILES</summary>
                 <code>{{ row.smiles }}</code>
               </details>
             </td>
-            <td>{{ row.usedIn.join(" / ") || "未记录" }}</td>
+            <td>{{ materialUsesUiText(row, graph, generatedStepLabels) }}</td>
             <td>
               <template v-if="snapshot"
-                ><span v-if="!records[row.smiles]?.length">无精确匹配</span>
+                ><span v-if="!records[row.smiles]?.length">{{ $tr('无精确匹配') }}</span>
                 <div
                   v-for="record in records[row.smiles] || []"
                   :key="record.source + ':' + record.catalog_id"
                   class="catalog-record"
                 >
                   <strong>{{ record.source }}</strong
-                  ><span>{{ record.catalog_id || "目录号未记录" }}</span>
+                  ><span>{{ record.catalog_id || $tr('目录号未记录') }}</span>
                   <span v-if="record.cas">CAS {{ record.cas }}</span>
                   <SupplierPrice
                     :record="record"
@@ -81,18 +81,18 @@
                     :href="safeExternalUrl(record.url)"
                     target="_blank"
                     rel="noopener noreferrer"
-                    >供应商目录</a
+                    >{{ $tr('供应商目录') }}</a
                   >
                 </div></template
-              ><span v-else>{{ loading ? "查询中" : "未查询" }}</span>
+              ><span v-else>{{ loading ? $tr('查询中') : $tr('未查询') }}</span>
             </td>
             <td>
               <v-btn
                 icon="mdi-magnify"
                 variant="text"
                 size="small"
-                :title="`采购记录：${row.label}`"
-                :aria-label="`采购记录：${row.label}`"
+                :title="$tr('采购记录：{name}', { name: materialUiLabel(row, index, graph) })"
+                :aria-label="$tr('采购记录：{name}', { name: materialUiLabel(row, index, graph) })"
                 @click="
                   stockSmiles = row.smiles;
                   stockOpen = true;
@@ -125,7 +125,8 @@ import { catalogRecordsForInputs } from "@/common/route-price";
 import SmilesImage from "@/components/SmilesImage.vue";
 import MoleculeStockDialog from "./MoleculeStockDialog.vue";
 import SupplierPrice from "./SupplierPrice.vue";
-const props = defineProps({ graph: Object, expectedSnapshot: String });
+import { materialUiLabel, materialUsesUiText } from "./route-ui-text";
+const props = defineProps({ graph: Object, expectedSnapshot: String, generatedStepLabels: Boolean });
 defineEmits(["select", "navigate"]);
 const rows = computed(() => materialRows(props.graph));
 const records = ref({}),

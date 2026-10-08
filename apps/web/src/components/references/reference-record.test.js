@@ -1,10 +1,16 @@
 import {
+  referenceCitationLabel,
+  referenceParameterValue,
+  referenceRecordedValue,
+  referenceSourceLabel,
   referenceRecordEvidence,
   referenceRecordProvenance,
   referenceRecordTitle,
   referenceYieldProduct,
   referenceYieldValue,
+  referenceYieldAnalysisLabel,
 } from "./reference-record";
+import { initializeLocale, setLocale } from "@/i18n";
 
 test.each([
   [0, "%", "ord_product_measurement", "0 %"],
@@ -14,6 +20,23 @@ test.each([
   [0.01, "%", "calculated_yield", "0.01 %"],
 ])("yield formatting keeps numeric and unknown states: %s %s", (value, unit, method, expected) => {
   expect(referenceYieldValue({ value, unit, method, text: "not a numeric authority" })).toBe(expected);
+});
+
+test("known quantity and analysis states translate without translating raw details, types or source prose", () => {
+  initializeLocale(null);
+  expect(referenceParameterValue({ value: 0, precision: 0.01, unit: "UNSPECIFIED", source_field: "raw.field", details: "未记录" }))
+    .toBe("0 ± 0.01 Unit not recorded");
+  expect(referenceParameterValue({ value: 12.5, unit: "CELSIUS", source_field: "raw.temperature" })).toBe("12.5 °C");
+  expect(referenceRecordedValue("未记录")).toBe("未记录");
+  expect(referenceRecordedValue(null)).toBe("Not recorded");
+  expect(referenceYieldAnalysisLabel({ analysis: "测量方法未记录" })).toBe("测量方法未记录");
+  expect(referenceYieldAnalysisLabel({})).toBe("Measurement method not recorded");
+  expect(referenceYieldAnalysisLabel({ analysis: JSON.stringify({ analysis_record_present: true, type: "UNSPECIFIED", is_of_isolated_species: true }) }))
+    .toBe("Analysis method not recorded · Isolated product");
+  expect(referenceYieldAnalysisLabel({ analysis: JSON.stringify({ analysis_record_present: true, type: "分离产品", is_of_isolated_species: true }) }))
+    .toBe("分离产品 · Isolated product");
+  expect(referenceSourceLabel({ source: "参考来源" })).toBe("参考来源");
+  expect(referenceSourceLabel({})).toBe("Reference source");
 });
 
 test("yield-product identity uses entire verified records, not disconnected fragments", () => {
@@ -51,4 +74,17 @@ test("provenance keeps source outcome zero and literal field identities without 
   ]));
   expect(JSON.stringify(record)).toBe(original);
   expect(referenceRecordEvidence({ provenance: { evidence_type: "model_score" } })).toBe("来源记录");
+});
+
+test("citation actions localize while recorded identifiers and yields stay literal", () => {
+  initializeLocale(null);
+  const row = { doi: "DOI", patent_number: "查看专利" };
+  expect(referenceCitationLabel({ label: "DOI" }, row)).toBe("DOI");
+  expect(referenceCitationLabel({ label: "查看专利" }, row)).toBe("查看专利");
+  expect(referenceCitationLabel({ label: "查看专利" }, { patent_number: "US123" })).toBe("View patent");
+  expect(referenceYieldValue({ value: 0, unit: "未记录", method: "ord_product_measurement" })).toBe("0 未记录");
+  expect(referenceYieldValue({ value: 0, unit: null, method: "ord_product_measurement" })).toBe("0 Unit not recorded");
+  expect(referenceYieldProduct({ product_smiles: "[Na+].[Cl-]" }, ["CCO", "[Na+].[Cl-]"])).toBe("Product 2");
+  setLocale("zh-CN", { persist: false });
+  expect(referenceYieldProduct({ product_smiles: "[Na+].[Cl-]" }, ["CCO", "[Na+].[Cl-]"])).toBe("产物 2");
 });

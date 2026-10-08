@@ -1,5 +1,7 @@
+import { uiText } from "@/i18n";
+
 export function metricValue(value, digits = 3) {
-  return value === null || value === undefined ? "未定义" :
+  return value === null || value === undefined ? uiText("未定义") :
     new Intl.NumberFormat("zh-CN", { maximumFractionDigits: digits }).format(value);
 }
 

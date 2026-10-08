@@ -1,11 +1,9 @@
 <template>
   <ModuleWorkbench title="商业原料检索">
     <WorkbenchTabs v-model="layer" :items="layers" label="库存检索阅读分区" v-slot="{ tabId, panelId }">
-      <p v-if="prefillError" class="tool-error stock-prefill-error" role="alert">{{ prefillError }}</p>
+      <p v-if="prefillError" class="tool-error stock-prefill-error" role="alert">{{ $tr(prefillError) }}</p>
       <p v-if="matchedResult && snapshotMatches === false && layer !== 'query'"
-        class="stock-snapshot-warning" role="status">
-        当前目录与任务快照不同；这些记录不能作为原任务的采购闭合证据。
-      </p>
+        class="stock-snapshot-warning" role="status">{{ $tr('当前目录与任务快照不同；这些记录不能作为原任务的采购闭合证据。') }}</p>
       <section :id="panelId('query')" ref="queryPanel" v-show="layer === 'query'" role="tabpanel"
         :aria-labelledby="tabId('query')" :inert="layer !== 'query' || undefined" :aria-hidden="layer !== 'query' || undefined">
         <WorkbenchScope :active="layer === 'query'">
@@ -13,11 +11,11 @@
             <StructureInput ref="structure" v-model="smiles" label="化合物结构" :canvas-height="480" recycle />
             <template #parameters>
               <div class="tool-fields">
-                <h2 class="tool-section-title">检索条件</h2>
+                <h2 class="tool-section-title">{{ $tr('检索条件') }}</h2>
                 <v-btn color="primary" variant="flat" prepend-icon="mdi-magnify" type="submit"
-                  data-cy="stock-search-submit" :disabled="!smiles.trim() || loading || inputPending" :loading="loading">精确检索</v-btn>
-                <p class="workspace-muted">{{ workspace.health?.stock_snapshot?.unique_structures?.toLocaleString() || "—" }} 个目录结构</p>
-                <p v-if="expectedSnapshot" class="workspace-muted stock-task-context">关联任务目录快照</p>
+                  data-cy="stock-search-submit" :disabled="!smiles.trim() || loading || inputPending" :loading="loading">{{ $tr('精确检索') }}</v-btn>
+                <p class="workspace-muted">{{ $tr('{value} 个目录结构', { value: workspace.health?.stock_snapshot?.unique_structures?.toLocaleString() || "—" }) }}</p>
+                <p v-if="expectedSnapshot" class="workspace-muted stock-task-context">{{ $tr('关联任务目录快照') }}</p>
               </div>
             </template>
           </WorkbenchForm>
@@ -28,39 +26,37 @@
         :aria-busy="loading">
         <header class="stock-reading-heading">
           <h2 ref="recordHeading" data-cy="stock-match-heading" tabindex="-1">
-            {{ loading ? "目录检索" : error ? "检索失败" : matchedResult?.records.length ? "精确结构匹配" : "未找到精确目录记录" }}
+            {{ loading ? $tr('目录检索') : error ? $tr('检索失败') : matchedResult?.records.length ? $tr('精确结构匹配') : $tr('未找到精确目录记录') }}
           </h2>
           <div class="stock-reading-actions">
-            <v-btn variant="text" prepend-icon="mdi-pencil" data-cy="stock-edit-query" @click="editQuery">返回修改</v-btn>
-            <v-btn variant="text" prepend-icon="mdi-plus" data-cy="stock-new-query" :disabled="inputPending" @click="newQuery">新查询</v-btn>
+            <v-btn variant="text" prepend-icon="mdi-pencil" data-cy="stock-edit-query" @click="editQuery">{{ $tr('返回修改') }}</v-btn>
+            <v-btn variant="text" prepend-icon="mdi-plus" data-cy="stock-new-query" :disabled="inputPending" @click="newQuery">{{ $tr('新查询') }}</v-btn>
           </div>
         </header>
         <div v-if="loading" class="workspace-loading" role="status" aria-live="polite">
-          <v-progress-circular indeterminate size="24" /><span>正在检索目录记录</span>
+          <v-progress-circular indeterminate size="24" /><span>{{ $tr('正在检索目录记录') }}</span>
         </div>
         <div v-else-if="error" class="stock-query-error">
-          <p class="tool-error" role="alert">{{ error }}</p>
-          <v-btn variant="outlined" prepend-icon="mdi-refresh" data-cy="stock-retry" :disabled="inputPending" @click="runSearch">重试检索</v-btn>
+          <p class="tool-error" role="alert">{{ $tr(error) }}</p>
+          <v-btn variant="outlined" prepend-icon="mdi-refresh" data-cy="stock-retry" :disabled="inputPending" @click="runSearch">{{ $tr('重试检索') }}</v-btn>
         </div>
         <template v-else-if="matchedResult">
           <StructurePreview :smiles="matchedResult.smiles" :label="matchedResult.records.length ? '匹配结构' : '查询结构'"
             :width="900" :height="180" />
-          <p v-if="!matchedResult.records.length" class="workspace-muted stock-no-match" role="status">
-            当前快照没有此结构的精确目录记录，未取得采购证据。
-          </p>
+          <p v-if="!matchedResult.records.length" class="workspace-muted stock-no-match" role="status">{{ $tr('当前快照没有此结构的精确目录记录，未取得采购证据。') }}</p>
           <template v-else>
-            <p class="stock-record-count" role="status" aria-live="polite">{{ matchedResult.records.length }} 条目录记录</p>
+            <p class="stock-record-count" role="status" aria-live="polite">{{ $tr('{count} 条目录记录', { count: matchedResult.records.length }) }}</p>
             <StockRecordList :result="matchedResult" @select="openEvidence" />
-            <p class="workspace-muted stock-catalog-note">交期来自目录快照，非实时供货承诺。目录价格为参考基准，非实时报价；报价日期未记录。</p>
-            <p class="workspace-muted stock-catalog-note">目录记录不代表实时供货、采购资格或实验可用性。</p>
+            <p class="workspace-muted stock-catalog-note">{{ $tr('交期来自目录快照，非实时供货承诺。目录价格为参考基准，非实时报价；报价日期未记录。') }}</p>
+            <p class="workspace-muted stock-catalog-note">{{ $tr('目录记录不代表实时供货、采购资格或实验可用性。') }}</p>
           </template>
         </template>
       </section>
       <section :id="panelId('evidence')" v-show="layer === 'evidence'" class="stock-reading-panel" role="tabpanel"
         :aria-labelledby="tabId('evidence')" :inert="layer !== 'evidence' || undefined" :aria-hidden="layer !== 'evidence' || undefined">
         <header class="stock-reading-heading">
-          <h2 ref="evidenceHeading" data-cy="stock-evidence-heading" tabindex="-1">目录证据</h2>
-          <v-btn variant="text" prepend-icon="mdi-arrow-left" data-cy="stock-back-records" @click="backToRecords">返回目录记录</v-btn>
+          <h2 ref="evidenceHeading" data-cy="stock-evidence-heading" tabindex="-1">{{ $tr('目录证据') }}</h2>
+          <v-btn variant="text" prepend-icon="mdi-arrow-left" data-cy="stock-back-records" @click="backToRecords">{{ $tr('返回目录记录') }}</v-btn>
         </header>
         <StockEvidence v-if="matchedResult" :result="matchedResult" :record="selectedRecord" :snapshot-matches="snapshotMatches" />
       </section>

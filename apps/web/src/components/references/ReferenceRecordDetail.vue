@@ -4,57 +4,57 @@
       <div class="reference-detail-identity">
         <p>{{ record.provenance.source }} · {{ referenceRecordEvidence(record) }}</p>
         <h2 :id="titleId">{{ referenceRecordTitle(record) }}</h2>
-        <span>{{ record.match_scope === 'reaction_identity' ? '全反应一致' : '仅产物一致' }}</span>
+        <span>{{ record.match_scope === 'reaction_identity' ? $tr('全反应一致') : $tr('仅产物一致') }}</span>
       </div>
-      <v-btn icon="mdi-close" variant="text" size="small" aria-label="关闭参考记录详情" data-cy="reference-detail-close" @click="$emit('close')" />
+      <v-btn icon="mdi-close" variant="text" size="small" :aria-label="$tr('关闭参考记录详情')" data-cy="reference-detail-close" @click="$emit('close')" />
     </header>
     <div class="reference-detail-body">
       <StructurePreview :smiles="referenceReactionDrawing(record)" input-type="reaction" label="参考反应结构" :width="900" :height="160" />
-      <section class="reference-detail-section" aria-label="报道收率">
-        <h3>报道收率</h3>
+      <section class="reference-detail-section" :aria-label="$tr('报道收率')">
+        <h3>{{ $tr('报道收率') }}</h3>
         <ReferenceRecordYields :measurements="record.reported_yields" :products="record.products" />
       </section>
-      <section class="reference-detail-section" aria-label="记录条件与投料">
-        <h3>记录条件与投料</h3>
+      <section class="reference-detail-section" :aria-label="$tr('记录条件与投料')">
+        <h3>{{ $tr('记录条件与投料') }}</h3>
         <RecordedReactionConditions :conditions="record.conditions" />
       </section>
-      <section class="reference-detail-section reference-procedure" aria-label="实验记录">
-        <h3>实验记录</h3>
-        <p>{{ record.procedure || '未记录' }}</p>
+      <section class="reference-detail-section reference-procedure" :aria-label="$tr('实验记录')">
+        <h3>{{ $tr('实验记录') }}</h3>
+        <p>{{ record.procedure || $tr('未记录') }}</p>
       </section>
       <details class="reference-detail-section reference-citation" open>
-        <summary>引用与原始记录</summary>
+        <summary>{{ $tr('引用与原始记录') }}</summary>
         <dl class="reference-provenance">
           <div v-for="citation in citations" :key="citation.url">
-            <dt>{{ citation.kind === 'data' ? '原始数据' : '文献' }}</dt>
-            <dd><a :href="citation.url" target="_blank" rel="noopener noreferrer">{{ citation.label }}</a></dd>
+            <dt>{{ citation.kind === 'data' ? $tr('原始数据') : $tr('文献') }}</dt>
+            <dd><a :href="citation.url" target="_blank" rel="noopener noreferrer">{{ referenceCitationLabel(citation, record) }}</a></dd>
           </div>
-          <div v-if="!citations.length"><dt>文献与数据</dt><dd>链接未记录</dd></div>
+          <div v-if="!citations.length"><dt>{{ $tr('文献与数据') }}</dt><dd>{{ $tr('链接未记录') }}</dd></div>
           <div v-for="[label, value] in provenance" :key="label">
-            <dt>{{ label }}</dt><dd>{{ recordedValue(value) }}</dd>
+            <dt>{{ $tr(label) }}</dt><dd>{{ recordedValue(value) }}</dd>
           </div>
         </dl>
       </details>
       <details class="reference-detail-section reference-raw-record">
-        <summary>原始反应 SMILES</summary>
+        <summary>{{ $tr('原始反应 SMILES') }}</summary>
         <code class="reference-raw">{{ record.reaction_smiles }}</code>
       </details>
     </div>
     <footer class="reference-detail-actions">
       <slot name="actions" />
-      <p v-if="actionError" class="tool-error" role="alert">{{ actionError }}</p>
-      <p v-if="notice" class="reference-detail-notice" role="status">{{ notice }}</p>
+      <p v-if="actionError" class="tool-error" role="alert">{{ $tr(actionError) }}</p>
+      <p v-if="notice" class="reference-detail-notice" role="status">{{ $tr(notice) }}</p>
     </footer>
   </section>
 </template>
 <script setup>
 import { computed } from "vue";
 import { evidenceCitations } from "@/common/reference-evidence";
-import { recordedValue, referenceReactionDrawing } from "@/common/reaction-references";
+import { referenceReactionDrawing } from "@/common/reaction-references";
 import StructurePreview from "@/components/workspace/StructurePreview.vue";
 import RecordedReactionConditions from "./RecordedReactionConditions.vue";
 import ReferenceRecordYields from "./ReferenceRecordYields.vue";
-import { referenceRecordEvidence, referenceRecordProvenance, referenceRecordTitle } from "./reference-record";
+import { referenceCitationLabel, referenceRecordedValue as recordedValue, referenceRecordEvidence, referenceRecordProvenance, referenceRecordTitle } from "./reference-record";
 const props = defineProps({
   record: { type: Object, required: true },
   titleId: { type: String, required: true },

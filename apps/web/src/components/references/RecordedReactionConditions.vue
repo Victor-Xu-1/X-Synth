@@ -1,27 +1,26 @@
 <template>
-  <section class="recorded-conditions" aria-label="文献记录的反应条件">
+  <section class="recorded-conditions" :aria-label="$tr('文献记录的反应条件')">
     <dl class="recorded-condition-parameters">
       <div v-for="field in parameters" :key="field.key">
-        <dt>{{ field.label }}</dt>
+        <dt>{{ $tr(field.label) }}</dt>
         <dd v-if="conditions?.[field.key]?.length">
           <span
             v-for="(item, index) in conditions[field.key]"
             :key="index"
             :title="item.details || item.source_field"
           >
-            {{ field.key === "time" ? `${recordedTimeLabel(item)} ` : ""
-            }}{{ recordedParameter(item) }}
+            {{ field.key === "time" ? $tr('{label} {value}', { label: $tr(recordedTimeLabel(item)), value: recordedParameter(item) }) : recordedParameter(item) }}
           </span>
         </dd>
-        <dd v-else>未记录</dd>
+        <dd v-else>{{ $tr('未记录') }}</dd>
       </div>
     </dl>
     <details v-if="parameters.some((field) => conditions?.[field.key]?.length)" class="recorded-parameter-source">
-      <summary>条件与加料原始字段</summary>
+      <summary>{{ $tr('条件与加料原始字段') }}</summary>
       <dl>
         <template v-for="field in parameters" :key="field.key">
           <div v-for="(item, index) in conditions?.[field.key] || []" :key="`${field.key}-${index}`">
-            <dt>{{ field.key === 'time' ? recordedTimeLabel(item) : field.label }} · {{ recordedParameter(item) }}</dt>
+            <dt>{{ field.key === 'time' ? $tr(recordedTimeLabel(item)) : $tr(field.label) }} · {{ recordedParameter(item) }}</dt>
             <dd><code>{{ item.source_field }}</code><code v-if="item.details">{{ item.details }}</code></dd>
           </div>
         </template>
@@ -34,14 +33,14 @@
         class="recorded-input"
       >
         <span class="recorded-input-role">{{
-          roles[input.role] || input.role
+          roles[input.role] ? $tr(roles[input.role]) : input.role
         }}</span>
         <div>
           <strong v-if="input.name">{{ input.name }}</strong>
           <v-lazy v-if="input.smiles" :min-height="124">
             <StructurePreview
               :smiles="input.smiles"
-              :label="`${roles[input.role] || input.role}结构`"
+              :label="$tr('{role}结构', { role: roles[input.role] ? $tr(roles[input.role]) : input.role })"
               :width="150"
               :height="90"
             />
@@ -52,10 +51,10 @@
           </details>
         </div>
         <span class="recorded-input-amount">{{
-          input.amounts.map(recordedParameter).join(" / ") || "用量未记录"
+          input.amounts.map(recordedParameter).join(" / ") || $tr('用量未记录')
         }}</span>
         <details class="recorded-input-source">
-          <summary>投料原始字段</summary>
+          <summary>{{ $tr('投料原始字段') }}</summary>
           <code>{{ input.source_field }}</code>
           <div v-for="(amount, amountIndex) in input.amounts" :key="amountIndex">
             <span>{{ recordedParameter(amount) }}</span>
@@ -65,16 +64,15 @@
         </details>
       </div>
     </div>
-    <p v-else class="recorded-inputs-empty">试剂、催化剂与溶剂：未记录</p>
+    <p v-else class="recorded-inputs-empty">{{ $tr('试剂、催化剂与溶剂：未记录') }}</p>
   </section>
 </template>
 <script setup>
 import {
-  recordedParameter,
   recordedTimeLabel,
 } from "@/common/reference-evidence";
 import StructurePreview from "@/components/workspace/StructurePreview.vue";
-import { recordedParameters } from "./reference-record";
+import { recordedParameters, referenceParameterValue as recordedParameter } from "./reference-record";
 defineProps({ conditions: { type: Object, default: null } });
 const parameters = recordedParameters;
 const roles = {

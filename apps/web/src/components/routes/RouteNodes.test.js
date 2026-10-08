@@ -1,6 +1,7 @@
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import MoleculeNode from "./MoleculeNode.vue";
 import ReactionNode from "./ReactionNode.vue";
+import { initializeLocale, setLocale } from "@/i18n";
 
 jest.mock("@vue-flow/core", () => ({
   Handle: { template: "<span />" }, Position: { Left: "left", Right: "right" },
@@ -20,6 +21,22 @@ const setup = (component, data) => {
   return wrapper;
 };
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
+
+test("only explicitly generated step captions translate, while an identically named user reaction stays raw", async () => {
+  initializeLocale(null);
+  const generated = Object.freeze({ label: "步骤 3", generatedStepLabels: true, reading: true, score: 0 });
+  const automatic = setup(ReactionNode, generated);
+  const user = setup(ReactionNode, { ...generated, generatedStepLabels: false });
+  expect(automatic.get("strong").text()).toBe("Step 3");
+  expect(automatic.get('button[aria-label="View Step 3 details"]').exists()).toBe(true);
+  expect(user.get("strong").text()).toBe("步骤 3");
+  setLocale("zh-CN", { persist: false });
+  await flushPromises();
+  expect(automatic.get("strong").text()).toBe("步骤 3");
+  expect(user.get("strong").text()).toBe("步骤 3");
+  expect(generated.label).toBe("步骤 3");
+  expect(generated.score).toBe(0);
+});
 
 test.each([[0, "0.00"], [0.625, "0.63"]])("finite step score %s retains its neutral label and precision", (score, text) => {
   const wrapper = setup(ReactionNode, { score, label: "步骤 1", reading: true });

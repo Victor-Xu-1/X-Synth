@@ -1,23 +1,23 @@
 <template>
-  <section class="reference-results" aria-label="参考反应结果" :aria-busy="pending">
+  <section class="reference-results" :aria-label="$tr('参考反应结果')" :aria-busy="pending">
     <header class="reference-results-heading">
-      <h3>参考反应</h3>
-      <span v-if="checked">{{ evidenceSourceLabel(checked) }} · {{ checked.count }} 条</span>
+      <h3>{{ $tr('参考反应') }}</h3>
+      <span v-if="checked">{{ $tr('{name} · {count} 条', { name: referenceSourceLabel(checked), count: checked.count }) }}</span>
     </header>
     <details v-if="actualInput" class="reference-query" data-cy="reference-actual-input">
-      <summary>本次查询结构</summary>
+      <summary>{{ $tr('本次查询结构') }}</summary>
       <dl>
-        <dt>产物</dt><dd><code>{{ checked?.query.product || actualInput.product }}</code></dd>
-        <dt>反应物</dt><dd><code>{{ (checked?.query.reactants || actualInput.reactants).join('.') || '未指定' }}</code></dd>
+        <dt>{{ $tr('产物') }}</dt><dd><code>{{ checked?.query.product || actualInput.product }}</code></dd>
+        <dt>{{ $tr('反应物') }}</dt><dd><code>{{ (checked?.query.reactants || actualInput.reactants).join('.') || $tr('未指定') }}</code></dd>
       </dl>
     </details>
-    <p v-if="pending" class="reference-state" role="status">正在检索参考反应。</p>
-    <p v-else-if="visibleError" class="tool-error" role="alert">{{ visibleError }}</p>
-    <p v-else-if="checked && !checked.count" class="reference-state" role="status">未找到该产物结构的参考反应。</p>
-    <p v-else-if="!checked && !searched" class="reference-state">尚未查询。</p>
+    <p v-if="pending" class="reference-state" role="status">{{ $tr('正在检索参考反应。') }}</p>
+    <p v-else-if="visibleError" class="tool-error" role="alert">{{ $tr(visibleError) }}</p>
+    <p v-else-if="checked && !checked.count" class="reference-state" role="status">{{ $tr('未找到该产物结构的参考反应。') }}</p>
+    <p v-else-if="!checked && !searched" class="reference-state">{{ $tr('尚未查询。') }}</p>
     <template v-if="checked && !pending && !visibleError">
       <p v-for="source in checked.sources?.filter((item) => !item.ready) || []" :key="source.source" class="reference-state" role="status">
-        {{ source.source }} · {{ referenceReason(source) }}
+        {{ source.source }} · {{ $tr(referenceReason(source)) }}
       </p>
       <article
         v-for="row in checked.results"
@@ -34,8 +34,8 @@
         </ReferenceRecordSummary>
       </article>
       <footer class="reference-retrieval">
-        <span>检索时间：{{ checked.retrieved_at }}</span>
-        <span v-if="checked.has_more">还有匹配记录，当前仅展示 {{ checked.count }} 条。</span>
+        <span>{{ $tr('检索时间：{value}', { value: checked.retrieved_at }) }}</span>
+        <span v-if="checked.has_more">{{ $tr('还有匹配记录，当前仅展示 {count} 条。', { count: checked.count }) }}</span>
       </footer>
     </template>
     <v-dialog
@@ -58,8 +58,8 @@
         </template>
       </ReferenceRecordDetail>
     </v-dialog>
-    <p v-if="actionError && !detailRecord" class="tool-error" role="alert">{{ actionError }}</p>
-    <p v-if="notice && !detailRecord" class="reference-state" role="status">{{ notice }}</p>
+    <p v-if="actionError && !detailRecord" class="tool-error" role="alert">{{ $tr(actionError) }}</p>
+    <p v-if="notice && !detailRecord" class="reference-state" role="status">{{ $tr(notice) }}</p>
   </section>
 </template>
 
@@ -67,7 +67,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue";
 import { API } from "@/common/api";
 import { downloadChemicalFile } from "@/common/chemical-files";
-import { evidenceSourceLabel } from "@/common/reference-evidence";
+import { referenceSourceLabel } from "./reference-record";
 import {
   referenceFailure,
   referenceReactionFileBody,

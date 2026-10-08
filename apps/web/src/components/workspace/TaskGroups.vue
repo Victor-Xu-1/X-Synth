@@ -1,29 +1,29 @@
 <template>
-  <aside class="task-groups" aria-label="任务分组">
+  <aside class="task-groups" :aria-label="$tr('任务分组')">
     <header>
-      <h2>任务分组</h2>
-      <v-tooltip text="新建分组">
+      <h2>{{ $tr('任务分组') }}</h2>
+      <v-tooltip :text="$tr('新建分组')">
         <template #activator="{ props }">
           <v-btn
             v-bind="props"
             icon="mdi-folder-plus-outline"
             variant="text"
             size="small"
-            aria-label="新建分组"
+            :aria-label="$tr('新建分组')"
             :disabled="busy"
             @click="$emit('create')"
           />
         </template>
       </v-tooltip>
     </header>
-    <nav aria-label="任务分组导航" :aria-busy="!countsLoaded">
+    <nav :aria-label="$tr('任务分组导航')" :aria-busy="!countsLoaded">
       <button
         class="group-link"
         :aria-current="!archived && selected === 'all' ? 'page' : undefined"
         @click="$emit('select', 'all')"
       >
         <v-icon icon="mdi-folder-multiple-outline" size="18" /><span
-          >全部任务</span
+          >{{ $tr('全部任务') }}</span
         ><small :aria-hidden="!countsLoaded">{{ countsLoaded ? allTotal : "" }}</small>
       </button>
       <button
@@ -33,7 +33,7 @@
         "
         @click="$emit('select', 'ungrouped')"
       >
-        <v-icon icon="mdi-folder-outline" size="18" /><span>未分组</span
+        <v-icon icon="mdi-folder-outline" size="18" /><span>{{ $tr('未分组') }}</span
         ><small :aria-hidden="!countsLoaded">{{ countsLoaded ? ungroupedTotal : "" }}</small>
       </button>
       <div v-for="group in groups" :key="group.id" class="group-row">
@@ -51,26 +51,26 @@
         </button>
         <v-menu :disabled="busy">
           <template #activator="{ props: menuProps }">
-            <v-tooltip :text="`分组操作：${group.name}`">
+            <v-tooltip :text="$tr('分组操作：{name}', { name: group.name })">
               <template #activator="{ props: tooltipProps }">
                 <v-btn v-bind="mergeProps(menuProps, tooltipProps)" icon="mdi-dots-horizontal"
-                  variant="text" size="small" :aria-label="`分组操作：${group.name}`" :disabled="busy" />
+                  variant="text" size="small" :aria-label="$tr('分组操作：{name}', { name: group.name })" :disabled="busy" />
               </template>
             </v-tooltip>
           </template>
-          <v-list density="compact" class="group-actions-menu" role="menu" :aria-label="`分组操作：${group.name}`">
+          <v-list density="compact" class="group-actions-menu" role="menu" :aria-label="$tr('分组操作：{name}', { name: group.name })">
             <v-list-item
               role="menuitem"
-              title="重命名分组"
-              aria-label="重命名分组"
+              :title="$tr('重命名分组')"
+              :aria-label="$tr('重命名分组')"
               :disabled="busy"
               prepend-icon="mdi-pencil-outline"
               @click="$emit('rename', group)"
             />
             <v-list-item
               role="menuitem"
-              title="解散分组"
-              aria-label="解散分组"
+              :title="$tr('解散分组')"
+              :aria-label="$tr('解散分组')"
               :disabled="busy"
               prepend-icon="mdi-folder-remove-outline"
               @click="$emit('delete', group)"
@@ -83,7 +83,7 @@
         :aria-current="archived ? 'page' : undefined"
         @click="$emit('archive')"
       >
-        <v-icon icon="mdi-delete-restore" size="18" /><span>回收箱</span>
+        <v-icon icon="mdi-delete-restore" size="18" /><span>{{ $tr('回收箱') }}</span>
       </button>
     </nav>
     <v-dialog
@@ -99,21 +99,21 @@
       <form v-if="form" class="group-form" @submit.prevent="$emit('save')">
         <header>
           <h2 id="group-form-title">
-            {{ form.id ? "重命名分组" : "新建分组" }}
+            {{ form.id ? $tr('重命名分组') : $tr('新建分组') }}
           </h2>
           <v-btn
             icon="mdi-close"
             variant="text"
             size="small"
-            aria-label="关闭分组表单"
+            :aria-label="$tr('关闭分组表单')"
             :disabled="busy"
             @click="$emit('close')"
           />
         </header>
         <v-text-field
           :model-value="form.name"
-          label="分组名称"
-          aria-label="分组名称"
+          :label="$tr('分组名称')"
+          :aria-label="$tr('分组名称')"
           maxlength="128"
           density="compact"
           variant="outlined"
@@ -122,7 +122,7 @@
           :disabled="busy"
           @update:model-value="$emit('name', $event || '')"
         />
-        <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
+        <div v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</div>
         <footer>
           <v-btn
             type="submit"
@@ -131,7 +131,7 @@
             prepend-icon="mdi-check"
             :loading="busy"
             :disabled="busy || !form.name.trim()"
-            >保存</v-btn
+            >{{ $tr('保存') }}</v-btn
           >
         </footer>
       </form>

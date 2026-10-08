@@ -1,35 +1,36 @@
 <template>
   <section class="standard-page" :aria-busy="loading">
     <header class="page-heading">
-      <div><h1>{{ title }}</h1><p v-if="record">{{ analysisStatuses[record.status] }} · {{ recordDate(record.created) }}</p></div>
+      <div><h1>{{ title }}</h1><p v-if="record">{{ $tr(analysisStatuses[record.status]) }} · {{ recordDate(record.created) }}</p></div>
       <div class="page-actions">
-        <v-btn v-if="editLocation && !error && !loading" variant="text" prepend-icon="mdi-pencil-outline" :to="editLocation">返回修改</v-btn>
-        <v-btn variant="text" prepend-icon="mdi-arrow-left" :to="backLocation">研究记录</v-btn>
+        <v-btn v-if="editLocation && !error && !loading" variant="text" prepend-icon="mdi-pencil-outline" :to="editLocation">{{ $tr('返回修改') }}</v-btn>
+        <v-btn variant="text" prepend-icon="mdi-arrow-left" :to="backLocation">{{ $tr('研究记录') }}</v-btn>
         <v-btn v-if="record && analysisKinds[record.kind]?.to" variant="text" prepend-icon="mdi-plus"
-          :to="analysisKinds[record.kind].to">新建计算</v-btn>
-        <v-btn icon="mdi-refresh" variant="text" aria-label="刷新研究记录" title="刷新研究记录"
+          :to="analysisKinds[record.kind].to">{{ $tr('新建计算') }}</v-btn>
+        <v-btn icon="mdi-refresh" variant="text" :aria-label="$tr('刷新研究记录')" :title="$tr('刷新研究记录')"
           :loading="loading" :disabled="loading" @click="load()" />
         <v-btn v-if="canExportCsv" icon="mdi-file-delimited-outline" variant="text"
-          aria-label="导出下一批实验 CSV" title="导出下一批实验 CSV" @click="downloadCsv" />
+          :aria-label="$tr('导出下一批实验 CSV')" :title="$tr('导出下一批实验 CSV')" @click="downloadCsv" />
         <v-btn v-if="record?.result && !error" icon="mdi-download" variant="text"
-          aria-label="下载研究记录" title="下载研究记录" @click="download" />
+          :aria-label="$tr('下载研究记录')" :title="$tr('下载研究记录')" @click="download" />
       </div>
     </header>
-    <div v-if="editLocation" class="analysis-stage" aria-label="计算流程"><span>01 / 录入</span><v-icon icon="mdi-arrow-right" size="15" aria-hidden="true" /><strong>02 / 结果</strong></div>
-    <p v-if="loading" role="status">正在读取研究记录</p>
-    <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
+    <div v-if="editLocation" class="analysis-stage" :aria-label="$tr('计算流程')"><span>{{ $tr('01 / 录入') }}</span><v-icon icon="mdi-arrow-right" size="15" aria-hidden="true" /><strong>{{ $tr('02 / 结果') }}</strong></div>
+    <p v-if="loading" role="status">{{ $tr('正在读取研究记录') }}</p>
+    <div v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</div>
     <AnalysisResult v-if="record?.result && !error" :kind="record.kind" :result="record.result" />
     <div v-else-if="record?.error" class="tool-error" role="alert">{{ record.error }}</div>
-    <p v-else-if="record?.status === 'running'" role="status">该次计算仍在执行。</p>
-    <p v-else-if="record?.status === 'interrupted'" role="status">该次计算已中断。</p>
+    <p v-else-if="record?.status === 'running'" role="status">{{ $tr('该次计算仍在执行。') }}</p>
+    <p v-else-if="record?.status === 'interrupted'" role="status">{{ $tr('该次计算已中断。') }}</p>
     <OptimizationInputSummary v-if="record?.kind === 'optimization'" :inputs="record.inputs" :record-id="record.id" />
-    <details v-if="record" class="submitted-input" @toggle="inputOpen = $event.target.open"><summary>本次提交的输入</summary><pre v-if="inputOpen">{{ JSON.stringify(record.inputs, null, 2) }}</pre></details>
+    <details v-if="record" class="submitted-input" @toggle="inputOpen = $event.target.open"><summary>{{ $tr('本次提交的输入') }}</summary><pre v-if="inputOpen">{{ JSON.stringify(record.inputs, null, 2) }}</pre></details>
   </section>
 </template>
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { API } from "@/common/api";
+import { uiText } from "@/i18n";
 import { analysisKinds, analysisStatuses, recordDate, recordPath, readAnalysisRecord,
   analysisQuery, listQuery } from "@/common/analysis-records";
 import AnalysisResult from "./AnalysisResult.vue";
@@ -38,7 +39,8 @@ import { exportRecommendationCsv, hasRecommendationCsv } from "@/views/optimizat
 const route = useRoute(), record = ref(null), loading = ref(false), error = ref(""), inputOpen = ref(false);
 const title = computed(() => {
   const label = analysisKinds[record.value?.kind]?.title;
-  return label ? `${label}${record.value.status === 'completed' ? '结果' : '记录'}` : "研究记录";
+  return label ? uiText(record.value.status === "completed" ? "{name}结果" : "{name}记录",
+    { name: uiText(label) }) : uiText("研究记录");
 });
 const editLocation = computed(() => {
   const current = record.value;

@@ -1,18 +1,18 @@
 <template>
-  <section class="route-conditions" aria-label="反应条件列表">
+  <section class="route-conditions" :aria-label="$tr('反应条件列表')">
     <article v-for="step in steps" :key="step.nodeId" class="condition-step">
       <header>
         <button type="button" @click="$emit('select', step.nodeId)">
-          <strong>合成步骤 {{ step.number }}</strong>
+          <strong>{{ $tr('合成步骤 {value}', { value: step.number }) }}</strong>
         </button>
-        <span>步骤模型分数 {{ step.confidence }}</span>
+        <span>{{ $tr('步骤模型分数 {value}', { value: $tr(step.confidence) }) }}</span>
         <v-btn
           v-if="workspace.can('conditions')"
           prepend-icon="mdi-beaker-outline"
           size="small"
           variant="text"
           @click="activeStep = step"
-          >条件预测</v-btn
+          >{{ $tr('条件预测') }}</v-btn
         >
       </header>
       <SmilesImage
@@ -24,11 +24,11 @@
       />
       <dl v-if="step.evidence.conditions.length" class="condition-fields">
         <div v-for="field in step.evidence.conditions" :key="field.label">
-          <dt>{{ field.label }}</dt>
+          <dt>{{ $tr(field.label) }}</dt>
           <dd>{{ field.value }}</dd>
         </div>
       </dl>
-      <p v-else class="workspace-muted">原路线未记录实验条件</p>
+      <p v-else class="workspace-muted">{{ $tr('原路线未记录实验条件') }}</p>
       <a
         v-for="link in step.evidence.links.filter((link) =>
           safeExternalUrl(link.href),
@@ -37,7 +37,7 @@
         :href="safeExternalUrl(link.href)"
         target="_blank"
         rel="noopener noreferrer"
-        >{{ link.label }} · {{ link.value }}</a
+        >{{ $tr(link.label) }} · {{ link.value }}</a
       >
       <ReactionReferences :product="step.product" :reactants="step.reactants" />
     </article>
@@ -50,7 +50,7 @@
       }"
       @close="activeStep = null"
     />
-    <p v-if="error" class="tool-error" role="alert">{{ error }}</p>
+    <p v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</p>
   </section>
 </template>
 <script setup>

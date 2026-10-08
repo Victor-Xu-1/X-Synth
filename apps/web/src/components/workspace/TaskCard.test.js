@@ -1,10 +1,11 @@
-import { mount, RouterLinkStub } from "@vue/test-utils";
+import { flushPromises, mount, RouterLinkStub } from "@vue/test-utils";
 import TaskCard from "./TaskCard.vue";
 import TaskActions from "./TaskActions.vue";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "@vue/compiler-sfc";
 import postcss from "postcss";
+import { initializeLocale, setLocale } from "@/i18n";
 jest.mock("@/components/SmilesImage.vue", () => ({
   props: ["smiles"],
   template: '<div :data-smiles="smiles" />',
@@ -67,6 +68,23 @@ function setup(props = {}) {
   return wrapper;
 }
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
+
+test("English fallback visibility is locale-independent while phrase-like user names and source tags stay raw", async () => {
+  initializeLocale(null);
+  const task = { ...row, description: "未命名任务", tags: [] }, before = JSON.stringify(task);
+  const wrapper = setup({ task, groupName: "未分组" });
+  expect(wrapper.get(".task-card-title").text()).toBe("未命名任务");
+  expect(wrapper.get(".task-card-group").text()).toBe("未分组");
+  expect(wrapper.find(".task-card-source").exists()).toBe(false);
+  const withSource = { ...task, tags: ["路线记录"] };
+  await wrapper.setProps({ task: withSource });
+  expect(wrapper.get(".task-card-source").text()).toBe("路线记录");
+  setLocale("zh-CN", { persist: false });
+  await flushPromises();
+  expect(wrapper.get(".task-card-source").text()).toBe("路线记录");
+  expect(wrapper.get(".task-card-title").text()).toBe("未命名任务");
+  expect(JSON.stringify(task)).toBe(before);
+});
 test("structure cards preserve chemical identity, real count and task name, and support independent selection/name edit", async () => {
   const wrapper = setup({ groupName: "项目" });
   expect(wrapper.get("[data-smiles]").attributes("data-smiles")).toBe(

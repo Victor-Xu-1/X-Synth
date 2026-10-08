@@ -5,25 +5,25 @@
         <SmilesImage :smiles="result.structure.smiles" :width="280" :height="180" :show-error-image="false" allow-copy />
       </div>
       <div class="identity-facts">
-        <h2 :id="`${id}-identity`">完整化合物 · {{ result.structure.formula }}</h2>
+        <h2 :id="`${id}-identity`">{{ $tr('完整化合物 · {value}', { value: result.structure.formula }) }}</h2>
         <code>{{ result.structure.smiles }}</code>
         <dl class="identity-metrics">
           <div v-for="row in identityRows" :key="row.key" :data-field="row.key">
-            <dt>{{ row.label }}</dt><dd>{{ metricValue(row.value) }}</dd>
+            <dt>{{ $tr(row.label) }}</dt><dd>{{ metricValue(row.value) }}</dd>
           </div>
           <div data-field="unassigned_stereocenters" :class="{ 'stereo-warning': result.descriptors.unassigned_stereocenters > 0 }">
-            <dt>未指定四面体立体中心数</dt><dd>{{ metricValue(result.descriptors.unassigned_stereocenters) }}</dd>
+            <dt>{{ $tr('未指定四面体立体中心数') }}</dt><dd>{{ metricValue(result.descriptors.unassigned_stereocenters) }}</dd>
           </div>
         </dl>
       </div>
     </section>
 
     <aside class="assessment-notices" role="note" :aria-labelledby="`${id}-notices`">
-      <h2 :id="`${id}-notices`"><v-icon icon="mdi-information-outline" size="17" aria-hidden="true" />科学解读边界</h2>
-      <ul><li v-for="(notice, index) in result.notices" :key="index">{{ notice }}</li></ul>
+      <h2 :id="`${id}-notices`"><v-icon icon="mdi-information-outline" size="17" aria-hidden="true" />{{ $tr('科学解读边界') }}</h2>
+      <ul><li v-for="(notice, index) in result.notices" :key="index">{{ $tr(notice) }}</li></ul>
       <ul v-if="componentNotices.length" class="component-notices">
         <li v-for="notice in componentNotices" :key="notice.key">
-          <strong>组分 {{ notice.index }} · {{ notice.formula }}：</strong>{{ notice.text }}
+          <strong>{{ $tr('组分 {index} · {value}：', { index: notice.index, value: notice.formula }) }}</strong>{{ $tr(notice.text) }}
         </li>
       </ul>
     </aside>
@@ -34,51 +34,51 @@
         :inert="section !== tab.value ? '' : undefined" :tabindex="section === tab.value ? 0 : -1" :data-section="tab.value">
         <template v-if="section === tab.value && tab.value === 'overview'">
           <section v-if="singleComponent" class="complexity-overview">
-            <h2>单组分复杂度</h2>
+            <h2>{{ $tr('单组分复杂度') }}</h2>
             <dl class="core-metrics">
               <div v-for="row in complexityRows" :key="row.key" :data-metric="row.key">
-                <dt>{{ row.label }}</dt><dd :class="{ 'metric-undefined': row.value == null }">{{ metricValue(row.value) }}</dd>
-                <small>{{ row.note }}</small>
+                <dt>{{ $tr(row.label) }}</dt><dd :class="{ 'metric-undefined': row.value == null }">{{ metricValue(row.value) }}</dd>
+                <small>{{ $tr(row.note) }}</small>
               </div>
             </dl>
           </section>
-          <p v-else class="component-boundary">复杂度仅按各结构组分报告；不提供整条记录的综合评分。</p>
+          <p v-else class="component-boundary">{{ $tr('复杂度仅按各结构组分报告；不提供整条记录的综合评分。') }}</p>
           <section>
-            <h2>关键分子描述符 · 完整记录</h2>
+            <h2>{{ $tr('关键分子描述符 · 完整记录') }}</h2>
             <dl class="descriptor-grid">
               <div v-for="row in coreRows" :key="row.key" :data-metric="row.key">
-                <dt>{{ row.label }}</dt><dd>{{ metricValue(row.value) }}</dd>
+                <dt>{{ $tr(row.label) }}</dt><dd>{{ metricValue(row.value) }}</dd>
               </div>
             </dl>
           </section>
         </template>
         <AssessmentComponents v-else-if="section === tab.value && tab.value === 'components'" :components="result.components" />
         <template v-else-if="section === tab.value && tab.value === 'descriptors'">
-          <h2>完整结构描述符 · 全部组分</h2>
+          <h2>{{ $tr('完整结构描述符 · 全部组分') }}</h2>
           <dl class="descriptor-grid">
             <div v-for="row in descriptorRows" :key="row.key" :data-metric="row.key">
-              <dt>{{ row.label }}</dt><dd>{{ metricValue(row.value) }}</dd>
+              <dt>{{ $tr(row.label) }}</dt><dd>{{ metricValue(row.value) }}</dd>
             </div>
           </dl>
         </template>
         <template v-else-if="section === tab.value && tab.value === 'methods'">
-          <h2>计算方法与许可</h2>
+          <h2>{{ $tr('计算方法与许可') }}</h2>
           <dl class="method-context">
-            <div><dt>RDKit 版本</dt><dd>{{ result.rdkit_version }}</dd></div>
-            <div><dt>评估范围</dt><dd><code>{{ result.scope }}</code></dd></div>
-            <div v-if="typeof result.record_id === 'string'"><dt>记录标识</dt><dd><code>{{ result.record_id }}</code></dd></div>
+            <div><dt>{{ $tr('RDKit 版本') }}</dt><dd>{{ result.rdkit_version }}</dd></div>
+            <div><dt>{{ $tr('评估范围') }}</dt><dd><code>{{ result.scope }}</code></dd></div>
+            <div v-if="typeof result.record_id === 'string'"><dt>{{ $tr('记录标识') }}</dt><dd><code>{{ result.record_id }}</code></dd></div>
           </dl>
           <section v-for="(method, index) in result.methods" :key="index" class="method-row">
             <h3>{{ method.name }}</h3>
             <dl>
-              <div><dt>实现</dt><dd><code>{{ method.implementation }}</code></dd></div>
-              <div><dt>许可</dt><dd>{{ method.license }}</dd></div>
+              <div><dt>{{ $tr('实现') }}</dt><dd><code>{{ method.implementation }}</code></dd></div>
+              <div><dt>{{ $tr('许可') }}</dt><dd>{{ method.license }}</dd></div>
             </dl>
             <div class="method-links">
-              <a v-if="safeExternalUrl(method.reference_url)" :href="safeExternalUrl(method.reference_url)" target="_blank" rel="noopener noreferrer">方法来源</a>
-              <span v-else>方法来源未提供</span>
-              <a v-if="safeExternalUrl(method.source_url)" :href="safeExternalUrl(method.source_url)" target="_blank" rel="noopener noreferrer">实现与许可</a>
-              <span v-else>实现链接未提供</span>
+              <a v-if="safeExternalUrl(method.reference_url)" :href="safeExternalUrl(method.reference_url)" target="_blank" rel="noopener noreferrer">{{ $tr('方法来源') }}</a>
+              <span v-else>{{ $tr('方法来源未提供') }}</span>
+              <a v-if="safeExternalUrl(method.source_url)" :href="safeExternalUrl(method.source_url)" target="_blank" rel="noopener noreferrer">{{ $tr('实现与许可') }}</a>
+              <span v-else>{{ $tr('实现链接未提供') }}</span>
             </div>
           </section>
         </template>

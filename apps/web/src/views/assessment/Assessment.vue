@@ -1,10 +1,10 @@
 <template>
   <ModuleWorkbench title="分子合成复杂度评估">
-    <template #actions><v-btn variant="text" prepend-icon="mdi-history" to="/analyses?kind=assessment">评估记录</v-btn><v-btn v-if="saved.source.value || saved.error.value" variant="text" prepend-icon="mdi-plus" to="/assessment" :disabled="loading" @click="saved.startNew">新建评估</v-btn></template>
-    <div v-if="saved.loading.value" class="workspace-loading" role="status">正在读取已存结构</div>
-    <div v-if="saved.error.value" class="tool-error" role="alert">{{ saved.error.value }}<v-btn variant="text" @click="saved.reload">重新读取</v-btn></div>
-    <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
-    <router-link v-if="error && recordPath(result?.record_id)" :to="recordPath(result.record_id)">打开已保存的结果</router-link>
+    <template #actions><v-btn variant="text" prepend-icon="mdi-history" to="/analyses?kind=assessment">{{ $tr('评估记录') }}</v-btn><v-btn v-if="saved.source.value || saved.error.value" variant="text" prepend-icon="mdi-plus" to="/assessment" :disabled="loading" @click="saved.startNew">{{ $tr('新建评估') }}</v-btn></template>
+    <div v-if="saved.loading.value" class="workspace-loading" role="status">{{ $tr('正在读取已存结构') }}</div>
+    <div v-if="saved.error.value" class="tool-error" role="alert">{{ $tr(saved.error.value) }}<v-btn variant="text" @click="saved.reload">{{ $tr('重新读取') }}</v-btn></div>
+    <div v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</div>
+    <router-link v-if="error && recordPath(result?.record_id)" :to="recordPath(result.record_id)">{{ $tr('打开已保存的结果') }}</router-link>
     <WorkbenchForm parameter-label="分子评估参数" @submit="calculate">
       <StructureInput
         ref="structureInput"
@@ -15,7 +15,7 @@
       />
       <template #parameters>
         <div class="tool-fields">
-          <h2 class="tool-section-title">分子指标</h2>
+          <h2 class="tool-section-title">{{ $tr('分子指标') }}</h2>
           <v-btn
             type="submit"
             color="primary"
@@ -23,12 +23,10 @@
             prepend-icon="mdi-calculator-variant-outline"
             :loading="loading"
             :disabled="disabled || pending || !smiles.trim()"
-            >计算分子指标</v-btn
+            >{{ $tr('计算分子指标') }}</v-btn
           >
           <p class="workspace-muted">SA Score · SPS / nSPS · Bertz CT</p>
-          <p class="workspace-muted">
-            单条结构记录最多 256 个原子。分子指标不构成路线或实验验证。
-          </p>
+          <p class="workspace-muted">{{ $tr('单条结构记录最多 256 个原子。分子指标不构成路线或实验验证。') }}</p>
         </div>
       </template>
     </WorkbenchForm>
