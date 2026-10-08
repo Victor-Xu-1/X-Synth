@@ -85,6 +85,12 @@ test("English fallback visibility is locale-independent while phrase-like user n
   expect(wrapper.get(".task-card-title").text()).toBe("未命名任务");
   expect(JSON.stringify(task)).toBe(before);
 });
+
+test.each([{ tags: [""] }, { tags: ["ASKCOS"] }, { tags: [null] }])("empty or framework-only source tags $tags do not become recorded-source badges", ({ tags }) => {
+  initializeLocale(null);
+  const wrapper = setup({ task: { ...row, tags } });
+  expect(wrapper.find(".task-card-source").exists()).toBe(false);
+});
 test("structure cards preserve chemical identity, real count and task name, and support independent selection/name edit", async () => {
   const wrapper = setup({ groupName: "项目" });
   expect(wrapper.get("[data-smiles]").attributes("data-smiles")).toBe(

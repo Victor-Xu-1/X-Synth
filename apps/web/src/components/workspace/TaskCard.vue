@@ -115,9 +115,9 @@ defineEmits([
 ]);
 const count = computed(() => taskRouteCount(props.task));
 const sourceLabel = computed(() => taskSourceLabel(props.task));
-const hasSource = computed(() => Array.isArray(props.task.tags) && props.task.tags.some(
+const hasSource = computed(() => Array.isArray(props.task.tags) && Boolean(props.task.tags.filter(
   (tag) => typeof tag === "string" && !/^askcos(?: v2)?$/i.test(tag),
-));
+).join(" / ")));
 const active = computed(() =>
   activeTaskStates.includes(props.task.result_state),
 );
