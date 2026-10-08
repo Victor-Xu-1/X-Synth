@@ -32,6 +32,10 @@
     {
       "number": 61,
       "merge_commit_sha": "0cbf7502be4c104cd6c771d0f8f6f41270d5d9a0"
+    },
+    {
+      "number": 62,
+      "merge_commit_sha": "86f108a87aee00ee9ef6fe21826d4212d7f64c92"
     }
   ]
 }
