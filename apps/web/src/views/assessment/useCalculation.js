@@ -4,7 +4,7 @@ import { errorMessage } from "@/common/workspace-errors";
 
 export class CalculationInputError extends Error {}
 
-export function useCalculation({ input, pending, endpoint, body, accepts, fallback }) {
+export function useCalculation({ input, pending, endpoint, body, accepts, fallback, onResult }) {
   const result = ref(null), loading = ref(false), error = ref("");
   let generation = 0, disposed = false;
 
@@ -28,6 +28,7 @@ export function useCalculation({ input, pending, endpoint, body, accepts, fallba
       if (disposed || current !== generation) return;
       if (!accepts(response)) throw new Error("invalid_calculation_response");
       result.value = response;
+      if (onResult) await onResult(response);
     } catch (cause) {
       if (!disposed && current === generation)
         error.value = cause instanceof CalculationInputError ? cause.message : errorMessage(cause, fallback);

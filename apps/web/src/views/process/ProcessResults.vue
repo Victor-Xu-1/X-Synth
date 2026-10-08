@@ -1,66 +1,135 @@
 <template>
-  <div>
-    <router-link v-if="typeof result.record_id === 'string'" class="analysis-record-link" :to="`/analyses/${encodeURIComponent(result.record_id)}`"><v-icon icon="mdi-history" size="16" />查看本次记录</router-link>
-    <h2>录入批次核算</h2>
-    <SmilesImage :smiles="result.product.structure.smiles" :width="260" :height="150" :show-error-image="false" />
-    <p class="product-identity">{{ result.product.structure.formula }} · {{ metricValue(result.product.structure.molecular_weight_g_mol) }} g·mol⁻¹</p>
-    <dl class="process-metrics"><template v-for="row in rows" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ metricValue(row.value) }}</dd></template></dl>
-    <div v-if="result.metrics.pmi_status === 'lower_bound'" class="boundary-notice">投料不完整：仅报告已录入范围的 PMI 下限，不能作为完整工艺 PMI。</div>
-    <section v-if="result.missing_inputs.length" class="missing-inputs"><h3>缺少的依据</h3><ul><li v-for="item in result.missing_inputs" :key="item">{{ item }}</li></ul></section>
-    <details class="recorded-materials"><summary>核算物料与结构身份</summary>
-      <div class="result-table-scroll"><table class="data-table"><thead><tr><th>物料</th><th>角色</th><th>完整结构分子量 / g·mol⁻¹</th><th>录入质量</th><th>质量 / g</th></tr></thead>
-        <tbody><tr v-for="(row, index) in [...result.materials, ...result.other_outputs]" :key="row.id">
-          <td>{{ row.name || `物料 ${index + 1}` }}<span>{{ row.structure?.formula || "结构未提供" }}</span><code v-if="row.structure">{{ row.structure.smiles }}</code></td><td>{{ row.role_label }}</td><td>{{ metricValue(row.structure?.molecular_weight_g_mol) }}</td><td>{{ metricValue(row.mass.value) }} {{ row.mass.unit }}</td><td>{{ metricValue(row.mass_g) }}</td>
-        </tr></tbody></table></div>
-      <p v-if="result.yield_basis" class="workspace-muted">限量原料：{{ limitingLabel }} · 原料质量纯度 {{ metricValue(result.yield_basis.limiting_purity_mass_percent) }}% · 原料 : 产物系数 {{ result.yield_basis.reactant_coefficient }} : {{ result.yield_basis.product_coefficient }}</p>
+  <div class="process-results">
+    <div class="product-identity">
+      <div class="product-preview">
+        <SmilesImage :smiles="result.product.structure.smiles" :width="200" :height="130" :show-error-image="false" allow-copy />
+      </div>
+      <div class="product-identity-text">
+        <span class="identity-label">分离产物 · 完整结构</span>
+        <strong class="product-formula">{{ result.product.structure.formula }}</strong>
+        <span>{{ value(result.product.structure.molecular_weight_g_mol) }} g·mol⁻¹</span>
+        <code>{{ result.product.structure.smiles }}</code>
+      </div>
+    </div>
+    <dl class="process-metrics process-primary">
+      <div v-for="row in primary" :key="row.key" class="primary-metric" :data-metric="row.key">
+        <dt>{{ row.label }}</dt>
+        <dd>{{ value(row.value) }}</dd>
+        <small>{{ row.note }}</small>
+      </div>
+    </dl>
+    <div class="boundary-notice" :class="`boundary-${boundary.status}`" role="note">
+      <v-icon :icon="boundary.status === 'calculated' ? 'mdi-check-circle-outline' : 'mdi-alert-circle-outline'" size="17" aria-hidden="true" />
+      <div><strong>{{ boundary.label }}</strong><p>{{ boundary.detail }}</p></div>
+    </div>
+    <details v-if="result.missing_inputs.length" class="missing-inputs">
+      <summary>缺少的依据 · {{ result.missing_inputs.length }} 项</summary>
+      <ul><li v-for="(item, index) in result.missing_inputs" :key="index">{{ item }}</li></ul>
     </details>
-    <ul class="process-notices"><li v-for="notice in result.notices" :key="notice">{{ notice }}</li></ul>
-    <p class="workspace-muted">RDKit {{ result.rdkit_version }} · <a :href="safeExternalUrl(result.pmi_reference_url)" target="_blank" rel="noopener noreferrer">ACS PMI 定义</a></p>
+    <div class="process-result-tabs" role="tablist" aria-label="批次核算视图" @keydown="moveTab">
+      <button v-for="tab in tabs" :id="`${id}-tab-${tab.id}`" :key="tab.id" type="button" role="tab"
+        :aria-selected="activeTab === tab.id" :aria-controls="`${id}-panel-${tab.id}`"
+        :tabindex="activeTab === tab.id ? 0 : -1" @click="activeTab = tab.id">
+        <v-icon :icon="tab.icon" size="17" aria-hidden="true" /><span>{{ tab.label }}</span>
+      </button>
+    </div>
+    <section v-for="tab in tabs" v-show="activeTab === tab.id" :id="`${id}-panel-${tab.id}`" :key="tab.id"
+      class="process-result-panel" role="tabpanel" :aria-labelledby="`${id}-tab-${tab.id}`" tabindex="0">
+      <div v-if="tab.id === 'overview'" class="metric-groups">
+        <section v-for="group in groups" :key="group.id" class="metric-group">
+          <h3>{{ group.title }}</h3>
+          <dl class="process-metrics">
+            <div v-for="row in group.rows" :key="row.key" class="metric-row" :data-metric="row.key">
+              <dt>{{ row.label }}<small v-if="row.source" class="metric-source">{{ row.source }}</small></dt>
+              <dd :class="{ 'metric-undefined': row.value == null }">{{ value(row.value) }}</dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+      <ProcessResultMaterials v-else-if="tab.id === 'materials' && activeTab === tab.id" :result="result" />
+      <ProcessResultBasis v-else-if="tab.id === 'basis' && activeTab === tab.id" :result="result" />
+    </section>
   </div>
 </template>
 <script setup>
-import { computed } from "vue";
+import { computed, nextTick, ref, useId, watch } from "vue";
 import SmilesImage from "@/components/SmilesImage.vue";
-import { safeExternalUrl } from "@/common/external-url";
-import { metricValue } from "../assessment/result-model";
+import ProcessResultMaterials from "./ProcessResultMaterials.vue";
+import ProcessResultBasis from "./ProcessResultBasis.vue";
+import { PROCESS_RESULT_TABS, processBoundary, processMetricGroups, processMetricValue as value, processPrimaryMetrics } from "./process-result-model";
+
 const props = defineProps({ result: { type: Object, required: true } });
-const limitingLabel = computed(() => {
-  const row = props.result.materials.find((row) => row.id === props.result.yield_basis?.limiting_material_id);
-  return row?.name || row?.structure?.formula || "未提供化学身份";
-});
-const rows = computed(() => {
-  const p = props.result.product, m = props.result.metrics;
-  return [
-    { label: "已录入投料质量 / g", value: m.known_input_mass_g }, { label: "完整边界总投料 / g", value: m.total_input_mass_g },
-    { label: "分离产物总质量 / g", value: p.isolated_mass_g }, { label: "产物质量纯度 / %", value: p.purity_mass_percent },
-    { label: "纯产物质量 / g", value: p.pure_mass_g }, { label: "录入实验收率 / %", value: p.reported_yield_percent },
-    { label: "指定计量依据的理论产物 / g", value: p.theoretical_mass_g }, { label: "质量纯度校正摩尔收率 / %", value: p.calculated_yield_percent },
-    { label: "PMI（投料 / 分离总质量）", value: m.pmi }, { label: "PMI 下限（不完整投料）", value: m.pmi_lower_bound },
-    { label: "纯度校正 PMI（投料 / 纯产物）", value: m.purity_corrected_pmi },
-    { label: "投料减分离产物差额 / g（非实测废物）", value: m.non_product_mass_difference_g },
-    { label: "已记录其他出料 / g", value: m.known_other_output_mass_g }, { label: "未记录去向的质量 / g", value: m.unaccounted_mass_g },
-    { label: "已记录出料 / 总投料 / %", value: m.recorded_mass_recovery_percent },
-  ];
-});
+const id = `${useId()}-process-result`, tabs = PROCESS_RESULT_TABS;
+const activeTab = ref("overview");
+const primary = computed(() => processPrimaryMetrics(props.result));
+const groups = computed(() => processMetricGroups(props.result));
+const boundary = computed(() => processBoundary(props.result));
+watch(() => props.result, () => { activeTab.value = "overview"; });
+
+async function moveTab(event) {
+  if (event.altKey || event.ctrlKey || event.metaKey || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  const index = tabs.findIndex((tab) => tab.id === activeTab.value);
+  const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1
+    : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+  event.preventDefault();
+  const target = event.currentTarget.querySelectorAll('[role="tab"]')[next];
+  activeTab.value = tabs[next].id;
+  await nextTick();
+  target?.focus();
+}
 </script>
 <style scoped>
-h2 { font-size: 15px; margin: 0 0 12px; }
-h3 { font-size: 13px; margin: 12px 0 8px; }
-.product-identity { font-size: 13px; margin: 8px 0 20px; }
-.process-metrics { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 20px; font-size: 13px; }
-.process-metrics dt { color: var(--ws-muted); }
-.process-metrics dd { margin: 0; font-variant-numeric: tabular-nums; }
-.boundary-notice { padding: 12px 0; border-top: 1px solid var(--ws-border); font-size: 13px; color: var(--ws-warning); }
-.missing-inputs { font-size: 12px; color: var(--ws-warning); }
-ul { padding-left: 20px; line-height: 1.8; }
-.recorded-materials { border-top: 1px solid var(--ws-border); padding-top: 16px; margin: 20px 0; font-size: 12px; }
-summary { cursor: pointer; }
-.result-table-scroll { overflow-x: auto; margin-top: 12px; }
-.data-table { min-width: 650px; }
-.data-table td { vertical-align: top; }
-.data-table td:first-child { max-width: 230px; }
-.data-table span, .data-table code { display: block; margin-top: 4px; overflow-wrap: anywhere; }
-.process-notices { color: var(--ws-muted); font-size: 12px; }
-a { text-decoration: underline; }
-.analysis-record-link { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 12px; }
+.process-results { min-width: 0; container-type: inline-size; color: var(--ws-text); }
+h3 { font-size: 13px; margin: 0 0 12px; }
+.product-identity { display: grid; grid-template-columns: minmax(0, 200px) minmax(0, 1fr); align-items: center; gap: 16px; padding: 18px 0; }
+.product-preview { min-width: 0; height: 130px; }
+.product-preview :deep(.v-img) { max-width: 100% !important; }
+.product-identity-text { display: grid; min-width: 0; gap: 4px; font-size: 12px; }
+.identity-label { color: var(--ws-muted); }
+.product-formula { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+code { font-family: var(--ws-font-code); font-size: 11px; overflow-wrap: anywhere; }
+.process-primary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-block: 1px solid var(--ws-border); margin: 0; }
+.primary-metric { min-width: 0; padding: 12px 14px; border-left: 1px solid var(--ws-border); }
+.primary-metric:first-child { border-left: 0; }
+.primary-metric dt, .primary-metric small { color: var(--ws-muted); font-size: 11px; line-height: 1.6; }
+.primary-metric dd { margin: 3px 0; font-size: 21px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.primary-metric small { display: block; }
+.boundary-notice { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; padding: 12px 0; color: var(--ws-warning); }
+.boundary-notice :deep(.v-icon) { margin-top: 2px; flex-shrink: 0; }
+.boundary-notice strong { font-weight: 600; }
+.boundary-notice p { margin: 3px 0 0; }
+.boundary-calculated { color: var(--ws-muted); }
+.boundary-calculated :deep(.v-icon) { color: var(--ws-accent); }
+.missing-inputs { font-size: 12px; margin-bottom: 14px; color: var(--ws-warning); }
+summary { cursor: pointer; padding: 2px 0; }
+ul { margin: 8px 0 0; padding-left: 20px; line-height: 1.8; }
+.process-result-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--ws-border); }
+.process-result-tabs button { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 44px; padding: 10px 4px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ws-muted); font-size: 12px; line-height: 20px; }
+.process-result-tabs button:hover { background: var(--ws-hover); }
+.process-result-tabs button[aria-selected="true"] { color: var(--ws-accent); border-bottom-color: var(--ws-accent); font-weight: 600; }
+.process-result-tabs button:focus-visible, .process-result-panel:focus-visible { outline: 2px solid var(--ws-accent); outline-offset: -2px; }
+.process-result-panel { padding-top: 18px; min-width: 0; }
+.metric-groups { display: grid; gap: 20px; }
+.metric-group + .metric-group { padding-top: 18px; border-top: 1px solid var(--ws-border); }
+.metric-group .process-metrics { margin: 0; font-size: 12px; }
+.metric-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(60px, auto); gap: 8px 20px; padding: 6px 0; align-items: baseline; }
+.metric-row dt { color: var(--ws-muted); overflow-wrap: anywhere; }
+.metric-row dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.metric-row dd.metric-undefined { color: var(--ws-muted); font-size: 11px; }
+.metric-source { font-size: 10px; margin-left: 6px; color: var(--ws-info); white-space: nowrap; }
+@container (min-width: 900px) {
+  .metric-groups { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .metric-group + .metric-group { padding-top: 0; border-top: 0; padding-left: 20px; border-left: 1px solid var(--ws-border); }
+}
+@container (max-width: 580px) {
+  .process-primary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .primary-metric:nth-child(3) { border-left: 0; }
+  .primary-metric:nth-child(n + 3) { border-top: 1px solid var(--ws-border); }
+}
+@container (max-width: 380px) {
+  .product-identity { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .product-preview { width: 200px; max-width: 100%; margin: 0 auto; }
+  .process-result-tabs :deep(.v-icon) { display: none; }
+  .primary-metric { padding-inline: 10px; }
+}
 </style>

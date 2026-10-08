@@ -3,6 +3,7 @@
     <header class="page-heading">
       <div><h1>{{ title }}</h1><p v-if="record">{{ analysisStatuses[record.status] }} · {{ recordDate(record.created) }}</p></div>
       <div class="page-actions">
+        <v-btn v-if="editLocation && !error && !loading" variant="text" prepend-icon="mdi-pencil-outline" :to="editLocation">返回修改</v-btn>
         <v-btn variant="text" prepend-icon="mdi-arrow-left" :to="backLocation">研究记录</v-btn>
         <v-btn v-if="record && analysisKinds[record.kind]?.to" variant="text" prepend-icon="mdi-plus"
           :to="analysisKinds[record.kind].to">新建计算</v-btn>
@@ -14,6 +15,7 @@
           aria-label="下载研究记录" title="下载研究记录" @click="download" />
       </div>
     </header>
+    <div v-if="editLocation" class="analysis-stage" aria-label="计算流程"><span>01 / 录入</span><v-icon icon="mdi-arrow-right" size="15" aria-hidden="true" /><strong>02 / 结果</strong></div>
     <p v-if="loading" role="status">正在读取研究记录</p>
     <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
     <AnalysisResult v-if="record?.result && !error" :kind="record.kind" :result="record.result" />
@@ -32,7 +34,15 @@ import { analysisKinds, analysisStatuses, recordDate, recordPath, readAnalysisRe
 import AnalysisResult from "./AnalysisResult.vue";
 import { exportRecommendationCsv, hasRecommendationCsv } from "@/views/optimization/recommendation-export";
 const route = useRoute(), record = ref(null), loading = ref(false), error = ref("");
-const title = computed(() => analysisKinds[record.value?.kind]?.title || "研究记录");
+const title = computed(() => {
+  const label = analysisKinds[record.value?.kind]?.title;
+  return label ? `${label}${record.value.status === 'completed' ? '结果' : '记录'}` : "研究记录";
+});
+const editLocation = computed(() => {
+  const current = record.value;
+  if (!current || !["process", "assessment"].includes(current.kind)) return null;
+  return { path: analysisKinds[current.kind].to, query: { record: current.id } };
+});
 const canExportCsv = computed(() => !loading.value && !error.value &&
   record.value?.kind === "optimization" && record.value.status === "completed" &&
   hasRecommendationCsv(record.value.result));
@@ -83,4 +93,6 @@ onBeforeUnmount(() => {
 summary { cursor: pointer; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 12px; max-height: 320px; overflow-y: auto; }
 .tool-error { overflow-wrap: anywhere; }
+.analysis-stage { display: flex; align-items: center; gap: 16px; margin: 0 0 26px; padding-bottom: 18px; border-bottom: 1px solid var(--ws-border); font-size: 12px; color: var(--ws-muted); }
+.analysis-stage strong { color: var(--ws-text); font-weight: 600; }
 </style>
