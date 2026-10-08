@@ -47,6 +47,7 @@ beforeEach(() => {
   API.get.mockReset().mockResolvedValue([]);
   API.delete.mockReset();
   mockWorkspace = reactive({ allowed: true, loading: false, refreshed: 1, error: "",
+    session: { mode: "askcos", owner: "protocol-researcher", administrator: false, workspace_access: true },
     can: () => mockWorkspace.allowed, checking: () => false, refresh: jest.fn() });
 });
 afterEach(() => {

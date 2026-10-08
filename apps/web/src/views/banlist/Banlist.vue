@@ -21,7 +21,7 @@
             color="primary"
             variant="flat"
             prepend-icon="mdi-plus"
-            :disabled="pendingTasks > 0"
+            :disabled="!allowed || pendingTasks > 0"
             data-cy="banlist-add-single-entry"
             @click="showBanItemDialog = true"
             >{{ $tr('新增条目') }}</v-btn
@@ -29,7 +29,7 @@
           <v-btn
             variant="outlined"
             prepend-icon="mdi-file-import-outline"
-            :disabled="pendingTasks > 0"
+            :disabled="!allowed || pendingTasks > 0"
             data-cy="banlist-add-multiple-entries"
             @click="showMultiEntryDialog = true"
             >{{ $tr('批量新增') }}</v-btn
@@ -42,7 +42,7 @@
                 :aria-label="$tr('清空全部禁用规则')"
                 variant="text"
                 :disabled="
-                  pendingTasks > 0 || (!chemicals.length && !reactions.length)
+                  !allowed || pendingTasks > 0 || (!chemicals.length && !reactions.length)
                 "
                 data-cy="banlist-reset"
                 @click="deleteAll"
@@ -72,7 +72,7 @@
             hide-details
             density="compact"
             :aria-label="item.active ? $tr('停用规则') : $tr('启用规则')"
-            :disabled="pendingTasks > 0"
+            :disabled="!allowed || pendingTasks > 0"
             @update:model-value="toggleActivation(item, activeModule)"
           />
         </template>
@@ -91,7 +91,7 @@
                 :aria-label="$tr('删除规则')"
                 variant="text"
                 size="small"
-                :disabled="pendingTasks > 0"
+                :disabled="!allowed || pendingTasks > 0"
                 data-cy="banlist-single-delete"
                 @click="deleteEntry(item.id, activeModule)"
               />
@@ -106,54 +106,47 @@
         </h2>
       </div>
       <ban-item-dialog
+        :key="`single:${ownerEpoch}`"
         v-model:showBanItemDialog="showBanItemDialog"
-        v-model:pendingTasks="pendingTasks"
         v-model:activeTab="activeTab"
         @loadCollection="loadCollection"
       />
       <multi-entry-dialog
+        :key="`multiple:${ownerEpoch}`"
         v-model:showMultiEntryDialog="showMultiEntryDialog"
-        v-model:pendingTasks="pendingTasks"
         @loadCollection="loadCollection"
       />
   </module-workbench>
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted } from "vue";
 import { useConfirm } from "vuetify-use-dialog";
 import SmilesImage from "@/components/SmilesImage";
 import CopyTooltip from "@/components/CopyTooltip";
-import { API } from "@/common/api";
 import BanItemDialog from "@/components/banlist/BanItemDialog";
 import MultiEntryDialog from "@/components/banlist/MultiEntryDialog";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import { useWorkspaceStore } from "@/store/workspace";
 import { formatUiDate, uiText } from "@/i18n";
-import { localizedConfirm } from "@/components/localized-confirm";
+import { useBanlist } from "./useBanlist";
 
 const workspace = useWorkspaceStore();
 const confirm = useConfirm();
-const activeTab = ref(0);
-const chemicals = ref([]);
-const reactions = ref([]);
-const showBanItemDialog = ref(false);
-const showMultiEntryDialog = ref(false);
-const filterActive = ref("all");
-const pendingTasks = ref(0);
-const requestErrorSource = ref(""), requestErrorValues = ref({});
-const requestError = computed(() => uiText(requestErrorSource.value, requestErrorValues.value));
+const { activeTab, chemicals, reactions, showBanItemDialog, showMultiEntryDialog,
+  filterActive, pendingTasks, requestError, allowed, ownerEpoch,
+  loadCollection, deleteEntry, deleteAll, toggleActivation } = useBanlist({ workspace, confirm });
 const banModules = computed(() =>
   [
     {
       value: "chemicals",
       title: uiText("化学品"),
-      disabled: !workspace.can("native_account"),
+      disabled: !allowed.value,
     },
     {
       value: "reactions",
       title: uiText("反应"),
-      disabled: !workspace.can("native_account"),
+      disabled: !allowed.value,
     },
   ],
 );
@@ -188,109 +181,6 @@ const tabItems = computed(() => {
   return items;
 });
 
-const loadCollection = async (category) => {
-  if (
-    !workspace.can("native_account") ||
-    !["chemicals", "reactions"].includes(category)
-  )
-    return;
-  pendingTasks.value++;
-  try {
-    const response = await API.get(`/api/banlist/${category}/get`, null, false);
-    if (!Array.isArray(response)) throw new Error("Invalid banlist response");
-    const items = response.map((item) => ({ ...item }));
-    if (category === "chemicals") chemicals.value = items;
-    else reactions.value = items;
-  } catch {
-    requestErrorSource.value = "规则加载失败，请检查身份权限与后端服务状态。";
-  } finally {
-    pendingTasks.value--;
-  }
-};
-
-const deleteEntry = async (id, category) => {
-  if (pendingTasks.value > 0 || !workspace.can("native_account")) return;
-  pendingTasks.value++;
-  requestErrorSource.value = "";
-  try {
-    const accepted = await confirm(localizedConfirm("删除规则", "确定删除此条禁用规则？", {}, { width: 420 }));
-    if (!accepted) return;
-    await API.delete(
-      `/api/banlist/${category}/delete?_id=${encodeURIComponent(id)}`,
-    );
-    await loadCollection(category);
-  } catch {
-    requestErrorSource.value = "删除失败，请检查身份权限与后端服务状态。";
-  } finally {
-    pendingTasks.value--;
-  }
-};
-
-const deleteAll = async () => {
-  if (pendingTasks.value > 0 || !workspace.can("native_account")) return;
-  pendingTasks.value++;
-  requestErrorSource.value = "";
-  try {
-    const accepted = await confirm(localizedConfirm("清空全部规则", "确定删除全部化学品与反应禁用规则？此操作无法撤销。", {}, { width: 440 }));
-    if (!accepted) return;
-    const failed = [];
-    for (const [category, items] of [
-      ["chemicals", chemicals.value],
-      ["reactions", reactions.value],
-    ]) {
-      for (const item of items) {
-        try {
-          await API.delete(
-            `/api/banlist/${category}/delete?_id=${encodeURIComponent(item.id)}`,
-          );
-        } catch {
-          failed.push(item.id);
-        }
-      }
-    }
-    await Promise.all([
-      loadCollection("chemicals"),
-      loadCollection("reactions"),
-    ]);
-    if (failed.length) {
-      requestErrorSource.value = "有 {count} 条规则删除失败，请刷新后重试。";
-      requestErrorValues.value = { count: failed.length };
-    }
-  } catch {
-    requestErrorSource.value = "无法清空规则，请检查后端服务状态。";
-  } finally {
-    pendingTasks.value--;
-  }
-};
-
-const toggleActivation = async (item, category) => {
-  if (pendingTasks.value > 0 || !workspace.can("native_account")) return;
-  pendingTasks.value++;
-  requestErrorSource.value = "";
-  try {
-    await API.get(
-      `/api/banlist/${category}/${item.active ? "deactivate" : "activate"}`,
-      { _id: item.id },
-    );
-    await loadCollection(category);
-  } catch {
-    requestErrorSource.value = "规则状态更新失败，请检查身份权限与后端服务状态。";
-  } finally {
-    pendingTasks.value--;
-  }
-};
-
-watch(
-  () => workspace.can("native_account"),
-  (enabled) => {
-    if (enabled) {
-      requestErrorSource.value = "";
-      loadCollection("chemicals");
-      loadCollection("reactions");
-    }
-  },
-  { immediate: true },
-);
 onMounted(() => workspace.refresh());
 </script>
 
