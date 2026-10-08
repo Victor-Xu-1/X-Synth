@@ -3,13 +3,15 @@ import { createI18n } from "vue-i18n";
 import { messages } from "./catalog";
 
 export const LOCALE_KEY = "x-synth.locale";
+export const DEFAULT_LOCALE = "en";
 export const LOCALES = Object.freeze([
-  { value: "zh-CN", label: "简体中文" }, { value: "en", label: "English" },
+  { value: "en", label: "English", widgetLocale: "en" },
+  { value: "zh-CN", label: "简体中文", widgetLocale: "zhHans" },
 ]);
 const supported = new Set(LOCALES.map((item) => item.value));
 
 export const i18n = createI18n({
-  legacy: false, globalInjection: false, locale: "zh-CN", fallbackLocale: "zh-CN",
+  legacy: false, globalInjection: false, locale: DEFAULT_LOCALE, fallbackLocale: DEFAULT_LOCALE,
   messages,
   messageResolver: (catalog, key) => Object.hasOwn(catalog, key) ? catalog[key] : null,
   missingWarn: false, fallbackWarn: false,
@@ -36,7 +38,7 @@ export function setLocale(value, { persist = true } = {}) {
 export function initializeLocale(target = typeof window === "undefined" ? null : window) {
   if (browser && storageListener) browser.removeEventListener("storage", storageListener);
   browser = target;
-  let saved = "zh-CN";
+  let saved = DEFAULT_LOCALE;
   try {
     const value = browser?.localStorage.getItem(LOCALE_KEY);
     if (supported.has(value)) saved = value;
@@ -45,7 +47,7 @@ export function initializeLocale(target = typeof window === "undefined" ? null :
   if (!browser) return;
   storageListener = (event) => {
     if (event.key !== LOCALE_KEY && event.key !== null) return;
-    if (event.key === null || event.newValue === null) setLocale("zh-CN", { persist: false });
+    if (event.key === null || event.newValue === null) setLocale(DEFAULT_LOCALE, { persist: false });
     else if (supported.has(event.newValue)) setLocale(event.newValue, { persist: false });
   };
   browser.addEventListener("storage", storageListener);
@@ -53,7 +55,7 @@ export function initializeLocale(target = typeof window === "undefined" ? null :
 
 export function useUiLanguage() {
   return { locale: readonly(i18n.global.locale), locales: LOCALES, setLocale,
-    widgetLocale: computed(() => i18n.global.locale.value === "en" ? "en" : "zhHans"),
+    widgetLocale: computed(() => LOCALES.find((item) => item.value === i18n.global.locale.value).widgetLocale),
     preferenceError: computed(() => uiText(preferenceError.value)) };
 }
 

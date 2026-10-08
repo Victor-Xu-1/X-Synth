@@ -1,14 +1,14 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { defineComponent, h, onMounted, onUnmounted, ref } from "vue";
 import { buildCatalog } from "./catalog";
-import { i18n, initializeLocale, LOCALE_KEY, setLocale, uiText, useUiLanguage } from "./index";
+import { DEFAULT_LOCALE, i18n, initializeLocale, LOCALE_KEY, setLocale, uiText, useUiLanguage } from "./index";
 
 afterEach(() => initializeLocale(null));
 
-test("Chinese is the explicit default and English changes the same reactive language authority", () => {
-  expect(i18n.global.locale.value).toBe("zh-CN");
-  expect(uiText("工艺核算")).toBe("工艺核算");
-  setLocale("en", { persist: false });
+test("English is the production default and Chinese uses the same reactive language authority", () => {
+  initializeLocale(null);
+  expect(DEFAULT_LOCALE).toBe("en");
+  expect(i18n.global.locale.value).toBe("en");
   expect(uiText("工艺核算")).toBe("Process accounting");
   expect(useUiLanguage().widgetLocale.value).toBe("en");
   setLocale("zh-CN", { persist: false });
@@ -36,7 +36,16 @@ test("only the dedicated nonsecret preference is read or saved, and unsupported 
   expect(i18n.global.locale.value).toBe("en");
   expect(() => setLocale("invalid")).toThrow(RangeError);
   listener({ key: LOCALE_KEY, newValue: null });
-  expect(i18n.global.locale.value).toBe("zh-CN");
+  expect(i18n.global.locale.value).toBe("en");
+});
+
+test.each([null, "unknown"])("a missing or unsupported saved preference %s starts in English", (saved) => {
+  const target = { document: { documentElement: {} },
+    localStorage: { getItem: () => saved }, addEventListener() {}, removeEventListener() {},
+  };
+  initializeLocale(target);
+  expect(i18n.global.locale.value).toBe("en");
+  expect(target.document.documentElement.lang).toBe("en");
 });
 
 test("preference storage failure keeps the selected language and does not prevent workspace rendering", () => {
