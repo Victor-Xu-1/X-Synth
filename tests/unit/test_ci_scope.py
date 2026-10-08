@@ -17,6 +17,16 @@ def snapshot(tmp_path, content):
     return SimpleNamespace(root=tmp_path, files=set(content), text=content.__getitem__)
 
 
+@pytest.mark.parametrize("path", [
+    "apps/api/web_assets.py", "apps/api/web_asset_cache.py", "apps/api/web_asset_http.py",
+])
+def test_public_assets_select_only_static_and_server_security_contracts(tmp_path, path):
+    tests = {"tests/unit/test_web_assets.py", "tests/unit/test_product_api_security.py"}
+    item = snapshot(tmp_path, {name: "pass" for name in tests})
+    profile.guard_paths({path})
+    assert profile.python_tests(item, item, {path}) == sorted(tests)
+
+
 def test_git_inspection_does_not_refresh_or_lock_the_worktree_index(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(scope, "command", lambda root, *args: calls.append((root, args)) or "result")
