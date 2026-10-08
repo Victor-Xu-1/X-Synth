@@ -293,6 +293,10 @@ native account entry awaits the core pair rather than unrelated knowledge/optimi
 Initialized workbench slots survive background checks and recoverable unavailability under a
 hidden/inert overlay and focus gate. Feature/path changes dispose the prior scope; account identity
 or authority changes immediately clear private account state and invalidate late continuations.
+Scoped dialog presentation follows the current activity without cancelling its owning draft. Suspended
+dialogs leave the global active overlay stack while retaining input; ordinary close releases the subtree.
+Standalone dialogs retain their original attachment. Native solubility/screening errors remain inside
+their originating panel rather than mounting an application-root confirmation dialog.
 One shared tab component binds keyboard selection, panel IDs and roving focus. Process input uses
 three retained sections with adjacent navigation; calculations still publish only owned immutable
 analysis records and open their distinct result page, never a second empty output surface.
