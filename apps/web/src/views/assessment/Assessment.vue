@@ -1,11 +1,16 @@
 <template>
   <ModuleWorkbench title="分子合成复杂度评估">
+    <template #actions><v-btn variant="text" prepend-icon="mdi-history" to="/analyses?kind=assessment">评估记录</v-btn></template>
+    <div v-if="saved.loading.value" class="workspace-loading" role="status">正在读取已存结构</div>
+    <div v-if="saved.error.value" class="tool-error" role="alert">{{ saved.error.value }}<v-btn variant="text" @click="saved.reload">重新读取</v-btn><v-btn variant="text" to="/assessment">新建评估</v-btn></div>
+    <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
+    <router-link v-if="error && recordPath(result?.record_id)" :to="recordPath(result.record_id)">打开已保存的结果</router-link>
     <WorkbenchForm parameter-label="分子评估参数" @submit="calculate">
       <StructureInput
         ref="structureInput"
         v-model="smiles"
         label="待评估化合物"
-        :disabled="loading"
+        :disabled="disabled"
         :canvas-height="480"
       />
       <template #parameters>
@@ -17,7 +22,7 @@
             variant="flat"
             prepend-icon="mdi-calculator-variant-outline"
             :loading="loading"
-            :disabled="loading || pending || !smiles.trim()"
+            :disabled="disabled || pending || !smiles.trim()"
             >计算分子指标</v-btn
           >
           <p class="workspace-muted">SA Score · SPS / nSPS · Bertz CT</p>
@@ -27,31 +32,20 @@
         </div>
       </template>
     </WorkbenchForm>
-    <section class="tool-result-panel assessment-output" aria-live="polite">
-      <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
-      <div v-if="loading" class="workspace-loading" role="status">
-        <v-progress-circular indeterminate size="24" />计算分子指标
-      </div>
-      <AssessmentResults v-else-if="result" :result="result" />
-      <div v-else class="workspace-empty">
-        <v-icon icon="mdi-molecule" size="30" />
-        <h2>暂无分子评估结果</h2>
-      </div>
-    </section>
   </ModuleWorkbench>
 </template>
 <script setup>
-import { computed, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { computed, ref } from "vue";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
-import AssessmentResults from "./AssessmentResults.vue";
+import { recordPath } from "@/common/analysis-records";
+import { useAnalysisDelivery } from "@/composables/useAnalysisDelivery";
+import { useAnalysisInput } from "@/composables/useAnalysisInput";
 import { CalculationInputError, useCalculation } from "./useCalculation";
 import { acceptsAssessment } from "./result-model";
 
-const route = useRoute(),
-  smiles = ref(""),
+const smiles = ref(""),
   structureInput = ref(null);
 const pending = computed(() => !!structureInput.value?.pending);
 const { result, loading, error, calculate, reset } = useCalculation({
@@ -59,6 +53,7 @@ const { result, loading, error, calculate, reset } = useCalculation({
   pending,
   endpoint: "/api/v1/assessment/molecule",
   accepts: acceptsAssessment,
+  onResult: useAnalysisDelivery("assessment"),
   fallback: "分子指标计算失败，请核对结构与计算服务。",
   body: () => {
     if (!smiles.value.trim())
@@ -66,17 +61,12 @@ const { result, loading, error, calculate, reset } = useCalculation({
     return { smiles: smiles.value.trim() };
   },
 });
-watch(
-  () => route.query.smiles,
-  (value) => {
-    reset();
-    smiles.value = typeof value === "string" ? value : "";
+const saved = useAnalysisInput({
+  kind: "assessment", clear: () => { reset(); smiles.value = ""; }, prefill: (value) => { smiles.value = value; },
+  apply: (input) => {
+    if (typeof input?.smiles !== "string" || !input.smiles.trim()) throw new CalculationInputError("已存记录缺少完整结构。");
+    smiles.value = input.smiles;
   },
-  { immediate: true },
-);
+});
+const disabled = computed(() => loading.value || saved.loading.value || !!saved.error.value);
 </script>
-<style scoped>
-.assessment-output {
-  margin-top: 28px;
-}
-</style>

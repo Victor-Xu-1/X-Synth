@@ -15,6 +15,7 @@ async function setup(url = "/analyses/record-a") {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/analyses/:id", component: { render: () => null } }] });
   await router.push(url);
   const wrapper = mount(AnalysisDetail, { global: { plugins: [router], stubs: {
+    VIcon: true,
     VBtn: { props: ["disabled", "loading"], template: '<button :disabled="disabled || loading"><slot /></button>' },
   } } });
   wrappers.push(wrapper); await flushPromises(); return { wrapper, router };

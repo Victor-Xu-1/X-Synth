@@ -280,6 +280,9 @@ FRONTEND_API_TESTS = {
     SOURCE + "composables/useTemplateSearch.test.js",
     SOURCE + "views/assessment/Assessment.test.js",
     SOURCE + "views/process/Process.test.js",
+    SOURCE + "views/process/ProcessResults.test.js",
+    SOURCE + "views/process/process-result-model.test.js",
+    SOURCE + "views/assessment/AssessmentResults.test.js",
 }
 SOURCE_EXTENSIONS = analysis.SOURCE_EXTENSIONS
 ASSET_EXTENSIONS = {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico"}
