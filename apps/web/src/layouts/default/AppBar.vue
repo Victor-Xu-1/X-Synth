@@ -91,6 +91,6 @@ const statusLabel = computed(() => {
   if (!props.online) return "网络离线";
   if (workspace.ready) return "搜索就绪";
   if (workspace.error) return "服务未就绪";
-  return workspace.loading ? "连接中" : "服务未就绪";
+  return workspace.checking("search") ? "连接中" : "服务未就绪";
 });
 </script>
