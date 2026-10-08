@@ -1,5 +1,6 @@
 <template>
   <v-container fluid style="min-height: calc(100vh-50px)">
+    <section v-if="requestError" class="mb-4" aria-label="溶解度预测错误"><ErrorDialog :error-obj="requestError" /></section>
     <v-row class="justify-center">
       <v-col cols="12" md="12" class="pa-0">
         <v-sheet elevation="2" class="pa-10" rounded="lg" width="100%">
@@ -214,7 +215,7 @@
       </v-col>
     </v-row>
 
-    <v-dialog v-model="showUploadModal" max-width="600px">
+    <WorkbenchDialog v-model="showUploadModal" max-width="600px">
       <v-card>
         <v-card-title class="mt-2">
           <v-col cols="12">上传文件</v-col>
@@ -244,9 +245,9 @@
             @click="handleUploadSubmit">上传</v-btn>
         </v-card-actions>
       </v-card>
-    </v-dialog>
+    </WorkbenchDialog>
 
-    <v-dialog v-model="dialog" max-width="600px" class="justify-center align-center">
+    <WorkbenchDialog v-model="dialog" max-width="600px" class="justify-center align-center">
       <v-card>
         <v-card-title class="headline">
           附加参数
@@ -291,7 +292,7 @@
           </v-btn>
         </v-card-actions>
       </v-card>
-    </v-dialog>
+    </WorkbenchDialog>
   </v-container>
   <solubility-modal :visible="showInfo" width="auto" @close-dialog="$event => showInfo = $event"></solubility-modal>
 </template>
@@ -299,12 +300,13 @@
 <script>
 import { onBeforeUnmount, ref } from "vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";
+import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
+import { useWorkbenchActivity } from "@/components/workspace/workbench-activity";
 import SolubilityModal from '@/components/solprop/SolubilityModal'
 import ErrorDialog from '@/components/ErrorDialog'
 import { API } from "@/common/api";
 import { saveAs } from "file-saver";
 import * as Papa from "papaparse";
-import { useConfirm } from 'vuetify-use-dialog'
 
 let _contextOverviewCache = null
 
@@ -312,14 +314,15 @@ export default {
   name: "SolubilityPrediction",
   components: {
     SolubilityModal,
-    StructureInput
+    StructureInput,
+    WorkbenchDialog,
+    ErrorDialog
   },
   setup() {
-    const createConfirm = useConfirm();
     const pollingLifetime = new AbortController();
     onBeforeUnmount(() => pollingLifetime.abort());
     return {
-      createConfirm,
+      workbenchActive: useWorkbenchActivity(),
       pollingSignal: pollingLifetime.signal,
       soluteInput: ref(null),
       solventInput: ref(null),
@@ -331,6 +334,7 @@ export default {
       itemsPerPage: 10,
       panel: [0],
       pendingTasks: 0,
+      requestError: null,
       solvent: '',
       solute: '',
       temperature: 298,
@@ -600,7 +604,8 @@ export default {
       return body
     },
     predict() {
-      if (this.loading || this.structurePending || this.pollingSignal.aborted || !this.selectedModel || !this.solute.trim() || !this.solvent.trim()) return
+      if (!this.workbenchActive || this.loading || this.structurePending || this.pollingSignal.aborted || !this.selectedModel || !this.solute.trim() || !this.solvent.trim()) return
+      this.requestError = null
       this.pendingTasks += 1
       this.loading = true
       this.batch = false
@@ -628,12 +633,9 @@ export default {
           }
           this.results[0].new = this.results.length
         })
-        .catch(async error => {
+        .catch(error => {
           if (this.pollingSignal.aborted) return
-          const errorObj = API.toErrorObject(error, '溶解度预测失败，请检查输入、模型服务和后端任务状态。')
-          const isConfirmed = await this.createConfirm({ title: "请求失败", contentComponent: ErrorDialog, contentComponentProps: { errorObj: errorObj }, dialogProps: { width: "auto" } })
-          if (!isConfirmed)
-            return
+          this.requestError = API.toErrorObject(error, '溶解度预测失败，请检查输入、模型服务和后端任务状态。')
         })
         .finally(() => {
           if (this.pollingSignal.aborted) return
@@ -642,7 +644,8 @@ export default {
         })
     },
     predictBatch(data) {
-      if (this.pollingSignal.aborted) return
+      if (!this.workbenchActive || this.pollingSignal.aborted) return
+      this.requestError = null
       this.pendingTasks += 1
       this.loading = true
       this.batch = true
@@ -695,12 +698,9 @@ export default {
             this.results.unshift(...output.map(item => ({ ...item, model: 'SolProp', new: this.results.length + output.length })));
           }
         })
-        .catch(async error => {
+        .catch(error => {
           if (this.pollingSignal.aborted) return
-          const errorObj = API.toErrorObject(error, '批量溶解度预测失败，请检查输入文件、模型服务和后端任务状态。')
-          const isConfirmed = await this.createConfirm({ title: "请求失败", contentComponent: ErrorDialog, contentComponentProps: { errorObj: errorObj }, dialogProps: { width: "auto" } })
-          if (!isConfirmed)
-            return
+          this.requestError = API.toErrorObject(error, '批量溶解度预测失败，请检查输入文件、模型服务和后端任务状态。')
         })
         .finally(() => {
           if (this.pollingSignal.aborted) return

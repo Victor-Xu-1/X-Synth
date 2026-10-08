@@ -16,18 +16,19 @@
         <td><v-tooltip text="移除物料"><template #activator="{ props }"><v-btn v-bind="props" type="button" icon="mdi-delete-outline" variant="text" size="small" :aria-label="`移除${title} ${index + 1}`" :disabled="disabled || rows.length <= minimum" @click="remove(row.id)" /></template></v-tooltip></td>
       </tr></tbody>
     </table>
-    <v-dialog :model-value="!!editing" :aria-label="editing?.label || '物料绘图'" @update:model-value="(value) => { if (!value) close(); }" @after-leave="returnFocus" max-width="820" scrollable>
+    <WorkbenchDialog :model-value="!!editing" :aria-label="editing?.label || '物料绘图'" @update:model-value="(value) => { if (!value) close(); }" @after-leave="returnFocus" max-width="820" scrollable>
       <section v-if="editing" class="material-editor" :aria-label="editing.label">
         <header><h2>{{ editing.label }}</h2><v-btn type="button" icon="mdi-close" variant="text" aria-label="关闭物料绘图" @click="close" /></header>
         <div class="material-editor-body" :inert="saving || undefined"><StructureInput ref="structureInput" v-model="draft" :label="editing.label" :disabled="disabled" :canvas-height="380" />
           <p v-if="error" class="tool-error" role="alert">{{ error }}</p></div>
         <footer><v-btn type="button" variant="text" prepend-icon="mdi-eraser" :disabled="!editing.original || saving" @click="clearStructure">清除结构</v-btn><span class="editor-footer-space" /><v-btn type="button" variant="text" @click="close">取消</v-btn><v-btn type="button" variant="flat" color="primary" prepend-icon="mdi-check" :loading="saving" :disabled="saving || structureInput?.pending" @click="apply">应用结构</v-btn></footer>
       </section>
-    </v-dialog>
+    </WorkbenchDialog>
   </section>
 </template>
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from "vue";
+import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import { errorMessage } from "@/common/workspace-errors";

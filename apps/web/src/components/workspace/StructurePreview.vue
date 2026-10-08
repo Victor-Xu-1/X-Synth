@@ -10,7 +10,7 @@
       </v-tooltip>
     </div>
     <SmilesImage :smiles="smiles" :input-type="inputType" :width="width" :height="height" :show-error-image="false" />
-    <v-dialog v-model="open" max-width="1100" :aria-labelledby="titleId">
+    <WorkbenchDialog v-model="open" max-width="1100" :aria-labelledby="titleId">
       <section class="structure-viewer">
         <header>
           <h2 :id="titleId">{{ label }}</h2>
@@ -35,11 +35,12 @@
           </div>
         </div>
       </section>
-    </v-dialog>
+    </WorkbenchDialog>
   </div>
 </template>
 <script setup>
 import { computed, nextTick, reactive, ref, useId, watch } from "vue";
+import WorkbenchDialog from "./WorkbenchDialog.vue";
 import { useResizeObserver } from "@vueuse/core";
 import SmilesImage from "@/components/SmilesImage.vue";
 const props = defineProps({

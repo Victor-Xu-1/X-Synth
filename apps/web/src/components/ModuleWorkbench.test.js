@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { defineComponent, h, onMounted, onUnmounted, reactive, ref } from "vue";
 import { randomUUID } from "node:crypto";
 import ModuleWorkbench from "./ModuleWorkbench.vue";
+import WorkbenchDialog from "./workspace/WorkbenchDialog.vue";
 
 global.CSS = { supports: () => false };
 const { createVuetify, components } = require("vuetify/dist/vuetify.js");
@@ -186,7 +187,7 @@ test("named native tabs link to the active shared panel and support roving disab
 test("real Vuetify dialogs remain inside the gated content and keep the mounted chemical input", async () => {
   mockRoute.meta.feature = "native_account";
   mockWorkspace.features.native_account = true;
-  const wrapper = await setup({}, { default: () => h(components.VDialog,
+  const wrapper = await setup({}, { default: () => h(WorkbenchDialog,
     { modelValue: true, transition: false, scrim: false }, { default: () => h(Draft) }) });
   const input = document.querySelector('input[aria-label="chemical draft"]');
   expect(input.closest(".workbench-content")).toBe(wrapper.get(".workbench-content").element);
@@ -208,7 +209,7 @@ test("real Vuetify dialogs remain inside the gated content and keep the mounted 
 test("inactive named panels retain dialog inputs but release focus and scroll capture", async () => {
   const modules = [{ value: "a", title: "Alpha" }, { value: "b", title: "Beta" }];
   const wrapper = await setup({ modules, activeModule: "a" }, { module: ({ value }) => value === "a"
-    ? h(components.VDialog, { modelValue: true, transition: false, scrim: false }, { default: () => h(Draft) })
+    ? h(WorkbenchDialog, { modelValue: true, transition: false, scrim: false }, { default: () => h(Draft) })
     : h("button", "other panel") });
   const input = wrapper.get("input").element;
   const dialog = wrapper.getComponent(components.VDialog).getComponent(components.VOverlay);
@@ -217,9 +218,7 @@ test("inactive named panels retain dialog inputs but release focus and scroll ca
   await flushPromises();
   expect(input.isConnected).toBe(true);
   expect(wrapper.findAll('[role="tabpanel"]')[0].isVisible()).toBe(false);
-  expect(dialog.props("retainFocus")).toBe(false);
-  expect(dialog.props("captureFocus")).toBe(false);
-  expect(dialog.props("scrollStrategy")).toBe("none");
+  expect(dialog.props("modelValue")).toBe(false);
   const selectedTab = wrapper.findAll('[role="tab"]')[1].element;
   selectedTab.focus();
   await flushPromises();
@@ -271,7 +270,7 @@ test("unavailable gating never steals outside focus and late focus is cancelled 
 
 test("a hidden real dialog ignores Escape, releases back guarding and restores its retained file/radio focus", async () => {
   const cancelled = jest.fn();
-  const wrapper = await setup({}, { default: () => h(components.VDialog,
+  const wrapper = await setup({}, { default: () => h(WorkbenchDialog,
     { modelValue: true, transition: false, scrim: false, "onUpdate:modelValue": cancelled },
     { default: () => h("div", [h("input", { type: "file" }), h("input", { type: "radio", checked: true })]) }) });
   const file = wrapper.get('input[type="file"]').element;
@@ -282,7 +281,7 @@ test("a hidden real dialog ignores Escape, releases back guarding and restores i
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   await flushPromises();
   expect(cancelled).not.toHaveBeenCalled();
-  expect(wrapper.getComponent(components.VDialog).getComponent(components.VOverlay).props("closeOnBack")).toBe(false);
+  expect(wrapper.getComponent(components.VDialog).getComponent(components.VOverlay).props("modelValue")).toBe(false);
   mockWorkspace.features.stock = true;
   await flushPromises();
   expect(wrapper.get('input[type="file"]').element).toBe(file);
@@ -300,4 +299,24 @@ test.each([false, true])("cold unavailable tabs link only to empty guarded panel
   tabs.forEach((tab) => expect(document.getElementById(tab.attributes("aria-controls"))).not.toBeNull());
   expect(wrapper.find("input").exists()).toBe(false);
   expect(mounts).toBe(0);
+});
+
+test("returning to an older open dialog restores Escape ownership without cancelling the newer inactive draft", async () => {
+  const open = reactive({ a: true, b: true });
+  const wrapper = await setup({ modules: [{ value: "a", title: "Alpha" }, { value: "b", title: "Beta" }], activeModule: "a" },
+    { module: ({ value }) => h(WorkbenchDialog, { modelValue: open[value], transition: false, scrim: false,
+      "onUpdate:modelValue": (next) => { open[value] = next; } },
+    { default: () => h("input", { "aria-label": `draft ${value}` }) }) });
+  const first = wrapper.get('input[aria-label="draft a"]').element;
+  await wrapper.setProps({ activeModule: "b" });
+  await flushPromises();
+  const second = wrapper.get('input[aria-label="draft b"]').element;
+  await wrapper.setProps({ activeModule: "a" });
+  await flushPromises();
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await flushPromises();
+  expect(open.a).toBe(false);
+  expect(open.b).toBe(true);
+  expect(first.isConnected).toBe(true);
+  expect(second.isConnected).toBe(true);
 });

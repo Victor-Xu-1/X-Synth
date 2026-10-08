@@ -1,5 +1,5 @@
 <template>
-    <v-dialog v-model="showBanItemDialog" max-width="600px">
+    <WorkbenchDialog v-model="showBanItemDialog" max-width="600px">
         <v-card>
             <v-card-title class="mt-2">
                 <v-col cols="12">新增禁用列表记录</v-col></v-card-title>
@@ -29,11 +29,12 @@
                 <v-btn data-cy="banlist-new-cancel" text :disabled="pendingTasks > 0" @click="showBanItemDialog = false">取消</v-btn>
             </v-card-actions>
         </v-card>
-    </v-dialog>
+    </WorkbenchDialog>
 </template>
 
 <script setup>
 import { computed, ref, nextTick } from 'vue';
+import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import { API } from "@/common/api";
 import { useSnackbar } from 'vuetify-use-dialog';

@@ -4,7 +4,9 @@
       <h1>{{ title }}</h1>
       <div v-if="initialized" :key="scope" ref="actions" v-show="available" class="page-actions"
         :hidden="!available" :inert="!available || undefined" :aria-hidden="!available || undefined">
-        <v-defaults-provider :defaults="overlayDefaults"><slot name="actions" /></v-defaults-provider>
+        <WorkbenchScope :active="available">
+          <v-defaults-provider :defaults="overlayDefaults"><slot name="actions" /></v-defaults-provider>
+        </WorkbenchScope>
       </div>
     </header>
     <WorkbenchTabs :items="modules" :model-value="activeModule" :label="`${title}模块`"
@@ -27,7 +29,8 @@
           :role="!$slots.module && modules.length ? 'tabpanel' : undefined"
           :aria-labelledby="!$slots.module && modules.length ? tabId(activeModule) : undefined"
           :tabindex="!$slots.module && modules.length ? 0 : undefined">
-          <v-defaults-provider :defaults="overlayDefaults">
+          <WorkbenchScope :active="available">
+            <v-defaults-provider :defaults="overlayDefaults">
             <template v-if="$slots.module">
               <section v-for="module in modules" :id="panelId(module.value)" :key="module.value"
                 v-show="module.value === activeModule && !module.disabled" role="tabpanel"
@@ -35,13 +38,16 @@
                 :hidden="module.value !== activeModule || module.disabled"
                 :inert="module.value !== activeModule || module.disabled || undefined"
                 :aria-hidden="module.value !== activeModule || module.disabled || undefined">
-                <v-defaults-provider :defaults="defaultsFor(available && module.value === activeModule && !module.disabled)">
-                  <slot v-if="initialized && visited.includes(module.value)" name="module" :value="module.value" />
-                </v-defaults-provider>
+                <WorkbenchScope :active="module.value === activeModule && !module.disabled">
+                  <v-defaults-provider :defaults="defaultsFor(available && module.value === activeModule && !module.disabled)">
+                    <slot v-if="initialized && visited.includes(module.value)" name="module" :value="module.value" />
+                  </v-defaults-provider>
+                </WorkbenchScope>
               </section>
             </template>
             <slot v-else-if="initialized" />
-          </v-defaults-provider>
+            </v-defaults-provider>
+          </WorkbenchScope>
         </div>
       </template>
     </WorkbenchTabs>
@@ -54,6 +60,7 @@ import { useRoute } from "vue-router";
 import { useWorkspaceStore } from "@/store/workspace";
 import { pageFeature } from "@/common/workspace-navigation";
 import WorkbenchTabs from "./WorkbenchTabs.vue";
+import WorkbenchScope from "./workspace/WorkbenchScope.vue";
 
 const props = defineProps({
   title: { type: String, required: true },
@@ -83,12 +90,8 @@ watch([scope, available, () => props.activeModule, () => props.modules], ([curre
       !visited.value.includes(props.activeModule)) visited.value.push(props.activeModule);
 }, { immediate: true, flush: "sync", deep: true });
 
-// Keep dialogs under the same hidden/inert gate without discarding their input subtree.
 function defaultsFor(enabled) {
   return {
-    VDialog: { attach: true, retainFocus: enabled, captureFocus: enabled,
-      scrim: enabled, scrollStrategy: enabled ? "block" : "none",
-      persistent: !enabled, closeOnBack: enabled, noClickAnimation: !enabled },
     VMenu: { attach: true, disabled: !enabled },
     VTooltip: { attach: true, disabled: !enabled },
   };

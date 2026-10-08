@@ -1,5 +1,5 @@
 <template>
-    <v-dialog v-model="propShow" scrollable>
+    <WorkbenchDialog v-model="propShow" scrollable>
         <v-card>
             <v-card-title>
                 溶解度模型输入 / 输出说明
@@ -179,13 +179,15 @@
                 <v-btn color="primary" variant="tonal" @click="close()">确定</v-btn>
             </v-card-actions>
         </v-card>
-    </v-dialog>
+    </WorkbenchDialog>
 </template>
 
 <script>
 import { computed } from 'vue'
+import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
 export default {
     name: "SolubilityModal",
+    components: { WorkbenchDialog },
     props: {
         visible: {
             type: Boolean,

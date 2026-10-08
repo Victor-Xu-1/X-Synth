@@ -135,7 +135,7 @@
       hidden
       @change="importFile"
     />
-    <v-dialog
+    <WorkbenchDialog
       :model-value="!!fileDraft"
       max-width="760"
       @update:model-value="discardFile"
@@ -168,11 +168,12 @@
           >
         </v-card-actions>
       </v-card>
-    </v-dialog>
+    </WorkbenchDialog>
   </section>
 </template>
 <script setup>
 import { computed, ref } from "vue";
+import WorkbenchDialog from "./WorkbenchDialog.vue";
 import { EMPTY_REACTION_CANVAS } from "@/common/ketcher-reaction";
 import { MAX_REACTION_TEXT } from "@/common/reaction-input";
 import { useReactionDraft } from "@/composables/useReactionDraft";

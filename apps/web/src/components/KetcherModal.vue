@@ -1,5 +1,5 @@
 <template>
-  <v-dialog
+  <WorkbenchDialog
     v-model="propShow"
     :id="id"
     max-width="900"
@@ -43,11 +43,12 @@
         >
       </v-card-actions>
     </v-card>
-  </v-dialog>
+  </WorkbenchDialog>
 </template>
 
 <script>
 import { ref, watch, computed, nextTick, onBeforeUnmount } from "vue";
+import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
 import {
   KETCHER_URL,
   createKetcherWriter,
@@ -60,6 +61,7 @@ import {
 
 export default {
   name: "KetcherModal",
+  components: { WorkbenchDialog },
   props: {
     value: {
       type: Boolean,
