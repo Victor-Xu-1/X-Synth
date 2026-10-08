@@ -42,6 +42,15 @@ test("reader tabs have stable touch heights and do not consume a side canvas col
   expect(declarations(css, ".reader-route-tabs")["overflow-x"]).toBe("auto");
 });
 
+test("whole-route thumbnails reclaim the checkbox column and do not force a tall empty mobile canvas", () => {
+  const reader = stylesheet("route-reader.css"), steps = stylesheet("route-step-list.css");
+  expect(declarations(reader, ".reader-overview-entry")["grid-template-columns"]).toBeUndefined();
+  expect(declarations(reader, ".route-choice-check").position).toBe("absolute");
+  expect(declarations(reader, ".reader-overview-entry :deep(.route-overview header)")["padding-left"]).toBe("36px");
+  expect(declarations(steps, ".overview-route-graph").height).toBeUndefined();
+  expect(declarations(steps, ".overview-route-graph")["min-height"]).toBe("160px");
+});
+
 test("reader surfaces use shared theme tokens and fixed, nonnegative type spacing", () => {
   for (const filename of ["route-reader.css", "route-step-list.css"])
     stylesheet(filename).walkDecls((decl) => {

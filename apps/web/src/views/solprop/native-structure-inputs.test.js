@@ -84,22 +84,26 @@ test("solvent entries retain the bulk newline contract and use one selected edit
   expect(source).toContain(':key="selectedSolventIndex"');
   expect(source).toContain('v-model="solvents"');
   expect(source).not.toMatch(/\.split\(["'][>.]/);
-  expect(source).toContain("this.solventList.map((solvent)");
+  expect(source).toContain("createScreenSubmission(this, this.solventList, this.temperatureList)");
 });
 
 test("native model flows and outer capability gates remain unchanged", () => {
   const qm = read(leaves[1][0]);
   const prediction = read(leaves[2][0]);
   const screening = read(leaves[3][0]);
+  const submissions = read("submission.js");
   expect(qm).toContain('workspace.can("qm")');
   expect(qm).toContain('"/api/qm-descriptors/call-async"');
-  expect(prediction).toContain("'/api/solubility/fusion-cycle/call-async'");
-  expect(prediction).toContain("'/api/fastsolv/call-async'");
-  expect(prediction).toContain("'/api/solubility/batch/call-async'");
-  expect(screening).toContain("'/api/solubility/batch/call-async'");
+  expect(submissions).toContain("'/api/solubility/fusion-cycle/call-async'");
+  expect(submissions).toContain("'/api/fastsolv/call-async'");
+  expect(submissions).toContain("'/api/solubility/batch/call-async'");
+  expect(prediction).toContain("createSolubilitySubmission");
+  expect(screening).toContain("createScreenSubmission");
   expect(read("SolProp.vue")).toContain('disabled: !workspace.can("solubility")');
   expect(read("SolProp.vue")).toContain('<template #module="{ value }">');
-  expect(read("../banlist/Banlist.vue")).toContain('disabled: !workspace.can("native_account")');
+  expect(read("../banlist/Banlist.vue")).toContain('disabled: !allowed.value');
+  expect(read("../banlist/useBanlist.js")).toContain("provideRuleOwnerScope(workspace)");
+  expect(read("../../components/banlist/rule-owner-scope.js")).toContain("nativeAccountAuthority(workspace)");
 });
 
 test("QM URL prefill only populates and requires explicit submission", () => {

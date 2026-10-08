@@ -14,14 +14,12 @@ Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID });
 globalThis.structuredClone = (value) => deserialize(serialize(value));
 
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
-jest.mock("@vue-flow/core", () => ({
-  useVueFlow: () => ({ fitView: jest.fn() }),
-}));
+const mockFocus = jest.fn();
 jest.mock("./RouteGraph.vue", () => ({
   name: "RouteGraph",
   props: ["graph", "scores", "overview", "editable"],
   emits: ["select"],
-  methods: { fit() {} },
+  methods: { fit() {}, focus: (...args) => mockFocus(...args) },
   template: '<div class="graph-contract" />',
 }));
 jest.mock("./RouteInspector.vue", () => ({
@@ -115,6 +113,16 @@ afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
   scrollFrames.splice(0).forEach((frame) => frame.remove());
   layout.mockRestore();
+});
+
+test("step location uses the mounted graph's single viewport authority without modifying route geometry", async () => {
+  const route = candidate("location-contract");
+  const wrapper = await setup([route], { view: "steps", selectedRoute: route.route_id });
+  const before = JSON.stringify(route);
+  await wrapper.get('button[aria-label="定位步骤 1"]').trigger("click");
+  await flushPromises();
+  expect(mockFocus).toHaveBeenCalledWith(["r-1"], { padding: 0.45, maxZoom: 1, duration: 150 });
+  expect(JSON.stringify(route)).toBe(before);
 });
 
 test("the actual one-step adapter selects and displays an unclosed preview with all native chemistry", async () => {

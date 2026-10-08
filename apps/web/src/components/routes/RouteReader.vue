@@ -269,7 +269,6 @@
 </template>
 <script setup>
 import { computed, nextTick, ref, watch, onBeforeUnmount } from "vue";
-import { useVueFlow } from "@vue-flow/core";
 import {
   prepareCandidateGraph,
   READING_NODE_SIZE,
@@ -387,8 +386,7 @@ const allSelected = computed(
       picked.value.includes(choice.route.route_id),
     ),
 );
-const graphId = `reader-${crypto.randomUUID()}`,
-  { fitView } = useVueFlow({ id: graphId });
+const graphId = `reader-${crypto.randomUUID()}`;
 let generation = 0,
   layerNavigation = 0,
   overviewOrigin = null,
@@ -529,7 +527,7 @@ async function locateNode(id) {
   view.value = "graph";
   await nextTick();
   if (!disposed && routeId === selectedId.value && selectedNode.value === id)
-    await fitView({ nodes: [id], padding: 0.45, maxZoom: 1, duration: 150 });
+    await graphView.value?.focus([id], { padding: 0.45, maxZoom: 1, duration: 150 });
 }
 function exportJson() {
   if (candidate.value)

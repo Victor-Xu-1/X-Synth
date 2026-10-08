@@ -56,6 +56,7 @@ import { VueFlow, useVueFlow, MarkerType } from "@vue-flow/core";
 import "@vue-flow/core/dist/style.css";
 import MoleculeNode from "./MoleculeNode.vue";
 import ReactionNode from "./ReactionNode.vue";
+import { previewAspectRatio, useRouteViewport } from "./route-viewport";
 import {
   canConnect,
   layoutGraph,
@@ -75,6 +76,9 @@ const props = defineProps({
 const emit = defineEmits(["update:graph", "select", "select-edge", "error"]);
 const surface = ref(null);
 const { fitView, zoomIn, zoomOut } = useVueFlow({ id: props.id });
+const { fit, focus } = useRouteViewport(surface, fitView, () => ({
+  padding: 0.12, maxZoom: props.overview ? 1 : 1.25, duration: 0,
+}));
 const incomingNodeIds = computed(() =>
   new Set(props.graph.edges.map((edge) => edge.target)),
 );
@@ -105,6 +109,7 @@ const nodeDimensions = computed(() => {
     "--route-image-width": `${props.reading ? 200 : 168}px`,
     "--route-image-height": `${props.reading ? 144 : 95}px`,
     "--route-heading-height": `${props.reading ? 24 : 20}px`,
+    "--route-preview-aspect": props.overview ? previewAspectRatio(props.graph, size) : 1.5,
   };
 });
 const flowEdges = computed(() =>
@@ -138,10 +143,6 @@ function onConnect({ source, target }) {
     ],
   });
 }
-async function fit() {
-  await nextTick();
-  fitView({ padding: 0.12, maxZoom: props.overview ? 1 : 1.25, duration: 0 });
-}
 function arrange() {
   if (props.editable)
     emit(
@@ -158,9 +159,16 @@ const tools = [
   { label: "缩小", icon: "mdi-minus", action: () => zoomOut() },
   { label: "适应画布", icon: "mdi-fit-to-screen-outline", action: fit },
 ];
-watch(() => props.graph.target_id, fit);
+const geometryKey = computed(() => JSON.stringify(props.graph.nodes.map(node => [
+  node.id, node.type, ...(props.editable ? [] : [node.position?.x, node.position?.y]),
+])));
+watch([
+  () => props.graph.target_id,
+  () => props.reading,
+  geometryKey,
+], fit);
 onMounted(fit);
-defineExpose({ fit, arrange, element: surface });
+defineExpose({ fit, focus, arrange, element: surface });
 </script>
 <style>
 .route-graph-surface {
@@ -298,6 +306,10 @@ defineExpose({ fit, arrange, element: surface });
 }
 .route-graph-surface.overview {
   background: var(--ws-bg);
+  height: auto;
+  aspect-ratio: var(--route-preview-aspect, 1.5);
+  min-height: 160px;
+  max-height: 360px;
 }
 .route-graph-counter {
   position: absolute;

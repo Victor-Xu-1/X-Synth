@@ -186,7 +186,7 @@ summary:focus-visible {
   gap: 12px;
 }
 .overview-route-graph {
-  height: 360px;
+  min-height: 160px;
   min-width: 0;
   border-top: 1px solid var(--ws-border);
   border-bottom: 1px solid var(--ws-border);

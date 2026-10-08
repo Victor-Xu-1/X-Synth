@@ -17,7 +17,7 @@
               <v-col cols="12" md="4">
                 <v-text-field :rules="[v => !!v || $tr('必须输入温度')]" variant="outlined" :label="$tr('温度')"
                   v-model="temperature" data-cy="solpred-temp" clearable prepend-inner-icon="mdi-thermometer-lines"
-                  rounded="pill">
+                  rounded="pill" :disabled="loading">
                 </v-text-field>
               </v-col>
 
@@ -27,7 +27,7 @@
                 <v-btn data-cy="solpred-submit" type="submit" variant="flat" color="primary" class="mr-5"
                   :loading="!batch && loading" :disabled="loading || structurePending || !selectedModel">{{ $tr('提交') }}</v-btn>
                 <v-btn type="button" data-cy="solpred-run-batch" variant="flat" color="yellow-darken-4" class="mr-5"
-                  @click="showUploadModal = true" :loading="batch && loading" :disabled="!selectedModel">{{ $tr('批量运行') }}</v-btn>
+                  @click="showUploadModal = true" :loading="batch && loading" :disabled="loading || structurePending || !selectedModel">{{ $tr('批量运行') }}</v-btn>
                 <v-menu location="bottom" id="tb-submit-settings" :close-on-content-click="false">
                   <template v-slot:activator="{ props }">
                     <v-tooltip location="bottom"
@@ -35,24 +35,24 @@
                       :model-value="!selectedModel || undefined">
                       <template v-slot:activator="{ props: tprops }">
                         <v-btn color="primary" append-icon="mdi mdi-menu-down" variant="flat" data-cy="model-selection"
-                          v-bind="Object.assign({}, props, tprops)" class="mr-5"> {{ $tr('模型') }} </v-btn>
+                          v-bind="Object.assign({}, props, tprops)" class="mr-5" :disabled="loading"> {{ $tr('模型') }} </v-btn>
                       </template>
                     </v-tooltip>
                   </template>
                   <v-list min-width="200px">
-                    <v-list-item @click="selectedModel = 'solprop'">
+                    <v-list-item @click="selectedModel = 'solprop'" :disabled="loading">
                       <v-list-item-title>
                         <v-icon v-if="selectedModel === 'solprop'" icon="mdi-check"></v-icon>
                         Fusion Cycle
                       </v-list-item-title>
                     </v-list-item>
-                    <v-list-item @click="selectedModel = 'fastsolv'">
+                    <v-list-item @click="selectedModel = 'fastsolv'" :disabled="loading">
                       <v-list-item-title>
                         <v-icon v-if="selectedModel === 'fastsolv'" icon="mdi-check"></v-icon>
                         FastSolv
                       </v-list-item-title>
                     </v-list-item>
-                    <v-list-item @click="selectedModel = 'legacy'">
+                    <v-list-item @click="selectedModel = 'legacy'" :disabled="loading">
                       <v-list-item-title>
                         <v-icon v-if="selectedModel === 'legacy'" icon="mdi-check"></v-icon>
                         SolProp
@@ -62,7 +62,7 @@
                 </v-menu>
                 <v-btn @click="dialog = true" variant="flat" class="mr-5" prepend-icon="mdi-dots-horizontal"
                   color="info"> {{ $tr('更多参数') }} </v-btn>
-                <v-btn data-cy="solpred-clear-results" variant="tonal" class="mr-5" :disabled="results.length === 0"
+                <v-btn data-cy="solpred-clear-results" variant="tonal" class="mr-5" :disabled="results.length === 0 && !loading"
                   @click="clear()"> {{ $tr('清空结果') }} </v-btn>
                 <v-btn class="mr-5 align-self-end" variant="tonal" @click="showInfo = !showInfo" color="info">{{ $tr('模型输入/输出说明') }}</v-btn>
               </v-col>
@@ -223,7 +223,7 @@
             <v-col cols="12">
               <v-file-input data-cy="solpred-file-upload" :label="$tr('文件')" v-model="uploadFile"
                 :rules="[v => !!v || $tr('必须上传文件')]" density="comfortable" variant="outlined"
-                clearable></v-file-input>
+                clearable :disabled="loading"></v-file-input>
             </v-col>
           </v-row>
         </v-card-text>
@@ -231,7 +231,7 @@
           <v-spacer></v-spacer>
           <v-btn data-cy="solpred-file-upload-close" color="blue darken-1" text
             @click="showUploadModal = false">{{ $tr('关闭') }}</v-btn>
-          <v-btn data-cy="solpred-file-upload-upload" color="primary" text
+          <v-btn data-cy="solpred-file-upload-upload" color="primary" text :disabled="loading || structurePending || !uploadFile || !selectedModel"
             @click="handleUploadSubmit">{{ $tr('上传') }}</v-btn>
         </v-card-actions>
       </v-card>
@@ -247,7 +247,7 @@
               <v-expansion-panel :title="$tr('密度（可选，仅适用于 Fusion Cycle 模型）')" class="text-primary">
                 <v-expansion-panel-text class="text-black">
                   <v-text-field variant="outlined" :label="$tr('密度')" v-model="density"
-                    :disabled="selectedModel !== 'solprop'"></v-text-field>
+                    :disabled="loading || selectedModel !== 'solprop'"></v-text-field>
                 </v-expansion-panel-text>
               </v-expansion-panel>
               <v-expansion-panel :title="$tr('参考信息（可选）')" class="text-primary">
@@ -255,15 +255,15 @@
                   <StructureInput ref="referenceInput" v-model="refSolvent" :label="$tr('参考溶剂')"
                     :disabled="loading" />
                   <v-text-field variant="outlined" :label="$tr('参考溶解度 (log10(mol/L))')"
-                    v-model="refSolubility"></v-text-field>
-                  <v-text-field variant="outlined" :label="$tr('参考温度 (K)')" v-model="refTemperature"></v-text-field>
+                    v-model="refSolubility" :disabled="loading"></v-text-field>
+                  <v-text-field variant="outlined" :label="$tr('参考温度 (K)')" v-model="refTemperature" :disabled="loading"></v-text-field>
                 </v-expansion-panel-text>
               </v-expansion-panel>
               <v-expansion-panel :title="$tr('溶质信息（可选）')" class="text-primary">
                 <v-expansion-panel-text class="text-black">
-                  <v-text-field variant="outlined" label="ΔHsub298 (kcal/mol)" v-model="soluteHsub"></v-text-field>
-                  <v-text-field variant="outlined" label="Cpg298 (cal/mol/K)" v-model="soluteCpg"></v-text-field>
-                  <v-text-field variant="outlined" label="Cps298 (cal/mol/K)" v-model="soluteCps"></v-text-field>
+                  <v-text-field variant="outlined" label="ΔHsub298 (kcal/mol)" v-model="soluteHsub" :disabled="loading"></v-text-field>
+                  <v-text-field variant="outlined" label="Cpg298 (cal/mol/K)" v-model="soluteCpg" :disabled="loading"></v-text-field>
+                  <v-text-field variant="outlined" label="Cps298 (cal/mol/K)" v-model="soluteCps" :disabled="loading"></v-text-field>
                 </v-expansion-panel-text>
               </v-expansion-panel>
             </v-expansion-panels>
@@ -293,6 +293,9 @@ import { saveAs } from "file-saver";
 import * as Papa from "papaparse";
 import { uiText } from "@/i18n";
 import { solubilityContextText, solubilityFieldCaption } from "../ui-copy";
+import { createSubmissionAttempts } from "../submission-attempt";
+import { createSolubilitySubmission, runSolubilitySubmission, solubilityInput } from "../submission";
+import { parseSubmissionFile, readSubmissionFile } from "../submission-file";
 
 let _contextOverviewCache = null
 
@@ -306,10 +309,12 @@ export default {
   },
   setup() {
     const pollingLifetime = new AbortController();
+    const submissionAttempts = createSubmissionAttempts(pollingLifetime.signal);
     onBeforeUnmount(() => pollingLifetime.abort());
     return {
       workbenchActive: useWorkbenchActivity(),
       pollingSignal: pollingLifetime.signal,
+      submissionAttempts,
       soluteInput: ref(null),
       solventInput: ref(null),
       referenceInput: ref(null),
@@ -334,6 +339,7 @@ export default {
       dialog: false,
       showUploadModal: false,
       results: [],
+      resultSubmission: null,
       tab: "one",
       uploadFile: null,
       selectedColumnCategories: [
@@ -443,9 +449,10 @@ export default {
     },
     exportFileName() {
       let baseName = 'askcos'
-      if (this.uploadFile) {
-        const inputName = this.uploadFile.name
-        baseName = inputName.substring(0, inputName.lastIndexOf('.'))
+      if (this.resultSubmission?.sourceName) {
+        const inputName = this.resultSubmission.sourceName
+        const dot = inputName.lastIndexOf('.')
+        baseName = dot > 0 ? inputName.substring(0, dot) : inputName
       }
       return baseName + '_solubility_export'
     },
@@ -544,6 +551,11 @@ export default {
       this.fields = this.fields.filter(header => header.key !== key)
     },
     clear() {
+      this.submissionAttempts.invalidate()
+      this.loading = false
+      this.pendingTasks = 0
+      this.requestError = null
+      this.resultSubmission = null
       this.results = []
     },
     onSelectedCategory(value) {
@@ -563,177 +575,60 @@ export default {
 
       this.fields = baseFields;
     },
-    buildRequestBody(model) {
-      if (!model) {
-        console.error('No model selected')
-        return null
-      }
-      if (model === 'legacy') {
-        return {
-          task_list: [{
-            solvent: this.solvent,
-            solute: this.solute,
-            temp: this.temperature,
-            ref_solvent: this.refSolvent || null,
-            ref_solubility: this.refSolubility || null,
-            ref_temp: this.refTemperature || null,
-            hsub298: this.soluteHsub || null,
-            cp_gas_298: this.soluteCpg || null,
-            cp_solid_298: this.soluteCps || null,
-          }]
-        }
-      }
-      const body = {
-        solvent_smiles: [this.solvent],
-        solute_smiles: [this.solute],
-        temperature: [this.temperature],
-      }
-      if (this.density != null && this.density !== '' && model === 'solprop') {
-        body.density = [Number(this.density)]
-      }
-      return body
-    },
     predict() {
       if (!this.workbenchActive || this.loading || this.structurePending || this.pollingSignal.aborted || !this.selectedModel || !this.solute.trim() || !this.solvent.trim()) return
-      this.requestError = null
-      this.pendingTasks += 1
-      this.loading = true
-      this.batch = false
-      const url = this.selectedModel === 'solprop'
-        ? '/api/solubility/fusion-cycle/call-async'
-        : this.selectedModel === 'fastsolv'
-          ? '/api/fastsolv/call-async'
-          : '/api/solubility/batch/call-async';
-      return API.runCeleryTask(url, this.buildRequestBody(this.selectedModel), undefined, { signal: this.pollingSignal })
-        .then(output => {
-          if (this.pollingSignal.aborted) return
-          const inputDensity = this.density != null && this.density !== '' ? Number(this.density) : null
-          if (this.selectedModel === 'solprop' ){
-            this.results.unshift(...output.map(item => {
-               const result = { ...item, model: 'Fusion Cycle' }
-              if (inputDensity != null) {
-                result.density = inputDensity
-              }
-              return result
-            }))
-          } else if (this.selectedModel === 'fastsolv') {
-            this.results.unshift(...output.map(item => ({ ...item, model: 'FastSolv' })))
-          } else {
-            this.results.unshift(...output.map(item => ({ ...item, model: 'SolProp' })))
-          }
-          this.results[0].new = this.results.length
-        })
-        .catch(error => {
-          if (this.pollingSignal.aborted) return
-          this.requestError = API.toErrorObject(error, '溶解度预测失败，请检查输入、模型服务和后端任务状态。')
-        })
-        .finally(() => {
-          if (this.pollingSignal.aborted) return
-          this.loading = false;
-          this.pendingTasks -= 1;
-        })
+      return this.runPrediction(this.selectedModel, [solubilityInput(this)], false)
     },
-    predictBatch(data) {
-      if (!this.workbenchActive || this.pollingSignal.aborted) return
+    predictBatch(data, file = null) {
+      if (!this.workbenchActive || this.loading || this.structurePending || this.pollingSignal.aborted || !this.selectedModel) return
+      return this.runPrediction(this.selectedModel, data, true, file)
+    },
+    async runPrediction(model, data, batch, file = null) {
+      const attempt = this.submissionAttempts.begin()
+      if (!attempt) return
       this.requestError = null
-      this.pendingTasks += 1
+      this.pendingTasks = 1
       this.loading = true
-      this.batch = true
-      const url = this.selectedModel === 'solprop'
-        ? '/api/solubility/fusion-cycle/call-async'
-        : this.selectedModel === 'fastsolv'
-          ? '/api/fastsolv/call-async'
-          : '/api/solubility/batch/call-async';
-      let body
-      if (this.selectedModel === 'legacy') {
-        body = {
-          task_list: data.map(item => ({
-            solvent: item.solvent || item.solvent_smiles || '',
-            solute: item.solute || item.solute_smiles || '',
-            temp: item.temp || item.temperature || 298,
-            ref_solvent: item.ref_solvent || null,
-            ref_solubility: item.ref_solubility || null,
-            ref_temp: item.ref_temp || null,
-            hsub298: item.hsub298 || null,
-            cp_gas_298: item.cp_gas_298 || null,
-            cp_solid_298: item.cp_solid_298 || null,
-          }))
+      this.batch = batch
+      try {
+        if (file) {
+          const text = await readSubmissionFile(file, attempt.signal)
+          if (!this.submissionAttempts.isCurrent(attempt)) return
+          data = parseSubmissionFile(file, text)
         }
-      } else {
-        body = {
-          solvent_smiles: data.map(item => item.solvent || item.solvent_smiles || ''),
-          solute_smiles: data.map(item => item.solute || item.solute_smiles || ''),
-          temperature: data.map(item => item.temp || item.temperature || 298),
+        const submission = createSolubilitySubmission(model, data, file?.name || null)
+        const rows = await runSolubilitySubmission(submission, attempt.signal, API.runCeleryTask.bind(API))
+        if (!this.submissionAttempts.isCurrent(attempt)) return
+        const highlight = this.results.length + rows.length
+        if (batch) rows.forEach((row) => { row.new = highlight })
+        else if (rows.length) rows[0].new = highlight
+        this.results = [...rows, ...this.results]
+        if (rows.length) this.resultSubmission = submission
+        if (file) {
+          this.showUploadModal = false
+          if (this.uploadFile === file) this.uploadFile = null
         }
-        const densities = data.map(item => item.density != null ? Number(item.density) : null)
-        if (densities.some(v => v != null) && this.selectedModel === 'solprop') {
-          body.density = densities
+      } catch (error) {
+        if (!this.submissionAttempts.isCurrent(attempt)) return
+        this.requestError = API.toErrorObject(error, batch
+          ? '批量溶解度预测失败，请检查输入文件、模型服务和后端任务状态。'
+          : '溶解度预测失败，请检查输入、模型服务和后端任务状态。')
+      } finally {
+        if (this.submissionAttempts.isCurrent(attempt)) {
+          this.loading = false
+          this.pendingTasks = 0
+          this.submissionAttempts.retire(attempt)
         }
       }
-      return API.runCeleryTask(url, body, undefined, { signal: this.pollingSignal })
-        .then(output => {
-          if (this.pollingSignal.aborted) return
-          if (this.selectedModel === 'solprop' ){
-            this.results.unshift(...output.map((item, idx) => {
-               const result = { ...item, model: 'Fusion Cycle', new: this.results.length + output.length }
-              const inputDensity = body.density ? body.density[idx] : null
-              if (inputDensity != null) {
-                result.density = inputDensity
-              }
-              return result
-            }));
-          } else if (this.selectedModel === 'fastsolv') {
-            this.results.unshift(...output.map(item => ({ ...item, model: 'FastSolv', new: this.results.length + output.length })));
-          } else {
-            this.results.unshift(...output.map(item => ({ ...item, model: 'SolProp', new: this.results.length + output.length })));
-          }
-        })
-        .catch(error => {
-          if (this.pollingSignal.aborted) return
-          this.requestError = API.toErrorObject(error, '批量溶解度预测失败，请检查输入文件、模型服务和后端任务状态。')
-        })
-        .finally(() => {
-          if (this.pollingSignal.aborted) return
-          this.loading = false
-          this.pendingTasks -= 1
-        })
     },
     handleUploadSubmit() {
-      let fileFormat
-      if (this.uploadFile) {
-      if (this.uploadFile.name.endsWith('.json')) {
-        fileFormat = 'json'
-      } else if (this.uploadFile.name.endsWith('.csv')) {
-        fileFormat = 'csv'
-      } else {
+      if (!this.workbenchActive || this.loading || this.structurePending || this.pollingSignal.aborted || !this.selectedModel) return
+      const file = this.uploadFile
+      if (!file?.name || (!file.name.endsWith('.json') && !file.name.endsWith('.csv'))) {
         alert(uiText('未选择文件，或文件缺少名称'))
         return
-        }
       }
-      let reader = new FileReader();
-      reader.onload = (e) => {
-        let rawData = e.target.result
-        let data
-        if (fileFormat === 'csv') {
-          let result = Papa.parse(rawData, { header: true, skipEmptyLines: true, transform: (value) => value === '' ? null : value })
-          if (result.errors.length) {
-            alert(result.errors[0].message)
-            return
-          }
-          data = result.data
-        } else if (fileFormat === 'json') {
-          try {
-            data = JSON.parse(rawData)
-          } catch {
-            alert(uiText('JSON 文件格式无效'))
-            return
-          }
-        }
-        this.predictBatch(data)
-        this.showUploadModal = false;
-        this.uploadFile = null;
-      }
-      reader.readAsText(this.uploadFile)
+      return this.predictBatch(null, file)
     },
     downloadCSV() {
       if (!this.results.length) {

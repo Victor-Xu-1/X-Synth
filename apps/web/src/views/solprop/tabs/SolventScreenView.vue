@@ -29,7 +29,7 @@
                   :label="$tr('所选溶剂')" :disabled="loading" class="mt-3" />
               </v-col>
               <v-col cols="12" md="4">
-                <v-textarea :label="$tr('温度列表')" hide-details variant="outlined" v-model="temperatures"></v-textarea>
+                <v-textarea :label="$tr('温度列表')" hide-details variant="outlined" v-model="temperatures" :disabled="loading"></v-textarea>
               </v-col>
             </v-row>
             <v-row align="center" justify-start>
@@ -41,8 +41,8 @@
                 <v-btn variant="tonal" class="mr-5" @click="customDialog = !customDialog"
                   v-if="solventSet === 'custom'" :disabled="loading || structurePending"> {{ $tr('保存自定义溶剂集合') }} </v-btn>
                 <v-btn data-cy="solscreen-custom-solv-set-delete" variant="tonal" class="mr-5" color="red"
-                  v-if="Object.keys(customSolventSets).includes(solventSet)" @click="deleteSolventSet"> {{ $tr('删除自定义溶剂集合') }} </v-btn>
-                <v-btn data-cy="solscreen-clear" variant="tonal" class="mr-5" :disabled="results.length === 0"
+                  v-if="Object.keys(customSolventSets).includes(solventSet)" @click="deleteSolventSet" :disabled="loading"> {{ $tr('删除自定义溶剂集合') }} </v-btn>
+                <v-btn data-cy="solscreen-clear" variant="tonal" class="mr-5" :disabled="results.length === 0 && !loading"
                   @click="clear(false)"> {{ $tr('清空结果') }} </v-btn>
                 <v-btn variant="tonal" color="info" @click="showInfo = !showInfo">{{ $tr('模型输入/输出说明') }}</v-btn>
               </v-col>
@@ -174,15 +174,15 @@
                   <StructureInput ref="referenceInput" v-model="refSolvent" :label="$tr('参考溶剂')"
                     :disabled="loading" />
                   <v-text-field variant="outlined" :label="$tr('参考溶解度 (log10(mol/L))')"
-                    v-model="refSolubility"></v-text-field>
-                  <v-text-field variant="outlined" :label="$tr('参考温度 (K)')" v-model="refTemperature"></v-text-field>
+                    v-model="refSolubility" :disabled="loading"></v-text-field>
+                  <v-text-field variant="outlined" :label="$tr('参考温度 (K)')" v-model="refTemperature" :disabled="loading"></v-text-field>
                 </v-expansion-panel-text>
               </v-expansion-panel>
               <v-expansion-panel :title="$tr('溶质信息（可选）')" class="text-primary">
                 <v-expansion-panel-text class="text-black">
-                  <v-text-field variant="outlined" label="ΔHsub298 (kcal/mol)" v-model="soluteHsub"></v-text-field>
-                  <v-text-field variant="outlined" label="Cpg298 (cal/mol/K)" v-model="soluteCpg"></v-text-field>
-                  <v-text-field variant="outlined" label="Cps298 (cal/mol/K)" v-model="soluteCps"></v-text-field>
+                  <v-text-field variant="outlined" label="ΔHsub298 (kcal/mol)" v-model="soluteHsub" :disabled="loading"></v-text-field>
+                  <v-text-field variant="outlined" label="Cpg298 (cal/mol/K)" v-model="soluteCpg" :disabled="loading"></v-text-field>
+                  <v-text-field variant="outlined" label="Cps298 (cal/mol/K)" v-model="soluteCps" :disabled="loading"></v-text-field>
                 </v-expansion-panel-text>
               </v-expansion-panel>
             </v-expansion-panels>
@@ -225,6 +225,8 @@ import { Bar, Line } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale } from 'chart.js'
 import emptyChart from '@/assets/emptyChart.svg'
 import ErrorDialog from '@/components/ErrorDialog'
+import { createSubmissionAttempts } from "../submission-attempt";
+import { createScreenSubmission, runSolubilitySubmission } from "../submission";
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale)
 
@@ -259,6 +261,7 @@ export default {
       soluteCpg: null,
       soluteCps: null,
       results: [],
+      resultSubmission: null,
       uploadFile: null,
       selectedMethod: 1,
       methodOptions: [{ value: 1, title: '方法 1' }, { value: 2, title: '方法 2' }],
@@ -276,10 +279,12 @@ export default {
   },
   setup() {
     const pollingLifetime = new AbortController();
+    const submissionAttempts = createSubmissionAttempts(pollingLifetime.signal);
     onBeforeUnmount(() => pollingLifetime.abort());
     return {
       workbenchActive: useWorkbenchActivity(),
       pollingSignal: pollingLifetime.signal,
+      submissionAttempts,
       soluteInput: ref(null),
       selectedSolventInput: ref(null),
       referenceInput: ref(null),
@@ -477,46 +482,36 @@ export default {
         return
       }
       this.clearDialog = false
+      this.submissionAttempts.invalidate()
+      this.loading = false
+      this.requestError = null
+      this.resultSubmission = null
       this.results = []
     },
-    predict() {
-      if (!this.workbenchActive || this.loading || this.structurePending || !this.solute.trim()) return
+    async predict() {
+      if (!this.workbenchActive || this.loading || this.structurePending || this.pollingSignal.aborted || !this.solute.trim()) return
+      const attempt = this.submissionAttempts.begin()
+      if (!attempt) return
       this.requestError = null
       this.loading = true
       this.results = []
-      let promises = []
-      for (let temp of this.temperatureList) {
-        let tasks = this.solventList.map((solvent) => {
-          return {
-            solvent: solvent,
-            solute: this.solute,
-            temp: temp,
-            ref_solvent: this.refSolvent || null,
-            ref_solubility: this.refSolubility || null,
-            ref_temp: this.refTemperature || null,
-            hsub298: this.soluteHsub || null,
-            cp_gas_298: this.soluteCpg || null,
-            cp_solid_298: this.soluteCps || null,
-          }
-        })
-        promises.push(this.predictBatch(tasks))
+      this.resultSubmission = null
+      try {
+        const submission = createScreenSubmission(this, this.solventList, this.temperatureList)
+        const batches = await Promise.all(submission.requests.map((request) =>
+          runSolubilitySubmission(request, attempt.signal, API.runCeleryTask.bind(API))))
+        if (!this.submissionAttempts.isCurrent(attempt)) return
+        this.results = batches.flat()
+        this.resultSubmission = submission
+      } catch (error) {
+        if (!this.submissionAttempts.isCurrent(attempt)) return
+        this.requestError = API.toErrorObject(error, '溶剂筛选失败，请检查输入、模型服务和后端任务状态。')
+      } finally {
+        if (this.submissionAttempts.isCurrent(attempt)) {
+          this.loading = false
+          this.submissionAttempts.retire(attempt)
+        }
       }
-      return Promise.all(promises)
-        .catch(error => {
-          if (this.pollingSignal.aborted) return
-          this.requestError = API.toErrorObject(error, '溶剂筛选失败，请检查输入、模型服务和后端任务状态。')
-        })
-        .finally(() => { if (!this.pollingSignal.aborted) this.loading = false })
-    },
-    async predictBatch(data) {
-      if (this.pollingSignal.aborted) return;
-      const url = '/api/solubility/batch/call-async'
-      const body = {
-        task_list: data,
-      }
-      const output = await API.runCeleryTask(url, body, undefined, { signal: this.pollingSignal });
-      if (this.pollingSignal.aborted) return;
-      this.results.push(...output);
     },
     downloadCSV() {
       if (!this.results.length) {
