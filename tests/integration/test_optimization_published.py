@@ -21,7 +21,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from apps.api.analysis_routes import analysis_runner
+from packages.workspace.analysis_execution import analysis_runner
 from apps.api.optimization_routes import optimization_router
 from packages.adapters.optimization.contracts import OptimizationResult
 from packages.adapters.optimization.runtime import OptimizationRuntime

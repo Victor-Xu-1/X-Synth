@@ -5,6 +5,8 @@
     <p v-if="replayNote" class="workspace-muted" role="note">{{ replayNote }}</p>
     <router-link v-if="displayError && recordPath(currentPrediction?.record_id)" :to="recordPath(currentPrediction.record_id)">打开已保存的结果</router-link>
     <template #actions>
+      <v-btn v-if="saved.source.value || saved.error.value" :to="needsProduct ? '/forward?tab=context' : '/forward?tab=forward'"
+        variant="text" prepend-icon="mdi-plus" :disabled="pendingTasks > 0" @click="saved.startNew">新建计算</v-btn>
       <v-btn
         to="/analyses"
         variant="text"

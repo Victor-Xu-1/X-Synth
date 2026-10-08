@@ -1,5 +1,6 @@
 <template>
   <ModuleWorkbench title="可能杂质分析">
+    <template #actions><v-btn v-if="saved.source.value || saved.error.value" to="/impurity" variant="text" prepend-icon="mdi-plus" :disabled="loading" @click="saved.startNew">新建分析</v-btn></template>
     <WorkbenchForm
       class="impurity-layout"
       parameter-label="杂质分析参数"

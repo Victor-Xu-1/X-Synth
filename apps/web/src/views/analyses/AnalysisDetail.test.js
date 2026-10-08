@@ -37,6 +37,8 @@ test("route changes clear old result/input immediately and late responses cannot
   const { wrapper, router } = await setup();
   await router.replace("/analyses/record-b"); await flushPromises();
   finishA(record()); await flushPromises();
+  const input = wrapper.get(".submitted-input");
+  input.element.open = true; await input.trigger("toggle");
   expect(JSON.parse(wrapper.get("pre").text())).toEqual({ note: "record-b" });
   expect(wrapper.attributes("aria-busy")).toBe("false");
 });
@@ -123,6 +125,7 @@ test.each([
   ["conditions", "/forward", { tab: "context", record: "record-a" }],
   ["forward", "/forward", { tab: "forward", record: "record-a" }],
   ["impurity", "/impurity", { record: "record-a" }],
+  ["optimization", "/optimization", { record: "record-a" }],
 ])("%s returns to the exact input mode without recomputing", async (kind, path, query) => {
   API.get.mockResolvedValue({ ...record(), kind });
   const { wrapper } = await setup();

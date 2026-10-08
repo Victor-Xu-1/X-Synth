@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
-// Runs only against the parent's actual product host, never a substitute API/page.
+// Exercises the selected preview/deployed UI against the real product API.
 const require = createRequire(import.meta.url);
 const { chromium } = require(
   process.env.X_SYNTH_PLAYWRIGHT_MODULE || "playwright",
@@ -27,6 +27,10 @@ try {
     acceptDownloads: true,
   });
   const page = await context.newPage();
+  let submissions = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith("/api/v1/optimization/recommend")) submissions++;
+  });
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("response", (response) => {
     if (
@@ -47,7 +51,10 @@ try {
     path: join(evidence, "empty-desktop.png"),
     fullPage: true,
   });
-  await page.getByLabel("选择实测 CSV").setInputFiles(dataset);
+  const datasetBytes = await readFile(dataset);
+  const uploadedBytes = datasetBytes.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf]))
+    ? datasetBytes : Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), datasetBytes]);
+  await page.getByLabel("选择实测 CSV").setInputFiles({ name: basename(dataset), mimeType: "text/csv", buffer: uploadedBytes });
   await page.getByText("1728 条记录 · 已选择 0", { exact: true }).waitFor();
   assert.equal(await page.getByLabel("推荐下一批", { exact: true }).count(), 0);
   await page.getByLabel("实测响应列").selectOption("yield");
@@ -99,14 +106,11 @@ try {
   assert.equal(payload.candidate_count, 1728);
   assert.equal(payload.empirically_confirmed, false);
   assert.match(payload.record_id, /^[a-f0-9]{32}$/);
+  await page.waitForURL((url) => url.pathname === `/analyses/${payload.record_id}`);
+  assert.equal(await page.locator("form").count(), 0);
   assert.equal(request.postDataJSON().selected_rows.length, 50);
   await page.getByText("未实验确认", { exact: true }).waitFor();
   await page.locator(".opt-recommendations").scrollIntoViewIfNeeded();
-  const recordLink = page.getByRole("link", { name: "计算记录", exact: true });
-  assert.equal(
-    await recordLink.getAttribute("href"),
-    `/analyses/${payload.record_id}`,
-  );
   const recorded = await (
     await context.request.get(origin + `/api/v1/analyses/${payload.record_id}`)
   ).json();
@@ -117,6 +121,7 @@ try {
     createHash("sha256").update(recorded.inputs.content).digest("hex"),
     recorded.inputs.table_sha256,
   );
+  assert.equal(recorded.inputs.table_sha256, createHash("sha256").update(uploadedBytes).digest("hex"));
   await page.screenshot({
     path: join(evidence, "recommendations-desktop.png"),
     fullPage: true,
@@ -130,6 +135,47 @@ try {
   checks.push(
     "real CSV -> explicit records/factors -> BayBE -> shared persisted record -> matching CSV download",
   );
+  const originalDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "下载本次原始实测 CSV", exact: true }).click();
+  assert.deepEqual(await readFile(await (await originalDownload).path()), uploadedBytes);
+  await page.reload();
+  await page.getByRole("heading", { name: "实验优化结果", exact: true }).waitFor();
+  assert.equal(submissions, 1);
+  assert.equal(await page.locator(".submitted-input pre").count(), 0);
+  await page.goBack();
+  await page.getByText("1728 条记录 · 已选择 50", { exact: true }).waitFor();
+  assert.equal(await page.getByLabel("确认已选记录来自真实实验，且响应列与单位正确").isChecked(), false);
+  assert.equal(await page.getByLabel("确认离散水平的全部组合可作为候选实验条件").isChecked(), false);
+  await page.locator(".opt-seed-setting summary").click();
+  assert.equal(await page.getByLabel("随机种子", { exact: true }).inputValue(), String(recorded.inputs.seed));
+  await page.screenshot({ path: join(evidence, "browser-back-input-desktop.png"), fullPage: true });
+  await page.goForward();
+  await page.getByRole("heading", { name: "实验优化结果", exact: true }).waitFor();
+  assert.equal(submissions, 1);
+  await page.goBack();
+  await page.getByText("1728 条记录 · 已选择 50", { exact: true }).waitFor();
+  await page.getByRole("link", { name: "新建优化", exact: true }).click();
+  await page.getByText("尚无已选实验数据", { exact: true }).waitFor();
+  await page.getByRole("link", { name: "研究记录", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/analyses");
+  await page.goBack();
+  await page.getByText("尚无已选实验数据", { exact: true }).waitFor();
+  await page.reload();
+  await page.getByText("尚无已选实验数据", { exact: true }).waitFor();
+  assert.equal(await page.locator(".opt-layout").count(), 0);
+  await page.goto(origin + `/analyses/${payload.record_id}?kind=optimization`);
+  await page.getByRole("heading", { name: "实验优化结果", exact: true }).waitFor();
+  assert.equal(submissions, 1);
+  checks.push("Back/Forward preserves the saved calculation; New survives later navigation/Back and refresh without reviving old input; no recomputation");
+  for (const width of [768, 1920]) {
+    await page.setViewportSize({ width, height: 960 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    assert.equal(await page.locator(".opt-recommendations tbody tr").count(), 3);
+    await page.screenshot({ path: join(evidence, `recommendations-${width}.png`), fullPage: true, animations: "disabled" });
+  }
+  await page.getByRole("button", { name: "切换主题", exact: true }).click();
+  await page.screenshot({ path: join(evidence, "recommendations-dark-desktop.png"), fullPage: true, animations: "disabled" });
+  checks.push("768px and wide-screen result hierarchy, with an independent dark-theme result check");
 
   await page.setViewportSize({ width: 375, height: 812 });
   const closeNavigation = page.getByRole("button", {
@@ -164,20 +210,17 @@ try {
     "375px mobile: no page-level horizontal overflow; all three suggestions visible",
   );
 
-  await page
-    .getByLabel("Concentration 候选水平", { exact: true })
-    .fill("0.057\n0.1");
-  assert.equal(
-    await page
-      .getByRole("tab", { name: "实测记录", exact: true })
-      .getAttribute("aria-selected"),
-    "true",
-  );
+  await page.getByRole("link", { name: "返回修改", exact: true }).click();
+  await page.getByText("1728 条记录 · 已选择 50", { exact: true }).waitFor();
+  assert.equal(await page.getByLabel("确认已选记录来自真实实验，且响应列与单位正确").isChecked(), false);
+  assert.equal(await page.getByLabel("确认离散水平的全部组合可作为候选实验条件").isChecked(), false);
+  assert.equal(await page.getByLabel("实测响应列").inputValue(), recorded.inputs.target.name);
+  assert.equal(await page.getByLabel("下一批实验数").inputValue(), String(recorded.inputs.batch_size));
+  for (const factor of recorded.inputs.factors)
+    assert.equal(await page.getByLabel(`${factor.name} 候选水平`, { exact: true }).inputValue(), factor.values.join("\n"));
+  await page.getByLabel("Concentration 候选水平", { exact: true }).fill("0.057\n0.1");
   assert.equal(await page.locator(".opt-recommendations").count(), 0);
-  assert.equal(
-    await page.getByRole("button", { name: "导出下一批实验 CSV" }).isDisabled(),
-    true,
-  );
+  assert.equal(await page.getByRole("button", { name: "导出下一批实验 CSV" }).count(), 0);
   checks.push(
     "input freshness: changed levels immediately clear result, confirmations and download",
   );
@@ -206,7 +249,7 @@ try {
         origin,
         checks,
         browser: browser.version(),
-        viewport: [1440, 960, 375, 812],
+        viewport: [1440, 960, 375, 812, 768, 960, 1920, 960],
         result: payload,
         errors,
         assetErrors,

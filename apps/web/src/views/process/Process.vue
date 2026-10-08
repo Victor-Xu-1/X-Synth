@@ -4,10 +4,10 @@
     <form class="process-input" novalidate :aria-busy="disabled" @submit.prevent="calculate">
       <header class="batch-heading">
         <div><span class="batch-stage">01 / 批次录入</span><h2>实验批次与物料</h2></div>
-        <div class="batch-source" v-if="saved.source.value"><span>已有批次</span><v-btn variant="text" size="small" to="/process">新建批次</v-btn></div>
+        <div class="batch-source" v-if="saved.source.value"><span>已有批次</span><v-btn variant="text" size="small" to="/process" :disabled="loading" @click="saved.startNew">新建批次</v-btn></div>
       </header>
       <div v-if="saved.loading.value" class="workspace-loading" role="status">正在读取批次输入</div>
-      <div v-if="saved.error.value" class="tool-error" role="alert">{{ saved.error.value }}<v-btn variant="text" size="small" @click="saved.reload">重新读取</v-btn><v-btn variant="text" size="small" to="/process">新建批次</v-btn></div>
+      <div v-if="saved.error.value" class="tool-error" role="alert">{{ saved.error.value }}<v-btn variant="text" size="small" @click="saved.reload">重新读取</v-btn><v-btn variant="text" size="small" to="/process" @click="saved.startNew">新建批次</v-btn></div>
       <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
       <router-link v-if="error && recordPath(result?.record_id)" :to="recordPath(result.record_id)">打开已保存的结果</router-link>
       <v-tabs v-model="section" density="compact" class="batch-tabs" aria-label="批次录入分区">

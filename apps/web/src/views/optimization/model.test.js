@@ -1,5 +1,4 @@
 import {
-  analysisRecordUrl,
   buildRequest,
   candidateCount,
   factorValues,
@@ -49,7 +48,7 @@ export function resultFixture(request) {
     record_id: "f".repeat(32),
     surrogate: "GaussianProcessSurrogate",
     acquisition: "qLogExpectedImprovement",
-    seed: 42,
+    seed: request.seed,
     categorical_encoding: "OHE",
     request_sha256: "a".repeat(64),
     other_server_metadata: "permitted envelope extension",
@@ -62,6 +61,14 @@ test("request preserves explicit measured rows and target direction without impl
   expect(request.factors[0].values).toEqual([10, 20]);
   expect(request.target.direction).toBe("minimize");
   expect(request.confirmed_measurements).toBe(true);
+});
+
+test.each([0, 42, 4294967295, "0"])("request retains an explicit valid seed: %s", (seed) => {
+  expect(buildRequest({ ...draft(), seed }).seed).toBe(Number(seed));
+});
+
+test.each([false, true, null, "", "0x20", -1, 0.5, 4294967296, Infinity])("invalid seed is rejected: %s", (seed) => {
+  expect(() => buildRequest({ ...draft(), seed })).toThrow("随机种子");
 });
 test.each([
   { selectedRows: [] },
@@ -98,10 +105,6 @@ test("server record id and additional envelope metadata do not invalidate a vali
   const request = buildRequest(draft()),
     result = resultFixture(request);
   expect(validateResult(result, request).record_id).toBe("f".repeat(32));
-  expect(analysisRecordUrl(result.record_id)).toBe(
-    `/analyses/${"f".repeat(32)}`,
-  );
-  expect(analysisRecordUrl("../../elsewhere")).toBeNull();
 });
 test.each([
   { empirically_confirmed: true },
@@ -109,6 +112,9 @@ test.each([
   { table_sha256: "b".repeat(64) },
   { measurement_count: 4 },
   { selected_rows: [1, 2, 4] },
+  { seed: 0 },
+  { target: { name: "response", kind: "response", direction: "minimize", unit: "%" } },
+  { target: { name: "response", kind: "yield_percent", direction: "minimize", unit: "mM" } },
   {
     recommendations: [
       {

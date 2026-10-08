@@ -11,12 +11,6 @@
         {{ result.target.unit }}</span
       ><strong>未实验确认</strong>
     </div>
-    <router-link
-      v-if="analysisRecordUrl(result.record_id)"
-      :to="analysisRecordUrl(result.record_id)"
-      class="opt-record-link"
-      ><v-icon icon="mdi-history" size="16" />计算记录</router-link
-    >
     <div class="opt-table-scroll" role="region" aria-label="下一批实验条件表" tabindex="0">
       <table class="opt-data-table">
         <thead>
@@ -72,7 +66,7 @@
 </template>
 <script setup>
 import { computed } from "vue";
-import { analysisRecordUrl, formatResponse } from "./model";
+import { formatResponse } from "./model";
 import "./optimization.css";
 const props = defineProps({ result: { type: Object, required: true } });
 const names = computed(() =>

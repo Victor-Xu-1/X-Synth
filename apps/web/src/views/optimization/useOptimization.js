@@ -8,9 +8,9 @@ import {
 } from "vue";
 import { API } from "@/common/api";
 import { buildRequest, candidateCount, LIMITS, validateResult } from "./model";
-import { exportRecommendationCsv } from "./recommendation-export";
+import { savedOptimizationContent, restoreOptimization } from "./optimization-replay";
 
-export function useOptimization() {
+export function useOptimization({ onResult, blocked = () => false } = {}) {
   const content = ref(""),
     fileName = ref(""),
     table = ref(null);
@@ -23,15 +23,14 @@ export function useOptimization() {
     unit: "%",
   });
   const batchSize = ref(3),
+    seed = ref(42),
     confirmedMeasurements = ref(false),
     confirmedCandidates = ref(false);
   const health = ref(null),
     healthLoading = ref(true),
     fileLoading = ref(false),
     running = ref(false);
-  const result = ref(null),
-    error = ref(""),
-    activeTab = ref("measurements");
+  const result = ref(null), error = ref("");
   let revision = 0,
     fileRevision = 0,
     disposed = false;
@@ -39,12 +38,11 @@ export function useOptimization() {
   function invalidate() {
     revision++;
     result.value = null;
-    activeTab.value = "measurements";
     error.value = "";
     confirmedMeasurements.value = false;
     confirmedCandidates.value = false;
   }
-  watch([selectedRows, factors, target, batchSize], invalidate, {
+  watch([selectedRows, factors, target, batchSize, seed], invalidate, {
     deep: true,
     flush: "sync",
   });
@@ -58,6 +56,7 @@ export function useOptimization() {
   const canRecommend = computed(
     () =>
       health.value?.ready === true &&
+      !blocked() &&
       !running.value &&
       !fileLoading.value &&
       selectedRows.value.length >= 3 &&
@@ -91,17 +90,33 @@ export function useOptimization() {
   }
   onMounted(refreshHealth);
 
-  async function chooseFile(file) {
-    const ticket = ++fileRevision;
+  function clear() {
+    fileRevision++;
     invalidate();
     table.value = null;
     content.value = "";
     fileName.value = "";
     selectedRows.value = [];
     factors.value = [];
-    target.name = "";
-    activeTab.value = "measurements";
+    Object.assign(target, { name: "", kind: "yield_percent", direction: "maximize", unit: "%" });
+    batchSize.value = 3; seed.value = 42;
     fileLoading.value = false;
+  }
+  async function restoreInput(input) {
+    const ticket = ++fileRevision;
+    const text = savedOptimizationContent(input);
+    const inspected = await API.post("/api/v1/optimization/inspect", { content: text });
+    if (disposed || ticket !== fileRevision) return;
+    const restored = restoreOptimization(input, inspected);
+    content.value = restored.content; table.value = inspected; fileName.value = "已保存的实测 CSV";
+    selectedRows.value = restored.selectedRows; factors.value = restored.factors;
+    Object.assign(target, restored.target); batchSize.value = restored.batchSize; seed.value = restored.seed;
+    confirmedMeasurements.value = false; confirmedCandidates.value = false;
+  }
+  async function chooseFile(file) {
+    if (disposed || running.value || blocked()) return;
+    clear();
+    const ticket = ++fileRevision;
     if (!file) return;
     if (file.size > LIMITS.bytes) {
       error.value = "CSV 超过 2 MiB，未导入。";
@@ -109,7 +124,7 @@ export function useOptimization() {
     }
     fileLoading.value = true;
     try {
-      const text = new TextDecoder("utf-8", { fatal: true }).decode(
+      const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
         await file.arrayBuffer(),
       );
       if (disposed || ticket !== fileRevision) return;
@@ -132,6 +147,7 @@ export function useOptimization() {
   }
 
   function toggleRow(index) {
+    if (running.value || blocked()) return;
     if (selectedRows.value.includes(index))
       selectedRows.value = selectedRows.value.filter(
         (value) => value !== index,
@@ -141,6 +157,7 @@ export function useOptimization() {
   }
 
   function selectPage(indices, selected) {
+    if (running.value || blocked()) return;
     const additions = indices.filter(
       (index) => !selectedRows.value.includes(index),
     );
@@ -157,6 +174,7 @@ export function useOptimization() {
   }
 
   function toggleFactor(column) {
+    if (running.value || blocked()) return;
     const selected = factors.value.find(
       (factor) => factor.name === column.name,
     );
@@ -176,6 +194,7 @@ export function useOptimization() {
   }
 
   function updateTarget(updates) {
+    if (running.value || blocked()) return;
     if (updates.name)
       factors.value = factors.value.filter(
         (factor) => factor.name !== updates.name,
@@ -184,13 +203,14 @@ export function useOptimization() {
   }
 
   function updateFactor(name, updates) {
+    if (running.value || blocked()) return;
     factors.value = factors.value.map((factor) =>
       factor.name === name ? { ...factor, ...updates } : factor,
     );
   }
 
   async function recommend() {
-    if (running.value || health.value?.ready !== true) return;
+    if (disposed || running.value || fileLoading.value || blocked() || health.value?.ready !== true) return;
     result.value = null;
     error.value = "";
     let request;
@@ -202,6 +222,7 @@ export function useOptimization() {
         factors: factors.value,
         target,
         batchSize: batchSize.value,
+        seed: seed.value,
         confirmedMeasurements: confirmedMeasurements.value,
         confirmedCandidates: confirmedCandidates.value,
       });
@@ -218,17 +239,13 @@ export function useOptimization() {
       );
       if (disposed || ticket !== revision) return;
       result.value = validateResult(response, request);
-      activeTab.value = "recommendations";
+      if (onResult) await onResult(response);
     } catch (failure) {
       if (!disposed && ticket === revision)
         error.value = API.toErrorObject(failure).string_error;
     } finally {
       if (!disposed) running.value = false;
     }
-  }
-
-  function download() {
-    exportRecommendationCsv(result.value);
   }
 
   return {
@@ -239,6 +256,7 @@ export function useOptimization() {
     factors,
     target,
     batchSize,
+    seed,
     confirmedMeasurements,
     confirmedCandidates,
     health,
@@ -247,10 +265,11 @@ export function useOptimization() {
     running,
     result,
     error,
-    activeTab,
     count,
     canRecommend,
     chooseFile,
+    clear,
+    restoreInput,
     toggleRow,
     selectPage,
     toggleFactor,
@@ -258,6 +277,5 @@ export function useOptimization() {
     updateFactor,
     refreshHealth,
     recommend,
-    download,
   };
 }

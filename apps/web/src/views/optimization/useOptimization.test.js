@@ -2,7 +2,6 @@ import { TextDecoder, TextEncoder } from "node:util";
 import { defineComponent } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import { API } from "@/common/api";
-import { saveAs } from "file-saver";
 import { useOptimization } from "./useOptimization";
 
 jest.mock("@/common/api", () => ({
@@ -14,6 +13,7 @@ jest.mock("@/common/api", () => ({
 }));
 jest.mock("file-saver", () => ({ saveAs: jest.fn() }));
 global.TextDecoder = TextDecoder;
+global.TextEncoder = TextEncoder;
 const CSV = "temperature,solvent,response\n10,a,1\n20,a,2\n10,b,3\n20,b,4\n";
 const table = {
   table_sha256: "a".repeat(64),
@@ -39,12 +39,12 @@ const deferred = () => {
   return { promise, resolve, reject };
 };
 const wrappers = [];
-function setup() {
+function setup(options = {}) {
   let state;
   const wrapper = mount(
     defineComponent({
       setup() {
-        state = useOptimization();
+        state = useOptimization(options);
         return {};
       },
       template: "<div />",
@@ -67,6 +67,7 @@ async function confirmed(state) {
 function response(body) {
   return {
     engine: "BayBE",
+    seed: body.seed,
     versions: { baybe: "0.15.0" },
     empirically_confirmed: false,
     table_sha256: body.table_sha256,
@@ -103,6 +104,16 @@ test("opening/importing only inspects actual file and never chooses rows, factor
   expect(API.post).toHaveBeenCalledTimes(1);
   expect(API.post.mock.calls[0][0]).toBe("/api/v1/optimization/inspect");
 });
+
+test("actual UTF-8 upload decoding preserves the BOM and CRLF bytes sent for inspection", async () => {
+  const { state } = setup();
+  const source = "\ufeff" + CSV.replace(/\n/g, "\r\n");
+  const bytes = new TextEncoder().encode(source);
+  API.post.mockResolvedValueOnce(table);
+  await state.chooseFile({ name: "bom.csv", size: bytes.length, arrayBuffer: async () => bytes.buffer });
+  expect(API.post).toHaveBeenCalledWith("/api/v1/optimization/inspect", { content: source });
+  expect([...new TextEncoder().encode(state.content.value)]).toEqual([...bytes]);
+});
 test("late file reads/inspection cannot replace a more recently selected actual file", async () => {
   const { state } = setup();
   const old = deferred();
@@ -123,7 +134,7 @@ test("changed factor levels invalidate both confirmations and prevent a late mod
   API.post.mockReturnValueOnce(pending.promise);
   const call = state.recommend();
   const body = API.post.mock.calls.at(-1)[1];
-  state.updateFactor("temperature", { levels: "10\n20\n30" });
+  state.factors.value[0].levels = "10\n20\n30";
   expect(state.confirmedMeasurements.value).toBe(false);
   expect(state.confirmedCandidates.value).toBe(false);
   pending.resolve(response(body));
@@ -131,19 +142,15 @@ test("changed factor levels invalidate both confirmations and prevent a late mod
   expect(state.result.value).toBeNull();
   expect(state.running.value).toBe(false);
 });
-test("response success accepts persisted record id, download uses only current result, and target changes remove old result", async () => {
+test("response success accepts persisted record id and target changes invalidate the current result", async () => {
   const { state } = setup();
   await confirmed(state);
   await flushPromises();
   API.post.mockImplementationOnce((_, body) => Promise.resolve(response(body)));
   await state.recommend();
   expect(state.result.value.record_id).toBe("a".repeat(32));
-  state.download();
-  expect(saveAs).toHaveBeenCalledTimes(1);
   state.target.unit = "new unit";
   expect(state.result.value).toBeNull();
-  state.download();
-  expect(saveAs).toHaveBeenCalledTimes(1);
 });
 test("failures hide old suggestions and no background retries or fake result occurs", async () => {
   const { state } = setup();
@@ -185,4 +192,46 @@ test("selecting a response that was a factor removes the incompatible factor and
   );
   expect(state.selectedRows.value.length).toBe(250);
   expect(state.error.value).toContain("256");
+});
+
+test("validated recommendation is delivered to the persisted result view only once", async () => {
+  const onResult = jest.fn().mockResolvedValue(undefined);
+  const { state } = setup({ onResult }); await confirmed(state); await flushPromises();
+  API.post.mockImplementationOnce((_, body) => Promise.resolve(response(body)));
+  await state.recommend();
+  expect(onResult).toHaveBeenCalledTimes(1);
+  expect(onResult).toHaveBeenCalledWith(state.result.value);
+});
+
+test("a failed result-page navigation retains the validated saved result for an explicit recovery link", async () => {
+  const onResult = jest.fn().mockRejectedValue(new Error("结果已保存，但结果页面未能打开。"));
+  const { state } = setup({ onResult }); await confirmed(state); await flushPromises();
+  API.post.mockImplementationOnce((_, body) => Promise.resolve(response(body)));
+  await state.recommend();
+  expect(state.result.value.record_id).toBe("a".repeat(32));
+  expect(state.error.value).toContain("结果已保存");
+  expect(state.running.value).toBe(false);
+  expect(onResult).toHaveBeenCalledTimes(1);
+});
+
+test("an externally blocked saved-input read cannot start inspection or computation", async () => {
+  const { state } = setup({ blocked: () => true }); await flushPromises();
+  await state.chooseFile(file()); await state.recommend();
+  expect(API.post).not.toHaveBeenCalled(); expect(state.canRecommend.value).toBe(false);
+});
+
+test("saved restore only inspects data, clears confirmations and cannot overwrite a newer file", async () => {
+  const { state } = setup(); await confirmed(state);
+  const request = API.post.mock.calls[0][1];
+  const input = { content: request.content, table_sha256: table.table_sha256, selected_rows: [1, 2, 3],
+    factors: [{ name: "temperature", kind: "numerical", values: [10, 20] }, { name: "solvent", kind: "categorical", values: ["a", "b"] }],
+    target: { name: "response", kind: "response", direction: "minimize", unit: "mM" }, batch_size: 1, seed: 0,
+    confirmed_measurements: true, confirmed_candidates: true };
+  const held = deferred(); API.post.mockReturnValueOnce(held.promise);
+  const old = state.restoreInput(input);
+  API.post.mockResolvedValueOnce(table);
+  await state.chooseFile(file("newer.csv")); held.resolve(table); await old;
+  expect(state.fileName.value).toBe("newer.csv"); expect(state.selectedRows.value).toEqual([]);
+  expect(state.confirmedMeasurements.value).toBe(false); expect(state.confirmedCandidates.value).toBe(false);
+  expect(API.post.mock.calls.every(([url]) => url.endsWith("/inspect"))).toBe(true);
 });

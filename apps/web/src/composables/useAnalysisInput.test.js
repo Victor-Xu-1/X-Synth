@@ -41,3 +41,31 @@ test("wrong kinds and conflicting seeds cannot become valid input", async () => 
   const other = setup({ record: "one", smiles: "CCO" }).wrapper; await flushPromises();
   expect(other.text()).toContain("不能同时指定"); expect(API.get).toHaveBeenCalledTimes(1);
 });
+
+test("new input resets a restored history entry even when its URL is unchanged, retaining unrelated history state", async () => {
+  window.history.replaceState({ position: 3, xSynthSubmittedInput: { version: 1, kind: "process", id: "saved", location: "/process" } }, "");
+  API.get.mockResolvedValue(record("saved"));
+  const { wrapper } = setup({}); await flushPromises();
+  expect(wrapper.vm.source.id).toBe("saved");
+  const cachedRouterState = { ...window.history.state };
+  clear.mockClear(); wrapper.vm.startNew({ defaultPrevented: true });
+  expect(wrapper.vm.source).toBeNull(); expect(wrapper.vm.error).toBe("");
+  expect(clear).toHaveBeenCalledTimes(1);
+  expect(window.history.state).toEqual({ position: 3, xSynthSubmittedInput: null });
+  expect({ ...cachedRouterState, ...window.history.state }.xSynthSubmittedInput).toBeNull();
+  await wrapper.vm.reload();
+  expect(API.get).toHaveBeenCalledTimes(1);
+  expect(prefill).toHaveBeenLastCalledWith("", {});
+});
+
+test("new input exits failed recovery and discards late reads without clearing modified-click history", async () => {
+  let finish;
+  API.get.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+  window.history.replaceState({ xSynthSubmittedInput: { version: 1, kind: "process", id: "saved", location: "/process" } }, "");
+  const { wrapper } = setup({});
+  wrapper.vm.startNew({ ctrlKey: true }); expect(window.history.state.xSynthSubmittedInput.id).toBe("saved");
+  wrapper.vm.startNew(); finish(record("saved")); await flushPromises();
+  expect(apply).not.toHaveBeenCalled(); expect(wrapper.vm.loading).toBe(false);
+  wrapper.vm.error = "failed restore"; wrapper.vm.startNew();
+  expect(wrapper.vm.error).toBe(""); expect(wrapper.vm.source).toBeNull();
+});
