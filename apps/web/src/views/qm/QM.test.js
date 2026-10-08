@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { defineComponent, h, onMounted, onUnmounted, reactive } from "vue";
 import { randomUUID } from "node:crypto";
 import QM from "./QM.vue";
+import { DEFAULT_LOCALE, setLocale } from "@/i18n";
 
 global.CSS = { supports: () => false };
 const { createVuetify, components } = require("vuetify/dist/vuetify.js");
@@ -95,6 +96,22 @@ test("a background readiness refresh preserves the initialized QM chemical draft
   expect(input.element.value).toContain("[Cl-]");
   expect(mounts).toBe(1);
   expect(unmounts).toBe(0);
+});
+
+test("English-default QM labels and native column captions react without changing draft or scientific records", async () => {
+  const wrapper = await setup(), input = wrapper.get('input[aria-label="chemical draft"]');
+  await input.setValue("[13CH3][C@H]([NH3+])CO.[Cl-]");
+  wrapper.vm.results = [{ smiles: "[13CH3][C@H]([NH3+])CO.[Cl-]", npa_e: 0, IP: null, license: "raw source license" }];
+  const original = JSON.stringify(wrapper.vm.results), rawFields = JSON.stringify(wrapper.vm.fields);
+  setLocale(DEFAULT_LOCALE, { persist: false }); await flushPromises();
+  expect(wrapper.text()).toContain("QM descriptors"); expect(wrapper.text()).toContain("Calculation results");
+  expect(wrapper.vm.localizedFields.find((field) => field.key === "npa_e").title).toBe("NPA charge (e)");
+  expect(wrapper.vm.selectedColumnCategories).toEqual(["NPA"]);
+  expect(wrapper.get('input[aria-label="chemical draft"]').element).toBe(input.element);
+  expect(JSON.stringify(wrapper.vm.results)).toBe(original); expect(JSON.stringify(wrapper.vm.fields)).toBe(rawFields);
+  setLocale("zh-CN", { persist: false }); await flushPromises();
+  expect(wrapper.text()).toContain("QM 描述符"); expect(wrapper.vm.localizedFields.find((field) => field.key === "npa_e").title).toBe("NPA 电荷 (e)");
+  expect(input.element.value).toContain("[Cl-]"); expect(mounts).toBe(1); expect(unmounts).toBe(0);
 });
 
 test("a core outage gates the QM draft without disposing it and restores the original focus", async () => {

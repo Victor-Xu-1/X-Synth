@@ -1,14 +1,14 @@
 <template>
   <section
     class="condition-results"
-    aria-label="条件预测结果"
+    :aria-label="$tr('条件预测结果')"
     :aria-busy="pending > 0"
   >
     <div
       v-if="(prediction || results.length) && !pending"
       class="condition-result-toolbar"
     >
-      <span class="condition-evidence">模型预测</span>
+      <span class="condition-evidence">{{ $tr('模型预测') }}</span>
       <v-btn
         v-if="recordPath"
         :to="recordPath"
@@ -16,10 +16,10 @@
         size="small"
         prepend-icon="mdi-book-open-outline"
         data-cy="condition-record-link"
-        >查看研究记录</v-btn
+        >{{ $tr('查看研究记录') }}</v-btn
       >
       <span v-if="Number.isFinite(score)" class="workspace-muted"
-        >反应模型评分（FF）：{{ formatNumber(score, 3) }}</span
+        >{{ $tr('反应模型评分（FF）：{score}', { score: $tr(formatNumber(score, 3)) }) }}</span
       >
       <v-btn
         v-if="allowEvaluation && results.length && workspace.can('fast_filter')"
@@ -30,31 +30,29 @@
         :disabled="pending > 0 || evaluating || inputPending"
         data-cy="evaluate-reaction"
         @click="$emit('evaluate')"
-        >评估反应</v-btn
+        >{{ $tr('评估反应') }}</v-btn
       >
     </div>
     <div v-if="pending" class="workspace-loading" role="status">
-      <v-progress-linear indeterminate /><span>计算条件候选</span>
+      <v-progress-linear indeterminate /><span>{{ $tr('计算条件候选') }}</span>
     </div>
     <div
       v-else-if="results.length"
       class="condition-table-scroll"
       tabindex="0"
       role="region"
-      aria-label="反应条件候选表"
+      :aria-label="$tr('反应条件候选表')"
     >
       <table class="data-table condition-table" data-cy="condition-table">
-        <caption class="condition-caption">
-          反应条件候选，模型预测
-        </caption>
+        <caption class="condition-caption"> {{ $tr('反应条件候选，模型预测') }} </caption>
         <thead>
           <tr>
-            <th scope="col">序号</th>
-            <th scope="col">溶剂</th>
-            <th scope="col">试剂</th>
-            <th scope="col">催化剂</th>
-            <th scope="col">预测温度 / °C</th>
-            <th scope="col">模型评分</th>
+            <th scope="col">{{ $tr('序号') }}</th>
+            <th scope="col">{{ $tr('溶剂') }}</th>
+            <th scope="col">{{ $tr('试剂') }}</th>
+            <th scope="col">{{ $tr('催化剂') }}</th>
+            <th scope="col">{{ $tr('预测温度 / °C') }}</th>
+            <th scope="col">{{ $tr('模型评分') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -79,10 +77,10 @@
                 data-cy="condition-ingredient-label"
                 >{{ identity.label }}</span
               >
-              <span v-else class="workspace-muted">未预测</span>
+              <span v-else class="workspace-muted">{{ $tr('未预测') }}</span>
             </td>
-            <td>{{ formatNumber(row.temperature, 1) }}</td>
-            <td>{{ formatNumber(row.score, 4) }}</td>
+            <td>{{ $tr(formatNumber(row.temperature, 1)) }}</td>
+            <td>{{ $tr(formatNumber(row.score, 4)) }}</td>
           </tr>
         </tbody>
       </table>
@@ -92,23 +90,23 @@
       <h2>
         {{
           error
-            ? "条件预测未完成"
+            ? $tr('条件预测未完成')
             : submitted
-              ? "未返回条件候选"
-              : "暂无条件候选"
+              ? $tr('未返回条件候选')
+              : $tr('暂无条件候选')
         }}
       </h2>
     </div>
     <details v-if="prediction && !pending" class="condition-provenance">
-      <summary>运行详情</summary>
+      <summary>{{ $tr('运行详情') }}</summary>
       <dl>
-        <dt>模型</dt>
+        <dt>{{ $tr('模型') }}</dt>
         <dd>{{ prediction.model }}</dd>
-        <dt>模型资产</dt>
+        <dt>{{ $tr('模型资产') }}</dt>
         <dd class="workspace-code">{{ prediction.asset_identity }}</dd>
-        <dt>反应物</dt>
+        <dt>{{ $tr('反应物') }}</dt>
         <dd class="workspace-code">{{ prediction.reactants }}</dd>
-        <dt>产物</dt>
+        <dt>{{ $tr('产物') }}</dt>
         <dd class="workspace-code">{{ prediction.product }}</dd>
       </dl>
     </details>

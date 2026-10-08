@@ -1,16 +1,16 @@
 <template>
-  <section class="opt-measurements" aria-label="实测记录">
+  <section class="opt-measurements" :aria-label="$tr('实测记录')">
     <div class="opt-table-bar">
       <span
-        >{{ table.row_count }} 条记录 · 已选择 {{ selectedRows.length }}</span
+        >{{ $tr('{total} 条记录 · 已选择 {selected}', { total: table.row_count, selected: selectedRows.length }) }}</span
       >
       <div class="opt-pagination">
         <v-btn
           icon="mdi-chevron-left"
           variant="text"
           size="small"
-          title="上一页"
-          aria-label="上一页"
+          :title="$tr('上一页')"
+          :aria-label="$tr('上一页')"
           :disabled="page === 1"
           @click="page--"
         />
@@ -19,27 +19,27 @@
           icon="mdi-chevron-right"
           variant="text"
           size="small"
-          title="下一页"
-          aria-label="下一页"
+          :title="$tr('下一页')"
+          :aria-label="$tr('下一页')"
           :disabled="page === pages"
           @click="page++"
         />
       </div>
     </div>
-    <div class="opt-table-scroll" role="region" aria-label="实测记录表" tabindex="0">
+    <div class="opt-table-scroll" role="region" :aria-label="$tr('实测记录表')" tabindex="0">
       <table class="opt-data-table">
         <thead>
           <tr>
             <th class="opt-select-column">
               <input
                 type="checkbox"
-                aria-label="选择本页实测记录"
+                :aria-label="$tr('选择本页实测记录')"
                 :checked="allPageSelected"
                 :indeterminate="somePageSelected && !allPageSelected"
                 @change="selectVisibleRows"
               />
             </th>
-            <th>记录</th>
+            <th>{{ $tr('记录') }}</th>
             <th v-for="column in table.columns" :key="column.name">
               {{ column.name }}
             </th>
@@ -54,7 +54,7 @@
             <td class="opt-select-column">
               <input
                 type="checkbox"
-                :aria-label="`选择实测记录 ${row.index}`"
+                :aria-label="$tr('选择实测记录 {index}', { index: row.index })"
                 :checked="selectedRows.includes(row.index)"
                 :disabled="
                   !selectedRows.includes(row.index) &&
@@ -65,7 +65,7 @@
             </td>
             <td class="opt-row-number">{{ row.index }}</td>
             <td v-for="column in table.columns" :key="column.name">
-              {{ row.values[column.name] || "缺失" }}
+              {{ row.values[column.name] || $tr('缺失') }}
             </td>
           </tr>
         </tbody>

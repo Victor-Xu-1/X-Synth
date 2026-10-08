@@ -1,7 +1,8 @@
 import { defineComponent, nextTick, reactive, ref } from "vue";
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import Drawing from "./Drawing.vue";
 import { API } from "@/common/api";
+import { DEFAULT_LOCALE, setLocale } from "@/i18n";
 
 const mockAllowed = ref(true);
 const mockWorkspace = reactive({ loading: false, refreshed: 1, error: "",
@@ -31,6 +32,33 @@ beforeEach(() => { mockAllowed.value = true; mockWorkspace.loading = false; mock
   API.toErrorObject.mockReturnValue({ string_error: "read error" }); crypto.randomUUID = jest.fn(() => "drawing-instance"); });
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; });
 function setup() { wrapper = mount(Drawing, { global: { stubs } }); }
+
+test("English-default drawing copy preserves the mounted editor and pending file state when returning to Chinese", async () => {
+  setup(); const editorUid = wrapper.getComponent(editor).vm.$.uid, pickerUid = wrapper.getComponent(picker).vm.$.uid;
+  await wrapper.get('[aria-label="Test-only retained drawing state"]').setValue("[13CH3][C@H]([NH3+])CO.[Cl-]");
+  setLocale(DEFAULT_LOCALE, { persist: false }); await nextTick();
+  expect(wrapper.text()).toContain("Structure drawing"); expect(wrapper.text()).toContain("Canonicalize");
+  expect(wrapper.getComponent(editor).vm.$.uid).toBe(editorUid); expect(wrapper.getComponent(picker).vm.$.uid).toBe(pickerUid);
+  expect(wrapper.get('[aria-label="Test-only retained drawing state"]').element.value).toContain("[Cl-]");
+  expect(mockReadDrawing).not.toHaveBeenCalled(); expect(API.post).not.toHaveBeenCalled();
+  setLocale("zh-CN", { persist: false }); await nextTick();
+  expect(wrapper.text()).toContain("结构绘制"); expect(wrapper.getComponent(editor).vm.$.uid).toBe(editorUid);
+});
+
+test("drawing status and read failure translate at display time without changing the applied chemical identity", async () => {
+  setup();
+  const smiles = "[13CH3][C@H]([NH3+])CO.[Cl-]";
+  wrapper.getComponent(editor).vm.$emit("commit", smiles); await nextTick();
+  setLocale(DEFAULT_LOCALE, { persist: false }); await nextTick();
+  expect(wrapper.get('[role="status"]').text()).toBe("Structure applied.");
+  expect(wrapper.get('[data-cy="draw-committed-smiles"]').text()).toBe(smiles);
+  mockReadDrawing.mockResolvedValue(null);
+  await wrapper.get('[data-cy="draw-apply-btn"]').trigger("click"); await flushPromises();
+  expect(wrapper.get('[role="alert"]').text()).toBe("Could not read the structure. Check the canvas and editor status.");
+  setLocale("zh-CN", { persist: false }); await nextTick();
+  expect(wrapper.get('[role="alert"]').text()).toBe("无法读取结构，请检查画板内容与绘制器状态。");
+  expect(wrapper.get('[data-cy="draw-committed-smiles"]').text()).toBe(smiles); expect(API.post).not.toHaveBeenCalled();
+});
 
 test("a recoverable gateway outage keeps the same pending file and drawing children behind the shared gate", async () => {
   setup();

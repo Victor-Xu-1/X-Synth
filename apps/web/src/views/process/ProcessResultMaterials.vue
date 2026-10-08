@@ -1,27 +1,27 @@
 <template>
   <div class="recorded-materials">
     <section v-for="group in groups" :key="group.id" class="material-result-group">
-      <h3>{{ group.title }}<span>{{ group.rows.length }} 项</span></h3>
-      <div v-if="group.rows.length" class="result-table-scroll" role="region" :aria-label="`${group.title}明细`" tabindex="0">
+      <h3>{{ $tr(group.title) }}<span>{{ $tr('{count} 项', { count: group.rows.length }) }}</span></h3>
+      <div v-if="group.rows.length" class="result-table-scroll" role="region" :aria-label="$tr('{title}明细', { title: $tr(group.title) })" tabindex="0">
         <table class="data-table material-results-table">
-          <thead><tr><th scope="col">物料与完整结构</th><th scope="col">角色</th><th scope="col">录入质量</th><th scope="col">质量 / g</th><th scope="col">完整结构分子量<br />g·mol⁻¹</th></tr></thead>
+          <thead><tr><th scope="col">{{ $tr('物料与完整结构') }}</th><th scope="col">{{ $tr('角色') }}</th><th scope="col">{{ $tr('录入质量') }}</th><th scope="col">{{ $tr('质量 / g') }}</th><th scope="col">{{ $tr('完整结构分子量') }}<br />g·mol⁻¹</th></tr></thead>
           <tbody><tr v-for="(row, index) in group.rows" :key="row.id" :data-material-id="row.id">
             <th scope="row" class="material-identity">
-              <strong>{{ row.name || `${group.title} ${index + 1}` }}</strong>
+              <strong>{{ row.name || $tr('{title} {index}', { title: $tr(group.title), index: index + 1 }) }}</strong>
               <template v-if="row.structure">
                 <div class="material-preview"><SmilesImage :smiles="row.structure.smiles" :width="170" :height="95" :show-error-image="false" lazy allow-copy /></div>
                 <span>{{ row.structure.formula }}</span><code>{{ row.structure.smiles }}</code>
               </template>
-              <span v-else class="workspace-muted">结构未提供</span>
+              <span v-else class="workspace-muted">{{ $tr('结构未提供') }}</span>
             </th>
-            <td>{{ row.role_label }}</td>
-            <td class="mass-cell">{{ value(row.mass?.value) }}{{ row.mass?.unit ? ` ${row.mass.unit}` : '' }}</td>
-            <td class="mass-cell">{{ value(row.mass_g) }}</td>
-            <td class="mass-cell">{{ value(row.structure?.molecular_weight_g_mol) }}</td>
+            <td>{{ knownRoles[row.role] === row.role_label ? $tr(row.role_label) : row.role_label }}</td>
+            <td class="mass-cell">{{ $tr(value(row.mass?.value)) }}{{ row.mass?.unit ? ` ${row.mass.unit}` : '' }}</td>
+            <td class="mass-cell">{{ $tr(value(row.mass_g)) }}</td>
+            <td class="mass-cell">{{ $tr(value(row.structure?.molecular_weight_g_mol)) }}</td>
           </tr></tbody>
         </table>
       </div>
-      <p v-else class="workspace-muted">未记录其他出料。</p>
+      <p v-else class="workspace-muted">{{ $tr('未记录其他出料。') }}</p>
     </section>
   </div>
 </template>
@@ -29,6 +29,8 @@
 import { computed } from "vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import { processMaterialGroups, processMetricValue as value } from "./process-result-model";
+import { INPUT_ROLES, OUTPUT_ROLES } from "./process-form";
+const knownRoles = Object.fromEntries([...INPUT_ROLES, ...OUTPUT_ROLES].map((role) => [role.value, role.label]));
 const props = defineProps({ result: { type: Object, required: true } });
 const groups = computed(() => processMaterialGroups(props.result));
 </script>

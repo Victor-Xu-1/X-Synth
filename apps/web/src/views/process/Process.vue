@@ -1,43 +1,43 @@
 <template>
-  <ModuleWorkbench title="工艺物料核算">
-    <template #actions><v-btn variant="text" prepend-icon="mdi-history" to="/analyses?kind=process">批次记录</v-btn></template>
+  <ModuleWorkbench :title="$tr('工艺物料核算')">
+    <template #actions><v-btn variant="text" prepend-icon="mdi-history" to="/analyses?kind=process">{{ $tr('批次记录') }}</v-btn></template>
     <form ref="inputForm" class="process-input" novalidate :aria-busy="disabled" @submit.prevent="calculate">
       <header class="batch-heading">
-        <div><span class="batch-stage">批次录入 · {{ sectionIndex + 1 }} / {{ sections.length }}</span><h2>{{ sections[sectionIndex].heading }}</h2></div>
-        <div class="batch-source" v-if="saved.source.value"><span>已有批次</span><v-btn variant="text" size="small" to="/process" :disabled="loading" @click="saved.startNew">新建批次</v-btn></div>
+        <div><span class="batch-stage">{{ $tr('批次录入 · {current} / {total}', { current: sectionIndex + 1, total: sections.length }) }}</span><h2>{{ $tr(sections[sectionIndex].heading) }}</h2></div>
+        <div class="batch-source" v-if="saved.source.value"><span>{{ $tr('已有批次') }}</span><v-btn variant="text" size="small" to="/process" :disabled="loading" @click="saved.startNew">{{ $tr('新建批次') }}</v-btn></div>
       </header>
-      <div v-if="saved.loading.value" class="workspace-loading" role="status">正在读取批次输入</div>
-      <div v-if="saved.error.value" class="tool-error" role="alert">{{ saved.error.value }}<v-btn variant="text" size="small" @click="saved.reload">重新读取</v-btn><v-btn variant="text" size="small" to="/process" @click="saved.startNew">新建批次</v-btn></div>
-      <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
-      <router-link v-if="error && recordPath(result?.record_id)" :to="recordPath(result.record_id)">打开已保存的结果</router-link>
-      <WorkbenchTabs v-model="section" :items="sections" label="批次录入分区" :disabled="disabled || pending" v-slot="{ tabId, panelId }">
+      <div v-if="saved.loading.value" class="workspace-loading" role="status">{{ $tr('正在读取批次输入') }}</div>
+      <div v-if="saved.error.value" class="tool-error" role="alert">{{ $tr(saved.error.value) }}<v-btn variant="text" size="small" @click="saved.reload">{{ $tr('重新读取') }}</v-btn><v-btn variant="text" size="small" to="/process" @click="saved.startNew">{{ $tr('新建批次') }}</v-btn></div>
+      <div v-if="error" class="tool-error" role="alert">{{ processMessage(error) }}</div>
+      <router-link v-if="error && recordPath(result?.record_id)" :to="recordPath(result.record_id)">{{ $tr('打开已保存的结果') }}</router-link>
+      <WorkbenchTabs v-model="section" :items="sections" :label="$tr('批次录入分区')" :disabled="disabled || pending" v-slot="{ tabId, panelId }">
       <section v-show="section === 'product'" data-section="product" class="batch-panel" role="tabpanel" tabindex="-1" :id="panelId('product')" :aria-labelledby="tabId('product')" :inert="section !== 'product' || undefined">
         <div class="product-grid">
-          <StructureInput ref="productInput" v-model="form.product.smiles" label="产物完整结构" :disabled="disabled" :canvas-height="400" />
+          <StructureInput ref="productInput" v-model="form.product.smiles" :label="$tr('产物完整结构')" :disabled="disabled" :canvas-height="400" />
           <div class="product-fields">
-            <h3>分离产物</h3>
-            <label>分离产物总质量<div class="quantity-field"><input v-model="form.product.mass.value" class="workspace-input" type="number" min="0" step="any" :disabled="disabled" placeholder="未录入" aria-label="分离产物总质量" /><select v-model="form.product.mass.unit" class="workspace-input" :disabled="disabled" aria-label="产物质量单位"><option v-for="unit in ['mg', 'g', 'kg']" :key="unit">{{ unit }}</option></select></div></label>
-            <label>产物质量纯度 / %<input v-model="form.product.purity_mass_percent" class="workspace-input" type="number" min="0" max="100" step="any" :disabled="disabled" placeholder="未录入" /></label>
-            <label>录入实验收率 / %<input v-model="form.product.reported_yield_percent" class="workspace-input" type="number" min="0" max="100" step="any" :disabled="disabled" placeholder="未录入" /></label>
-            <p class="scientific-note">质量纯度 ≠ HPLC 面积纯度</p>
+            <h3>{{ $tr('分离产物') }}</h3>
+            <label>{{ $tr('分离产物总质量') }}<div class="quantity-field"><input v-model="form.product.mass.value" class="workspace-input" type="number" min="0" step="any" :disabled="disabled" :placeholder="$tr('未录入')" :aria-label="$tr('分离产物总质量')" /><select v-model="form.product.mass.unit" class="workspace-input" :disabled="disabled" :aria-label="$tr('产物质量单位')"><option v-for="unit in ['mg', 'g', 'kg']" :key="unit">{{ unit }}</option></select></div></label>
+            <label>{{ $tr('产物质量纯度 / %') }}<input v-model="form.product.purity_mass_percent" class="workspace-input" type="number" min="0" max="100" step="any" :disabled="disabled" :placeholder="$tr('未录入')" /></label>
+            <label>{{ $tr('录入实验收率 / %') }}<input v-model="form.product.reported_yield_percent" class="workspace-input" type="number" min="0" max="100" step="any" :disabled="disabled" :placeholder="$tr('未录入')" /></label>
+            <p class="scientific-note">{{ $tr('质量纯度 ≠ HPLC 面积纯度') }}</p>
           </div>
         </div>
       </section>
       <section v-show="section === 'inputs'" data-section="inputs" class="batch-panel" role="tabpanel" tabindex="-1" :id="panelId('inputs')" :aria-labelledby="tabId('inputs')" :inert="section !== 'inputs' || undefined">
-        <MaterialTable ref="materialInputs" v-model="form.materials" title="投料" :roles="INPUT_ROLES" :minimum="1" :disabled="disabled" />
-        <label class="boundary-label"><input v-model="form.inputBoundaryComplete" type="checkbox" :disabled="disabled" />已包含全部投料、试剂、溶剂、水及后处理物料</label>
+        <MaterialTable ref="materialInputs" v-model="form.materials" :title="$tr('投料')" :roles="INPUT_ROLES" :minimum="1" :disabled="disabled" />
+        <label class="boundary-label"><input v-model="form.inputBoundaryComplete" type="checkbox" :disabled="disabled" />{{ $tr('已包含全部投料、试剂、溶剂、水及后处理物料') }}</label>
         <YieldBasisFields v-model:enabled="form.useYieldBasis" v-model:basis="form.yieldBasis" :materials="form.materials" :disabled="disabled" />
       </section>
       <section v-show="section === 'outputs'" data-section="outputs" class="batch-panel" role="tabpanel" tabindex="-1" :id="panelId('outputs')" :aria-labelledby="tabId('outputs')" :inert="section !== 'outputs' || undefined">
-        <MaterialTable ref="outputInputs" v-model="form.otherOutputs" title="其他出料" :roles="OUTPUT_ROLES" :disabled="disabled" />
+        <MaterialTable ref="outputInputs" v-model="form.otherOutputs" :title="$tr('其他出料')" :roles="OUTPUT_ROLES" :disabled="disabled" />
       </section>
       </WorkbenchTabs>
       <footer class="process-actions">
-        <div class="batch-outline"><span>{{ form.materials.length }} 项投料</span><span>{{ form.otherOutputs.length }} 项其他出料</span><span>{{ form.inputBoundaryComplete ? '完整投料边界' : '未确认投料边界' }}</span></div>
+        <div class="batch-outline"><span>{{ $tr('{count} 项投料', { count: form.materials.length }) }}</span><span>{{ $tr('{count} 项其他出料', { count: form.otherOutputs.length }) }}</span><span>{{ form.inputBoundaryComplete ? $tr('完整投料边界') : $tr('未确认投料边界') }}</span></div>
         <div class="batch-section-navigation">
-          <v-btn v-if="sectionIndex > 0" type="button" data-section-previous variant="text" prepend-icon="mdi-arrow-left" :disabled="disabled || pending" @click="moveSection(-1)">上一步</v-btn>
-          <v-btn v-if="sectionIndex < sections.length - 1" type="button" data-section-next variant="text" append-icon="mdi-arrow-right" :disabled="disabled || pending" @click="moveSection(1)">{{ sections[sectionIndex + 1].title }}</v-btn>
-        <v-btn type="submit" color="primary" variant="flat" prepend-icon="mdi-calculator-variant-outline" :loading="loading" :disabled="disabled || pending || !form.product.smiles.trim()">核算批次</v-btn>
+          <v-btn v-if="sectionIndex > 0" type="button" data-section-previous variant="text" prepend-icon="mdi-arrow-left" :disabled="disabled || pending" @click="moveSection(-1)">{{ $tr('上一步') }}</v-btn>
+          <v-btn v-if="sectionIndex < sections.length - 1" type="button" data-section-next variant="text" append-icon="mdi-arrow-right" :disabled="disabled || pending" @click="moveSection(1)">{{ $tr(sections[sectionIndex + 1].title) }}</v-btn>
+        <v-btn type="submit" color="primary" variant="flat" prepend-icon="mdi-calculator-variant-outline" :loading="loading" :disabled="disabled || pending || !form.product.smiles.trim()">{{ $tr('核算批次') }}</v-btn>
         </div>
       </footer>
     </form>
@@ -45,6 +45,7 @@
 </template>
 <script setup>
 import { computed, nextTick, reactive, ref } from "vue";
+import { processMessage } from "./ui-copy";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import WorkbenchTabs from "@/components/WorkbenchTabs.vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";

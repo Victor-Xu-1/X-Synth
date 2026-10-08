@@ -1,24 +1,22 @@
 <template>
-  <section class="opt-recommendations" aria-label="下一批实验">
-    <p class="opt-response-identity">
-      实测响应：{{ result.target.name || '响应列未记录' }} · {{ directionCaption }} · {{ result.target.unit || '单位未记录' }}
+  <section class="opt-recommendations" :aria-label="$tr('下一批实验')">
+    <p class="opt-response-identity">{{ $tr('实测响应：{name} · {direction} · {unit}', { name: result.target.name || $tr('响应列未记录'), direction: $tr(directionCaption), unit: result.target.unit || $tr('单位未记录') }) }}
     </p>
     <div class="opt-result-summary">
-      <span>建议 {{ result.recommendations.length }} 组</span
-      ><span>已测 {{ result.unique_measured_conditions }} 组</span
+      <span>{{ $tr('建议 {count} 组', { count: result.recommendations.length }) }}</span
+      ><span>{{ $tr('已测 {count} 组', { count: result.unique_measured_conditions }) }}</span
       ><span
-        >最佳实测 {{ formatResponse(result.best_observed) }}
-        {{ result.target.unit }}</span
-      ><strong>未实验确认</strong>
+        >{{ $tr('最佳实测 {value} {unit}', { value: $tr(formatResponse(result.best_observed)), unit: result.target.unit }) }}</span
+      ><strong>{{ $tr('未实验确认') }}</strong>
     </div>
-    <div class="opt-table-scroll" role="region" aria-label="下一批实验条件表" tabindex="0">
+    <div class="opt-table-scroll" role="region" :aria-label="$tr('下一批实验条件表')" tabindex="0">
       <table class="opt-data-table">
         <thead>
           <tr>
-            <th scope="col">实验</th>
+            <th scope="col">{{ $tr('实验') }}</th>
             <th v-for="name in names" :key="name" scope="col">{{ name }}</th>
-            <th scope="col">后验均值 {{ result.target.unit }}</th>
-            <th scope="col">后验标准差 {{ result.target.unit }}</th>
+            <th scope="col">{{ $tr('后验均值 {unit}', { unit: result.target.unit }) }}</th>
+            <th scope="col">{{ $tr('后验标准差 {unit}', { unit: result.target.unit }) }}</th>
           </tr>
         </thead>
         <tbody>
@@ -27,8 +25,8 @@
             <td v-for="name in names" :key="name">
               {{ row.conditions[name] }}
             </td>
-            <td>{{ formatResponse(row.posterior_mean) }}</td>
-            <td>{{ formatResponse(row.posterior_std) }}</td>
+            <td>{{ $tr(formatResponse(row.posterior_mean)) }}</td>
+            <td>{{ $tr(formatResponse(row.posterior_std)) }}</td>
           </tr>
         </tbody>
       </table>
@@ -37,28 +35,28 @@
       <p v-for="warning in result.warnings" :key="warning">{{ warning }}</p>
     </div>
     <details class="opt-provenance">
-      <summary>计算来源</summary>
+      <summary>{{ $tr('计算来源') }}</summary>
       <dl>
-        <dt>引擎</dt>
+        <dt>{{ $tr('引擎') }}</dt>
         <dd>BayBE {{ result.versions.baybe }} · Merck</dd>
-        <dt>代理模型</dt>
+        <dt>{{ $tr('代理模型') }}</dt>
         <dd>{{ result.surrogate }}</dd>
-        <dt>采集函数</dt>
+        <dt>{{ $tr('采集函数') }}</dt>
         <dd>{{ result.acquisition }}</dd>
-        <dt>分类编码</dt>
+        <dt>{{ $tr('分类编码') }}</dt>
         <dd>{{ result.categorical_encoding }}</dd>
-        <dt>随机种子</dt>
+        <dt>{{ $tr('随机种子') }}</dt>
         <dd>{{ result.seed }}</dd>
-        <dt>实测行</dt>
+        <dt>{{ $tr('实测行') }}</dt>
         <dd>{{ result.selected_rows.join(", ") }}</dd>
-        <dt>输入 SHA256</dt>
+        <dt>{{ $tr('输入 SHA256') }}</dt>
         <dd>{{ result.request_sha256 }}</dd>
-        <dt>官方来源</dt>
+        <dt>{{ $tr('官方来源') }}</dt>
         <dd>
           <a :href="source" target="_blank" rel="noopener noreferrer"
             >BayBE 0.15.0</a
           >
-          · <a :href="paper" target="_blank" rel="noopener noreferrer">论文</a>
+          · <a :href="paper" target="_blank" rel="noopener noreferrer">{{ $tr('论文') }}</a>
         </dd>
       </dl>
     </details>

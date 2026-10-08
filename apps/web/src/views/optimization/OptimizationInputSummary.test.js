@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { TextEncoder } from "node:util";
 import { saveAs } from "file-saver";
 import OptimizationInputSummary from "./OptimizationInputSummary.vue";
+import { DEFAULT_LOCALE, setLocale } from "@/i18n";
 jest.mock("file-saver", () => ({ saveAs: jest.fn() }));
 
 test.each([
@@ -32,4 +33,26 @@ test("saved-input summary keeps zero seed, exact declared units/direction and or
   const bytes = await new Promise((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(new Uint8Array(reader.result)); reader.readAsArrayBuffer(blob); });
   expect([...bytes]).toEqual([...new TextEncoder().encode(input.content)]);
   wrapper.unmount();
+});
+
+test("English-default saved summary and Chinese return preserve original CSV headers, bytes, units and zero seed", async () => {
+  const inputs = { content: '\ufeff温度,实测响应\r\n10,0\r\n20,2\r\n', selected_rows: [1, 2], seed: 0,
+    target: { name: "实测响应", direction: "minimize", unit: "mM" },
+    factors: [{ name: "温度", kind: "numerical", values: [10, 20] }], table_sha256: "a".repeat(64) };
+  const original = JSON.stringify(inputs);
+  setLocale(DEFAULT_LOCALE, { persist: false });
+  const wrapper = mount(OptimizationInputSummary, { props: { inputs, recordId: "saved" }, global: { stubs: { VBtn: { template: '<button><slot /></button>' } } } });
+  try {
+    expect(wrapper.text()).toContain("Measured inputs and candidate space"); expect(wrapper.text()).toContain("Minimize");
+    expect(wrapper.text()).toContain("实测响应"); expect(wrapper.text()).toContain("温度");
+    expect(wrapper.get(".optimization-input-facts").text()).toContain("Random seed0");
+    const button = wrapper.get("button").element;
+    setLocale("zh-CN", { persist: false }); await flushPromises();
+    expect(wrapper.get("button").element).toBe(button); expect(wrapper.text()).toContain("实测输入与候选空间");
+    expect(JSON.stringify(inputs)).toBe(original);
+    await wrapper.get("button").trigger("click"); await flushPromises();
+    const blob = saveAs.mock.calls.at(-1)[0];
+    const bytes = await new Promise((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(new Uint8Array(reader.result)); reader.readAsArrayBuffer(blob); });
+    expect([...bytes]).toEqual([...new TextEncoder().encode(inputs.content)]);
+  } finally { wrapper.unmount(); }
 });

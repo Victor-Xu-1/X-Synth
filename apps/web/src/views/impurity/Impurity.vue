@@ -1,9 +1,9 @@
 <template>
-  <ModuleWorkbench title="可能杂质分析">
-    <template #actions><v-btn v-if="saved.source.value || saved.error.value" to="/impurity" variant="text" prepend-icon="mdi-plus" :disabled="loading" @click="saved.startNew">新建分析</v-btn></template>
+  <ModuleWorkbench :title="$tr('可能杂质分析')">
+    <template #actions><v-btn v-if="saved.source.value || saved.error.value" to="/impurity" variant="text" prepend-icon="mdi-plus" :disabled="loading" @click="saved.startNew">{{ $tr('新建分析') }}</v-btn></template>
     <WorkbenchForm
       class="impurity-layout"
-      parameter-label="杂质分析参数"
+      :parameter-label="$tr('杂质分析参数')"
       @submit="submit"
     >
       <template #parameters>
@@ -14,17 +14,17 @@
             class="structure-group"
           >
             <header>
-              <h2>{{ group.label }}</h2>
+              <h2>{{ $tr(group.label) }}</h2>
               <v-tooltip
                 v-if="group.maximum > 1 || group.minimum === 0"
-                :text="`添加${group.item}`"
+                :text="$tr('添加{item}', { item: $tr(group.item) })"
                 ><template #activator="{ props }"
                   ><v-btn
                     v-bind="props"
                     icon="mdi-plus"
                     variant="text"
                     size="x-small"
-                    :aria-label="`添加${group.item}`"
+                    :aria-label="$tr('添加{item}', { item: $tr(group.item) })"
                     :disabled="
                       locked ||
                       dirty ||
@@ -42,7 +42,7 @@
               <button
                 type="button"
                 class="structure-select"
-                :aria-label="`编辑${group.item} ${index + 1}`"
+                :aria-label="$tr('编辑{item} {index}', { item: $tr(group.item), index: index + 1 })"
                 :aria-pressed="row.id === selectedId"
                 :disabled="locked || dirty"
                 @click="select(row, group, index)"
@@ -55,29 +55,29 @@
                   :show-error-image="false"
                 /><v-icon v-else icon="mdi-molecule" size="22" />
                 <span
-                  >{{ group.item }} {{ index + 1
+                  >{{ $tr(group.item) }} {{ index + 1
                   }}<small>{{
-                    row.smiles ? "已应用结构" : "待录入结构"
+                    row.smiles ? $tr('已应用结构') : $tr('待录入结构')
                   }}</small></span
                 >
               </button>
               <v-tooltip
                 v-if="form[group.key].length > group.minimum"
-                text="移除结构"
+                :text="$tr('移除结构')"
                 ><template #activator="{ props }"
                   ><v-btn
                     v-bind="props"
                     icon="mdi-delete-outline"
                     size="x-small"
                     variant="text"
-                    :aria-label="`移除${group.item} ${index + 1}`"
+                    :aria-label="$tr('移除{item} {index}', { item: $tr(group.item), index: index + 1 })"
                     :disabled="locked || dirty"
                     @click="remove(row, group)" /></template
               ></v-tooltip>
             </div>
           </section>
           <label class="count-field"
-            >最多报告候选数<input
+            >{{ $tr('最多报告候选数') }}<input
               v-model.number="form.count"
               class="workspace-input"
               type="number"
@@ -86,10 +86,7 @@
               step="1"
               :disabled="locked"
           /></label>
-          <p class="workspace-muted">
-            每条记录最多 80 个原子；全部输入最多 160
-            个原子。已知主产物仅作为用户基准。
-          </p>
+          <p class="workspace-muted"> {{ $tr('每条记录最多 80 个原子；全部输入最多 160 个原子。已知主产物仅作为用户基准。') }} </p>
           <v-btn
             type="submit"
             color="primary"
@@ -97,7 +94,7 @@
             prepend-icon="mdi-flask-outline"
             :loading="loading"
             :disabled="locked || pending || !hasStructures"
-            >预测可能杂质</v-btn
+            >{{ $tr('预测可能杂质') }}</v-btn
           >
         </div>
       </template>
@@ -107,7 +104,7 @@
           :key="`${selected.id}-${editorRevision}`"
           ref="canvas"
           v-model="draft"
-          :label="selectedLabel"
+          :label="selectedDisplayLabel"
           :disabled="locked"
           @dirty="dirty = $event"
         />
@@ -117,39 +114,38 @@
             prepend-icon="mdi-check"
             :disabled="locked || canvas?.pending"
             @click="apply"
-            >应用结构</v-btn
+            >{{ $tr('应用结构') }}</v-btn
           >
           <v-btn
             variant="text"
             prepend-icon="mdi-undo"
             :disabled="locked || !dirty"
             @click="restore"
-            >放弃修改</v-btn
+            >{{ $tr('放弃修改') }}</v-btn
           ><span class="workspace-muted">{{
             dirty
-              ? "当前画板结构尚未应用"
+              ? $tr('当前画板结构尚未应用')
               : selected?.smiles
-                ? "当前结构已应用"
-                : "待录入结构"
+                ? $tr('当前结构已应用')
+                : $tr('待录入结构')
           }}</span>
         </div>
       </div>
     </WorkbenchForm>
     <section class="impurity-status" aria-live="polite">
-      <p v-if="saved.loading.value" role="status">正在读取杂质分析输入</p>
-      <p v-if="saved.error.value" class="tool-error" role="alert">{{ saved.error.value }}<v-btn variant="text" @click="saved.reload">重新读取</v-btn></p>
-      <p v-if="error" class="tool-error" role="alert">{{ error }}</p>
-      <router-link v-if="error && recordPath(result?.record_id)" :to="recordPath(result.record_id)">打开已保存的结果</router-link>
-      <p v-if="editError" class="tool-error" role="alert">{{ editError }}</p>
+      <p v-if="saved.loading.value" role="status">{{ $tr('正在读取杂质分析输入') }}</p>
+      <p v-if="saved.error.value" class="tool-error" role="alert">{{ $tr(saved.error.value) }}<v-btn variant="text" @click="saved.reload">{{ $tr('重新读取') }}</v-btn></p>
+      <p v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</p>
+      <router-link v-if="error && recordPath(result?.record_id)" :to="recordPath(result.record_id)">{{ $tr('打开已保存的结果') }}</router-link>
+      <p v-if="editError" class="tool-error" role="alert">{{ $tr(editError) }}</p>
       <div v-if="loading" class="workspace-loading" role="status">
-        <v-progress-circular indeterminate size="24" />正在执行五模式、FF
-        与原子映射
-      </div>
+        <v-progress-circular indeterminate size="24" />{{ $tr('正在执行五模式、FF 与原子映射') }} </div>
     </section>
   </ModuleWorkbench>
 </template>
 <script setup>
 import { computed, nextTick, onBeforeUnmount, reactive, ref } from "vue";
+import { uiText } from "@/i18n";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import SmilesImage from "@/components/SmilesImage.vue";
@@ -180,6 +176,12 @@ const selected = computed(() =>
     (row) => row.id === selectedId.value,
   ),
 );
+const selectedDisplayLabel = computed(() => {
+  const match = /^(反应物|主产物|试剂|溶剂) (\d+)$/.exec(selectedLabel.value);
+  if (!match) return uiText(selectedLabel.value);
+  return match[1] === "反应物" ? uiText("反应物 {index}", { index: match[2] })
+    : uiText("{item} {index}", { item: uiText(match[1]), index: match[2] });
+});
 let revision = 0, disposed = false;
 function initialize(next) {
   revision++;

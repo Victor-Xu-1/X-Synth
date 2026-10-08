@@ -1,44 +1,42 @@
 <template>
-  <ModuleWorkbench :title="pageTitle" @select-module="replaceRoute">
-    <div v-if="saved.loading.value" class="workspace-loading" role="status">正在读取预测输入</div>
-    <p v-if="saved.error.value" class="tool-error" role="alert">{{ saved.error.value }}<v-btn variant="text" @click="saved.reload">重新读取</v-btn></p>
-    <p v-if="replayNote" class="workspace-muted" role="note">{{ replayNote }}</p>
-    <router-link v-if="displayError && recordPath(currentPrediction?.record_id)" :to="recordPath(currentPrediction.record_id)">打开已保存的结果</router-link>
+  <ModuleWorkbench :title="$tr(pageTitle)" @select-module="replaceRoute">
+    <div v-if="saved.loading.value" class="workspace-loading" role="status">{{ $tr('正在读取预测输入') }}</div>
+    <p v-if="saved.error.value" class="tool-error" role="alert">{{ $tr(saved.error.value) }}<v-btn variant="text" @click="saved.reload">{{ $tr('重新读取') }}</v-btn></p>
+    <p v-if="replayNote" class="workspace-muted" role="note">{{ $tr(replayNote) }}</p>
+    <router-link v-if="displayError && recordPath(currentPrediction?.record_id)" :to="recordPath(currentPrediction.record_id)">{{ $tr('打开已保存的结果') }}</router-link>
     <template #actions>
       <v-btn v-if="saved.source.value || saved.error.value" :to="needsProduct ? '/forward?tab=context' : '/forward?tab=forward'"
-        variant="text" prepend-icon="mdi-plus" :disabled="pendingTasks > 0" @click="saved.startNew">新建计算</v-btn>
+        variant="text" prepend-icon="mdi-plus" :disabled="pendingTasks > 0" @click="saved.startNew">{{ $tr('新建计算') }}</v-btn>
       <v-btn
         to="/analyses"
         variant="text"
         size="small"
         prepend-icon="mdi-book-open-outline"
-      >
-        研究记录
-      </v-btn>
-      <v-tooltip text="任务与路线" location="top">
+      > {{ $tr('研究记录') }} </v-btn>
+      <v-tooltip :text="$tr('任务与路线')" location="top">
         <template #activator="{ props }">
           <v-btn
             v-bind="props"
             to="/results"
             icon="mdi-clipboard-text-outline"
             variant="text"
-            aria-label="任务与路线"
+            :aria-label="$tr('任务与路线')"
           />
         </template>
       </v-tooltip>
     </template>
     <WorkbenchForm
       class="forward-input-layout"
-      aria-label="反应输入"
+      :aria-label="$tr('反应输入')"
       parameter-label="预测参数"
       @submit="predict"
     >
       <template #parameters>
         <div class="forward-parameters" aria-labelledby="parameter-heading">
-          <h2 id="parameter-heading" class="tool-section-title">预测参数</h2>
+          <h2 id="parameter-heading" class="tool-section-title">{{ $tr('预测参数') }}</h2>
           <v-text-field
             v-model="resultLimit"
-            label="结果数量"
+            :label="$tr('结果数量')"
             type="number"
             min="1"
             :max="needsProduct ? 20 : 10"
@@ -47,7 +45,7 @@
             variant="outlined"
             density="compact"
             :disabled="busy"
-            :error-messages="countError"
+            :error-messages="predictionMessage(countError)"
             :data-cy="
               needsProduct
                 ? 'settings-num-results'
@@ -55,12 +53,12 @@
             "
           />
           <details class="forward-advanced">
-            <summary>高级设置</summary>
+            <summary>{{ $tr('高级设置') }}</summary>
             <dl>
-              <dt>模型</dt>
+              <dt>{{ $tr('模型') }}</dt>
               <dd>{{ needsProduct ? "NN v1" : "Graph2SMILES" }}</dd>
               <template v-if="!needsProduct"
-                ><dt>训练集</dt>
+                ><dt>{{ $tr('训练集') }}</dt>
                 <dd>USPTO Stereo</dd></template
               >
             </dl>
@@ -71,7 +69,7 @@
             role="alert"
             data-cy="forward-request-error"
           >
-            {{ displayError }}
+            {{ predictionMessage(displayError) }}
           </p>
           <div class="forward-submit-actions">
             <v-btn
@@ -83,15 +81,15 @@
               :disabled="!submissionReady"
               data-cy="submit-button"
             >
-              {{ needsProduct ? "预测条件" : "预测产物" }}
+              {{ needsProduct ? $tr('预测条件') : $tr('预测产物') }}
             </v-btn>
-            <v-tooltip text="清空当前反应" location="top">
+            <v-tooltip :text="$tr('清空当前反应')" location="top">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"
                   icon="mdi-delete-sweep-outline"
                   variant="text"
-                  aria-label="清空当前反应"
+                  :aria-label="$tr('清空当前反应')"
                   :disabled="busy || inputPending"
                   data-cy="clear-button"
                   @click="clear"
@@ -102,12 +100,12 @@
         </div>
       </template>
       <section class="forward-reaction" aria-labelledby="reaction-heading">
-        <h2 id="reaction-heading" class="tool-section-title">反应结构</h2>
+        <h2 id="reaction-heading" class="tool-section-title">{{ $tr('反应结构') }}</h2>
         <ReactionInput
           v-if="needsProduct"
           ref="canvas"
           v-model="reactionSmiles"
-          label="反应结构"
+          :label="$tr('反应结构')"
           :disabled="busy"
           :require-reactants="true"
           data-cy="forward-reaction"
@@ -116,7 +114,7 @@
           v-else
           ref="reactantsInput"
           v-model="forwardSmiles"
-          label="反应物"
+          :label="$tr('反应物')"
           id="forward-reactants"
           :disabled="busy"
           data-cy="reactants"
@@ -130,6 +128,8 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useConfirm } from "vuetify-use-dialog";
+import { uiText } from "@/i18n";
+import { predictionMessage } from "./ui-copy";
 import { errorMessage } from "@/common/workspace-errors";
 import {
   reactionInputPrefill,
@@ -266,8 +266,10 @@ async function predict() {
 async function clear() {
   if (busy.value || inputPending.value) return;
   const confirmed = await createConfirm({
-    title: "请确认",
-    content: "清空当前反应结构与结果？",
+    title: uiText("请确认"),
+    content: uiText("清空当前反应结构与结果？"),
+    confirmationText: uiText("确定"),
+    cancellationText: uiText("取消"),
     dialogProps: { width: "auto" },
   });
   if (!confirmed || disposed || busy.value || inputPending.value) return;

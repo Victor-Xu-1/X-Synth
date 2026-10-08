@@ -6,6 +6,8 @@ import * as Vue from "vue";
 import { mount } from "@vue/test-utils";
 import { useWorkbenchActivity } from "@/components/workspace/workbench-activity";
 import WorkbenchScope from "@/components/workspace/WorkbenchScope.vue";
+import { uiText } from "@/i18n";
+import { solubilityContextText, solubilityFieldCaption } from "./ui-copy";
 
 const runCeleryTask = jest.fn(), confirm = jest.fn(), wrappers = [];
 const files = ["../qm/QM.vue", "tabs/SolubilityPredictView.vue", "tabs/SolventScreenView.vue"];
@@ -22,6 +24,8 @@ function optionsOf(file) {
   const module = { exports: {} };
   const requireMock = (id) => {
     if (id === "vue") return Vue;
+    if (id === "@/i18n") return { uiText };
+    if (id === "../ui-copy") return { solubilityContextText, solubilityFieldCaption };
     if (id === "vue-router") return { useRoute: () => ({ query: {} }) };
     if (id === "@/common/api") return { API: { runCeleryTask, toErrorObject: () => ({ string_error: "failed" }) } };
     if (id === "@/store/workspace") return { useWorkspaceStore: () => ({ can: () => true, refresh: async () => {} }) };

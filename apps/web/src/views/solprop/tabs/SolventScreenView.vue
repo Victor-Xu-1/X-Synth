@@ -1,58 +1,50 @@
 <template>
   <v-container fluid style="min-height: calc(100vh-50px)">
-    <section v-if="requestError" class="mb-4" aria-label="溶剂筛选错误"><ErrorDialog :error-obj="requestError" /></section>
+    <section v-if="requestError" class="mb-4" :aria-label="$tr('溶剂筛选错误')"><ErrorDialog :error-obj="requestError" /></section>
     <v-row class="justify-center align-center">
       <v-col cols="12" md="12" class="pa-0">
         <v-sheet elevation="2" class="pa-10" rounded="lg">
           <v-form @submit.prevent>
             <v-row class="justify-center align-center">
               <v-col cols="12" md="4">
-                <StructureInput ref="soluteInput" v-model="solute" label="溶质"
+                <StructureInput ref="soluteInput" v-model="solute" :label="$tr('溶质')"
                   :disabled="loading" data-cy="solscreen-solute" />
               </v-col>
               <v-col cols="12" md="4">
                 <v-row class="mb-2">
-                  <v-select data-cy="solscreen-solsets" label="溶剂集合" variant="outlined"
+                  <v-select data-cy="solscreen-solsets" :label="$tr('溶剂集合')" variant="outlined"
                     :items="solventSetOptions" item-title="title" item-value="value" hide-details v-model="solventSet"
                     :disabled="loading || structurePending" rounded="pill">
                   </v-select>
                 </v-row>
                 <v-row>
-                  <v-textarea label="溶剂列表" hide-details variant="outlined" v-model="solvents"
+                  <v-textarea :label="$tr('溶剂列表')" hide-details variant="outlined" v-model="solvents"
                     :rows="3" :disabled="loading || selectedSolventInput?.pending" spellcheck="false"
                     data-cy="solscreen-solvent-list" />
                 </v-row>
                 <v-select v-model="selectedSolventIndex" :items="solventEntries" item-title="title" item-value="value"
-                  label="溶剂条目" variant="outlined" density="compact" hide-details class="mt-3"
+                  :label="$tr('溶剂条目')" variant="outlined" density="compact" hide-details class="mt-3"
                   :disabled="loading || selectedSolventInput?.pending" data-cy="solscreen-selected-solvent" />
                 <StructureInput ref="selectedSolventInput" :key="selectedSolventIndex" v-model="selectedSolvent"
-                  label="所选溶剂" :disabled="loading" class="mt-3" />
+                  :label="$tr('所选溶剂')" :disabled="loading" class="mt-3" />
               </v-col>
               <v-col cols="12" md="4">
-                <v-textarea label="温度列表" hide-details variant="outlined" v-model="temperatures"></v-textarea>
+                <v-textarea :label="$tr('温度列表')" hide-details variant="outlined" v-model="temperatures"></v-textarea>
               </v-col>
             </v-row>
             <v-row align="center" justify-start>
               <v-col cols="12">
                 <v-btn type="submit" data-cy="solscreen-submit" variant="flat" color="primary" class="mr-5"
-                  @click="predict" :loading="loading" :disabled="loading || structurePending">提交</v-btn>
+                  @click="predict" :loading="loading" :disabled="loading || structurePending">{{ $tr('提交') }}</v-btn>
                 <v-btn @click="dialog = true" variant="flat" class="mr-5" prepend-icon="mdi-dots-horizontal"
-                  color="primary">
-                  更多参数
-                </v-btn>
+                  color="primary"> {{ $tr('更多参数') }} </v-btn>
                 <v-btn variant="tonal" class="mr-5" @click="customDialog = !customDialog"
-                  v-if="solventSet === 'custom'" :disabled="loading || structurePending">
-                  保存自定义溶剂集合
-                </v-btn>
+                  v-if="solventSet === 'custom'" :disabled="loading || structurePending"> {{ $tr('保存自定义溶剂集合') }} </v-btn>
                 <v-btn data-cy="solscreen-custom-solv-set-delete" variant="tonal" class="mr-5" color="red"
-                  v-if="Object.keys(customSolventSets).includes(solventSet)" @click="deleteSolventSet">
-                  删除自定义溶剂集合
-                </v-btn>
+                  v-if="Object.keys(customSolventSets).includes(solventSet)" @click="deleteSolventSet"> {{ $tr('删除自定义溶剂集合') }} </v-btn>
                 <v-btn data-cy="solscreen-clear" variant="tonal" class="mr-5" :disabled="results.length === 0"
-                  @click="clear(false)">
-                  清空结果
-                </v-btn>
-                <v-btn variant="tonal" color="info" @click="showInfo = !showInfo">模型输入/输出说明</v-btn>
+                  @click="clear(false)"> {{ $tr('清空结果') }} </v-btn>
+                <v-btn variant="tonal" color="info" @click="showInfo = !showInfo">{{ $tr('模型输入/输出说明') }}</v-btn>
               </v-col>
             </v-row>
           </v-form>
@@ -67,24 +59,24 @@
             <v-row>
               <v-col cols="12" md="12">
                 <div class="d-flex flex-row justify-center align-center">
-                  <v-select data-cy="solscreen-calc-method" label="计算方法" variant="outlined"
-                    v-model="selectedMethod" :items="methodOptions" hide-details class="mr-4">
+                  <v-select data-cy="solscreen-calc-method" :label="$tr('计算方法')" variant="outlined"
+                    v-model="selectedMethod" :items="methodOptions.map(item => ({ ...item, title: $tr(item.title) }))" hide-details class="mr-4">
                   </v-select>
-                  <v-select data-cy="solscreen-units" label="单位" variant="outlined" v-model="selectedUnits"
+                  <v-select data-cy="solscreen-units" :label="$tr('单位')" variant="outlined" v-model="selectedUnits"
                     :items="unitOptions" hide-details class="mr-4">
                   </v-select>
-                  <v-select data-cy="solscreen-x-axis" label="X 轴" variant="outlined" v-model="selectedX"
-                    :items="xOptions" hide-details class="mr-4">
+                  <v-select data-cy="solscreen-x-axis" :label="$tr('X 轴')" variant="outlined" v-model="selectedX"
+                    :items="xOptions.map(item => ({ ...item, title: $tr(item.title) }))" hide-details class="mr-4">
                   </v-select>
                   <v-spacer></v-spacer>
                   <v-menu location="bottom" :close-on-content-click="false">
                     <template v-slot:activator="{ props }">
-                      <v-btn v-bind="props" data-cy="solscreen-download" variant="flat" color="primary">下载</v-btn>
+                      <v-btn v-bind="props" data-cy="solscreen-download" variant="flat" color="primary">{{ $tr('下载') }}</v-btn>
                     </template>
                     <v-card width="auto" min-width="250px">
                       <v-list density="compact">
-                        <v-list-item data-cy="solscreen-download-csv" @click="downloadCSV">下载 CSV</v-list-item>
-                        <v-list-item data-cy="solscreen-download-json" @click="downloadJSON">下载 JSON</v-list-item>
+                        <v-list-item data-cy="solscreen-download-csv" @click="downloadCSV">{{ $tr('下载 CSV') }}</v-list-item>
+                        <v-list-item data-cy="solscreen-download-json" @click="downloadJSON">{{ $tr('下载 JSON') }}</v-list-item>
                       </v-list>
                     </v-card>
                   </v-menu>
@@ -114,8 +106,8 @@
           </v-skeleton-loader>
           <div v-else class="text-center d-flex justify-center align-center flex-column">
             <v-img :width="400" cover :src="emptyChartSrc" class="mb-3"></v-img>
-            <h2>暂无结果</h2>
-            <p class="text-body-1">请先输入溶质、溶剂集合和温度后运行筛选。</p>
+            <h2>{{ $tr('暂无结果') }}</h2>
+            <p class="text-body-1">{{ $tr('请先输入溶质、溶剂集合和温度后运行筛选。') }}</p>
           </div>
         </v-sheet>
       </v-col>
@@ -123,23 +115,21 @@
 
     <WorkbenchDialog v-model="customDialog" persistent max-width="600px">
       <v-card>
-        <v-card-title>
-          保存溶剂集合
-        </v-card-title>
+        <v-card-title> {{ $tr('保存溶剂集合') }} </v-card-title>
 
         <v-card-text>
           <v-form>
-            <v-text-field data-cy="solscreen-name-solv-set" label="请输入溶剂集合名称" v-model="newSolventSetName"
-              :rules="[v => !!v || '必须输入名称']" required></v-text-field>
+            <v-text-field data-cy="solscreen-name-solv-set" :label="$tr('请输入溶剂集合名称')" v-model="newSolventSetName"
+              :rules="[v => !!v || $tr('必须输入名称')]" required></v-text-field>
           </v-form>
-          <p>自定义溶剂集合会保存在当前浏览器本地。</p>
+          <p>{{ $tr('自定义溶剂集合会保存在当前浏览器本地。') }}</p>
         </v-card-text>
 
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn data-cy="solscreen-custom-solv-set-close" color="blue darken-1" text @click="customDialog = false">关闭</v-btn>
+          <v-btn data-cy="solscreen-custom-solv-set-close" color="blue darken-1" text @click="customDialog = false">{{ $tr('关闭') }}</v-btn>
           <v-btn data-cy="solscreen-custom-solv-set-save" color="blue darken-1" text @click="() => { this.saveSolventSet(); customDialog = false }"
-            :disabled="loading || structurePending || !newSolventSetNameValid">保存</v-btn>
+            :disabled="loading || structurePending || !newSolventSetNameValid">{{ $tr('保存') }}</v-btn>
         </v-card-actions>
       </v-card>
     </WorkbenchDialog>
@@ -147,52 +137,48 @@
     <WorkbenchDialog v-model="showUploadModal" max-width="600px">
       <v-card>
         <v-card-title class="mt-2">
-          <v-col cols="12">上传文件</v-col>
+          <v-col cols="12">{{ $tr('上传文件') }}</v-col>
         </v-card-title>
         <v-card-text>
           <v-row>
             <v-col cols="12" class="mb-2">
-              <span>
-                文件格式请参考“模型输入/输出说明”。
-              </span>
+              <span> {{ $tr('文件格式请参考“模型输入/输出说明”。') }} </span>
             </v-col>
           </v-row>
 
           <v-row>
             <v-col cols="12">
-              <v-file-input label="文件" v-model="uploadFile" :rules="[v => !!v || '必须上传文件']"
+              <v-file-input :label="$tr('文件')" v-model="uploadFile" :rules="[v => !!v || $tr('必须上传文件')]"
                 density="comfortable" variant="outlined" clearable></v-file-input>
             </v-col>
           </v-row>
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn color="blue darken-1" text @click="showUploadModal = false">关闭</v-btn>
+          <v-btn color="blue darken-1" text @click="showUploadModal = false">{{ $tr('关闭') }}</v-btn>
           <v-btn color="primary" text
-            @click="() => { showUploadModal = false; handleUploadSubmit() }">上传</v-btn>
+            @click="() => { showUploadModal = false; handleUploadSubmit() }">{{ $tr('上传') }}</v-btn>
         </v-card-actions>
       </v-card>
     </WorkbenchDialog>
 
     <WorkbenchDialog v-model="dialog" width="auto" class="justify-center align-center">
       <v-card>
-        <v-card-title class="headline">
-          附加参数
-        </v-card-title>
+        <v-card-title class="headline"> {{ $tr('附加参数') }} </v-card-title>
         <v-divider></v-divider>
         <v-card-text class="pa-3">
           <v-expand-transition>
             <v-expansion-panels v-model="panel" multiple>
-              <v-expansion-panel title="参考信息（可选）" class="text-primary">
+              <v-expansion-panel :title="$tr('参考信息（可选）')" class="text-primary">
                 <v-expansion-panel-text class="text-black">
-                  <StructureInput ref="referenceInput" v-model="refSolvent" label="参考溶剂"
+                  <StructureInput ref="referenceInput" v-model="refSolvent" :label="$tr('参考溶剂')"
                     :disabled="loading" />
-                  <v-text-field variant="outlined" label="参考溶解度 (log10(mol/L))"
+                  <v-text-field variant="outlined" :label="$tr('参考溶解度 (log10(mol/L))')"
                     v-model="refSolubility"></v-text-field>
-                  <v-text-field variant="outlined" label="参考温度 (K)" v-model="refTemperature"></v-text-field>
+                  <v-text-field variant="outlined" :label="$tr('参考温度 (K)')" v-model="refTemperature"></v-text-field>
                 </v-expansion-panel-text>
               </v-expansion-panel>
-              <v-expansion-panel title="溶质信息（可选）" class="text-primary">
+              <v-expansion-panel :title="$tr('溶质信息（可选）')" class="text-primary">
                 <v-expansion-panel-text class="text-black">
                   <v-text-field variant="outlined" label="ΔHsub298 (kcal/mol)" v-model="soluteHsub"></v-text-field>
                   <v-text-field variant="outlined" label="Cpg298 (cal/mol/K)" v-model="soluteCpg"></v-text-field>
@@ -204,21 +190,17 @@
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions class="d-flex justify-end pa-3">
-          <v-btn class="mr-2" variant="tonal" color="primary" @click="dialog = false">
-            保存
-          </v-btn>
+          <v-btn class="mr-2" variant="tonal" color="primary" @click="dialog = false"> {{ $tr('保存') }} </v-btn>
           <v-btn variant="tonal" color="primary" :disabled="loading || structurePending"
-            @click="() => { dialog = false; predict() }">
-            运行
-          </v-btn>
+            @click="() => { dialog = false; predict() }"> {{ $tr('运行') }} </v-btn>
         </v-card-actions>
       </v-card>
     </WorkbenchDialog>
 
-    <WorkbenchDialog v-model="clearDialog" max-width="420" aria-label="清空筛选结果">
-      <v-card><v-card-title>清空筛选结果</v-card-title><v-card-text>这会清空当前所有结果，是否继续？</v-card-text>
-        <v-card-actions><v-spacer /><v-btn variant="text" @click="clearDialog = false">取消</v-btn>
-          <v-btn variant="text" @click="clear(true)">清空结果</v-btn></v-card-actions></v-card>
+    <WorkbenchDialog v-model="clearDialog" max-width="420" :aria-label="$tr('清空筛选结果')">
+      <v-card><v-card-title>{{ $tr('清空筛选结果') }}</v-card-title><v-card-text>{{ $tr('这会清空当前所有结果，是否继续？') }}</v-card-text>
+        <v-card-actions><v-spacer /><v-btn variant="text" @click="clearDialog = false">{{ $tr('取消') }}</v-btn>
+          <v-btn variant="text" @click="clear(true)">{{ $tr('清空结果') }}</v-btn></v-card-actions></v-card>
     </WorkbenchDialog>
 
   </v-container>
@@ -227,6 +209,7 @@
 
 <script>
 import { onBeforeUnmount, ref } from "vue";
+import { uiText } from "@/i18n";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
 import { useWorkbenchActivity } from "@/components/workspace/workbench-activity";
@@ -305,13 +288,13 @@ export default {
   computed: {
     fields() {
       const _fields = [
-        { key: 'image', title: '溶剂结构', tdClass: ['text-center'], width: "10%" },
+        { key: 'image', title: uiText('溶剂结构'), tdClass: ['text-center'], width: "10%" },
         { key: 'solvent', title: 'SMILES', sortable: true },
       ]
       Object.keys(this.resultsByTemperature).forEach((temp) => {
         _fields.push({
           key: temp,
-          title: `${temp}K 溶解度（方法 ${this.selectedMethod}）[${this.selectedUnits}]`,
+          title: uiText('{temperature}K 溶解度（方法 {method}）[{unit}]', { temperature: temp, method: this.selectedMethod, unit: this.selectedUnits }),
           sortable: true
         })
       })
@@ -323,7 +306,7 @@ export default {
     solventSetOptions() {
       return [
         ...Object.keys(this.solventSets).map((key) => ({ title: key, value: key })),
-        { title: '自定义', value: 'custom' },
+        { title: uiText('自定义'), value: 'custom' },
       ]
     },
     solventList() {
@@ -436,14 +419,14 @@ export default {
           x: {
             title: {
               display: true,
-              text: this.selectedX === 'solvent' ? '溶剂' : '温度 [K]',
+              text: uiText(this.selectedX === 'solvent' ? '溶剂' : '温度 [K]'),
             },
             type: this.selectedX === 'solvent' ? 'category' : 'linear',
           },
           y: {
             title: {
               display: true,
-              text: `溶解度（方法 ${this.selectedMethod}）[${this.selectedUnits}]`,
+              text: uiText('溶解度（方法 {method}）[{unit}]', { method: this.selectedMethod, unit: this.selectedUnits }),
             },
           },
         }
@@ -537,7 +520,7 @@ export default {
     },
     downloadCSV() {
       if (!this.results.length) {
-        alert('没有可下载的结果')
+        alert(uiText('没有可下载的结果'))
         return
       }
       let downloadData = Papa.unparse(this.results)
@@ -546,7 +529,7 @@ export default {
     },
     downloadJSON() {
       if (!this.results.length) {
-        alert('没有可下载的结果')
+        alert(uiText('没有可下载的结果'))
         return
       }
       let downloadData = JSON.stringify(this.results)

@@ -5,43 +5,43 @@
         <SmilesImage :smiles="result.product.structure.smiles" :width="200" :height="130" :show-error-image="false" allow-copy />
       </div>
       <div class="product-identity-text">
-        <span class="identity-label">分离产物 · 完整结构</span>
+        <span class="identity-label">{{ $tr('分离产物 · 完整结构') }}</span>
         <strong class="product-formula">{{ result.product.structure.formula }}</strong>
-        <span>{{ value(result.product.structure.molecular_weight_g_mol) }} g·mol⁻¹</span>
+        <span>{{ $tr(value(result.product.structure.molecular_weight_g_mol)) }} g·mol⁻¹</span>
         <code>{{ result.product.structure.smiles }}</code>
       </div>
     </div>
     <dl class="process-metrics process-primary">
       <div v-for="row in primary" :key="row.key" class="primary-metric" :data-metric="row.key">
-        <dt>{{ row.label }}</dt>
-        <dd>{{ value(row.value) }}</dd>
-        <small>{{ row.note }}</small>
+        <dt>{{ $tr(row.label) }}</dt>
+        <dd>{{ $tr(value(row.value)) }}</dd>
+        <small>{{ $tr(row.note) }}</small>
       </div>
     </dl>
     <div class="boundary-notice" :class="`boundary-${boundary.status}`" role="note">
       <v-icon :icon="boundary.status === 'calculated' ? 'mdi-check-circle-outline' : 'mdi-alert-circle-outline'" size="17" aria-hidden="true" />
-      <div><strong>{{ boundary.label }}</strong><p>{{ boundary.detail }}</p></div>
+      <div><strong>{{ $tr(boundary.label) }}</strong><p>{{ $tr(boundary.detail) }}</p></div>
     </div>
     <details v-if="result.missing_inputs.length" class="missing-inputs">
-      <summary>缺少的依据 · {{ result.missing_inputs.length }} 项</summary>
-      <ul><li v-for="(item, index) in result.missing_inputs" :key="index">{{ item }}</li></ul>
+      <summary>{{ $tr('缺少的依据 · {count} 项', { count: result.missing_inputs.length }) }}</summary>
+      <ul><li v-for="(item, index) in result.missing_inputs" :key="index">{{ processNotice(item) }}</li></ul>
     </details>
-    <div class="process-result-tabs" role="tablist" aria-label="批次核算视图" @keydown="moveTab">
+    <div class="process-result-tabs" role="tablist" :aria-label="$tr('批次核算视图')" @keydown="moveTab">
       <button v-for="tab in tabs" :id="`${id}-tab-${tab.id}`" :key="tab.id" type="button" role="tab"
         :aria-selected="activeTab === tab.id" :aria-controls="`${id}-panel-${tab.id}`"
         :tabindex="activeTab === tab.id ? 0 : -1" @click="activeTab = tab.id">
-        <v-icon :icon="tab.icon" size="17" aria-hidden="true" /><span>{{ tab.label }}</span>
+        <v-icon :icon="tab.icon" size="17" aria-hidden="true" /><span>{{ $tr(tab.label) }}</span>
       </button>
     </div>
     <section v-for="tab in tabs" v-show="activeTab === tab.id" :id="`${id}-panel-${tab.id}`" :key="tab.id"
       class="process-result-panel" role="tabpanel" :aria-labelledby="`${id}-tab-${tab.id}`" tabindex="0">
       <div v-if="tab.id === 'overview'" class="metric-groups">
         <section v-for="group in groups" :key="group.id" class="metric-group">
-          <h3>{{ group.title }}</h3>
+          <h3>{{ $tr(group.title) }}</h3>
           <dl class="process-metrics">
             <div v-for="row in group.rows" :key="row.key" class="metric-row" :data-metric="row.key">
-              <dt>{{ row.label }}<small v-if="row.source" class="metric-source">{{ row.source }}</small></dt>
-              <dd :class="{ 'metric-undefined': row.value == null }">{{ value(row.value) }}</dd>
+              <dt>{{ $tr(row.label) }}<small v-if="row.source" class="metric-source">{{ $tr(row.source) }}</small></dt>
+              <dd :class="{ 'metric-undefined': row.value == null }">{{ $tr(value(row.value)) }}</dd>
             </div>
           </dl>
         </section>
@@ -53,6 +53,7 @@
 </template>
 <script setup>
 import { computed, nextTick, ref, useId, watch } from "vue";
+import { processNotice } from "./ui-copy";
 import SmilesImage from "@/components/SmilesImage.vue";
 import ProcessResultMaterials from "./ProcessResultMaterials.vue";
 import ProcessResultBasis from "./ProcessResultBasis.vue";

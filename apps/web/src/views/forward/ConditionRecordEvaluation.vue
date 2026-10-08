@@ -1,8 +1,8 @@
 <template>
-  <section class="condition-record-evaluation" aria-label="反应可行性复核">
-    <v-btn variant="text" prepend-icon="mdi-check-decagram-outline" :loading="loading" :disabled="loading || !available || !result.conditions.length" @click="evaluate">评估反应可行性</v-btn>
-    <span v-if="score !== null">模型可行性评分（FF）：{{ score.toFixed(3) }}</span>
-    <p v-if="error" class="tool-error" role="alert">{{ error }}</p>
+  <section class="condition-record-evaluation" :aria-label="$tr('反应可行性复核')">
+    <v-btn variant="text" prepend-icon="mdi-check-decagram-outline" :loading="loading" :disabled="loading || !available || !result.conditions.length" @click="evaluate">{{ $tr('评估反应可行性') }}</v-btn>
+    <span v-if="score !== null">{{ $tr('模型可行性评分（FF）：{score}', { score: score.toFixed(3) }) }}</span>
+    <p v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</p>
   </section>
 </template>
 <script setup>

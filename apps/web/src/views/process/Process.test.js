@@ -6,6 +6,7 @@ import Process from "./Process.vue";
 import { calculationStubs, deferred, realCalculation } from "../assessment/test-support";
 import { freshProcessForm } from "./process-draft";
 import { processBody } from "./process-form";
+import { DEFAULT_LOCALE, setLocale } from "@/i18n";
 
 jest.mock("vue-router", () => ({ useRoute: jest.fn(), useRouter: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { post: jest.fn(), get: jest.fn() } }));
@@ -38,6 +39,20 @@ function labeledInput(wrapper, text) {
 function compute() {
   API.post.mockImplementation((_, body) => Promise.resolve({ ...realCalculation("process", body), record_id: recordId }));
 }
+
+test("default-English copy switches reactively without remounting or changing batch quantities, names or complete identity", async () => {
+  const { wrapper } = setup({ smiles: "[13CH3][C@H]([NH3+])CO.[Cl-]" });
+  await wrapper.get('[aria-label="分离产物总质量"]').setValue("0");
+  wrapper.vm.form.materials[0].name = "研究者原始批次名称";
+  const original = JSON.stringify(wrapper.vm.form), input = wrapper.get('[aria-label="分离产物总质量"]').element;
+  setLocale(DEFAULT_LOCALE, { persist: false }); await nextTick();
+  expect(wrapper.text()).toContain("Batch entry"); expect(wrapper.text()).toContain("Calculate batch");
+  expect(wrapper.get('[aria-label="Total isolated product mass"]').element).toBe(input);
+  expect(JSON.stringify(wrapper.vm.form)).toBe(original); expect(API.post).not.toHaveBeenCalled();
+  setLocale("zh-CN", { persist: false }); await nextTick();
+  expect(wrapper.text()).toContain("批次录入"); expect(wrapper.get('[aria-label="分离产物总质量"]').element).toBe(input);
+  expect(JSON.stringify(wrapper.vm.form)).toBe(original);
+});
 
 test("input has purposeful sections and no empty result pane or per-row drawing boards", () => {
   const { wrapper } = setup();

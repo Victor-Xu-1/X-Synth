@@ -4,7 +4,7 @@
       @import="draft = $event.smiles" @busy="fileBusy = $event" /></header>
     <label class="field-label">SMILES<input v-model="draft" class="workspace-input workspace-code" :disabled="disabled || reading || fileBusy || !ready" :aria-label="`${label} SMILES`" spellcheck="false" /></label>
     <div class="impurity-board" :inert="disabled || reading || fileBusy || !ready || undefined"><InlineKetcherEditor ref="editor" v-model:smiles="draft" :show-actions="false" fill-height /></div>
-    <p v-if="error" class="tool-error" role="alert">{{ error }}</p>
+    <p v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</p>
   </section>
 </template>
 <script setup>
