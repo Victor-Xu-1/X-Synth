@@ -1,5 +1,5 @@
 <template>
-  <module-workbench title="账号管理">
+  <module-workbench :title="$tr('账号管理')">
     <template #actions>
       <v-btn
         v-if="allowed"
@@ -8,29 +8,29 @@
         :loading="dataLoading"
         :disabled="busy"
         @click="fetchData"
-        >刷新</v-btn
+        >{{ $tr('刷新') }}</v-btn
       >
     </template>
     <div v-if="workspace.loading && !workspace.session && !workspace.refreshed" class="workspace-loading" role="status">
-      <v-progress-linear indeterminate />
+      <v-progress-linear indeterminate :aria-label="$tr('正在加载账号')" />
     </div>
     <div v-else-if="!allowed" class="workspace-empty">
       <v-icon icon="mdi-account-off-outline" size="32" />
-      <h2>当前工作区未启用账号服务</h2>
-      <router-link to="/">返回工作区</router-link>
+      <h2>{{ $tr('当前工作区未启用账号服务') }}</h2>
+      <router-link to="/">{{ $tr('返回工作区') }}</router-link>
     </div>
     <template v-else>
-      <p v-if="dataError" class="tool-error" role="alert">{{ dataError }}</p>
+      <p v-if="dataError" class="tool-error" role="alert">{{ $tr(dataError) }}</p>
       <p v-if="notice" class="workspace-muted mb-4" role="status">
         {{ notice }}
       </p>
-      <v-progress-linear v-if="dataLoading" indeterminate color="primary" />
+      <v-progress-linear v-if="dataLoading" indeterminate color="primary" :aria-label="$tr('正在加载账号')" />
       <template v-if="currentUser">
         <template v-if="isAdmin">
           <div class="account-toolbar">
             <v-select
               v-model="filterSelected"
-              label="账号类型"
+              :label="$tr('账号类型')"
               :items="filterOptions"
               item-title="title"
               item-value="key"
@@ -42,7 +42,7 @@
             />
             <v-checkbox
               v-model="filterInactive"
-              label="30 天未登录"
+              :label="$tr('30 天未登录')"
               hide-details
               density="compact"
               data-cy="admin-user-table-show-older-30days"
@@ -55,15 +55,13 @@
                     variant="outlined"
                     append-icon="mdi-chevron-down"
                     :disabled="busy"
-                  >
-                    已选 {{ selection.length }} 项
-                  </v-btn>
+                  >{{ $tr('已选 {count} 项', { count: selection.length }) }}</v-btn>
                 </template>
                 <v-list density="compact">
                   <v-list-item
                     v-for="action in bulkActions"
                     :key="action.value"
-                    :title="action.title"
+                    :title="$tr(action.title)"
                     :prepend-icon="action.icon"
                     :data-cy="action.cy"
                     @click="applyAction(selection, action.value)"
@@ -76,13 +74,13 @@
                 prepend-icon="mdi-plus"
                 :disabled="busy"
                 @click="openEditor('new')"
-                >新建用户</v-btn
+                >{{ $tr('新建用户') }}</v-btn
               >
             </div>
           </div>
           <v-data-table
             v-model="selection"
-            :headers="headers"
+            :headers="localizedHeaders"
             :items="tableItems"
             item-value="username"
             show-select
@@ -90,17 +88,17 @@
             density="comfortable"
             :items-per-page="10"
             data-cy="admin-user-table"
-            no-data-text="暂无账号"
-            loading-text="正在加载账号"
+            :no-data-text="$tr('暂无账号')"
+            :loading-text="$tr('正在加载账号')"
           >
             <template #item.accountType="{ item }"
               ><span class="state-badge">{{
-                accountLabels[item.accountType]
+                $tr(accountLabels[item.accountType])
               }}</span></template
             >
             <template #item.disabled="{ item }"
               ><span class="state-badge" :class="{ error: item.disabled }">{{
-                item.disabled ? "已锁定" : "正常"
+                item.disabled ? $tr('已锁定') : $tr('正常')
               }}</span></template
             >
             <template #item.last_login="{ item }">{{
@@ -114,28 +112,28 @@
                     icon="mdi-dots-horizontal"
                     variant="text"
                     size="small"
-                    :aria-label="'管理账号 ' + item.username"
-                    :title="'管理账号 ' + item.username"
+                    :aria-label="$tr('管理账号 {username}', { username: item.username })"
+                    :title="$tr('管理账号 {username}', { username: item.username })"
                     :disabled="busy || selection.length > 0"
                   />
                 </template>
                 <v-list density="compact">
                   <v-list-item
                     v-if="item.accountType === 'Normal'"
-                    title="设为管理员"
+                    :title="$tr('设为管理员')"
                     prepend-icon="mdi-shield-account-outline"
                     data-cy="admin-user-single-make-admin"
                     @click="applyAction([item.username], 'admin')"
                   />
                   <v-list-item
                     v-if="item.accountType === 'Admin'"
-                    title="设为普通用户"
+                    :title="$tr('设为普通用户')"
                     prepend-icon="mdi-account-outline"
                     data-cy="admin-user-single-make-normal"
                     @click="applyAction([item.username], 'normal')"
                   />
                   <v-list-item
-                    :title="item.disabled ? '解锁账号' : '锁定账号'"
+                    :title="item.disabled ? $tr('解锁账号') : $tr('锁定账号')"
                     prepend-icon="mdi-lock-outline"
                     :data-cy="
                       item.disabled
@@ -151,20 +149,20 @@
                   />
                   <v-list-item
                     v-if="item.accountType !== 'Guest'"
-                    title="修改密码"
+                    :title="$tr('修改密码')"
                     prepend-icon="mdi-key-outline"
                     data-cy="admin-user-single-change-password"
                     @click="openEditor('password', item)"
                   />
                   <v-list-item
                     v-if="item.accountType !== 'Guest'"
-                    title="修改邮箱"
+                    :title="$tr('修改邮箱')"
                     prepend-icon="mdi-email-outline"
                     data-cy="admin-user-single-change-email"
                     @click="openEditor('email', item)"
                   />
                   <v-list-item
-                    title="删除账号"
+                    :title="$tr('删除账号')"
                     prepend-icon="mdi-delete-outline"
                     class="text-error"
                     data-cy="admin-user-single-delete-account"
@@ -176,19 +174,21 @@
           </v-data-table>
         </template>
         <section v-else class="account-profile">
-          <h2 class="tool-section-title">个人资料</h2>
+          <h2 class="tool-section-title">{{ $tr('个人资料') }}</h2>
           <dl>
-            <dt>用户名</dt>
+            <dt>{{ $tr('用户名') }}</dt>
             <dd>{{ currentUser.username }}</dd>
-            <dt>邮箱</dt>
+            <dt>{{ $tr('邮箱') }}</dt>
             <dd data-cy="admin-get-email-address-normal-user">
-              {{ currentUser.email || "未设置" }}
+              {{ currentUser.email || $tr('未设置') }}
             </dd>
-            <dt>上次登录</dt>
+            <dt>{{ $tr('上次登录') }}</dt>
             <dd :title="formatDate(currentUser.last_login)">
               <timeago
                 v-if="currentUser.last_login"
                 :datetime="currentUser.last_login"
+                :locale="relativeLocale"
+                :converter="relativeConverter"
                 :converter-options="{
                   includeSeconds: true,
                   addSuffix: false,
@@ -196,7 +196,7 @@
                 }"
                 auto-update
               />
-              <span v-else>暂无记录</span>
+              <span v-else>{{ $tr('暂无记录') }}</span>
             </dd>
           </dl>
           <div class="page-actions">
@@ -206,7 +206,7 @@
               :disabled="busy"
               data-cy="admin-change-email-normal-user"
               @click="openEditor('email', currentUser)"
-              >修改邮箱</v-btn
+              >{{ $tr('修改邮箱') }}</v-btn
             >
             <v-btn
               variant="outlined"
@@ -214,12 +214,12 @@
               :disabled="busy"
               data-cy="admin-change-password-normal-user"
               @click="openEditor('password', currentUser)"
-              >修改密码</v-btn
+              >{{ $tr('修改密码') }}</v-btn
             >
           </div>
           <section class="account-danger">
-            <h2 class="tool-section-title">删除账号</h2>
-            <p class="workspace-muted mb-3">此操作无法撤销。</p>
+            <h2 class="tool-section-title">{{ $tr('删除账号') }}</h2>
+            <p class="workspace-muted mb-3">{{ $tr('此操作无法撤销。') }}</p>
             <v-btn
               color="error"
               variant="outlined"
@@ -227,7 +227,7 @@
               :disabled="busy"
               data-cy="admin-delete-normal-user"
               @click="applyAction([currentUser.username], 'delete')"
-              >删除账号</v-btn
+              >{{ $tr('删除账号') }}</v-btn
             >
           </section>
         </section>
@@ -255,9 +255,22 @@ import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import { useWorkspaceStore } from "@/store/workspace";
 import AccountUserDialog from "./AccountUserDialog.vue";
 import { useAccountManager } from "./useAccountManager";
+import { formatUiDate, uiText, useUiLanguage } from "@/i18n";
+import { enUS, zhCN } from "date-fns/locale";
+import { formatDistanceToNow, parseISO } from "date-fns";
 
 const workspace = useWorkspaceStore();
 const router = useRouter();
+const { locale } = useUiLanguage();
+const relativeLocale = computed(() => ({ en: enUS, "zh-CN": zhCN })[locale.value]);
+// Timeago watches its converter, but not a locale-only prop change.
+const relativeConverter = computed(() => {
+  const language = relativeLocale.value;
+  return (value, options) => formatDistanceToNow(
+    typeof value === "string" ? parseISO(value) : value,
+    { ...options, locale: language },
+  );
+});
 const confirm = useConfirm();
 const {
   allowed, contextKey, currentUser, isAdmin, users, selection, dataLoading, saving, busy,
@@ -267,10 +280,10 @@ const {
 const filterSelected = ref(null);
 const filterInactive = ref(false);
 const accountLabels = { Admin: "管理员", Normal: "普通用户", Guest: "访客" };
-const filterOptions = Object.entries(accountLabels).map(([key, title]) => ({
+const filterOptions = computed(() => Object.entries(accountLabels).map(([key, title]) => ({
   key,
-  title,
-}));
+  title: uiText(title),
+})));
 const headers = [
   { title: "用户名", key: "username" },
   { title: "邮箱", key: "email" },
@@ -279,6 +292,7 @@ const headers = [
   { title: "上次登录", key: "last_login" },
   { title: "", key: "actions", sortable: false, align: "end" },
 ];
+const localizedHeaders = computed(() => headers.map((header) => ({ ...header, title: uiText(header.title) })));
 const bulkActions = [
   {
     value: "admin",
@@ -324,11 +338,11 @@ const tableItems = computed(() =>
   }),
 );
 const formatDate = (value) => {
-  if (!value) return "暂无记录";
+  if (!value) return uiText("暂无记录");
   const date = new Date(value);
   return Number.isNaN(date.getTime())
-    ? "暂无记录"
-    : date.toLocaleString("zh-CN");
+    ? uiText("暂无记录")
+    : formatUiDate(date);
 };
 
 onMounted(() => workspace.refresh());

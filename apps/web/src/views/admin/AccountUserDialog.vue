@@ -2,7 +2,7 @@
   <v-dialog v-model="open" max-width="480" :persistent="loading">
     <v-card rounded="sm">
       <v-card-title class="account-dialog-heading">{{
-        titles[mode]
+        $tr(titles[mode])
       }}</v-card-title>
       <v-form ref="form" :disabled="loading || validating" @submit.prevent="submit">
         <v-card-text>
@@ -12,16 +12,18 @@
           <v-text-field
             v-if="mode === 'new'"
             v-model="newUsername"
-            label="用户名"
+            :label="$tr('用户名')"
             variant="outlined"
             autocomplete="off"
             :rules="requiredRules"
             data-cy="admin-newUser-username"
-          />
+          >
+            <template #message="{ message }">{{ $tr(message) }}</template>
+          </v-text-field>
           <v-text-field
             v-if="mode !== 'password'"
             v-model="email"
-            label="邮箱"
+            :label="$tr('邮箱')"
             variant="outlined"
             type="email"
             autocomplete="off"
@@ -29,11 +31,13 @@
             :data-cy="
               mode === 'new' ? 'admin-newUser-email' : 'admin-edit-user-value'
             "
-          />
+          >
+            <template #message="{ message }">{{ $tr(message) }}</template>
+          </v-text-field>
           <v-text-field
             v-if="mode !== 'email'"
             v-model="password"
-            label="密码"
+            :label="$tr('密码')"
             variant="outlined"
             type="password"
             autocomplete="new-password"
@@ -43,14 +47,16 @@
                 ? 'admin-newUser-password'
                 : 'admin-edit-user-value'
             "
-          />
+          >
+            <template #message="{ message }">{{ $tr(message) }}</template>
+          </v-text-field>
           <v-alert
             v-if="error"
             type="error"
             variant="tonal"
             density="compact"
             role="alert"
-            >{{ error }}</v-alert
+            >{{ $tr(error) }}</v-alert
           >
         </v-card-text>
         <v-card-actions>
@@ -60,7 +66,7 @@
             :disabled="loading"
             data-cy="openDialog-close"
             @click="open = false"
-            >取消</v-btn
+            >{{ $tr('取消') }}</v-btn
           >
           <v-btn
             color="primary"
@@ -70,7 +76,7 @@
             :data-cy="
               mode === 'new' ? 'admin-newUser-submit' : 'openDialog-submit'
             "
-            >保存</v-btn
+            >{{ $tr('保存') }}</v-btn
           >
         </v-card-actions>
       </v-form>

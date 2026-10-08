@@ -2,7 +2,7 @@
   <nav
     v-if="section && (section.items.length || section.more.length)"
     class="workspace-section-nav"
-    :aria-label="section.label"
+    :aria-label="$tr(section.label)"
   >
     <router-link
       v-for="item in section.items"
@@ -11,7 +11,7 @@
       :class="{ active: activeNavigation(item, route) }"
       :aria-current="activeNavigation(item, route) ? 'page' : undefined"
     >
-      <v-icon :icon="item.icon" size="16" /><span>{{ item.title }}</span>
+      <v-icon :icon="item.icon" size="16" /><span>{{ $tr(item.title) }}</span>
     </router-link>
     <v-menu v-if="section.more.length">
       <template #activator="{ props }">
@@ -23,15 +23,15 @@
           size="small"
           append-icon="mdi-chevron-down"
         >
-          {{ activeExtra?.title || "更多" }}
+          {{ $tr(activeExtra?.title || '更多') }}
         </v-btn>
       </template>
-      <v-list density="compact" :aria-label="`${section.label}其他工具`">
+      <v-list density="compact" :aria-label="$tr('{section}其他工具', { section: $tr(section.label) })">
         <v-list-item
           v-for="item in section.more"
           :key="item.to"
           :to="item.to"
-          :title="item.title"
+          :title="$tr(item.title)"
           :prepend-icon="item.icon"
           :active="activeNavigation(item, route)"
         />

@@ -9,7 +9,7 @@
       }"
       @keydown="handleNavigationKeydown"
     >
-      <a class="skip-navigation" href="#workspace-content" @click="focusContent">跳到工作区</a>
+      <a class="skip-navigation" href="#workspace-content" @click="focusContent">{{ $tr('跳到工作区') }}</a>
       <AppBar
         :mobile="mobile"
         :navigation-open="mobile ? mobileOpen : !compact"
@@ -21,7 +21,7 @@
         v-if="mobileOpen"
         type="button"
         class="navigation-scrim"
-        aria-label="关闭导航"
+        :aria-label="$tr('关闭导航')"
         @click="closeNavigation()"
       />
       <Sidebar
@@ -34,9 +34,7 @@
         @navigate="closeNavigation()"
       />
       <div class="workspace-main" :inert="mobileOpen ? true : undefined">
-        <div v-if="!online" class="workspace-connection-message" role="status">
-          网络已断开
-        </div>
+        <div v-if="!online" class="workspace-connection-message" role="status"> {{ $tr('网络已断开') }} </div>
         <WorkspaceUpdateNotice />
         <main id="workspace-content" class="workspace-page" tabindex="-1">
           <WorkspaceSectionNav /><router-view />

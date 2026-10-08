@@ -4,41 +4,41 @@
       <v-icon icon="mdi-server-network" size="24" />
       <div>
         <h2>{{ engine.name }}</h2>
-        <span>逆合成计算引擎</span>
+        <span>{{ $tr('逆合成计算引擎') }}</span>
       </div>
-      <span v-if="engine.active" class="engine-current">当前后端</span
+      <span v-if="engine.active" class="engine-current">{{ $tr('当前后端') }}</span
       ><span
         class="state-badge"
         :class="{ success: engine.status === 'ready' }"
-        >{{ environmentStatus(engine.status) }}</span
+        >{{ $tr(environmentStatus(engine.status)) }}</span
       >
     </header>
     <dl>
       <div>
-        <dt>运行监测</dt>
+        <dt>{{ $tr('运行监测') }}</dt>
         <dd>
           {{
             engine.runtime_mode === "supervised_native"
-              ? "本地监督记录"
-              : "外部服务连接"
+              ? $tr('本地监督记录')
+              : $tr('外部服务连接')
           }}
         </dd>
       </div>
       <div>
-        <dt>可用搜索策略</dt>
-        <dd>{{ strategyText(engine.available_strategies) }}</dd>
+        <dt>{{ $tr('可用搜索策略') }}</dt>
+        <dd>{{ strategies }}</dd>
       </div>
       <div>
-        <dt>已配置模板模型</dt>
-        <dd>{{ engine.configured_models?.join(" / ") || "未识别" }}</dd>
+        <dt>{{ $tr('已配置模板模型') }}</dt>
+        <dd>{{ engine.configured_models?.join(" / ") || $tr('未识别') }}</dd>
       </div>
       <div>
-        <dt>模型探针</dt>
-        <dd>{{ engine.models_verified ? "已通过" : "未通过" }}</dd>
+        <dt>{{ $tr('模型探针') }}</dt>
+        <dd>{{ engine.models_verified ? $tr('已通过') : $tr('未通过') }}</dd>
       </div>
     </dl>
     <span v-if="engine.unrecognized_model_count" class="tool-error"
-      >{{ engine.unrecognized_model_count }} 项模型配置未识别</span
+      >{{ $tr('{count} 项模型配置未识别', { count: engine.unrecognized_model_count }) }}</span
     >
     <footer>
       <v-btn
@@ -46,20 +46,26 @@
         size="small"
         prepend-icon="mdi-cog-outline"
         @click="$emit('configure')"
-        >部署配置</v-btn
+        >{{ $tr('部署配置') }}</v-btn
       ><v-btn
         variant="text"
         size="small"
         prepend-icon="mdi-pulse"
         @click="$emit('monitor')"
-        >运行监测</v-btn
+        >{{ $tr('运行监测') }}</v-btn
       >
     </footer>
   </article>
 </template>
 <script setup>
 import { environmentStatus, strategyText } from "@/common/runtime-status";
-defineProps({ engine: { type: Object, required: true } });
+import { computed } from "vue";
+import { uiText } from "@/i18n";
+const props = defineProps({ engine: { type: Object, required: true } });
+const strategies = computed(() => props.engine.available_strategies?.map((value) => {
+  const label = strategyText([value]);
+  return label === value ? value : uiText(label);
+}).join(" / ") || uiText("暂无可用策略"));
 defineEmits(["configure", "monitor"]);
 </script>
 <style scoped>

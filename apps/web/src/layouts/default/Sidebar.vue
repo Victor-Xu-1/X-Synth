@@ -1,5 +1,5 @@
 <template>
-  <aside class="workspace-sidebar" :class="{ compact }" aria-label="工作区导航">
+  <aside class="workspace-sidebar" :class="{ compact }" :aria-label="$tr('工作区导航')">
     <div class="workspace-drawer-heading">
       <router-link
         to="/"
@@ -17,14 +17,14 @@
         icon="mdi-close"
         variant="text"
         size="small"
-        aria-label="关闭导航"
-        title="关闭导航"
+        :aria-label="$tr('关闭导航')"
+        :title="$tr('关闭导航')"
         @click="$emit('navigate')"
       />
     </div>
-    <nav class="workspace-nav" aria-label="研究模块">
+    <nav class="workspace-nav" :aria-label="$tr('研究模块')">
       <section v-for="group in mainGroups" :key="group.label" class="nav-group">
-        <p v-if="!compact">{{ group.label }}</p>
+        <p v-if="!compact">{{ $tr(group.label) }}</p>
         <router-link
           v-for="item in group.items"
           :key="item.title"
@@ -32,11 +32,11 @@
           class="nav-item"
           :class="{ active: activeNavigation(item, route) }"
           :aria-current="activeNavigation(item, route) ? 'page' : undefined"
-          :aria-label="item.title"
-          :title="compact ? item.title : undefined"
+          :aria-label="$tr(item.title)"
+          :title="compact ? $tr(item.title) : undefined"
           @click="$emit('navigate')"
         >
-          <v-icon :icon="item.icon" size="20" /><span>{{ item.title }}</span>
+          <v-icon :icon="item.icon" size="20" /><span>{{ $tr(item.title) }}</span>
         </router-link>
       </section>
     </nav>
@@ -48,33 +48,33 @@
         class="nav-item"
         :class="{ active: activeNavigation(item, route) }"
         :aria-current="activeNavigation(item, route) ? 'page' : undefined"
-        :aria-label="item.title"
-        :title="compact ? item.title : undefined"
+        :aria-label="$tr(item.title)"
+        :title="compact ? $tr(item.title) : undefined"
         @click="$emit('navigate')"
       >
-        <v-icon :icon="item.icon" size="20" /><span>{{ item.title }}</span>
+        <v-icon :icon="item.icon" size="20" /><span>{{ $tr(item.title) }}</span>
       </router-link>
       <button
         type="button"
         class="nav-item"
-        aria-label="切换主题"
-        :title="compact ? '切换主题' : undefined"
+        :aria-label="$tr('切换主题')"
+        :title="compact ? $tr('切换主题') : undefined"
         @click="toggleTheme"
       >
         <v-icon
           :icon="isDark ? 'mdi-weather-sunny' : 'mdi-weather-night'"
           size="20"
-        /><span>{{ isDark ? "浅色模式" : "深色模式" }}</span>
+        /><span>{{ isDark ? $tr('浅色模式') : $tr('深色模式') }}</span>
       </button>
       <router-link
         v-if="workspace.refreshed && !workspace.local"
         class="nav-item"
-        aria-label="账户"
-        :title="compact ? '账户' : undefined"
+        :aria-label="$tr('账户')"
+        :title="compact ? $tr('账户') : undefined"
         to="/login"
         @click="$emit('navigate')"
         ><v-icon icon="mdi-account-outline" size="20" /><span
-          >账户</span
+          >{{ $tr('账户') }}</span
         ></router-link
       >
     </div>

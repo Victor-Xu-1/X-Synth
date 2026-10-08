@@ -2,10 +2,10 @@
   <section class="standard-page environment-deployment">
     <header class="page-heading">
       <div>
-        <h1>环境部署</h1>
+        <h1>{{ $tr('环境部署') }}</h1>
         <span class="environment-platform"
         >X-Synth v{{ platform.version || productVersion }} ·
-          {{ platform.system || "未读取" }}</span
+          {{ platform.system || $tr('未读取') }}</span
         >
       </div>
       <v-btn
@@ -13,25 +13,23 @@
         prepend-icon="mdi-refresh"
         :loading="loading"
         @click="refresh"
-      >刷新环境</v-btn
+      >{{ $tr('刷新环境') }}</v-btn
       >
     </header>
-    <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
-    <v-tabs :model-value="tab" density="compact" aria-label="部署环境视图" @update:model-value="setTab">
+    <div v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</div>
+    <v-tabs :model-value="tab" density="compact" :aria-label="$tr('部署环境视图')" @update:model-value="setTab">
       <v-tab v-for="view in views" :key="view.value" :value="view.value"
              :id="`${viewId}-${view.value}-tab`" :aria-controls="`${viewId}-${view.value}-panel`"
-      >{{ view.label }}</v-tab>
+      >{{ $tr(view.label) }}</v-tab>
     </v-tabs>
     <div v-for="view in views" :key="view.value" class="environment-panel" role="tabpanel"
          :id="`${viewId}-${view.value}-panel`" :aria-labelledby="`${viewId}-${view.value}-tab`"
          :hidden="tab !== view.value" :aria-busy="loading && tab === view.value" tabindex="0">
       <template v-if="tab === view.value">
-        <div v-if="loading && !snapshot.environments" class="workspace-loading">
-          正在读取环境
-        </div>
+        <div v-if="loading && !snapshot.environments" class="workspace-loading" role="status"> {{ $tr('正在读取环境') }} </div>
         <div v-else-if="!snapshot.environments" class="workspace-empty">
           <v-icon icon="mdi-server-off" size="30" />
-          <h2>环境信息暂不可用</h2>
+          <h2>{{ $tr('环境信息暂不可用') }}</h2>
         </div>
         <div v-else-if="tab === 'engines'" class="engine-list">
           <EngineEnvironment
@@ -41,19 +39,17 @@
             @configure="setTab('configuration')"
             @monitor="setTab('monitor')"
           />
-          <div v-if="!snapshot.environments.engines.length" class="workspace-empty">
-            暂无已接入引擎
-          </div>
-          <section class="scientific-engine-list" aria-label="研究计算环境">
-            <h2>研究计算环境</h2>
+          <div v-if="!snapshot.environments.engines.length" class="workspace-empty"> {{ $tr('暂无已接入引擎') }} </div>
+          <section class="scientific-engine-list" :aria-label="$tr('研究计算环境')">
+            <h2>{{ $tr('研究计算环境') }}</h2>
             <div class="scientific-engine-scroll">
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th>执行软件</th>
-                    <th>用途</th>
-                    <th>就绪状态</th>
-                    <th>软件版本</th>
+                    <th>{{ $tr('执行软件') }}</th>
+                    <th>{{ $tr('用途') }}</th>
+                    <th>{{ $tr('就绪状态') }}</th>
+                    <th>{{ $tr('软件版本') }}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -61,14 +57,14 @@
                     v-for="engine in snapshot.environments.scientific_engines || []"
                     :key="engine.id"
                   >
-                    <td>{{ engine.name }}</td>
-                    <td>{{ engine.purpose }}</td>
-                    <td>{{ engine.ready ? "已就绪" : "未就绪" }}</td>
+                    <td>{{ engine.id === 'process' && engine.name === 'RDKit / 物料核算' ? $tr('RDKit / 物料核算') : engine.name }}</td>
+                    <td>{{ $tr(engine.purpose) }}</td>
+                    <td>{{ engine.ready ? $tr('已就绪') : $tr('未就绪') }}</td>
                     <td>
                       {{
                         Object.entries(engine.versions || {})
                           .map(([name, value]) => `${name} ${value}`)
-                          .join(" · ") || "随产品运行环境"
+                          .join(" · ") || $tr('随产品运行环境')
                       }}
                     </td>
                   </tr>
@@ -81,85 +77,85 @@
         <section
           v-else-if="tab === 'configuration'"
           class="environment-configuration"
-          aria-label="部署配置"
+          :aria-label="$tr('部署配置')"
         >
-          <h2>产品环境</h2>
+          <h2>{{ $tr('产品环境') }}</h2>
           <dl>
             <div>
-              <dt>操作系统</dt>
+              <dt>{{ $tr('操作系统') }}</dt>
               <dd>{{ platform.system }}</dd>
             </div>
             <div>
-              <dt>产品版本</dt>
+              <dt>{{ $tr('产品版本') }}</dt>
               <dd>{{ platform.version }}</dd>
             </div>
             <div>
-              <dt>产品 Python</dt>
+              <dt>{{ $tr('产品 Python') }}</dt>
               <dd>{{ platform.python_version }}</dd>
             </div>
             <div>
-              <dt>访问模式</dt>
+              <dt>{{ $tr('访问模式') }}</dt>
               <dd>
-                {{ platform.access_mode === "local" ? "本地单用户" : "账号认证" }}
+                {{ platform.access_mode === "local" ? $tr('本地单用户') : $tr('账号认证') }}
               </dd>
             </div>
             <div>
-              <dt>统一部署入口</dt>
+              <dt>{{ $tr('统一部署入口') }}</dt>
               <dd>
                 <code>{{ platform.entrypoint }}</code>
               </dd>
             </div>
             <div>
-              <dt>代码提交</dt>
+              <dt>{{ $tr('代码提交') }}</dt>
               <dd>
-                <code>{{ platform.build?.revision || "未记录" }}</code>
+                <code>{{ platform.build?.revision || $tr('未记录') }}</code>
               </dd>
             </div>
             <div>
-              <dt>源码状态</dt>
+              <dt>{{ $tr('源码状态') }}</dt>
               <dd>
                 {{
                   platform.build?.dirty === true
-                    ? "存在本地改动"
+                    ? $tr('存在本地改动')
                     : platform.build?.dirty === false
-                      ? "与提交一致"
-                      : "未记录"
+                      ? $tr('与提交一致')
+                      : $tr('未记录')
                 }}
               </dd>
             </div>
             <div>
-              <dt>监测缓存（秒）</dt>
+              <dt>{{ $tr('监测缓存（秒）') }}</dt>
               <dd>
-                {{ snapshot.runtime?.budget?.health_cache_seconds ?? "未读取" }}
+                {{ snapshot.runtime?.budget?.health_cache_seconds ?? $tr('未读取') }}
               </dd>
             </div>
           </dl>
-          <h2>后端绑定</h2>
+          <h2>{{ $tr('后端绑定') }}</h2>
           <dl>
             <div v-for="engine in snapshot.environments.engines" :key="engine.id">
               <dt>{{ engine.name }}</dt>
               <dd>
-                {{ engine.active ? "当前后端引擎" : "已接入" }} ·
+                {{ engine.active ? $tr('当前后端引擎') : $tr('已接入') }} ·
                 <code>{{ engine.backend }}</code>
               </dd>
             </div>
             <div>
-              <dt>商业库存一致性</dt>
+              <dt>{{ $tr('商业库存一致性') }}</dt>
               <dd>
                 {{
                   snapshot.health?.service_checks?.inventory_consistent === true
-                    ? "已通过"
+                    ? $tr('已通过')
                     : snapshot.health?.service_checks?.inventory_consistent === false
-                      ? "未通过"
-                      : "未读取"
+                      ? $tr('未通过')
+                      : $tr('未读取')
                 }}
               </dd>
             </div>
             <div>
-              <dt>目录快照</dt>
+              <dt>{{ $tr('目录快照') }}</dt>
               <dd>
                 <code>{{
-                  snapshot.health?.stock_snapshot?.catalog_sha256 || "未读取"
+                  snapshot.health?.stock_snapshot?.catalog_sha256 || $tr('未读取')
                 }}</code>
               </dd>
             </div>

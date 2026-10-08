@@ -4,7 +4,7 @@
       <router-link
         to="/"
         class="workspace-header-brand"
-        :aria-label="`X-Synth v${version} 首页`"
+        :aria-label="$tr('X-Synth v{version} 首页', { version })"
         @click="$emit('navigate')"
       >
         <BrandMark :size="34" />
@@ -12,7 +12,7 @@
           <span>X-Synth</span><small>v{{ version }}</small>
         </span>
       </router-link>
-      <v-tooltip :text="navigationOpen ? '收起导航' : '展开导航'">
+      <v-tooltip :text="navigationOpen ? $tr('收起导航') : $tr('展开导航')">
         <template #activator="{ props }">
           <v-btn
             v-bind="props"
@@ -20,7 +20,7 @@
             :icon="mobile && navigationOpen ? 'mdi-close' : 'mdi-menu'"
             variant="text"
             size="small"
-            aria-label="切换导航"
+            :aria-label="$tr('切换导航')"
             aria-controls="workspace-navigation"
             :aria-expanded="navigationOpen"
             @click="$emit('toggle-navigation')"
@@ -28,18 +28,18 @@
         </template>
       </v-tooltip>
     </div>
-    <div class="workspace-header-context" aria-label="当前位置">
+    <div class="workspace-header-context" :aria-label="$tr('当前位置')">
       <v-icon
         :icon="currentModule?.icon || 'mdi-view-dashboard-outline'"
         size="18"
         aria-hidden="true"
       />
       <span class="workspace-location-root">{{
-        workspace.local ? "本地工作区" : "研究工作区"
+        workspace.local ? $tr('本地工作区') : $tr('研究工作区')
       }}</span>
       <v-icon icon="mdi-chevron-right" size="16" aria-hidden="true" />
       <span class="workspace-location-current">{{
-        currentModule?.title || route.meta.title || "工作区"
+        $tr(currentModule?.title || route.meta.title || '工作区')
       }}</span>
     </div>
     <div class="workspace-header-actions">
@@ -48,9 +48,10 @@
         :class="{ ready: online && workspace.ready, offline: !online }"
         role="status"
         aria-live="polite"
-        ><i aria-hidden="true" />{{ statusLabel }}</span
+        ><i aria-hidden="true" />{{ $tr(statusLabel) }}</span
       >
-      <v-tooltip text="环境部署"
+      <LanguageMenu />
+      <v-tooltip :text="$tr('环境部署')"
         ><template #activator="{ props }"
           ><v-btn
             v-bind="props"
@@ -58,7 +59,7 @@
             icon="mdi-pulse"
             variant="text"
             size="small"
-            aria-label="环境部署"
+            :aria-label="$tr('环境部署')"
             @click="$emit('navigate')" /></template
       ></v-tooltip>
     </div>
@@ -73,6 +74,7 @@ import {
   visibleNavigation,
 } from "@/common/workspace-navigation";
 import BrandMark from "@/components/workspace/BrandMark.vue";
+import LanguageMenu from "@/components/workspace/LanguageMenu.vue";
 const props = defineProps({
   mobile: Boolean,
   navigationOpen: Boolean,

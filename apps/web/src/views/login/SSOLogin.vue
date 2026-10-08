@@ -1,5 +1,5 @@
 <template>
-  <account-login-form title="账号登录" sso />
+  <account-login-form :title="$tr('账号登录')" sso />
 </template>
 
 <script setup>

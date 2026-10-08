@@ -1,5 +1,5 @@
 <template>
-  <account-login-form title="管理员登录" admin />
+  <account-login-form :title="$tr('管理员登录')" admin />
 </template>
 
 <script setup>
