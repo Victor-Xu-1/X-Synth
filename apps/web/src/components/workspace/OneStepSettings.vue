@@ -1,7 +1,7 @@
 <template>
   <div class="one-step-settings">
     <label>
-      <span class="field-label">断键模型</span>
+      <span class="field-label">{{ $tr('断键模型') }}</span>
       <select
         v-model="settings.model"
         name="model"
@@ -10,22 +10,22 @@
         :disabled="disabled"
       >
         <option v-for="model in models" :key="model.value" :value="model.value">
-          {{ model.title }}
+          {{ $tr(model.title) }}
         </option>
       </select>
     </label>
     <details class="one-step-advanced">
-      <summary>高级参数</summary>
+      <summary>{{ $tr('高级参数') }}</summary>
       <div class="one-step-advanced-fields">
         <label>
-          <span class="field-label" :title="templateField.description">{{
-            templateField.label
+          <span class="field-label" :title="$tr(templateField.description)">{{
+            $tr(templateField.label)
           }}</span>
           <input
             v-model.number="settings.count"
             name="template_count"
             class="workspace-input"
-            :title="templateField.description"
+            :title="$tr(templateField.description)"
             type="number"
             min="10"
             max="5000"
@@ -33,14 +33,14 @@
           />
         </label>
         <label>
-          <span class="field-label" :title="filterField.description">{{
-            filterField.label
+          <span class="field-label" :title="$tr(filterField.description)">{{
+            $tr(filterField.label)
           }}</span>
           <input
             v-model.number="settings.threshold"
             name="minimum_plausibility"
             class="workspace-input"
-            :title="filterField.description"
+            :title="$tr(filterField.description)"
             type="number"
             min="0"
             max="1"
@@ -51,12 +51,12 @@
       </div>
       <dl class="one-step-engine">
         <div>
-          <dt>当前模型</dt>
+          <dt>{{ $tr('当前模型') }}</dt>
           <dd>{{ modelName }}</dd>
         </div>
         <div>
-          <dt>排序依据</dt>
-          <dd>结构复杂度（SCScore）</dd>
+          <dt>{{ $tr('排序依据') }}</dt>
+          <dd>{{ $tr('结构复杂度（SCScore）') }}</dd>
         </div>
       </dl>
     </details>

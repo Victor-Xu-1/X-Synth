@@ -1,49 +1,47 @@
 <template>
   <section class="standard-page analysis-history" :aria-busy="loading">
     <header class="page-heading analysis-heading">
-      <h1>研究记录</h1>
-      <v-tooltip text="刷新研究记录">
+      <h1>{{ $tr('研究记录') }}</h1>
+      <v-tooltip :text="$tr('刷新研究记录')">
         <template #activator="{ props }">
-          <v-btn v-bind="props" icon="mdi-refresh" variant="text" aria-label="刷新研究记录"
+          <v-btn v-bind="props" icon="mdi-refresh" variant="text" :aria-label="$tr('刷新研究记录')"
             :loading="loading" :disabled="loading" @click="refresh" />
         </template>
       </v-tooltip>
     </header>
-    <div class="analysis-filters" role="search" aria-label="筛选研究记录">
-      <v-select v-model="kind" :items="kinds" item-title="title" item-value="value"
-        label="研究类型" aria-label="研究类型" density="compact" variant="outlined" hide-details data-cy="analysis-kind" />
-      <p role="status">{{ total !== null ? `共 ${total} 次计算` : loading ? "正在读取研究记录" : "" }}</p>
+    <div class="analysis-filters" role="search" :aria-label="$tr('筛选研究记录')">
+      <v-select v-model="kind" :items="kinds" :item-title="item => $tr(item.title)" item-value="value"
+        :label="$tr('研究类型')" :aria-label="$tr('研究类型')" density="compact" variant="outlined" hide-details data-cy="analysis-kind" />
+      <p role="status">{{ total !== null ? $tr('共 {total} 次计算', { total: total }) : loading ? $tr('正在读取研究记录') : "" }}</p>
     </div>
     <div v-if="error" class="tool-error analysis-error" role="alert">
-      <span>{{ error }}</span>
-      <v-btn variant="text" size="small" prepend-icon="mdi-refresh" :disabled="loading" @click="refresh">重试</v-btn>
+      <span>{{ $tr(error) }}</span>
+      <v-btn variant="text" size="small" prepend-icon="mdi-refresh" :disabled="loading" @click="refresh">{{ $tr('重试') }}</v-btn>
     </div>
     <div class="analysis-progress">
-      <v-progress-linear v-show="loading" indeterminate height="2" aria-label="读取研究记录" />
+      <v-progress-linear v-show="loading" indeterminate height="2" :aria-label="$tr('读取研究记录')" />
     </div>
-    <div v-if="loading && !rows.length" class="workspace-loading analysis-loading" role="status">
-      正在读取研究记录
-    </div>
+    <div v-if="loading && !rows.length" class="workspace-loading analysis-loading" role="status">{{ $tr('正在读取研究记录') }}</div>
     <div v-else-if="!rows.length && !error" class="workspace-empty analysis-empty" role="status">
       <v-icon :icon="kind ? 'mdi-filter-outline' : 'mdi-flask-outline'" size="30" />
-      <h2>{{ kind ? "暂无此类研究记录" : "暂无研究记录" }}</h2>
-      <v-btn v-if="kind" variant="text" prepend-icon="mdi-filter-remove-outline" @click="kind = ''">清除筛选</v-btn>
+      <h2>{{ kind ? $tr('暂无此类研究记录') : $tr('暂无研究记录') }}</h2>
+      <v-btn v-if="kind" variant="text" prepend-icon="mdi-filter-remove-outline" @click="kind = ''">{{ $tr('清除筛选') }}</v-btn>
     </div>
-    <div v-if="rows.length" class="analysis-table-scroll" role="region" aria-label="研究记录列表" tabindex="0">
+    <div v-if="rows.length" class="analysis-table-scroll" role="region" :aria-label="$tr('研究记录列表')" tabindex="0">
       <table class="data-table" data-cy="analysis-list">
-        <thead><tr><th scope="col">结构</th><th scope="col">研究类型</th><th scope="col">状态</th>
-          <th scope="col">提交时间</th><th scope="col">操作</th></tr></thead>
+        <thead><tr><th scope="col">{{ $tr('结构') }}</th><th scope="col">{{ $tr('研究类型') }}</th><th scope="col">{{ $tr('状态') }}</th>
+          <th scope="col">{{ $tr('提交时间') }}</th><th scope="col">{{ $tr('操作') }}</th></tr></thead>
         <tbody><tr v-for="row in rows" :key="row.id" :data-record-id="row.id">
           <td class="history-structure">
             <router-link :to="detailLocation(row.id)" :aria-label="openLabel(row)" class="analysis-identity">
               <SmilesImage v-if="row.structure" class="analysis-thumbnail" :smiles="row.structure"
                 :width="112" :height="72" :show-error-image="false" />
               <span v-if="row.structure" class="workspace-code analysis-structure-text" :title="row.structure">{{ row.structure }}</span>
-              <span v-else class="analysis-kind-identity">{{ analysisKinds[row.kind].title }}</span>
+              <span v-else class="analysis-kind-identity">{{ $tr(analysisKinds[row.kind].title) }}</span>
             </router-link>
           </td>
-          <td class="analysis-kind"><router-link :to="detailLocation(row.id)">{{ analysisKinds[row.kind].title }}</router-link></td>
-          <td class="analysis-state"><span class="state-badge" :class="row.status">{{ analysisStatuses[row.status] }}</span></td>
+          <td class="analysis-kind"><router-link :to="detailLocation(row.id)">{{ $tr(analysisKinds[row.kind].title) }}</router-link></td>
+          <td class="analysis-state"><span class="state-badge" :class="row.status">{{ $tr(analysisStatuses[row.status]) }}</span></td>
           <td class="analysis-time"><time :datetime="row.created" :title="recordDate(row.created)">{{ recordDate(row.created) }}</time></td>
           <td class="analysis-actions">
             <v-tooltip :text="openLabel(row)">
@@ -56,14 +54,14 @@
         </tr></tbody>
       </table>
     </div>
-    <nav v-if="total !== null" class="analysis-pagination" aria-label="研究记录分页">
-      <v-tooltip text="上一页"><template #activator="{ props }">
-        <v-btn v-bind="props" icon="mdi-chevron-left" variant="text" aria-label="上一页"
+    <nav v-if="total !== null" class="analysis-pagination" :aria-label="$tr('研究记录分页')">
+      <v-tooltip :text="$tr('上一页')"><template #activator="{ props }">
+        <v-btn v-bind="props" icon="mdi-chevron-left" variant="text" :aria-label="$tr('上一页')"
           :disabled="loading || page === 1" @click="setPage(page - 1)" />
       </template></v-tooltip>
-      <span aria-live="polite">第 {{ page }} / {{ Math.max(1, Math.ceil(total / analysisPageSize)) }} 页</span>
-      <v-tooltip text="下一页"><template #activator="{ props }">
-        <v-btn v-bind="props" icon="mdi-chevron-right" variant="text" aria-label="下一页"
+      <span aria-live="polite">{{ $tr('第 {page} / {total} 页', { page: page, total: Math.max(1, Math.ceil(total / analysisPageSize)) }) }}</span>
+      <v-tooltip :text="$tr('下一页')"><template #activator="{ props }">
+        <v-btn v-bind="props" icon="mdi-chevron-right" variant="text" :aria-label="$tr('下一页')"
           :disabled="loading || page * analysisPageSize >= total" @click="setPage(page + 1)" />
       </template></v-tooltip>
     </nav>
@@ -72,6 +70,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { uiText } from "@/i18n";
 import { API } from "@/common/api";
 import { analysisKinds, analysisStatuses, recordDate, analysisPageSize, analysisQuery,
   listQuery, readAnalysisList, recordPath } from "@/common/analysis-records";
@@ -86,7 +85,8 @@ const page = computed(() => { try { return analysisQuery(route.query).page; } ca
 const kinds = [{ title: "全部研究", value: "" }, ...Object.entries(analysisKinds).map(([value, entry]) => ({ title: entry.title, value }))];
 let generation = 0, timer, disposed = false;
 let displayedQuery = null;
-const openLabel = (row) => `打开${analysisKinds[row.kind].title}记录，${recordDate(row.created)}`;
+const openLabel = (row) => uiText("打开{name}记录，{date}",
+  { name: uiText(analysisKinds[row.kind].title), date: recordDate(row.created) });
 const detailLocation = (id) => ({ path: recordPath(id), query: listQuery(kind.value, page.value) });
 function setPage(value) {
   if (loading.value) return;

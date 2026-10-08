@@ -1,18 +1,18 @@
 <template>
-  <section class="manual-comparison" aria-label="候选比较">
+  <section class="manual-comparison" :aria-label="$tr('候选比较')">
     <header class="manual-comparison-heading">
-      <h2>候选比较</h2>
-      <span>单步前体候选 · 未核验采购闭合</span>
+      <h2>{{ $tr('候选比较') }}</h2>
+      <span>{{ $tr('单步前体候选 · 未核验采购闭合') }}</span>
     </header>
     <dl class="manual-comparison-context">
       <div>
-        <dt>模型来源</dt><dd>{{ result.model }}</dd>
+        <dt>{{ $tr('模型来源') }}</dt><dd>{{ result.model }}</dd>
       </div>
       <div>
-        <dt>模板数上限</dt><dd>{{ context.count }}</dd>
+        <dt>{{ $tr('模板数上限') }}</dt><dd>{{ context.count }}</dd>
       </div>
       <div>
-        <dt>FF 下限</dt><dd>{{ context.threshold }}</dd>
+        <dt>{{ $tr('FF 下限') }}</dt><dd>{{ context.threshold }}</dd>
       </div>
     </dl>
     <ManualOutcomes

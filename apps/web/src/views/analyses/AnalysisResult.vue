@@ -1,27 +1,25 @@
 <template>
-  <p v-if="resultError" class="tool-error" role="alert">{{ resultError }}</p>
+  <p v-if="resultError" class="tool-error" role="alert">{{ $tr(resultError) }}</p>
   <AssessmentResults v-else-if="kind === 'assessment'" :result="result" />
   <ProcessResults v-else-if="kind === 'process'" :result="result" />
   <template v-else-if="kind === 'optimization'">
     <RecommendationTable v-if="result.recommendations.length" :result="result" />
-    <p v-else class="workspace-muted" role="status">本次没有实验建议。</p>
+    <p v-else class="workspace-muted" role="status">{{ $tr('本次没有实验建议。') }}</p>
   </template>
   <ImpurityResults v-else-if="kind === 'impurity'" :result="result" />
   <div v-else class="prediction-results">
     <div class="reaction-identities" :class="{ 'has-product': result.product }">
       <div>
-        <h2>反应物</h2>
+        <h2>{{ $tr('反应物') }}</h2>
         <SmilesImage :smiles="result.reactants" :width="360" :height="170" :show-error-image="false" allow-copy />
       </div>
       <v-icon v-if="result.product" icon="mdi-arrow-right" class="reaction-direction" aria-hidden="true" />
       <div v-if="result.product">
-        <h2>目标产物</h2>
+        <h2>{{ $tr('目标产物') }}</h2>
         <SmilesImage :smiles="result.product" :width="300" :height="170" :show-error-image="false" allow-copy />
       </div>
     </div>
-    <p v-if="hasUnconfirmedLabels" :id="labelNoticeId" class="condition-label-notice" role="note">
-      候选中的名称或编号文本仅为模型原始标签，结构未确认。
-    </p>
+    <p v-if="hasUnconfirmedLabels" :id="labelNoticeId" class="condition-label-notice" role="note">{{ $tr('候选中的名称或编号文本仅为模型原始标签，结构未确认。') }}</p>
     <ConditionRecommendation v-if="kind === 'conditions'" :results="conditionRows" :prediction="result" submitted
       :allow-evaluation="false" :aria-describedby="hasUnconfirmedLabels ? labelNoticeId : undefined" />
     <ConditionRecordEvaluation v-if="kind === 'conditions'" :result="result" />

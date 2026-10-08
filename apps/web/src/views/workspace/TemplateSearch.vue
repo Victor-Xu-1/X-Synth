@@ -9,16 +9,18 @@
         <v-select
           v-model="filters.source"
           :disabled="isDetail || busy"
-          label="模板来源"
+          :label="$tr('模板来源')"
           :items="sources"
+          :item-title="item => item.value ? item.title : $tr(item.title)"
           variant="outlined"
           density="compact"
           hide-details
         /><v-select
           v-model="filters.direction"
           :disabled="isDetail || busy"
-          label="反应方向"
+          :label="$tr('反应方向')"
           :items="directionItems"
+          :item-title="item => $tr(item.title)"
           variant="outlined"
           density="compact"
           hide-details
@@ -28,7 +30,7 @@
           type="number"
           min="0"
           max="2147483647"
-          label="最少反应例数"
+          :label="$tr('最少反应例数')"
           variant="outlined"
           density="compact"
           hide-details
@@ -38,7 +40,7 @@
           type="number"
           min="1"
           max="500"
-          label="每页条数"
+          :label="$tr('每页条数')"
           variant="outlined"
           density="compact"
           hide-details
@@ -49,12 +51,12 @@
           :loading="busy"
           :disabled="!canSearch"
           prepend-icon="mdi-magnify"
-          >检索模板</v-btn
-        ><span class="workspace-muted template-index-count">索引总量 {{ total }}</span>
+          >{{ $tr('检索模板') }}</v-btn
+        ><span class="workspace-muted template-index-count">{{ $tr('索引总量 {total}', { total: total }) }}</span>
         <div v-if="indexError" class="tool-error" role="alert">
-          {{ indexError }}
+          {{ $tr(indexError) }}
         </div>
-        <p v-if="coverageReason" class="workspace-muted" role="status">{{ coverageReason }}</p>
+        <p v-if="coverageReason" class="workspace-muted" role="status">{{ coverageLabel }}</p>
       </form>
       <section
         class="tool-result-panel"
@@ -67,15 +69,15 @@
             variant="text"
             prepend-icon="mdi-arrow-left"
             @click="backToList"
-            >返回列表</v-btn
+            >{{ $tr('返回列表') }}</v-btn
           >
           <div v-if="detailLoading" class="workspace-loading">
-            <v-progress-linear indeterminate /><span>加载模板记录</span>
+            <v-progress-linear indeterminate /><span>{{ $tr('加载模板记录') }}</span>
           </div>
           <div v-else-if="detailError" class="tool-error" role="alert">
-            {{ detailError }}
+            {{ $tr(detailError) }}
             <v-btn variant="text" prepend-icon="mdi-refresh" @click="loadDetail"
-              >重试</v-btn
+              >{{ $tr('重试') }}</v-btn
             >
           </div>
           <div v-else-if="detail" class="template-reading">
@@ -94,64 +96,62 @@
         </template>
         <div v-show="!isDetail" class="template-list-region">
           <div v-if="error" ref="pageError" class="tool-error" role="alert" tabindex="-1">
-            {{ error }}
+            {{ $tr(error) }}
             <div class="template-error-actions">
               <v-btn class="template-retry" variant="text" prepend-icon="mdi-refresh"
-                :disabled="!canSearch" @click="changePage(retrySearch)">重试此页</v-btn>
+                :disabled="!canSearch" @click="changePage(retrySearch)">{{ $tr('重试此页') }}</v-btn>
               <v-btn class="template-new-search" variant="text" prepend-icon="mdi-magnify"
-                :disabled="!canSearch" @click="changePage(search)">重新检索</v-btn>
+                :disabled="!canSearch" @click="changePage(search)">{{ $tr('重新检索') }}</v-btn>
             </div>
           </div>
-          <nav v-if="showPagination" class="template-pagination" aria-label="模板列表分页">
+          <nav v-if="showPagination" class="template-pagination" :aria-label="$tr('模板列表分页')">
             <div ref="pageSummary" class="template-page-summary" role="status" aria-live="polite" tabindex="-1">
               <template v-if="searched">
-                <span class="template-matched-count">筛选匹配 {{ matchedCount.toLocaleString() }} 条模板</span>
-                <span class="template-result-count">当前页 {{ rows.length }} 条模板</span>
-                <span v-if="pageNumber !== null">第 {{ pageNumber }} 页</span>
+                <span class="template-matched-count">{{ $tr('筛选匹配 {count} 条模板', { count: matchedCount.toLocaleString() }) }}</span>
+                <span class="template-result-count">{{ $tr('当前页 {count} 条模板', { count: rows.length }) }}</span>
+                <span v-if="pageNumber !== null">{{ $tr('第 {page} 页', { page: pageNumber }) }}</span>
               </template>
-              <span v-else>{{ busy ? "读取当前页" : "当前页未读取" }}</span>
+              <span v-else>{{ busy ? $tr('读取当前页') : $tr('当前页未读取') }}</span>
             </div>
             <div class="template-page-actions">
-              <v-tooltip text="返回首页">
+              <v-tooltip :text="$tr('返回首页')">
                 <template #activator="{ props: activator }">
                   <v-btn v-bind="activator" icon="mdi-page-first" variant="text" size="small"
-                    aria-label="返回首页" :disabled="!canFirst" @click="changePage(firstPage)" />
+                    :aria-label="$tr('返回首页')" :disabled="!canFirst" @click="changePage(firstPage)" />
                 </template>
               </v-tooltip>
-              <v-tooltip text="上一页">
+              <v-tooltip :text="$tr('上一页')">
                 <template #activator="{ props: activator }">
                   <v-btn v-bind="activator" icon="mdi-chevron-left" variant="text" size="small"
-                    aria-label="上一页" :disabled="!canPrevious" @click="changePage(previousPage)" />
+                    :aria-label="$tr('上一页')" :disabled="!canPrevious" @click="changePage(previousPage)" />
                 </template>
               </v-tooltip>
-              <v-tooltip text="下一页">
+              <v-tooltip :text="$tr('下一页')">
                 <template #activator="{ props: activator }">
                   <v-btn v-bind="activator" icon="mdi-chevron-right" variant="text" size="small"
-                    aria-label="下一页" :disabled="!canNext" @click="changePage(nextPage)" />
+                    :aria-label="$tr('下一页')" :disabled="!canNext" @click="changePage(nextPage)" />
                 </template>
               </v-tooltip>
             </div>
           </nav>
           <div v-if="busy" class="workspace-loading" role="status">
-            <v-progress-linear indeterminate /><span>检索模板记录</span>
+            <v-progress-linear indeterminate /><span>{{ $tr('检索模板记录') }}</span>
           </div>
           <div v-else-if="!searched && !error" class="workspace-empty">
             <v-icon icon="mdi-database-search-outline" size="30" />
-            <h2>模板知识库</h2>
+            <h2>{{ $tr('模板知识库') }}</h2>
           </div>
-          <div v-else-if="searched && !rows.length" class="workspace-empty">
-            没有匹配的模板
-          </div>
+          <div v-else-if="searched && !rows.length" class="workspace-empty">{{ $tr('没有匹配的模板') }}</div>
           <div v-else-if="searched && !error" :key="pageKey" ref="list" class="template-table">
             <article
               v-for="row in rows"
               :key="identity(row)"
               class="template-result-row"
-              :aria-label="`模板 ${identity(row)}`"
+              :aria-label="$tr('模板 {value}', { value: identity(row) })"
             >
               <header class="template-row-heading">
-                <span>{{ source(row) }}</span><span>{{ row.count }} 例</span>
-                <v-tooltip text="查看模板详情">
+                <span>{{ source(row) }}</span><span>{{ $tr('{count} 例', { count: row.count }) }}</span>
+                <v-tooltip :text="$tr('查看模板详情')">
                   <template #activator="{ props: activator }">
                     <v-btn
                       v-bind="activator"
@@ -160,7 +160,7 @@
                       size="small"
                       class="template-open"
                       :data-template-id="identity(row)"
-                      :aria-label="`查看模板 ${identity(row)}`"
+                      :aria-label="$tr('查看模板 {value}', { value: identity(row) })"
                       @click="inspect(row, $event)"
                     />
                   </template>
@@ -176,7 +176,7 @@
                 />
               </v-lazy>
               <details class="template-row-code">
-                <summary>SMARTS 与模板标识</summary>
+                <summary>{{ $tr('SMARTS 与模板标识') }}</summary>
                 <code>{{ identity(row) }}</code>
                 <code>{{ row.reaction_smarts }}</code>
               </details>
@@ -190,6 +190,7 @@
 <script setup>
 import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
+import { uiText } from "@/i18n";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import TemplateDetails from "@/components/templates/TemplateDetails.vue";
 import { useTemplateSearch } from "@/composables/useTemplateSearch";
@@ -231,6 +232,8 @@ const route = useRoute(), detailBack = ref(null);
 const pageSummary = ref(null), pageError = ref(null);
 const identity = (row) => templateDetailLocation(row)?.query.id;
 const source = (row) => row.source || row.template_set || row.raw?.template_set;
+const coverageLabel = computed(() => coverageReason.value ? uiText("当前索引未包含{direction}模板。",
+  { direction: uiText(filters.direction === "forward" ? "正向" : "逆合成") }) : "");
 let returnPoint, active = true, focusGeneration = 0;
 async function changePage(operation) {
   const generation = ++focusGeneration;
@@ -294,8 +297,8 @@ onUnmounted(() => { active = false; focusGeneration++; returnPoint = null; });
 const total = computed(() => {
   const count = health.value?.template_count;
   return Number.isSafeInteger(count) && count >= 0
-    ? `${count.toLocaleString()} 条模板记录`
-    : "未提供";
+    ? uiText("{count} 条模板记录", { count: count.toLocaleString() })
+    : uiText("未提供");
 });
 const sources = computed(() => [
   { title: "全部来源", value: "" },

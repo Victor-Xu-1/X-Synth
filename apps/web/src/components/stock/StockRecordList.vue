@@ -1,26 +1,25 @@
 <template>
-  <ul class="stock-records" aria-label="精确结构供应商目录记录">
+  <ul class="stock-records" :aria-label="$tr('精确结构供应商目录记录')">
     <li v-for="(row, index) in result.records" :key="index" class="stock-record">
       <div class="stock-record-identity">
-        <h3>{{ row.source || "供应商未记录" }}</h3>
-        <dl><dt>目录号</dt><dd class="workspace-code">{{ row.catalog_id || "未记录" }}</dd>
-          <dt>CAS</dt><dd>{{ row.cas || "未记录" }}</dd>
-          <dt>交期（目录）</dt><dd class="stock-lead-time">{{ row.lead_time?.trim() || "未记录" }}</dd></dl>
+        <h3>{{ row.source || $tr('供应商未记录') }}</h3>
+        <dl><dt>{{ $tr('目录号') }}</dt><dd class="workspace-code">{{ row.catalog_id || $tr('未记录') }}</dd>
+          <dt>CAS</dt><dd>{{ row.cas || $tr('未记录') }}</dd>
+          <dt>{{ $tr('交期（目录）') }}</dt><dd class="stock-lead-time">{{ row.lead_time?.trim() || $tr('未记录') }}</dd></dl>
       </div>
       <div class="stock-record-price">
-        <span class="stock-field-label">目录价格基准</span>
+        <span class="stock-field-label">{{ $tr('目录价格基准') }}</span>
         <SupplierPrice :record="row" :snapshot="result.snapshot" :smiles="result.smiles" compact />
       </div>
       <div class="stock-record-actions">
         <button type="button" class="stock-detail-button" data-cy="stock-record-details"
-          :aria-label="`查看${row.source || '供应商未记录'} ${row.catalog_id || '目录记录'}证据详情`"
+          :aria-label="$tr('查看{value} {value2}证据详情', { value: row.source || $tr('供应商未记录'), value2: row.catalog_id || $tr('目录记录') })"
           @click="$emit('select', { index, origin: $event.currentTarget })">
-          <v-icon icon="mdi-text-box-search-outline" size="18" /><span>证据详情</span>
+          <v-icon icon="mdi-text-box-search-outline" size="18" /><span>{{ $tr('证据详情') }}</span>
         </button>
-        <a v-if="safeExternalUrl(row.url)" :href="safeExternalUrl(row.url)" target="_blank" rel="noopener noreferrer" class="catalog-link">
-          目录页 <v-icon icon="mdi-open-in-new" size="12" />
+        <a v-if="safeExternalUrl(row.url)" :href="safeExternalUrl(row.url)" target="_blank" rel="noopener noreferrer" class="catalog-link">{{ $tr('目录页') }}<v-icon icon="mdi-open-in-new" size="12" />
         </a>
-        <span v-else class="stock-field-label">目录链接未记录</span>
+        <span v-else class="stock-field-label">{{ $tr('目录链接未记录') }}</span>
       </div>
     </li>
   </ul>

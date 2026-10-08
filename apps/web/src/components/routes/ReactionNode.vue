@@ -1,7 +1,7 @@
 <template>
   <div class="reaction-graph-node" :class="{ selected }">
     <Handle type="target" :position="Position.Left" />
-    <v-tooltip v-if="!data.overview" :text="`查看${data.label || '反应'}详情`">
+    <v-tooltip v-if="!data.overview" :text="$tr('查看{name}详情', { name: label })">
       <template #activator="{ props }">
         <v-btn
           v-bind="props"
@@ -10,7 +10,7 @@
           :class="{ 'reaction-disc': data.reading }"
           icon
           variant="text"
-          :aria-label="`查看${data.label || '反应'}详情`"
+          :aria-label="$tr('查看{name}详情', { name: label })"
           @keydown.enter.stop
           @keydown.space.stop
           @keyup.enter.stop
@@ -33,17 +33,21 @@
       icon="mdi-arrow-right"
       size="18"
     />
-    <strong :title="data.label || '反应'">{{ data.label || "反应" }}</strong>
+    <strong :title="label">{{ label }}</strong>
     <small v-if="typeof data.score === 'number' && Number.isFinite(data.score)"
-      :title="`步骤分数 ${data.score.toFixed(2)}`"
-      >步骤分数 {{ data.score.toFixed(2) }}</small
+      :title="$tr('步骤分数 {value}', { value: data.score.toFixed(2) })"
+      >{{ $tr('步骤分数 {value}', { value: data.score.toFixed(2) }) }}</small
     >
     <Handle type="source" :position="Position.Right" />
   </div>
 </template>
 <script setup>
 import { Handle, Position } from "@vue-flow/core";
-defineProps({ data: { type: Object, required: true }, selected: Boolean });
+import { computed } from "vue";
+import { uiText } from "@/i18n";
+import { generatedReactionUiLabel } from "./route-ui-text";
+const props = defineProps({ data: { type: Object, required: true }, selected: Boolean });
+const label = computed(() => props.data.generatedStepLabels ? generatedReactionUiLabel(props.data.label) : props.data.label || uiText("反应"));
 </script>
 <style scoped>
 .reaction-graph-node {

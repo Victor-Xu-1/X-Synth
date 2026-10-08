@@ -19,7 +19,7 @@
     <aside
       v-show="inspectorVisible"
       class="workbench-inspector"
-      :aria-label="parameterLabel"
+      :aria-label="$tr(parameterLabel)"
     >
       <slot name="parameters" />
     </aside>

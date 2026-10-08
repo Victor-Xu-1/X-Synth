@@ -1,13 +1,13 @@
 <template>
   <main class="auth-page">
     <section class="auth-form">
-      <router-link class="auth-brand d-block" to="/">X-Synth</router-link>
-      <h1>退出登录</h1>
-      <p class="workspace-muted mb-5" role="status">{{ message }}</p>
+      <AuthHeader />
+      <h1>{{ $tr('退出登录') }}</h1>
+      <p class="workspace-muted mb-5" role="status">{{ $tr(message) }}</p>
       <v-btn to="/login" color="primary" variant="flat" prepend-icon="mdi-login"
-        >返回登录</v-btn
+        >{{ $tr('返回登录') }}</v-btn
       >
-      <v-btn to="/" variant="text" class="ml-2">返回工作区</v-btn>
+      <v-btn to="/" variant="text" class="ml-2">{{ $tr('返回工作区') }}</v-btn>
     </section>
   </main>
 </template>
@@ -15,6 +15,7 @@
 <script setup>
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import AuthHeader from "./AuthHeader.vue";
 
 const router = useRouter();
 const message = ref("正在返回登录页。");

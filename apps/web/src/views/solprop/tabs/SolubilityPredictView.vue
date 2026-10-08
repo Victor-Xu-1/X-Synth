@@ -1,21 +1,21 @@
 <template>
   <v-container fluid style="min-height: calc(100vh-50px)">
-    <section v-if="requestError" class="mb-4" aria-label="溶解度预测错误"><ErrorDialog :error-obj="requestError" /></section>
+    <section v-if="requestError" class="mb-4" :aria-label="$tr('溶解度预测错误')"><ErrorDialog :error-obj="requestError" /></section>
     <v-row class="justify-center">
       <v-col cols="12" md="12" class="pa-0">
         <v-sheet elevation="2" class="pa-10" rounded="lg" width="100%">
           <v-form @submit.prevent="predict" ref="form">
             <v-row>
               <v-col cols="12" md="4">
-                <StructureInput ref="soluteInput" v-model="solute" label="溶质"
+                <StructureInput ref="soluteInput" v-model="solute" :label="$tr('溶质')"
                   :disabled="loading" data-cy="solpred-solute" />
               </v-col>
               <v-col cols="12" md="4">
-                <StructureInput ref="solventInput" v-model="solvent" label="溶剂"
+                <StructureInput ref="solventInput" v-model="solvent" :label="$tr('溶剂')"
                   :disabled="loading" data-cy="solpred-solvent" />
               </v-col>
               <v-col cols="12" md="4">
-                <v-text-field :rules="[v => !!v || '必须输入温度']" variant="outlined" label="温度"
+                <v-text-field :rules="[v => !!v || $tr('必须输入温度')]" variant="outlined" :label="$tr('温度')"
                   v-model="temperature" data-cy="solpred-temp" clearable prepend-inner-icon="mdi-thermometer-lines"
                   rounded="pill">
                 </v-text-field>
@@ -25,19 +25,17 @@
             <v-row justify-start class="align-center justify-center">
               <v-col class="solpred-actions">
                 <v-btn data-cy="solpred-submit" type="submit" variant="flat" color="primary" class="mr-5"
-                  :loading="!batch && loading" :disabled="loading || structurePending || !selectedModel">提交</v-btn>
+                  :loading="!batch && loading" :disabled="loading || structurePending || !selectedModel">{{ $tr('提交') }}</v-btn>
                 <v-btn type="button" data-cy="solpred-run-batch" variant="flat" color="yellow-darken-4" class="mr-5"
-                  @click="showUploadModal = true" :loading="batch && loading" :disabled="!selectedModel">批量运行</v-btn>
+                  @click="showUploadModal = true" :loading="batch && loading" :disabled="!selectedModel">{{ $tr('批量运行') }}</v-btn>
                 <v-menu location="bottom" id="tb-submit-settings" :close-on-content-click="false">
                   <template v-slot:activator="{ props }">
                     <v-tooltip location="bottom"
-                      :text="selectedModel ? `当前模型：${selectedModel === 'solprop' ? 'Fusion Cycle' : selectedModel === 'fastsolv' ? 'FastSolv' : selectedModel === 'legacy' ? 'SolProp' : selectedModel}` : '请选择模型'"
+                      :text="selectedModel ? $tr('当前模型：{model}', { model: selectedModel === 'solprop' ? 'Fusion Cycle' : selectedModel === 'fastsolv' ? 'FastSolv' : selectedModel === 'legacy' ? 'SolProp' : selectedModel }) : $tr('请选择模型')"
                       :model-value="!selectedModel || undefined">
                       <template v-slot:activator="{ props: tprops }">
                         <v-btn color="primary" append-icon="mdi mdi-menu-down" variant="flat" data-cy="model-selection"
-                          v-bind="Object.assign({}, props, tprops)" class="mr-5">
-                          模型
-                        </v-btn>
+                          v-bind="Object.assign({}, props, tprops)" class="mr-5"> {{ $tr('模型') }} </v-btn>
                       </template>
                     </v-tooltip>
                   </template>
@@ -63,14 +61,10 @@
                   </v-list>
                 </v-menu>
                 <v-btn @click="dialog = true" variant="flat" class="mr-5" prepend-icon="mdi-dots-horizontal"
-                  color="info">
-                  更多参数
-                </v-btn>
+                  color="info"> {{ $tr('更多参数') }} </v-btn>
                 <v-btn data-cy="solpred-clear-results" variant="tonal" class="mr-5" :disabled="results.length === 0"
-                  @click="clear()">
-                  清空结果
-                </v-btn>
-                <v-btn class="mr-5 align-self-end" variant="tonal" @click="showInfo = !showInfo" color="info">模型输入/输出说明</v-btn>
+                  @click="clear()"> {{ $tr('清空结果') }} </v-btn>
+                <v-btn class="mr-5 align-self-end" variant="tonal" @click="showInfo = !showInfo" color="info">{{ $tr('模型输入/输出说明') }}</v-btn>
               </v-col>
             </v-row>
           </v-form>
@@ -91,10 +85,10 @@
       <v-col v-show="pendingTasks > 0 || results.length" cols="12" md="12" class="pa-0 mt-4">
         <v-sheet elevation="2" class="pa-4" rounded="lg">
           <v-row align="center" justify="space-between" class="mx-auto my-3">
-            <v-alert border="start" type="info" variant="tonal" density="compact" :title="contextTitle">
+            <v-alert border="start" type="info" variant="tonal" density="compact" :title="$tr(contextTitle)">
               <p v-for="(block, i) in contextBlocks" :key="i" :class="{ 'mt-1': i > 0 }">
                 <template v-for="(text, j) in block.texts" :key="j">
-                  {{ text }}<br v-if="j < block.texts.length - 1" />
+                  {{ solubilityContextText(text) }}<br v-if="j < block.texts.length - 1" />
                 </template>
                 <a v-if="block.ref" class="text-decoration-none text-primary font-weight-medium d-inline-flex align-center"
                   :href="block.ref.url" target="_blank">
@@ -108,24 +102,22 @@
               <v-menu location="bottom">
                 <template v-slot:activator="{ props }">
                   <v-btn v-show="!!results.length" color="primary" v-bind="props" prepend-icon="mdi mdi-download"
-                    variant="flat" data-cy="solpred-download">
-                    下载
-                  </v-btn>
+                    variant="flat" data-cy="solpred-download"> {{ $tr('下载') }} </v-btn>
                 </template>
                 <v-list>
-                  <v-list-item data-cy="solpred-download-csv" @click="downloadCSV()">下载 CSV</v-list-item>
-                  <v-list-item data-cy="solpred-download-json" @click="downloadJSON()">下载 JSON</v-list-item>
+                  <v-list-item data-cy="solpred-download-csv" @click="downloadCSV()">{{ $tr('下载 CSV') }}</v-list-item>
+                  <v-list-item data-cy="solpred-download-json" @click="downloadJSON()">{{ $tr('下载 JSON') }}</v-list-item>
                 </v-list>
               </v-menu>
             </v-col>
             <v-spacer md="2"></v-spacer>
             <v-col md="5">
-              <v-select :model-value="selectedColumnCategories" :items="allfields" label="选择字段"
+              <v-select :model-value="selectedColumnCategories" :items="allfields" :label="$tr('选择字段')"
                 density="comfortable" variant="outlined" hide-details clearable @update:modelValue="onSelectedCategory"
-                multiple data-cy="solpred-select-columns">
+                multiple item-value="key" data-cy="solpred-select-columns">
                 <template v-slot:prepend-item>
                   <v-list-item ripple @click="toggleAllCategories" data-cy="solpred-select-all">
-                    <v-list-item-title>全选</v-list-item-title>
+                    <v-list-item-title>{{ $tr('全选') }}</v-list-item-title>
                   </v-list-item>
                   <v-divider></v-divider>
                 </template>
@@ -143,7 +135,7 @@
             <v-row class="mt-3" style="overflow-x:scroll">
               <v-col cols="12">
                 <v-data-table :page="lastPage" :items-per-page="itemsPerPage"
-                  @update:itemsPerPage="$event => itemsPerPage = $event" :headers="fields" :items="results"
+                  @update:itemsPerPage="$event => itemsPerPage = $event" :headers="localizedFields" :items="results"
                   data-cy="solpred-table" :row-props="colorRowItem">
                   <template v-slot:item.st_1="{ item }">
                     {{ item.st_1 != null && !isNaN(Number(item.st_1)) ? Number(item.st_1).toExponential(2) : '' }}
@@ -194,10 +186,10 @@
       <v-col v-show="!results.length && pendingTasks === 0" cols="12" class="pa-0 mt-4">
         <v-sheet elevation="2" rounded="lg" class="pa-4">
           <v-row align="center" justify="space-between" class="mx-auto my-3">
-            <v-alert border="start" type="info" variant="tonal" density="compact" :title="contextTitle">
+            <v-alert border="start" type="info" variant="tonal" density="compact" :title="$tr(contextTitle)">
               <p v-for="(block, i) in contextBlocks" :key="i" :class="{ 'mt-1': i > 0 }">
                 <template v-for="(text, j) in block.texts" :key="j">
-                  {{ text }}<br v-if="j < block.texts.length - 1" />
+                  {{ solubilityContextText(text) }}<br v-if="j < block.texts.length - 1" />
                 </template>
                 <a v-if="block.ref" class="text-decoration-none text-primary font-weight-medium d-inline-flex align-center"
                   :href="block.ref.url" target="_blank">
@@ -208,8 +200,8 @@
           </v-row>
           <div class="d-flex flex-column align-center justify-center text-center">
             <img src="@/assets/emptySolProp.svg" :width="400" class="mb-3" cover />
-            <h2>暂无结果</h2>
-            <p class="text-body-1">请在上方输入溶质、溶剂和温度后生成预测。</p>
+            <h2>{{ $tr('暂无结果') }}</h2>
+            <p class="text-body-1">{{ $tr('请在上方输入溶质、溶剂和温度后生成预测。') }}</p>
           </div>
         </v-sheet>
       </v-col>
@@ -218,21 +210,19 @@
     <WorkbenchDialog v-model="showUploadModal" max-width="600px">
       <v-card>
         <v-card-title class="mt-2">
-          <v-col cols="12">上传文件</v-col>
+          <v-col cols="12">{{ $tr('上传文件') }}</v-col>
         </v-card-title>
         <v-card-text>
           <v-row>
             <v-col cols="12" class="mb-2">
-              <span>
-                文件格式请参考“模型输入/输出说明”。
-              </span>
+              <span> {{ $tr('文件格式请参考“模型输入/输出说明”。') }} </span>
             </v-col>
           </v-row>
 
           <v-row>
             <v-col cols="12">
-              <v-file-input data-cy="solpred-file-upload" label="文件" v-model="uploadFile"
-                :rules="[v => !!v || '必须上传文件']" density="comfortable" variant="outlined"
+              <v-file-input data-cy="solpred-file-upload" :label="$tr('文件')" v-model="uploadFile"
+                :rules="[v => !!v || $tr('必须上传文件')]" density="comfortable" variant="outlined"
                 clearable></v-file-input>
             </v-col>
           </v-row>
@@ -240,38 +230,36 @@
         <v-card-actions>
           <v-spacer></v-spacer>
           <v-btn data-cy="solpred-file-upload-close" color="blue darken-1" text
-            @click="showUploadModal = false">关闭</v-btn>
+            @click="showUploadModal = false">{{ $tr('关闭') }}</v-btn>
           <v-btn data-cy="solpred-file-upload-upload" color="primary" text
-            @click="handleUploadSubmit">上传</v-btn>
+            @click="handleUploadSubmit">{{ $tr('上传') }}</v-btn>
         </v-card-actions>
       </v-card>
     </WorkbenchDialog>
 
     <WorkbenchDialog v-model="dialog" max-width="600px" class="justify-center align-center">
       <v-card>
-        <v-card-title class="headline">
-          附加参数
-        </v-card-title>
+        <v-card-title class="headline"> {{ $tr('附加参数') }} </v-card-title>
         <v-divider></v-divider>
         <v-card-text class="pa-3">
           <v-expand-transition>
             <v-expansion-panels v-model="panel" multiple>
-              <v-expansion-panel title="密度（可选，仅适用于 Fusion Cycle 模型）" class="text-primary">
+              <v-expansion-panel :title="$tr('密度（可选，仅适用于 Fusion Cycle 模型）')" class="text-primary">
                 <v-expansion-panel-text class="text-black">
-                  <v-text-field variant="outlined" label="密度" v-model="density"
+                  <v-text-field variant="outlined" :label="$tr('密度')" v-model="density"
                     :disabled="selectedModel !== 'solprop'"></v-text-field>
                 </v-expansion-panel-text>
               </v-expansion-panel>
-              <v-expansion-panel title="参考信息（可选）" class="text-primary">
+              <v-expansion-panel :title="$tr('参考信息（可选）')" class="text-primary">
                 <v-expansion-panel-text class="text-black">
-                  <StructureInput ref="referenceInput" v-model="refSolvent" label="参考溶剂"
+                  <StructureInput ref="referenceInput" v-model="refSolvent" :label="$tr('参考溶剂')"
                     :disabled="loading" />
-                  <v-text-field variant="outlined" label="参考溶解度 (log10(mol/L))"
+                  <v-text-field variant="outlined" :label="$tr('参考溶解度 (log10(mol/L))')"
                     v-model="refSolubility"></v-text-field>
-                  <v-text-field variant="outlined" label="参考温度 (K)" v-model="refTemperature"></v-text-field>
+                  <v-text-field variant="outlined" :label="$tr('参考温度 (K)')" v-model="refTemperature"></v-text-field>
                 </v-expansion-panel-text>
               </v-expansion-panel>
-              <v-expansion-panel title="溶质信息（可选）" class="text-primary">
+              <v-expansion-panel :title="$tr('溶质信息（可选）')" class="text-primary">
                 <v-expansion-panel-text class="text-black">
                   <v-text-field variant="outlined" label="ΔHsub298 (kcal/mol)" v-model="soluteHsub"></v-text-field>
                   <v-text-field variant="outlined" label="Cpg298 (cal/mol/K)" v-model="soluteCpg"></v-text-field>
@@ -283,13 +271,9 @@
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions class="d-flex justify-end pa-3">
-          <v-btn class="mr-2" variant="tonal" color="primary" @click="dialog = false">
-            保存
-          </v-btn>
+          <v-btn class="mr-2" variant="tonal" color="primary" @click="dialog = false"> {{ $tr('保存') }} </v-btn>
           <v-btn variant="tonal" color="primary" :disabled="loading || structurePending || !selectedModel"
-            @click="() => { dialog = false; predict() }">
-            运行
-          </v-btn>
+            @click="() => { dialog = false; predict() }"> {{ $tr('运行') }} </v-btn>
         </v-card-actions>
       </v-card>
     </WorkbenchDialog>
@@ -307,6 +291,8 @@ import ErrorDialog from '@/components/ErrorDialog'
 import { API } from "@/common/api";
 import { saveAs } from "file-saver";
 import * as Papa from "papaparse";
+import { uiText } from "@/i18n";
+import { solubilityContextText, solubilityFieldCaption } from "../ui-copy";
 
 let _contextOverviewCache = null
 
@@ -437,6 +423,9 @@ export default {
     }
   },
   computed: {
+    localizedFields() {
+      return this.fields.map((field) => ({ ...field, title: solubilityFieldCaption(field.key, field.title) }))
+    },
     colorRowItem() {
       return (item) => {
         return {
@@ -447,7 +436,7 @@ export default {
       };
     },
     allfields() {
-      return Object.keys(this.columnCategories).map((key) => ({ key: key, title: key }))
+      return Object.keys(this.columnCategories).map((key) => ({ key, title: uiText(key) }))
     },
     lastPage() {
       return Math.ceil(this.results.length / this.itemsPerPage);
@@ -522,6 +511,7 @@ export default {
     this.onSelectedCategory();
   },
   methods: {
+    solubilityContextText,
     fetchContextOverview() {
       if (_contextOverviewCache) {
         this.contextOverview = _contextOverviewCache
@@ -534,7 +524,7 @@ export default {
         })
     },
     deselectColumn(item) {
-      const index = this.selectedColumnCategories.indexOf(item.title);
+      const index = this.selectedColumnCategories.indexOf(item.value ?? item.raw?.key ?? item.title);
       if (index !== -1) {
         this.selectedColumnCategories.splice(index, 1);
       }
@@ -716,7 +706,7 @@ export default {
       } else if (this.uploadFile.name.endsWith('.csv')) {
         fileFormat = 'csv'
       } else {
-        alert('未选择文件，或文件缺少名称')
+        alert(uiText('未选择文件，或文件缺少名称'))
         return
         }
       }
@@ -735,7 +725,7 @@ export default {
           try {
             data = JSON.parse(rawData)
           } catch {
-            alert('JSON 文件格式无效')
+            alert(uiText('JSON 文件格式无效'))
             return
           }
         }
@@ -747,7 +737,7 @@ export default {
     },
     downloadCSV() {
       if (!this.results.length) {
-        alert('没有可下载的结果。')
+        alert(uiText('没有可下载的结果。'))
         return
       }
       let downloadData = Papa.unparse(this.results)
@@ -756,7 +746,7 @@ export default {
     },
     downloadJSON() {
       if (!this.results.length) {
-        alert('没有可下载的结果。')
+        alert(uiText('没有可下载的结果。'))
         return
       }
       let downloadData = JSON.stringify(this.results)

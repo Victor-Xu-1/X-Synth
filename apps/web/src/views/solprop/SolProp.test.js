@@ -3,6 +3,7 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import { defineComponent, h, onMounted, onUnmounted, reactive, ref } from "vue";
 import { randomUUID } from "node:crypto";
 import SolProp from "./SolProp.vue";
+import { DEFAULT_LOCALE, setLocale } from "@/i18n";
 
 let mockWorkspace;
 jest.mock("@/store/workspace", () => ({ useWorkspaceStore: () => mockWorkspace }));
@@ -42,6 +43,18 @@ beforeEach(() => {
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
   hosts.splice(0).forEach((host) => host.remove());
+});
+
+test("English-default solubility navigation and Chinese return retain selected native module, query identity and draft", async () => {
+  const { wrapper, router } = await setup({ smiles: "[13CH3][C@H]([NH3+])CO.[Cl-]" });
+  const input = wrapper.get('input[aria-label="prediction"]'); await input.setValue("研究者原始结构草稿 [Na+].CC(=O)[O-]");
+  const query = JSON.stringify(router.currentRoute.value.query);
+  setLocale(DEFAULT_LOCALE, { persist: false }); await flushPromises();
+  expect(wrapper.text()).toContain("Solubility and solvents"); expect(wrapper.text()).toContain("Solubility prediction");
+  expect(wrapper.get('input[aria-label="prediction"]').element).toBe(input.element);
+  expect(JSON.stringify(router.currentRoute.value.query)).toBe(query); expect(unmounted).toEqual([]);
+  setLocale("zh-CN", { persist: false }); await flushPromises();
+  expect(wrapper.text()).toContain("溶解度与溶剂"); expect(input.element.value).toContain("研究者原始结构草稿");
 });
 
 test("native solubility panels initialize on first selection, keep separate drafts, and link every tab", async () => {

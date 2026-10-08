@@ -2,7 +2,7 @@
 
 ## Product Boundary
 
-X-Synth owns the existing Chinese Vue workbench, product API, job state,
+X-Synth owns the existing multilingual Vue workbench (English by default), product API, job state,
 history, unified stock evidence, route selection, and delivery. ASKCOS V2 is
 the only integrated retrosynthesis engine. New search engines must implement the same
 adapter contract; they are not prerequisites for ASKCOS. LLM integration is
@@ -10,7 +10,7 @@ deferred. Neither model login tokens nor browser sessions are extracted.
 
 ```mermaid
 flowchart TD
-  UI["Chinese Structure-First Workbench"] --> API["One Product API / Identity / Input Validation"]
+  UI["Multilingual Structure-First Workbench / English Default"] --> API["One Product API / Identity / Input Validation"]
   API --> CMD["Application Commands / Idempotency / Admission"]
   CMD --> JOB["Owned SQLite Queue / Checkpoints"]
   JOB --> RUN["One Product Orchestrator"]
@@ -45,7 +45,7 @@ flowchart TD
 | ------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
 | Product version                 | VERSION                                    | One increment per merged main PR; patch radix 100, minor radix 10                                 |
 | Release receipts                | .github/version-state.json                 | Baseline and counted PR merge identities; serialized atomic publication, never a second version source |
-| Frontend                        | apps/web                                   | Existing Vue workbench, Chinese UI, editor, history, route viewer                                 |
+| Frontend                        | apps/web                                   | Existing multilingual Vue workbench, editor, history, route viewer                                 |
 | Product API                     | apps/api                                   | Input validation, identity boundary, capability delegation, response models                       |
 | Product jobs                    | packages/orchestrator                      | One lifecycle, resource admission, checkpoints, route workflow                                    |
 | Result publication              | packages/orchestrator/route_artifacts.py    | Immutable generations; committed job pointer is the only delivery authority                        |

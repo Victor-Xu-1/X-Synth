@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { API } from "@/common/api";
 import { useWorkspaceStore } from "@/store/workspace";
 import ConditionRecordEvaluation from "./ConditionRecordEvaluation.vue";
+import { DEFAULT_LOCALE, setLocale } from "@/i18n";
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 jest.mock("@/store/workspace", () => ({ useWorkspaceStore: jest.fn() }));
 const result = Object.freeze({ reactants: "CCO", product: "CC=O", conditions: Object.freeze([{}]) });
@@ -25,6 +26,16 @@ test("record browsing never executes FF; an explicit click preserves a zero scor
   expect(API.post).toHaveBeenCalledWith("/api/fast-filter/call-sync", { smiles: ["CCO", "CC=O"] });
   expect(wrapper.text()).toContain("模型可行性评分（FF）：0.000");
   expect(result).toEqual({ reactants: "CCO", product: "CC=O", conditions: [{}] });
+});
+
+test("a visible feasibility error follows language changes without retrying or mutating the record", async () => {
+  API.post.mockRejectedValueOnce(new Error("protocol-only offline"));
+  const wrapper = setup(); await wrapper.get("button").trigger("click"); await flushPromises();
+  setLocale(DEFAULT_LOCALE, { persist: false }); await flushPromises();
+  expect(wrapper.get('[role="alert"]').text()).toBe("Reaction feasibility review did not complete.");
+  setLocale("zh-CN", { persist: false }); await flushPromises();
+  expect(wrapper.get('[role="alert"]').text()).toBe("反应可行性复核未完成。");
+  expect(API.post).toHaveBeenCalledTimes(1); expect(wrapper.props("result")).toBe(result);
 });
 
 test.each([{ ...result, conditions: [] }, { ...result, product: "" }, { ...result, reactants: null }])("incomplete legacy or empty record cannot run: %p", async (value) => {

@@ -2,12 +2,12 @@
   <v-dialog v-model="open" max-width="760" scrollable>
     <v-card class="stock-node-dialog">
       <header>
-        <h2>采购记录</h2>
+        <h2>{{ $tr('采购记录') }}</h2>
         <v-btn
           icon="mdi-close"
           variant="text"
           size="small"
-          aria-label="关闭采购记录"
+          :aria-label="$tr('关闭采购记录')"
           @click="open = false"
         />
       </header>
@@ -20,29 +20,27 @@
           :show-error-image="false"
         />
         <details>
-          <summary>结构 SMILES</summary>
+          <summary>{{ $tr('结构 SMILES') }}</summary>
           <code class="stock-query">{{ smiles }}</code>
         </details>
-        <div v-if="loading" class="workspace-loading">正在匹配目录结构</div>
-        <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
+        <div v-if="loading" class="workspace-loading">{{ $tr('正在匹配目录结构') }}</div>
+        <div v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</div>
         <div v-if="snapshot" class="stock-snapshot">
-          <span>证据基础：供应商目录快照</span>
+          <span>{{ $tr('证据基础：供应商目录快照') }}</span>
           <span v-if="expectedSnapshot">{{
             snapshot === expectedSnapshot
-              ? "目录与原任务快照一致"
-              : "目录已变化，不能替代原任务采购证据"
+              ? $tr('目录与原任务快照一致')
+              : $tr('目录已变化，不能替代原任务采购证据')
           }}</span>
           <details>
-            <summary>目录版本标识</summary>
+            <summary>{{ $tr('目录版本标识') }}</summary>
             <code>{{ snapshot }}</code>
           </details>
         </div>
         <div
           v-if="searched && !loading && !rows.length && !error"
           class="workspace-empty"
-        >
-          当前目录没有精确结构匹配
-        </div>
+        >{{ $tr('当前目录没有精确结构匹配') }}</div>
         <section
           v-for="row in rows"
           :key="row.source + ':' + row.catalog_id"
@@ -55,25 +53,25 @@
               :href="safeExternalUrl(row.url)"
               target="_blank"
               rel="noopener noreferrer"
-              >供应商目录<v-icon icon="mdi-open-in-new" size="14"
+              >{{ $tr('供应商目录') }}<v-icon icon="mdi-open-in-new" size="14"
             /></a>
           </header>
           <dl>
             <div>
-              <dt>目录号</dt>
-              <dd>{{ row.catalog_id || "未记录" }}</dd>
+              <dt>{{ $tr('目录号') }}</dt>
+              <dd>{{ row.catalog_id || $tr('未记录') }}</dd>
             </div>
             <div>
               <dt>CAS</dt>
-              <dd>{{ row.cas || "未记录" }}</dd>
+              <dd>{{ row.cas || $tr('未记录') }}</dd>
             </div>
             <div>
-              <dt>目录价格基准</dt>
+              <dt>{{ $tr('目录价格基准') }}</dt>
               <dd><SupplierPrice :record="row" :snapshot="snapshot" :smiles="canonicalSmiles" /></dd>
             </div>
             <div>
-              <dt>目录货期</dt>
-              <dd>{{ row.lead_time || "未记录" }}</dd>
+              <dt>{{ $tr('目录货期') }}</dt>
+              <dd>{{ row.lead_time || $tr('未记录') }}</dd>
             </div>
           </dl>
         </section>
@@ -87,7 +85,7 @@
             open = false;
             $emit('navigate');
           "
-          >完整原料检索</v-btn
+          >{{ $tr('完整原料检索') }}</v-btn
         >
       </footer>
     </v-card>

@@ -1,7 +1,7 @@
 <template>
   <div v-if="newVersion" class="workspace-update-notice" role="status">
-    <span><v-icon icon="mdi-update" size="16" aria-hidden="true" />工作台已更新 · v{{ newVersion }}</span>
-    <a :href="freshPath" target="_blank" rel="noopener">打开新版<v-icon icon="mdi-open-in-new" size="14" aria-hidden="true" /></a>
+    <span><v-icon icon="mdi-update" size="16" aria-hidden="true" />{{ $tr('工作台已更新 · v{version}', { version: newVersion }) }}</span>
+    <a :href="freshPath" target="_blank" rel="noopener">{{ $tr('打开新版') }}<v-icon icon="mdi-open-in-new" size="14" aria-hidden="true" /></a>
   </div>
 </template>
 

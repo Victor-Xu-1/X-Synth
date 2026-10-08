@@ -16,23 +16,23 @@
         class="editor-progress"
         indeterminate
         height="2"
-        aria-label="正在同步结构"
+        :aria-label="$tr('正在同步结构')"
       />
       <iframe
         ref="ketcherIframe"
         data-cy="home-inline-ketcher"
         :src="KETCHER_URL"
-        :title="title"
+        :title="$tr(title)"
         allowfullscreen
         :inert="disabled || !ready || busy || undefined"
         @load="patchKetcherDocument"
       ></iframe>
     </div>
     <p v-if="editorError" class="editor-error" role="alert">
-      {{ editorError }}
+      {{ $tr(editorError) }}
     </p>
     <div v-if="showActions" class="inline-ketcher-actions">
-      <span class="editor-status">{{ editorStatus }}</span>
+      <span class="editor-status">{{ $tr(editorStatus) }}</span>
       <div class="editor-buttons">
         <v-btn
           variant="outlined"
@@ -42,7 +42,7 @@
           :disabled="busy || disabled || !ready"
           @click="clearEditor"
         >
-          清除面板
+          {{ $tr('清除面板') }}
         </v-btn>
         <v-btn
           variant="flat"
@@ -53,7 +53,7 @@
           :disabled="disabled || !ready || !!editorError"
           @click="readSmilesFromEditor"
         >
-          应用结构
+          {{ $tr('应用结构') }}
         </v-btn>
       </div>
     </div>

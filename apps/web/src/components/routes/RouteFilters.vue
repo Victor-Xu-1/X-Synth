@@ -1,8 +1,8 @@
 <template>
-  <div class="route-filter-bar" aria-label="路线筛选">
+  <div class="route-filter-bar" :aria-label="$tr('路线筛选')">
     <v-text-field
       v-model="filters.query"
-      label="路线 / 原料结构"
+      :label="$tr('路线 / 原料结构')"
       prepend-inner-icon="mdi-magnify"
       density="compact"
       variant="outlined"
@@ -12,7 +12,8 @@
     <v-select
       v-model="filters.engine"
       :items="engines"
-      label="搜索来源"
+      :item-title="item => item.value ? engineUiLabel(item.value) : $tr(item.title)"
+      :label="$tr('搜索来源')"
       density="compact"
       variant="outlined"
       hide-details
@@ -20,7 +21,8 @@
     <v-select
       v-model="filters.closure"
       :items="closures"
-      label="原料闭合"
+      :item-title="item => $tr(item.title)"
+      :label="$tr('原料闭合')"
       density="compact"
       variant="outlined"
       hide-details
@@ -28,7 +30,8 @@
     <v-select
       v-model="filters.sort"
       :items="sorts"
-      label="排序"
+      :item-title="item => $tr(item.title)"
+      :label="$tr('排序')"
       density="compact"
       variant="outlined"
       hide-details
@@ -36,8 +39,8 @@
     <v-btn
       icon="mdi-filter-remove-outline"
       variant="text"
-      title="清除路线筛选"
-      aria-label="清除路线筛选"
+      :title="$tr('清除路线筛选')"
+      :aria-label="$tr('清除路线筛选')"
       @click="
         Object.assign(filters, {
           query: '',
@@ -52,6 +55,7 @@
 <script setup>
 import { computed } from "vue";
 import { engineLabel } from "@/common/route-details";
+import { engineUiLabel } from "./route-ui-text";
 const filters = defineModel({ type: Object, required: true });
 const props = defineProps({ candidates: { type: Array, default: () => [] } });
 const engines = computed(() => [

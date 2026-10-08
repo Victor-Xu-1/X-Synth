@@ -1,5 +1,5 @@
 <template>
-  <section class="route-node-context" aria-label="节点分析">
+  <section class="route-node-context" :aria-label="$tr('节点分析')">
     <div v-if="node.type === 'molecule'" class="node-actions">
       <MoleculeFileControls :smiles="node.smiles" :allow-import="false" />
       <v-btn
@@ -8,7 +8,7 @@
         variant="text"
         prepend-icon="mdi-flask-outline"
         @click="stockOpen = true"
-        >采购记录</v-btn
+        >{{ $tr('采购记录') }}</v-btn
       >
       <v-btn
         v-if="workspace.can('retro')"
@@ -17,7 +17,7 @@
         prepend-icon="mdi-source-branch"
         :to="locations.retro"
         @click="$emit('navigate')"
-        >一步分析</v-btn
+        >{{ $tr('一步分析') }}</v-btn
       >
       <v-btn
         v-if="workspace.can('scscore')"
@@ -26,7 +26,7 @@
         prepend-icon="mdi-chart-scatter-plot"
         :to="locations.complexity"
         @click="$emit('navigate')"
-        >结构复杂度</v-btn
+        >{{ $tr('结构复杂度') }}</v-btn
       >
     </div>
     <template v-else-if="reaction">
@@ -38,7 +38,7 @@
         :height="160"
       />
       <details>
-        <summary>反应 SMILES</summary>
+        <summary>{{ $tr('反应 SMILES') }}</summary>
         <code>{{ reaction.smiles }}</code>
       </details>
       <div class="node-actions">
@@ -48,7 +48,7 @@
           prepend-icon="mdi-file-export-outline"
           :loading="exporting"
           @click="exportRxn"
-          >导出 RXN</v-btn
+          >{{ $tr('导出 RXN') }}</v-btn
         >
         <v-btn
           v-if="workspace.can('fast_filter')"
@@ -57,7 +57,7 @@
           prepend-icon="mdi-check-decagram-outline"
           :to="feasibilityLocation(reaction)"
           @click="$emit('navigate')"
-          >反应可行性</v-btn
+          >{{ $tr('反应可行性') }}</v-btn
         >
         <v-btn
           v-if="workspace.can('conditions')"
@@ -65,17 +65,17 @@
           variant="text"
           prepend-icon="mdi-beaker-outline"
           @click="conditionOpen = true"
-          >条件预测</v-btn
+          >{{ $tr('条件预测') }}</v-btn
         >
       </div>
       <dl v-if="evidence.conditions.length" class="node-evidence">
         <div v-for="item in evidence.conditions" :key="item.label">
-          <dt>{{ item.label }}</dt>
+          <dt>{{ $tr(item.label) }}</dt>
           <dd>{{ item.value }}</dd>
         </div>
       </dl>
       <div v-if="templates.length" class="template-links">
-        <strong>模板来源</strong
+        <strong>{{ $tr('模板来源') }}</strong
         ><router-link
           v-for="item in templates"
           :key="item.identity"
@@ -87,7 +87,7 @@
       <div v-if="evidence.fields.length" class="node-evidence">
         <dl>
           <div v-for="field in evidence.fields" :key="field.label">
-            <dt>{{ field.label }}</dt>
+            <dt>{{ $tr(field.label) }}</dt>
             <dd>{{ field.value }}</dd>
           </div>
         </dl>
@@ -98,7 +98,7 @@
         :href="safeExternalUrl(link.href)"
         target="_blank"
         rel="noopener noreferrer"
-        >{{ link.label }} · {{ link.value }}</a
+        >{{ $tr(link.label) }} · {{ link.value }}</a
       >
       <ReactionReferences
         :key="node.id"
@@ -106,7 +106,7 @@
         :reactants="reaction.precursors"
       />
     </template>
-    <p v-if="exportError" class="tool-error" role="alert">{{ exportError }}</p>
+    <p v-if="exportError" class="tool-error" role="alert">{{ $tr(exportError) }}</p>
     <MoleculeStockDialog
       v-model="stockOpen"
       :smiles="node.smiles"

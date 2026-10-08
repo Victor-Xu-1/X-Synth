@@ -34,22 +34,19 @@
         ><ReactionNode v-bind="props"
       /></template>
       <div v-if="!overview" class="route-viewport-controls">
-        <v-tooltip v-for="tool in tools" :key="tool.label" :text="tool.label"
+        <v-tooltip v-for="tool in tools" :key="tool.label" :text="$tr(tool.label)"
           ><template #activator="{ props }"
             ><v-btn
               v-bind="props"
               :icon="tool.icon"
               size="small"
               variant="text"
-              :aria-label="tool.label"
+              :aria-label="$tr(tool.label)"
               @click="tool.action" /></template
         ></v-tooltip>
       </div>
       <div v-if="!overview" class="route-graph-counter">
-        {{ graph.nodes.filter((node) => node.type === "molecule").length }}
-        化合物 ·
-        {{ graph.nodes.filter((node) => node.type === "reaction").length }} 反应
-      </div>
+        {{ $tr('{count} 化合物 · {count2} 反应', { count: graph.nodes.filter((node) => node.type === "molecule").length, count2: graph.nodes.filter((node) => node.type === "reaction").length }) }}</div>
     </VueFlow>
   </div>
 </template>
@@ -70,6 +67,7 @@ const props = defineProps({
   editable: Boolean,
   overview: Boolean,
   reading: Boolean,
+  generatedStepLabels: Boolean,
   scores: { type: Object, default: () => ({}) },
   catalogPrices: { type: Object, default: () => ({}) },
   id: { type: String, default: () => `route-${crypto.randomUUID()}` },
@@ -89,6 +87,7 @@ const flowNodes = computed(() =>
       isStarting: !incomingNodeIds.value.has(node.id),
       overview: props.overview,
       reading: props.reading,
+      generatedStepLabels: props.generatedStepLabels,
       imageWidth: props.reading ? 200 : 168,
       imageHeight: props.reading ? 144 : 95,
       score: props.scores[node.id],

@@ -4,6 +4,7 @@ import {
   documentPersistenceLabel,
   documentStateLabel,
 } from "./document-navigation";
+import { setLocale } from "@/i18n";
 
 const id = "b".repeat(32);
 function setup() {
@@ -24,6 +25,35 @@ function deferred() {
   });
   return { promise, resolve, reject };
 }
+
+test("unsaved-route confirmations use the current language without changing the draft or starting an import", async () => {
+  const { draft, confirm, navigation } = setup();
+  const importRoute = jest.fn(), navigate = jest.fn();
+  confirm.mockReturnValue(false);
+  setLocale("en", { persist: false });
+  expect(navigation.guard({ path: "/results" })).toBe(false);
+  expect(confirm).toHaveBeenLastCalledWith("There are unsaved changes. Leave anyway?");
+  await navigation.importFile({}, importRoute, navigate);
+  expect(confirm).toHaveBeenLastCalledWith("There are unsaved changes. Open this file and replace the current route?");
+  setLocale("zh-CN", { persist: false });
+  expect(navigation.guard({ path: "/results" })).toBe(false);
+  expect(confirm).toHaveBeenLastCalledWith("存在未保存修改，仍要离开？");
+  expect(importRoute).not.toHaveBeenCalled();
+  expect(navigate).not.toHaveBeenCalled();
+  expect(draft).toEqual({ dirty: true, version: "original" });
+});
+
+test("the original-task caption is localized while navigation identifiers stay unchanged", () => {
+  const source = { job_id: id, route_id: "askcos_mcts:record", route_index: 0 };
+  setLocale("zh-CN", { persist: false });
+  const before = documentOrigin({ source });
+  setLocale("en", { persist: false });
+  const after = documentOrigin({ source });
+  expect(after.label).toBe("Original task · R1");
+  expect(after.to).toEqual(before.to);
+  expect(documentOrigin({ source: { job_id: id } }).label).toBe("Original task");
+  expect(source).toEqual({ job_id: id, route_id: "askcos_mcts:record", route_index: 0 });
+});
 test("declining an unsaved replacement happens before import or POST and preserves the draft", async () => {
   const { draft, confirm, navigation } = setup();
   confirm.mockReturnValue(false);

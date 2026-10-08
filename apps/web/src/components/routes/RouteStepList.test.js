@@ -25,6 +25,7 @@ function setup(props = {}) {
   const wrapper = mount(RouteStepList, { props: { candidate, graph, ...props }, global: { stubs: {
     VBtn: { props: ["disabled"], template: '<button :disabled="disabled" />' },
     VTooltip: { template: '<div><slot name="activator" :props="{}" /></div>' },
+    VLazy: { template: '<div><slot /></div>' },
     VIcon: true,
   } } });
   wrappers.push(wrapper);

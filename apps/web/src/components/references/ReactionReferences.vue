@@ -1,20 +1,20 @@
 <template>
-  <section class="reaction-references" aria-label="反应参考检索">
+  <section class="reaction-references" :aria-label="$tr('反应参考检索')">
     <div class="reaction-reference-controls">
       <span>{{
         ready
-          ? `${evidenceSourceLabel(sourceStatus)} · 来源已就绪`
+          ? $tr('{name} · 来源已就绪', { name: referenceSourceLabel(sourceStatus) })
           : unavailableReason
       }}</span>
       <div class="reaction-reference-actions">
-        <v-tooltip text="刷新参考来源状态" location="top">
+        <v-tooltip :text="$tr('刷新参考来源状态')" location="top">
           <template #activator="{ props: activator }">
             <v-btn
               v-bind="activator"
               icon="mdi-refresh"
               variant="text"
               size="small"
-              aria-label="刷新参考来源状态"
+              :aria-label="$tr('刷新参考来源状态')"
               :disabled="statusLoading"
               @click="loadStatus"
             />
@@ -28,7 +28,7 @@
           :disabled="!canSearch"
           data-cy="reaction-reference-search"
           @click="search"
-          >查询参考反应</v-btn
+          >{{ $tr('查询参考反应') }}</v-btn
         >
       </div>
     </div>
@@ -44,7 +44,7 @@
 
 <script setup>
 import { toRef } from "vue";
-import { evidenceSourceLabel } from "@/common/reference-evidence";
+import { referenceSourceLabel } from "./reference-record";
 import { useReactionReferences } from "@/composables/useReactionReferences";
 import ReferenceResults from "./ReferenceResults.vue";
 // Parent keys this component by node identity, including nodes with identical chemistry.

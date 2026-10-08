@@ -2,6 +2,7 @@ import { mount, flushPromises } from "@vue/test-utils";
 import { createRouter, createMemoryHistory } from "vue-router";
 import { API } from "@/common/api";
 import AnalysisList from "./AnalysisList.vue";
+import { initializeLocale, setLocale } from "@/i18n";
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn(), delete: jest.fn(),
   toErrorObject: (error) => ({ string_error: error.message }) } }));
 jest.mock("@/components/SmilesImage.vue", () => ({ props: ["smiles"], template: '<span :data-smiles="smiles" />' }));
@@ -20,9 +21,9 @@ async function setup(url = "/analyses") {
     VProgressLinear: true,
     VIcon: true,
     VTooltip: { template: '<div><slot name="activator" :props="{}" /></div>' },
-    VSelect: { props: ["modelValue", "items"], emits: ["update:modelValue"], template:
+    VSelect: { props: ["modelValue", "items", "itemTitle"], emits: ["update:modelValue"], template:
       `<select aria-label="研究类型" :value="modelValue" @change="$emit('update:modelValue', $event.target.value)">
-      <option v-for="item in items" :key="item.value" :value="item.value">{{ item.title }}</option></select>` },
+      <option v-for="item in items" :key="item.value" :value="item.value">{{ itemTitle ? itemTitle(item) : item.title }}</option></select>` },
   } } });
   wrappers.push(wrapper);
   await flushPromises();
@@ -30,6 +31,35 @@ async function setup(url = "/analyses") {
 }
 beforeEach(() => { jest.clearAllMocks(); API.get.mockReset(); });
 afterEach(() => { wrappers.splice(0).forEach((wrapper) => wrapper.unmount()); jest.useRealTimers(); });
+
+test("English loading, record states and selectors switch reactively without refetching or changing raw records", async () => {
+  initializeLocale(null);
+  let finish;
+  API.get.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  const { wrapper, router } = await setup();
+  expect(wrapper.get("h1").text()).toBe("Analysis history");
+  expect(wrapper.get(".analysis-loading").text()).toBe("Reading analysis records");
+  expect(wrapper.get('option[value="assessment"]').text()).toBe("Molecular assessment");
+  setLocale("zh-CN", { persist: false });
+  await flushPromises();
+  expect(wrapper.get(".analysis-loading").text()).toBe("正在读取研究记录");
+  const smiles = "[13CH3][C@H](F)C(=O)[O-].[Na+]";
+  const response = data([{ ...row("chemical", "interrupted"), kind: "assessment", structure: smiles }]);
+  const before = JSON.stringify(response);
+  finish(response); await flushPromises();
+  const record = wrapper.get("tbody tr");
+  setLocale("en", { persist: false });
+  await flushPromises();
+  expect(wrapper.get("tbody tr").element).toBe(record.element);
+  expect(record.get(".analysis-state").text()).toBe("Interrupted");
+  expect(record.get(".analysis-structure-text").text()).toBe(smiles);
+  expect(wrapper.get(".analysis-filters [role=status]").text()).toBe("Total calculations: 1");
+  expect(router.currentRoute.value.query).toEqual({});
+  expect(API.get).toHaveBeenCalledTimes(1);
+  expect(API.post).not.toHaveBeenCalled();
+  expect(API.delete).not.toHaveBeenCalled();
+  expect(JSON.stringify(response)).toBe(before);
+});
 test("one mount reads one page only; history never executes or deletes", async () => {
   API.get.mockResolvedValue(data());
   const { wrapper } = await setup();

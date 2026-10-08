@@ -11,11 +11,12 @@ import "vuetify/styles";
 // Composables
 import { createVuetify } from "vuetify";
 import { zhHans } from "vuetify/locale";
+import { DEFAULT_LOCALE, LOCALES } from "@/i18n";
 
 // https://vuetifyjs.com/en/introduction/why-vuetify/#feature-guides
 export default createVuetify({
   locale: {
-    locale: "zhHans",
+    locale: LOCALES.find((item) => item.value === DEFAULT_LOCALE).widgetLocale,
     fallback: "en",
     messages: { zhHans },
   },

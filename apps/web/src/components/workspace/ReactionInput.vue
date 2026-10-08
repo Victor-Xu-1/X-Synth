@@ -1,29 +1,29 @@
 <template>
-  <section class="reaction-input" :aria-label="label" :aria-busy="pending">
+  <section class="reaction-input" :aria-label="$tr(label)" :aria-busy="pending">
     <header class="reaction-input-heading">
-      <label class="reaction-code-label" :for="id">反应 SMILES</label>
+      <label class="reaction-code-label" :for="id">{{ $tr('反应 SMILES') }}</label>
       <div class="reaction-input-actions">
-        <v-tooltip text="导入 RXN 反应">
+        <v-tooltip :text="$tr('导入 RXN 反应')">
           <template #activator="{ props: activator }">
             <v-btn
               v-bind="activator"
               icon="mdi-file-import-outline"
               variant="text"
               size="small"
-              aria-label="导入 RXN 反应"
+              :aria-label="$tr('导入 RXN 反应')"
               :disabled="disabled || fileBusy"
               @click="fileInput.click()"
             />
           </template>
         </v-tooltip>
-        <v-tooltip text="导出完整 RXN 反应">
+        <v-tooltip :text="$tr('导出完整 RXN 反应')">
           <template #activator="{ props: activator }">
             <v-btn
               v-bind="activator"
               icon="mdi-file-export-outline"
               variant="text"
               size="small"
-              aria-label="导出完整 RXN 反应"
+              :aria-label="$tr('导出完整 RXN 反应')"
               :disabled="
                 disabled ||
                 fileBusy ||
@@ -36,14 +36,14 @@
             />
           </template>
         </v-tooltip>
-        <v-tooltip text="清空反应">
+        <v-tooltip :text="$tr('清空反应')">
           <template #activator="{ props: activator }">
             <v-btn
               v-bind="activator"
               icon="mdi-eraser"
               variant="text"
               size="small"
-              aria-label="清空反应"
+              :aria-label="$tr('清空反应')"
               :disabled="disabled || fileBusy"
               @click="clear"
             />
@@ -57,8 +57,8 @@
       class="workspace-input workspace-code reaction-code"
       rows="2"
       :maxlength="MAX_REACTION_TEXT"
-      :aria-label="`${label} SMILES`"
-      placeholder="反应物 > 试剂 / 溶剂 > 产物"
+      :aria-label="`${$tr(label)} SMILES`"
+      :placeholder="$tr('反应物 > 试剂 / 溶剂 > 产物')"
       :disabled="disabled || fileBusy"
       spellcheck="false"
     />
@@ -69,13 +69,13 @@
         color="primary"
         class="reaction-transfer-progress"
         :aria-label="
-          fileOrigin === 'reference' ? '载入参考反应' : '处理 RXN 反应'
+          $tr(fileOrigin === 'reference' ? '载入参考反应' : '处理 RXN 反应')
         "
       />
       <InlineKetcherEditor
         ref="board"
         v-model:smiles="text"
-        :title="`${label}绘图板`"
+        :title="$tr('{label}绘图板', { label: $tr(label) })"
         :show-actions="false"
         :disabled="disabled"
         :empty-content="EMPTY_REACTION_CANVAS"
@@ -90,17 +90,17 @@
       />
     </div>
     <div v-if="parsed" class="reaction-role-summary">
-      <span>反应物 {{ reactants.length }}</span>
+      <span>{{ $tr('反应物 {count}', { count: reactants.length }) }}</span>
       <v-icon icon="mdi-arrow-right" size="16" aria-hidden="true" />
-      <span>产物 {{ parsed.products.length }}</span>
+      <span>{{ $tr('产物 {count}', { count: parsed.products.length }) }}</span>
       <span class="reaction-agent-count"
-        >试剂 / 溶剂记录 {{ agents.length }}</span
+        >{{ $tr('试剂 / 溶剂记录 {count}', { count: agents.length }) }}</span
       >
       <v-select
         v-if="parsed.products.length > 1"
         v-model="selected"
         :items="productOptions"
-        label="选择产物"
+        :label="$tr('选择产物')"
         density="compact"
         variant="outlined"
         hide-details
@@ -109,23 +109,23 @@
         data-cy="reaction-product-choice"
       />
     </div>
-    <p v-if="error" class="tool-error" role="alert">{{ error }}</p>
+    <p v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</p>
     <p v-else-if="parsed && !product" class="reaction-incomplete" role="status">
-      {{ parsed.products.length ? "尚未选择产物" : "缺少产物结构" }}
+      {{ $tr(parsed.products.length ? "尚未选择产物" : "缺少产物结构") }}
     </p>
     <p
       v-else-if="parsed && requireReactants && !reactants.length"
       class="reaction-incomplete"
       role="status"
     >
-      缺少反应物结构
+      {{ $tr('缺少反应物结构') }}
     </p>
     <details
       v-if="parsed"
       class="reaction-roles-detail"
       @toggle="rolesOpen = $event.target.open"
     >
-      <summary>反应角色与结构</summary>
+      <summary>{{ $tr('反应角色与结构') }}</summary>
       <ReactionRecordPreview v-if="rolesOpen" :value="parsed" />
     </details>
     <input
@@ -142,7 +142,7 @@
     >
       <v-card v-if="fileDraft">
         <v-card-title>{{
-          fileOrigin === "reference" ? "确认参考反应" : "确认反应文件"
+          $tr(fileOrigin === "reference" ? "确认参考反应" : "确认反应文件")
         }}</v-card-title>
         <v-card-text class="reaction-file-preview">
           <ReactionRecordPreview :value="fileDraft" />
@@ -150,21 +150,21 @@
             v-if="fileDraft.products.length > 1"
             v-model="fileProduct"
             :items="fileProductOptions"
-            label="选择产物"
+            :label="$tr('选择产物')"
             variant="outlined"
             density="compact"
             hide-details
           />
         </v-card-text>
         <v-card-actions
-          ><v-spacer /><v-btn variant="text" @click="discardFile">取消</v-btn>
+          ><v-spacer /><v-btn variant="text" @click="discardFile">{{ $tr('取消') }}</v-btn>
           <v-btn
             color="primary"
             :disabled="
               disabled || (!!fileDraft.products.length && !fileProduct)
             "
             @click="applyFile"
-            >应用反应</v-btn
+            >{{ $tr('应用反应') }}</v-btn
           >
         </v-card-actions>
       </v-card>
@@ -180,6 +180,7 @@ import { useReactionDraft } from "@/composables/useReactionDraft";
 import { useReactionFiles } from "@/composables/useReactionFiles";
 import InlineKetcherEditor from "@/components/InlineKetcherEditor.vue";
 import ReactionRecordPreview from "./ReactionRecordPreview.vue";
+import { uiText } from "@/i18n";
 
 const text = defineModel({ type: String, default: "" });
 const props = defineProps({
@@ -225,7 +226,7 @@ const pending = computed(
 );
 const options = (value) =>
   value?.products.map((record) => ({
-    title: record.name || `产物 ${record.index} · ${record.formula}`,
+    title: record.name || uiText('产物 {index} · {formula}', { index: record.index, formula: record.formula }),
     value: record.smiles,
   })) || [];
 const productOptions = computed(() => options(parsed.value)),

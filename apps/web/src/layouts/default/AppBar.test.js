@@ -1,6 +1,7 @@
 import { mount } from "@vue/test-utils";
 import { nextTick, reactive } from "vue";
 import AppBar from "./AppBar.vue";
+import { initializeLocale, setLocale } from "@/i18n";
 
 jest.mock("vue-router", () => ({ useRoute: () => mockRoute }));
 jest.mock("@/store/workspace", () => ({ useWorkspaceStore: () => mockWorkspace }));
@@ -13,6 +14,7 @@ const mockWorkspace = reactive({ ready: false, loading: false, local: true, erro
   checking: () => mockWorkspace.coreChecking, features: {} });
 let wrapper;
 const stubs = {
+  LanguageMenu: true,
   RouterLink: { props: ["to"], template: '<a :href="to"><slot /></a>' },
   VTooltip: { template: '<span><slot name="activator" :props="{}" /></span>' },
   VBtn: {
@@ -102,4 +104,20 @@ test("existing header links close a mobile drawer without replacing their destin
   await wrapper.get('a[href="/"]').trigger("click");
   await wrapper.get('[aria-label="环境部署"]').trigger("click");
   expect(wrapper.emitted("navigate")).toEqual([[], []]);
+});
+
+test("fresh English shell and Chinese switching reuse the same header without navigation or readiness changes", async () => {
+  initializeLocale(null);
+  await nextTick();
+  const root = wrapper.element;
+  expect(wrapper.get(".workspace-location-root").text()).toBe("Local workspace");
+  expect(wrapper.get('[role="status"]').text()).toBe("Service not ready");
+  expect(wrapper.get('[aria-label="Toggle navigation"]').exists()).toBe(true);
+  setLocale("zh-CN", { persist: false });
+  await nextTick();
+  expect(wrapper.get(".workspace-location-root").text()).toBe("本地工作区");
+  expect(wrapper.get('[role="status"]').text()).toBe("服务未就绪");
+  expect(wrapper.element).toBe(root);
+  expect(wrapper.emitted("navigate")).toBeUndefined();
+  expect(mockWorkspace.ready).toBe(false);
 });

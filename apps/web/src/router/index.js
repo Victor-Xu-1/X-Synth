@@ -256,9 +256,6 @@ router.beforeEach(async (to) => {
       replace: true,
     };
 });
-router.afterEach((to) => {
-  document.title = `${to.meta.title || "工作区"} - X-Synth`;
-});
 router.onError((error, to) => {
   if (
     !/Failed to fetch dynamically imported module|Importing a module script failed/.test(

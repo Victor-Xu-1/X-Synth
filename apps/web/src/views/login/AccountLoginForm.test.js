@@ -2,6 +2,7 @@ import { defineComponent, h } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import AccountLoginForm from "./AccountLoginForm.vue";
 import { API } from "@/common/api";
+import { initializeLocale, setLocale } from "@/i18n";
 
 const mockRoute = { query: {} };
 const mockRouter = { replace: jest.fn() };
@@ -43,6 +44,7 @@ const makeForm = (props) =>
     props,
     global: {
       stubs: {
+        LanguageMenu: true,
         "v-form": formStub,
         "v-text-field": fieldStub,
         "v-btn": buttonStub,
@@ -56,6 +58,24 @@ const fill = async (wrapper) => {
   await wrapper.get('[data-cy="username"] input').setValue("researcher");
   await wrapper.get('[data-cy="password"] input').setValue("test-only");
 };
+
+test("fresh English and Chinese labels preserve a pending-free login draft and disabled SSO without submitting", async () => {
+  initializeLocale(null);
+  const wrapper = makeForm({ sso: true });
+  await fill(wrapper);
+  const fields = wrapper.findAll("input").map((item) => item.element);
+  expect(wrapper.text()).toContain("Single sign-on is not enabled in this workspace.");
+  expect(wrapper.get('[data-cy="username"]').attributes("label")).toBe("Username");
+  setLocale("zh-CN", { persist: false });
+  await flushPromises();
+  expect(wrapper.text()).toContain("当前工作区未启用单点登录。");
+  expect(wrapper.get('[data-cy="username"]').attributes("label")).toBe("用户名");
+  expect(wrapper.findAll("input").map((item) => item.element)).toEqual(fields);
+  expect(fields.map((field) => field.value)).toEqual(["researcher", "test-only"]);
+  expect(API.post).not.toHaveBeenCalled();
+  expect(mockRouter.replace).not.toHaveBeenCalled();
+  wrapper.unmount();
+});
 beforeEach(() => {
   jest.clearAllMocks();
   localStorage.clear();

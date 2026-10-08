@@ -10,11 +10,11 @@
             variant="flat"
             prepend-icon="mdi-pencil-outline"
             @click="open = false"
-            >打开编辑</v-btn
+            >{{ $tr('打开编辑') }}</v-btn
           ><v-btn
             icon="mdi-close"
             variant="text"
-            aria-label="关闭预览"
+            :aria-label="$tr('关闭预览')"
             @click="open = false"
           />
         </div>

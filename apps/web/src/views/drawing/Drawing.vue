@@ -1,9 +1,9 @@
 <template>
-  <module-workbench title="结构绘制">
+  <module-workbench :title="$tr('结构绘制')">
     <div class="drawing-layout">
       <section class="drawing-editor">
         <div class="drawing-file-actions">
-          <span class="field-label">化合物结构文件</span>
+          <span class="field-label">{{ $tr('化合物结构文件') }}</span>
           <MoleculeFileControls
             ref="files"
             :smiles="smiles || ''"
@@ -16,8 +16,8 @@
         <v-form @submit.prevent="applyStructure">
           <v-text-field
             v-model="smiles"
-            label="结构输入"
-            placeholder="分子 / 反应 SMILES"
+            :label="$tr('结构输入')"
+            :placeholder="$tr('分子 / 反应 SMILES')"
             variant="outlined"
             density="comfortable"
             :disabled="busy || inputPending"
@@ -35,12 +35,12 @@
           />
         </div>
         <div class="page-actions drawing-actions">
-          <v-tooltip text="清空画板" location="top">
+          <v-tooltip :text="$tr('清空画板')" location="top">
             <template #activator="{ props }">
               <v-btn
                 v-bind="props"
                 icon="mdi-eraser"
-                aria-label="清空画板"
+                :aria-label="$tr('清空画板')"
                 variant="text"
                 :disabled="busy || inputPending"
                 @click="clearEditor"
@@ -55,7 +55,7 @@
             :disabled="canonicalizing || inputPending"
             data-cy="draw-apply-btn"
             @click="applyStructure"
-            >应用结构</v-btn
+            >{{ $tr('应用结构') }}</v-btn
           >
           <v-btn
             variant="outlined"
@@ -64,18 +64,18 @@
             :disabled="applying || inputPending || !smiles?.trim()"
             data-cy="draw-canonicalize-btn"
             @click="canonicalize"
-            >标准化</v-btn
+            >{{ $tr('标准化') }}</v-btn
           >
         </div>
         <p v-if="errorMessage" class="tool-error" role="alert">
-          {{ errorMessage }}
+          {{ $tr(errorMessage) }}
         </p>
         <p v-else-if="notice" class="workspace-muted" role="status">
-          {{ notice }}
+          {{ $tr(notice) }}
         </p>
       </section>
       <section class="drawing-preview" aria-labelledby="preview-heading">
-        <h2 id="preview-heading" class="tool-section-title">已应用结构</h2>
+        <h2 id="preview-heading" class="tool-section-title">{{ $tr('已应用结构') }}</h2>
         <template v-if="committedSmiles">
           <div class="drawing-image">
             <smiles-image
@@ -90,7 +90,7 @@
         </template>
         <div v-else class="workspace-empty">
           <v-icon icon="mdi-molecule" size="28" />
-          <h2>暂无结构</h2>
+          <h2>{{ $tr('暂无结构') }}</h2>
         </div>
       </section>
     </div>

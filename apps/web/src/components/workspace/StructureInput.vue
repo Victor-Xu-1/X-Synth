@@ -1,7 +1,7 @@
 <template>
   <div ref="root" class="structure-field" :aria-busy="pending">
     <div class="structure-field-heading">
-      <label :for="id">{{ label }}</label>
+      <label :for="id">{{ $tr(label) }}</label>
       <div class="structure-field-actions">
         <MoleculeFileControls
           v-if="allowFiles"
@@ -11,14 +11,14 @@
           @import="applyFile"
           @busy="fileBusy = $event"
           :read-structure="read"
-        /><v-tooltip text="放大绘图"
+        /><v-tooltip :text="$tr('放大绘图')"
           ><template #activator="{ props }"
             ><v-btn
               v-bind="props"
               icon="mdi-arrow-expand-all"
               variant="text"
               size="x-small"
-              :aria-label="`放大绘制${label}`"
+              :aria-label="$tr('放大绘制{label}', { label: $tr(label) })"
               :disabled="disabled || fileBusy"
               @click="drawing = true" /></template
         ></v-tooltip>
@@ -31,9 +31,9 @@
         class="workspace-input workspace-code"
         v-model="smiles"
         rows="2"
-        placeholder="粘贴 SMILES"
+        :placeholder="$tr('粘贴 SMILES')"
         :disabled="disabled || fileBusy"
-        :aria-label="label"
+        :aria-label="$tr(label)"
         spellcheck="false"
       />
     </div>
@@ -46,7 +46,7 @@
         ref="editor"
         v-model:smiles="smiles"
         :show-actions="false"
-        :title="`${label}绘图板`"
+        :title="$tr('{label}绘图板', { label: $tr(label) })"
         :disabled="disabled || drawing"
         auto-sync
         :compact="!canvasHeight"

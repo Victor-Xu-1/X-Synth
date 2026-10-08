@@ -1,11 +1,11 @@
 <template>
   <div ref="tooltipDiv" :class="{ 'text-primary': highlight }" role="button"
-    :tabindex="data ? 0 : -1" :aria-label="title" :aria-disabled="copying || !data"
+    :tabindex="data ? 0 : -1" :aria-label="$tr(title)" :aria-disabled="copying || !data"
     :aria-busy="copying" @click="copy" @keydown="keydown"
     @mouseenter="handleHover(true)" @mouseleave="handleHover(false)">
-    <v-tooltip activator="parent" location="top">{{ tooltipTitle }}</v-tooltip>
+    <v-tooltip activator="parent" location="top">{{ $tr(tooltipTitle) }}</v-tooltip>
     <slot></slot>
-    <span class="copy-feedback" role="status" aria-live="polite">{{ feedback }}</span>
+    <span class="copy-feedback" role="status" aria-live="polite">{{ $tr(feedback) }}</span>
   </div>
 </template>
 

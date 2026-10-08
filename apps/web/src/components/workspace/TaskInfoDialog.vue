@@ -3,12 +3,12 @@
     <article class="task-info-dialog">
       <header class="task-info-heading">
         <div>
-          <h2 id="task-info-title">任务信息</h2>
+          <h2 id="task-info-title">{{ $tr('任务信息') }}</h2>
           <p v-if="task" :title="taskTitle(task)">{{ taskTitle(task) }}</p>
         </div>
         <v-tooltip
           v-if="task && !task.archived && !renameForm"
-          text="重命名任务"
+          :text="$tr('重命名任务')"
         >
           <template #activator="{ props }">
             <v-btn
@@ -16,20 +16,20 @@
               icon="mdi-pencil-outline"
               variant="text"
               size="small"
-              aria-label="重命名任务"
+              :aria-label="$tr('重命名任务')"
               :disabled="loading || busy"
               @click="$emit('rename')"
             />
           </template>
         </v-tooltip>
-        <v-tooltip text="关闭任务信息">
+        <v-tooltip :text="$tr('关闭任务信息')">
           <template #activator="{ props }">
             <v-btn
               v-bind="props"
               icon="mdi-close"
               variant="text"
               size="small"
-              aria-label="关闭任务信息"
+              :aria-label="$tr('关闭任务信息')"
               @click="open = false"
             />
           </template>
@@ -38,7 +38,7 @@
       <v-progress-linear
         v-if="loading"
         indeterminate
-        aria-label="读取任务参数"
+        :aria-label="$tr('读取任务参数')"
       />
       <div v-if="task" class="task-info-body" :aria-busy="loading">
         <form
@@ -50,34 +50,34 @@
             :model-value="renameForm.description"
             density="compact"
             variant="outlined"
-            label="任务名称"
-            aria-label="任务名称"
+            :label="$tr('任务名称')"
+            :aria-label="$tr('任务名称')"
             maxlength="256"
             hide-details
             autofocus
             :disabled="busy"
             @update:model-value="$emit('name', $event || '')"
           />
-          <v-tooltip text="保存名称">
+          <v-tooltip :text="$tr('保存名称')">
             <template #activator="{ props }">
               <v-btn
                 v-bind="props"
                 type="submit"
                 icon="mdi-check"
                 variant="text"
-                aria-label="保存名称"
+                :aria-label="$tr('保存名称')"
                 :disabled="loading || busy || !renameForm.description.trim()"
                 :loading="renaming"
               />
             </template>
           </v-tooltip>
-          <v-tooltip text="取消重命名">
+          <v-tooltip :text="$tr('取消重命名')">
             <template #activator="{ props }">
               <v-btn
                 v-bind="props"
                 icon="mdi-close"
                 variant="text"
-                aria-label="取消重命名"
+                :aria-label="$tr('取消重命名')"
                 :disabled="busy"
                 @click="$emit('cancel-name')"
               />
@@ -88,7 +88,7 @@
             class="task-name-error tool-error"
             role="alert"
           >
-            {{ renameError }}
+            {{ $tr(renameError) }}
           </div>
         </form>
         <div class="task-info-summary">
@@ -102,7 +102,7 @@
           </div>
           <dl class="task-info-metadata">
             <div>
-              <dt>任务状态</dt>
+              <dt>{{ $tr('任务状态') }}</dt>
               <dd>
                 <span
                   class="state-badge"
@@ -112,19 +112,19 @@
               </dd>
             </div>
             <div>
-              <dt>路线数量</dt>
-              <dd>{{ count === null ? "未记录" : count }}</dd>
+              <dt>{{ $tr('路线数量') }}</dt>
+              <dd>{{ count === null ? $tr('未记录') : count }}</dd>
             </div>
             <div>
-              <dt>任务分组</dt>
-              <dd>{{ groupName }}</dd>
+              <dt>{{ $tr('任务分组') }}</dt>
+              <dd>{{ groupName || $tr('未分组') }}</dd>
             </div>
             <div>
-              <dt>任务 ID</dt>
+              <dt>{{ $tr('任务 ID') }}</dt>
               <dd class="workspace-code">{{ task.result_id }}</dd>
             </div>
             <div>
-              <dt>创建时间</dt>
+              <dt>{{ $tr('创建时间') }}</dt>
               <dd>
                 <time :datetime="task.created">{{
                   taskTimestampLabel(task.created)
@@ -132,7 +132,7 @@
               </dd>
             </div>
             <div v-if="task.started_at">
-              <dt>开始时间</dt>
+              <dt>{{ $tr('开始时间') }}</dt>
               <dd>
                 <time :datetime="task.started_at">{{
                   taskTimestampLabel(task.started_at)
@@ -140,7 +140,7 @@
               </dd>
             </div>
             <div v-if="endedAt">
-              <dt>结束时间</dt>
+              <dt>{{ $tr('结束时间') }}</dt>
               <dd>
                 <time :datetime="endedAt">{{
                   taskTimestampLabel(endedAt)
@@ -148,7 +148,7 @@
               </dd>
             </div>
             <div v-else>
-              <dt>更新时间</dt>
+              <dt>{{ $tr('更新时间') }}</dt>
               <dd>
                 <time :datetime="task.modified">{{
                   taskTimestampLabel(task.modified)
@@ -156,48 +156,46 @@
               </dd>
             </div>
             <div v-if="task.error_code">
-              <dt>错误代码</dt>
+              <dt>{{ $tr('错误代码') }}</dt>
               <dd class="workspace-code">{{ task.error_code }}</dd>
             </div>
           </dl>
         </div>
         <div class="task-info-smiles">
-          <span>目标 SMILES</span
-          ><code>{{ task.target_smiles || "未记录" }}</code>
+          <span>{{ $tr('目标 SMILES') }}</span
+          ><code>{{ task.target_smiles || $tr('未记录') }}</code>
         </div>
         <div v-if="error" class="task-info-error" role="alert">
-          <span>{{ error }}</span>
+          <span>{{ $tr(error) }}</span>
           <v-btn
             variant="text"
             size="small"
             prepend-icon="mdi-refresh"
             :disabled="loading || busy"
             @click="$emit('retry')"
-            >重试</v-btn
+            >{{ $tr('重试') }}</v-btn
           >
         </div>
         <div
           v-if="loading && !groups.length"
           class="task-info-loading"
           role="status"
-        >
-          正在读取搜索参数
-        </div>
+        >{{ $tr('正在读取搜索参数') }}</div>
         <section
           v-for="group in groups"
           :key="group.title"
           class="task-info-parameters"
         >
-          <h3>{{ group.title }}</h3>
+          <h3>{{ $tr(group.title) }}</h3>
           <dl>
             <div v-for="field in group.fields" :key="field.key">
-              <dt>{{ field.label }}</dt>
-              <dd>{{ field.value }}</dd>
+              <dt>{{ $tr(field.label) }}</dt>
+              <dd>{{ field.key === 'public' ? $tr(field.value) : field.value }}</dd>
             </div>
           </dl>
         </section>
         <details v-if="hasSettings" class="task-info-raw">
-          <summary>原始请求参数</summary>
+          <summary>{{ $tr('原始请求参数') }}</summary>
           <pre>{{ JSON.stringify(task.settings, null, 2) }}</pre>
         </details>
       </div>
@@ -206,7 +204,7 @@
           variant="text"
           prepend-icon="mdi-arrow-top-right"
           :to="taskDetailLocation(task, historyContext)"
-          >路线结果</v-btn
+          >{{ $tr('路线结果') }}</v-btn
         >
         <div>
           <v-btn
@@ -215,9 +213,9 @@
               progressOnly ? 'mdi-progress-clock' : 'mdi-eye-outline'
             "
             :disabled="loading || busy || !canPreview"
-            :aria-label="progressOnly ? '任务进度' : '预览路线'"
+            :aria-label="progressOnly ? $tr('任务进度') : $tr('预览路线')"
             @click="$emit('preview')"
-            >{{ progressOnly ? "任务进度" : "预览路线" }}</v-btn
+            >{{ progressOnly ? $tr('任务进度') : $tr('预览路线') }}</v-btn
           >
           <v-btn
             color="primary"
@@ -225,9 +223,9 @@
             prepend-icon="mdi-magnify"
             :disabled="loading || busy || !hasSettings"
             :loading="rerunning"
-            aria-label="重新搜索"
+            :aria-label="$tr('重新搜索')"
             @click="$emit('rerun')"
-            >重新搜索</v-btn
+            >{{ $tr('重新搜索') }}</v-btn
           >
         </div>
       </footer>
@@ -261,7 +259,7 @@ const props = defineProps({
   renameForm: { type: Object, default: null },
   renameError: { type: String, default: "" },
   renaming: Boolean,
-  groupName: { type: String, default: "未分组" },
+  groupName: { type: String, default: "" },
   historyContext: { type: Object, default: null },
 });
 defineEmits([

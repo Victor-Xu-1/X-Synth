@@ -7,6 +7,7 @@ import { referenceReactionDrawing } from "@/common/reaction-references";
 import { deferred, uiStubs } from "@/views/workspace/reaction-canvas.test-support";
 import { referenceDialogStub } from "./reference-dialog.test-support";
 import ReferenceResults from "./ReferenceResults.vue";
+import { initializeLocale, setLocale } from "@/i18n";
 
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 jest.mock("@/common/chemical-files", () => ({ downloadChemicalFile: jest.fn() }));
@@ -56,6 +57,35 @@ beforeEach(() => {
   });
 });
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
+
+test("English pending and record controls switch without replacing the selected record, raw experiment or focus origin", async () => {
+  initializeLocale(null);
+  const record = clone(deposited);
+  record.procedure = "原始数据";
+  record.reported_yields[0].analysis = "分离产品";
+  const response = packet([record]), before = JSON.stringify(response);
+  const wrapper = setup(response, { pending: true });
+  expect(wrapper.get('[role="status"]').text()).toBe("Searching reference reactions.");
+  setLocale("zh-CN", { persist: false });
+  await flushPromises();
+  expect(wrapper.get('[role="status"]').text()).toBe("正在检索参考反应。");
+  await wrapper.setProps({ pending: false });
+  const origin = wrapper.get('[data-cy="reference-details"]');
+  const detail = await openDetail(wrapper);
+  setLocale("en", { persist: false });
+  await flushPromises();
+  expect(wrapper.get('[data-cy="reference-record-detail"]').element).toBe(detail.element);
+  expect(detail.get(".reference-procedure p").text()).toBe("原始数据");
+  expect(detail.text()).toContain("分离产品");
+  expect(detail.text()).toContain(deposited.reaction_smiles);
+  expect(detail.text()).toContain(deposited.provenance.source_path);
+  expect(detail.text()).toContain("110 ± 10 °C");
+  await wrapper.get('[data-cy="reference-detail-close"]').trigger("click");
+  await flushPromises();
+  expect(document.activeElement).toBe(origin.element);
+  expect(JSON.stringify(response)).toBe(before);
+  expect(API.post).not.toHaveBeenCalled();
+});
 
 test("a deposited record is compact by default, with source, scope, drawing, yield and conditions", () => {
   const wrapper = setup();

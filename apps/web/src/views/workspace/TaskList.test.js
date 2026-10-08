@@ -15,6 +15,7 @@ import TaskGroups from "@/components/workspace/TaskGroups.vue";
 import TaskInfoDialog from "@/components/workspace/TaskInfoDialog.vue";
 import TaskBatchActions from "@/components/workspace/TaskBatchActions.vue";
 import RoutePreview from "@/components/routes/RoutePreview.vue";
+import { initializeLocale, setLocale } from "@/i18n";
 jest.mock("@/common/api", () => ({
   API: { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() },
 }));
@@ -130,6 +131,34 @@ afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
   jest.restoreAllMocks();
   jest.useRealTimers();
+});
+
+test("English history preserves phrase-like user titles, group names and selected record identity on Chinese switch", async () => {
+  initializeLocale(null);
+  const response = data([row("task-a", { description: "未分组", group_id: "g-1" })]);
+  response.groups[0].name = "全部任务";
+  API.get.mockResolvedValue(response);
+  const before = JSON.stringify(response);
+  const { wrapper, router } = await setup("/results?group=g-1");
+  const card = wrapper.getComponent(TaskCard), title = card.get(".task-card-title");
+  expect(title.text()).toBe("未分组");
+  expect(card.get(".task-card-group").text()).toBe("全部任务");
+  expect(card.get(".state-badge").text()).toBe("Completed");
+  expect(wrapper.get("#history-collection-title").text()).toBe("全部任务");
+  await card.get('input[type="checkbox"]').setValue(true);
+  const selection = wrapper.getComponent(TaskBatchActions).props("count");
+  expect(selection).toBe(1);
+  setLocale("zh-CN", { persist: false });
+  await flushPromises();
+  expect(card.get(".task-card-title").element).toBe(title.element);
+  expect(card.get(".state-badge").text()).toBe("已完成");
+  expect(card.get('input[type="checkbox"]').element.checked).toBe(true);
+  expect(wrapper.getComponent(TaskBatchActions).props("count")).toBe(selection);
+  expect(router.currentRoute.value.query).toMatchObject({ group: "g-1" });
+  expect(API.get).toHaveBeenCalledTimes(1);
+  expect(API.post).not.toHaveBeenCalled();
+  expect(API.put).not.toHaveBeenCalled();
+  expect(JSON.stringify(response)).toBe(before);
 });
 
 test("actual history composition reads one page, keeps server group totals, and performs no execution or destructive request", async () => {

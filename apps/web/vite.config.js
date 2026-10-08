@@ -18,6 +18,8 @@ const productApiPtr = {
 // https://vitejs.dev/config/
 export default defineConfig({
   define: {
+    __VUE_I18N_LEGACY_API__: false,
+    __VUE_I18N_FULL_INSTALL__: false,
     __X_SYNTH_VERSION__: JSON.stringify(readFileSync(new URL("../../VERSION", import.meta.url), "utf8").trim()),
   },
   plugins: [

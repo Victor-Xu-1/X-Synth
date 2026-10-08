@@ -1,13 +1,13 @@
 <template>
-  <module-workbench title="QM 描述符">
+  <module-workbench :title="$tr('QM 描述符')">
     <div class="tool-layout">
       <section class="tool-input-panel">
-        <h2 class="tool-section-title">分子输入</h2>
+        <h2 class="tool-section-title">{{ $tr('分子输入') }}</h2>
         <v-form @submit.prevent="predict">
           <StructureInput
             ref="structureInput"
             v-model="smiles"
-            label="分子或反应 SMILES"
+            :label="$tr('分子或反应 SMILES')"
             :allow-files="allowMoleculeFiles"
             :disabled="loading"
             data-cy="qm-smiles-input"
@@ -21,15 +21,15 @@
               :loading="loading"
               :disabled="loading || inputPending || !smiles?.trim()"
               data-cy="qm-submit-button"
-              >计算</v-btn
+              >{{ $tr('计算') }}</v-btn
             >
-            <v-tooltip text="清空结果" location="top">
+            <v-tooltip :text="$tr('清空结果')" location="top">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"
                   icon="mdi-delete-sweep-outline"
                   variant="text"
-                  aria-label="清空结果"
+                  :aria-label="$tr('清空结果')"
                   :disabled="!results.length || loading"
                   data-cy="qm-clear-button"
                   @click="clear"
@@ -38,12 +38,12 @@
             </v-tooltip>
           </div>
           <p v-if="requestError" class="tool-error" role="alert">
-            {{ requestError }}
+            {{ $tr(requestError) }}
           </p>
         </v-form>
       </section>
       <section class="tool-result-panel" data-cy="qm-table">
-        <h2 class="tool-section-title">计算结果</h2>
+        <h2 class="tool-section-title">{{ $tr('计算结果') }}</h2>
         <v-progress-linear
           v-if="loading"
           indeterminate
@@ -57,7 +57,7 @@
               :items="allfields"
               item-title="title"
               item-value="key"
-              label="结果字段"
+              :label="$tr('结果字段')"
               variant="outlined"
               density="compact"
               hide-details
@@ -68,7 +68,7 @@
             >
               <template #prepend-item>
                 <v-list-item
-                  title="全选 / 清空"
+                  :title="$tr('全选 / 清空')"
                   data-cy="qm-select-all"
                   @click="toggleAllCategories"
                 />
@@ -82,17 +82,17 @@
                   variant="outlined"
                   prepend-icon="mdi-download"
                   data-cy="qm-download"
-                  >下载</v-btn
+                  >{{ $tr('下载') }}</v-btn
                 >
               </template>
               <v-list density="compact">
                 <v-list-item
-                  title="下载 CSV"
+                  :title="$tr('下载 CSV')"
                   data-cy="qm-download-csv"
                   @click="downloadCSV"
                 />
                 <v-list-item
-                  title="下载 JSON"
+                  :title="$tr('下载 JSON')"
                   data-cy="qm-download-json"
                   @click="downloadJSON"
                 />
@@ -101,21 +101,21 @@
           </div>
           <v-data-table
             :items-per-page="itemsPerPage"
-            :headers="fields"
+            :headers="localizedFields"
             :items="results"
             :row-props="colorRowItem"
             density="compact"
             @update:items-per-page="itemsPerPage = $event"
           >
             <template #item.actions="{ item }">
-              <v-tooltip text="查看 3D 结构" location="top">
+              <v-tooltip :text="$tr('查看 3D 结构')" location="top">
                 <template #activator="{ props }">
                   <v-btn
                     v-bind="props"
                     icon="mdi-rotate-3d"
                     variant="text"
                     size="small"
-                    aria-label="查看 3D 结构"
+                    :aria-label="$tr('查看 3D 结构')"
                     :disabled="!workspace.can('drawing')"
                     @click="openVisualization(item)"
                   />
@@ -126,35 +126,35 @@
         </template>
         <div v-else-if="!loading" class="workspace-empty">
           <v-icon icon="mdi-atom" size="28" />
-          <h2>暂无结果</h2>
+          <h2>{{ $tr('暂无结果') }}</h2>
         </div>
       </section>
     </div>
     <WorkbenchDialog v-model="dialog" fullscreen @after-enter="resizeViewer">
     <v-card class="qm-visualization" :class="backgroundColor">
       <header class="qm-dialog-header">
-        <h2>3D 结构</h2>
+        <h2>{{ $tr('3D 结构') }}</h2>
         <v-btn
           icon="mdi-close"
           variant="text"
-          aria-label="关闭 3D 结构"
-          title="关闭 3D 结构"
+          :aria-label="$tr('关闭 3D 结构')"
+          :title="$tr('关闭 3D 结构')"
           @click="dialog = false"
         />
       </header>
       <div class="qm-visualization-layout">
         <aside class="qm-atom-panel">
           <template v-if="selectedAtom">
-            <h3 class="tool-section-title">原子详情</h3>
+            <h3 class="tool-section-title">{{ $tr('原子详情') }}</h3>
             <v-table density="compact">
               <tbody>
                 <tr v-for="(value, key) in selectedAtom.display" :key="key">
-                  <th>{{ apiKeyToField[key] }}</th>
+                  <th>{{ qmFieldCaption(key, apiKeyToField[key]) }}</th>
                   <td>{{ value }}</td>
                 </tr>
               </tbody>
             </v-table>
-            <h3 class="tool-section-title mt-5">键详情</h3>
+            <h3 class="tool-section-title mt-5">{{ $tr('键详情') }}</h3>
             <v-expansion-panels v-model="bondInfoExpanded">
               <v-expansion-panel
                 v-for="(bond, index) in selectedAtom.bonds"
@@ -170,15 +170,15 @@
                   <v-table density="compact"
                     ><tbody>
                       <tr>
-                        <th>键序号</th>
+                        <th>{{ $tr('键序号') }}</th>
                         <td>{{ bond.bondIndex }}</td>
                       </tr>
                       <tr>
-                        <th>键长</th>
+                        <th>{{ $tr('键长') }}</th>
                         <td>{{ bond.bondLength }} Å</td>
                       </tr>
                       <tr>
-                        <th>键电荷</th>
+                        <th>{{ $tr('键电荷') }}</th>
                         <td>{{ bond.bondCharge }} e</td>
                       </tr>
                     </tbody></v-table
@@ -187,13 +187,13 @@
               </v-expansion-panel>
             </v-expansion-panels>
           </template>
-          <p v-else class="workspace-muted">未选择原子</p>
+          <p v-else class="workspace-muted">{{ $tr('未选择原子') }}</p>
         </aside>
         <section class="qm-scene">
           <div id="molecule" ref="viewerdiv" class="qm-canvas" />
           <div v-if="visualizationLoading" class="qm-scene-state" role="status">
             <v-progress-circular indeterminate size="24" color="primary" /><span
-              >正在加载结构</span
+              >{{ $tr('正在加载结构') }}</span
             >
           </div>
           <p
@@ -201,14 +201,14 @@
             class="qm-scene-state tool-error"
             role="alert"
           >
-            {{ visualizationError }}
+            {{ $tr(visualizationError) }}
           </p>
           <div class="qm-scene-actions">
             <v-btn
               :icon="showLabels ? 'mdi-label-off-outline' : 'mdi-label-outline'"
               variant="outlined"
-              :aria-label="showLabels ? '隐藏标签' : '显示标签'"
-              :title="showLabels ? '隐藏标签' : '显示标签'"
+              :aria-label="showLabels ? $tr('隐藏标签') : $tr('显示标签')"
+              :title="showLabels ? $tr('隐藏标签') : $tr('显示标签')"
               :disabled="!viewer || visualizationLoading"
               @click="toggleLabels"
             />
@@ -216,8 +216,8 @@
               v-if="selectedAtom"
               icon="mdi-selection-remove"
               variant="outlined"
-              aria-label="清除原子选择"
-              title="清除原子选择"
+              :aria-label="$tr('清除原子选择')"
+              :title="$tr('清除原子选择')"
               @click="clearSelected"
             />
           </div>
@@ -245,6 +245,8 @@ import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
 import { useWorkspaceStore } from "@/store/workspace";
 import { saveAs } from "file-saver";
 import { useTheme } from "@/composables/useTheme";
+import { uiText } from "@/i18n";
+import { qmFieldCaption } from "./qm-ui";
 
 const { isDark } = useTheme();
 
@@ -323,6 +325,7 @@ const columnCategories = ref({
 });
 
 const fields = ref([]);
+const localizedFields = computed(() => fields.value.map((field) => ({ ...field, title: qmFieldCaption(field.key, field.title) })));
 
 const colorRowItem = computed(() => {
   return (item) => {
@@ -457,13 +460,13 @@ const categoryLabels = {
 const allfields = computed(() =>
   Object.keys(columnCategories.value).map((key) => ({
     key,
-    title: categoryLabels[key] || key,
+    title: uiText(categoryLabels[key] || key),
   })),
 );
 
 const downloadCSV = () => {
   if (!results.value.length) {
-    alert("没有可下载的结果。");
+    alert(uiText("没有可下载的结果。"));
     return;
   }
   let downloadData = Papa.unparse(results.value);
@@ -472,7 +475,7 @@ const downloadCSV = () => {
 };
 const downloadJSON = () => {
   if (!results.value.length) {
-    alert("没有可下载的结果。");
+    alert(uiText("没有可下载的结果。"));
     return;
   }
   let downloadData = JSON.stringify(results.value);

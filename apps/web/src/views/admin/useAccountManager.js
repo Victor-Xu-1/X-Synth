@@ -2,6 +2,8 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { API } from "@/common/api";
 import { loadAccounts, mutateAccount, saveAccount } from "./account-api";
 import { canEditAccount, canMutateAccounts, nativeAccountAuthority } from "./account-access";
+import { uiText } from "@/i18n";
+import { localizedConfirm } from "@/components/localized-confirm";
 
 export function useAccountManager({ workspace, router, confirm }) {
   const authority = computed(() => nativeAccountAuthority(workspace));
@@ -9,7 +11,8 @@ export function useAccountManager({ workspace, router, confirm }) {
   const allowed = computed(() => !!authority.value);
   const currentUser = ref(null), isAdmin = ref(false), users = ref([]), selection = ref([]);
   const dataLoading = ref(false), saving = ref(false), confirming = ref(false);
-  const dataError = ref(""), notice = ref("");
+  const dataError = ref(""), noticeSource = ref(""), noticeValues = ref({});
+  const notice = computed(() => uiText(noticeSource.value, noticeValues.value));
   const editorOpen = ref(false), editorMode = ref("new"), selectedUser = ref(null), editorError = ref("");
   const busy = computed(() => dataLoading.value || saving.value || confirming.value);
   let generation = 0, disposed = false, reader, loadedKey = "", editorKey = "";
@@ -22,7 +25,7 @@ export function useAccountManager({ workspace, router, confirm }) {
     currentUser.value = null; isAdmin.value = false; users.value = []; selection.value = [];
     editorOpen.value = false; selectedUser.value = null; editorMode.value = "new";
     dataLoading.value = false; saving.value = false; confirming.value = false;
-    dataError.value = ""; editorError.value = ""; notice.value = "";
+    dataError.value = ""; editorError.value = ""; noticeSource.value = ""; noticeValues.value = {};
   }
 
   async function fetchData() {
@@ -71,7 +74,7 @@ export function useAccountManager({ workspace, router, confirm }) {
     try {
       await saveAccount(mode, payload);
       if (!active(ticket, scope.key)) return;
-      editorOpen.value = false; notice.value = "账号信息已保存。";
+      editorOpen.value = false; noticeSource.value = "账号信息已保存。";
       await fetchData();
     } catch {
       if (active(ticket, scope.key)) editorError.value = "保存失败，请检查输入、身份权限与认证服务状态。";
@@ -87,13 +90,13 @@ export function useAccountManager({ workspace, router, confirm }) {
     const targets = [...names], ticket = generation;
     confirming.value = true;
     try {
-      const accepted = await confirm({
-        title: action === "delete" ? "删除账号" : "修改账号状态",
-        content: action === "delete" ? `确定删除 ${targets.length} 个账号？此操作无法撤销。` : `确定修改 ${targets.length} 个账号的状态或权限？`,
-        dialogProps: { width: 440 },
-      });
+      const accepted = await confirm(localizedConfirm(
+        action === "delete" ? "删除账号" : "修改账号状态",
+        action === "delete" ? "确定删除 {count} 个账号？此操作无法撤销。" : "确定修改 {count} 个账号的状态或权限？",
+        { count: targets.length }, { width: 440 },
+      ));
       if (!accepted || !active(ticket, scope.key)) return;
-      saving.value = true; dataError.value = ""; notice.value = "";
+      saving.value = true; dataError.value = ""; noticeSource.value = "";
       let completed = 0, signOut = false;
       for (const name of targets) {
         if (!active(ticket, scope.key) || !canMutateAccounts(verified(), isAdmin.value, [name], action)) return;
@@ -113,7 +116,8 @@ export function useAccountManager({ workspace, router, confirm }) {
         }
       }
       if (!active(ticket, scope.key)) return;
-      notice.value = `已完成 ${completed} / ${targets.length} 项操作。`; selection.value = [];
+      noticeSource.value = "已完成 {completed} / {total} 项操作。";
+      noticeValues.value = { completed, total: targets.length }; selection.value = [];
       if (signOut) {
         clearPrivateState(); API.clearAuthState(); await router.replace("/login");
       } else {

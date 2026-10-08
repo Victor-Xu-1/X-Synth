@@ -1,8 +1,8 @@
 <template>
-  <section class="structure-workspace" aria-label="目标结构">
+  <section class="structure-workspace" :aria-label="$tr('目标结构')">
     <div class="structure-input-row">
       <div class="structure-heading">
-        <label for="target-smiles">目标化合物（SMILES）</label>
+        <label for="target-smiles">{{ $tr('目标化合物（SMILES）') }}</label>
         <MoleculeFileControls
           ref="files"
           :smiles="smiles"
@@ -22,13 +22,13 @@
           autocomplete="off"
           spellcheck="false"
         />
-        <v-tooltip text="清空结构"
+        <v-tooltip :text="$tr('清空结构')"
           ><template #activator="{ props: tooltip }"
             ><v-btn
               v-bind="tooltip"
               icon="mdi-eraser"
               variant="text"
-              aria-label="清空结构"
+              :aria-label="$tr('清空结构')"
               :disabled="disabled || fileBusy"
               @click="clear" /></template
         ></v-tooltip>

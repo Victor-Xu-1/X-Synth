@@ -2,11 +2,11 @@
   <v-dialog v-model="open" max-width="720" scrollable>
     <v-card class="manual-reaction-dialog">
       <header class="manual-reaction-heading">
-        <h2>手动补充反应步骤</h2>
+        <h2>{{ $tr('手动补充反应步骤') }}</h2>
         <v-btn
           icon="mdi-close"
           variant="text"
-          aria-label="关闭手动反应步骤"
+          :aria-label="$tr('关闭手动反应步骤')"
           @click="open = false"
         />
       </header>
@@ -14,7 +14,7 @@
         <v-select
           v-model="productId"
           :items="products"
-          label="产物"
+          :label="$tr('产物')"
           density="compact"
           variant="outlined"
           hide-details
@@ -36,14 +36,14 @@
           <StructureInput
             ref="reactantInputs"
             v-model="reactant.smiles"
-            :label="`反应物 ${index + 1}`"
+            :label="$tr('反应物 {index}', { index: index + 1 })"
             :disabled="busy || disabled"
           />
           <v-btn
             icon="mdi-trash-can-outline"
             size="small"
             variant="text"
-            :aria-label="`移除反应物 ${index + 1}`"
+            :aria-label="$tr('移除反应物 {index}', { index: index + 1 })"
             :disabled="busy || disabled || reactants.length === 1"
             @click="reactants.splice(index, 1)"
           />
@@ -54,10 +54,10 @@
           class="manual-reaction-add"
           :disabled="busy || disabled"
           @click="reactants.push(newReactant())"
-          >添加反应物</v-btn
+          >{{ $tr('添加反应物') }}</v-btn
         >
         <label>
-          <span class="field-label">反应名称（可选）</span>
+          <span class="field-label">{{ $tr('反应名称（可选）') }}</span>
           <input
             v-model="label"
             class="workspace-input"
@@ -66,7 +66,7 @@
           />
         </label>
         <label>
-          <span class="field-label">备注（可选）</span>
+          <span class="field-label">{{ $tr('备注（可选）') }}</span>
           <textarea
             v-model="note"
             class="workspace-input"
@@ -75,17 +75,17 @@
             :disabled="busy || disabled"
           />
         </label>
-        <span class="workspace-muted">手动录入 · 未经反应模型验证</span>
-        <div v-if="error" class="tool-error" role="alert">{{ error }}</div>
+        <span class="workspace-muted">{{ $tr('手动录入 · 未经反应模型验证') }}</span>
+        <div v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</div>
         <footer class="manual-reaction-actions">
-          <v-btn variant="text" @click="open = false">取消</v-btn>
+          <v-btn variant="text" @click="open = false">{{ $tr('取消') }}</v-btn>
           <v-btn
             color="primary"
             variant="flat"
             type="submit"
             :loading="busy"
             :disabled="!canSubmit || disabled || busy"
-            >加入路线</v-btn
+            >{{ $tr('加入路线') }}</v-btn
           >
         </footer>
       </form>
@@ -95,6 +95,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { API } from "@/common/api";
+import { uiText } from "@/i18n";
 import { errorMessage } from "@/common/workspace-errors";
 import {
   attachManualReaction,
@@ -131,8 +132,8 @@ const products = computed(() =>
     title:
       node.label ||
       (node.id === props.graph.target_id
-        ? "目标化合物"
-        : `中间体或原料 ${index + 1}`),
+        ? uiText("目标化合物")
+        : uiText("中间体或原料 {index}", { index: index + 1 })),
   })),
 );
 const product = computed(() =>

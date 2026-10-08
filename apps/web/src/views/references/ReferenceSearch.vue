@@ -3,9 +3,9 @@
     <section
       v-if="prefill || prefillError"
       class="reference-prefill"
-      aria-label="待确认的链接反应"
+      :aria-label="$tr('待确认的链接反应')"
     >
-      <h2 class="tool-section-title">待确认的链接反应</h2>
+      <h2 class="tool-section-title">{{ $tr('待确认的链接反应') }}</h2>
       <SmilesImage
         v-if="prefill"
         :smiles="prefill"
@@ -15,7 +15,7 @@
         :show-error-image="false"
       />
       <p v-if="prefillError" class="tool-error" role="alert">
-        {{ prefillError }}
+        {{ $tr(prefillError) }}
       </p>
       <div class="reference-prefill-actions">
         <v-btn
@@ -25,16 +25,16 @@
           :disabled="inputPending || loading"
           data-cy="reference-apply-prefill"
           @click="applyPrefill"
-          >确认并应用反应</v-btn
+          >{{ $tr('确认并应用反应') }}</v-btn
         >
         <v-btn variant="text" :disabled="loading" @click="discardPrefill"
-          >忽略链接输入</v-btn
+          >{{ $tr('忽略链接输入') }}</v-btn
         >
       </div>
     </section>
     <WorkbenchForm
       class="reference-input-layout"
-      aria-label="参考反应检索输入"
+      :aria-label="$tr('参考反应检索输入')"
       parameter-label="检索参数"
       @submit="search"
     >
@@ -44,39 +44,39 @@
           aria-labelledby="reference-parameters-heading"
         >
           <h2 id="reference-parameters-heading" class="tool-section-title">
-            检索参数
+            {{ $tr('检索参数') }}
           </h2>
           <dl class="reference-source">
-            <dt>来源</dt>
+            <dt>{{ $tr('来源') }}</dt>
             <dd>{{ evidenceSourceLabel(sourceStatus) }}</dd>
-            <dt>匹配方式</dt>
-            <dd>产物结构精确匹配</dd>
-            <dt>参考记录</dt>
-            <dd>{{ recordedValue(sourceStatus?.record_count) }}</dd>
+            <dt>{{ $tr('匹配方式') }}</dt>
+            <dd>{{ $tr('产物结构精确匹配') }}</dd>
+            <dt>{{ $tr('参考记录') }}</dt>
+            <dd>{{ $tr(recordedValue(sourceStatus?.record_count)) }}</dd>
           </dl>
           <details
             v-if="sourceStatus?.sources?.length"
             class="reference-source"
           >
-            <summary>来源与数据覆盖</summary>
+            <summary>{{ $tr('来源与数据覆盖') }}</summary>
             <dl v-for="source in sourceStatus.sources" :key="source.source">
               <dt>{{ source.source }}</dt>
-              <dd>{{ source.ready ? "已就绪" : referenceReason(source) }}</dd>
-              <dt>参考记录</dt>
-              <dd>{{ recordedValue(source.record_count) }}</dd>
+              <dd>{{ $tr(source.ready ? "已就绪" : referenceReason(source)) }}</dd>
+              <dt>{{ $tr('参考记录') }}</dt>
+              <dd>{{ $tr(recordedValue(source.record_count)) }}</dd>
               <template v-if="source.source === 'ORD'">
-                <dt>含收率记录</dt>
-                <dd>{{ recordedValue(source.yields_count) }}</dd>
-                <dt>含条件/投料记录</dt>
-                <dd>{{ recordedValue(source.conditions_count) }}</dd>
-                <dt>数据许可</dt>
-                <dd>{{ source.license || "未记录" }}</dd>
+                <dt>{{ $tr('含收率记录') }}</dt>
+                <dd>{{ $tr(recordedValue(source.yields_count)) }}</dd>
+                <dt>{{ $tr('含条件/投料记录') }}</dt>
+                <dd>{{ $tr(recordedValue(source.conditions_count)) }}</dd>
+                <dt>{{ $tr('数据许可') }}</dt>
+                <dd>{{ source.license || $tr("未记录") }}</dd>
               </template>
             </dl>
           </details>
           <v-text-field
             v-model="limit"
-            label="结果数量"
+            :label="$tr('结果数量')"
             type="number"
             min="1"
             max="30"
@@ -85,11 +85,11 @@
             variant="outlined"
             density="compact"
             :disabled="loading"
-            :error-messages="countError"
+            :error-messages="$tr(countError)"
             data-cy="reference-limit"
           />
           <p v-if="!ready" class="reference-source-state" role="status">
-            {{ unavailableReason }}
+            {{ $tr(unavailableReason) }}
           </p>
           <div class="reference-submit-actions">
             <v-btn
@@ -100,15 +100,15 @@
               :disabled="!canSearch"
               :loading="loading"
               data-cy="reference-search-submit"
-              >查询参考反应</v-btn
+              >{{ $tr('查询参考反应') }}</v-btn
             >
-            <v-tooltip text="刷新参考来源状态" location="top">
+            <v-tooltip :text="$tr('刷新参考来源状态')" location="top">
               <template #activator="{ props: activator }">
                 <v-btn
                   v-bind="activator"
                   icon="mdi-refresh"
                   variant="text"
-                  aria-label="刷新参考来源状态"
+                  :aria-label="$tr('刷新参考来源状态')"
                   :disabled="statusLoading"
                   @click="loadStatus"
                 />
@@ -122,7 +122,7 @@
         aria-labelledby="reference-structures-heading"
       >
         <h2 id="reference-structures-heading" class="tool-section-title">
-          反应结构
+          {{ $tr('反应结构') }}
         </h2>
         <ReactionInput
           ref="canvas"

@@ -1,8 +1,8 @@
 <template>
-  <div class="task-actions" role="group" :aria-label="`任务操作：${taskTitle(task)}`">
+  <div class="task-actions" role="group" :aria-label="$tr('任务操作：{name}', { name: taskTitle(task) })">
     <v-tooltip
       :text="
-        hasRoutes ? '预览路线' : active ? '查看任务进度' : '暂无可预览的路线'
+        hasRoutes ? $tr('预览路线') : active ? $tr('查看任务进度') : $tr('暂无可预览的路线')
       "
     >
       <template #activator="{ props }">
@@ -13,14 +13,14 @@
           size="small"
           :disabled="busy || (!hasRoutes && !active)"
           :loading="pending === 'preview'"
-          :aria-label="active && !hasRoutes ? '查看任务进度' : '预览路线'"
+          :aria-label="active && !hasRoutes ? $tr('查看任务进度') : $tr('预览路线')"
           @click="$emit('preview')"
         />
       </template>
     </v-tooltip>
     <v-menu :disabled="busy">
       <template #activator="{ props: menuProps }">
-        <v-tooltip text="更多任务操作">
+        <v-tooltip :text="$tr('更多任务操作')">
           <template #activator="{ props: tooltipProps }">
             <v-btn
               v-bind="mergeProps(menuProps, tooltipProps)"
@@ -29,16 +29,16 @@
               size="small"
               :disabled="busy"
               :loading="infoLoading || Boolean(pending && pending !== 'preview')"
-              aria-label="更多任务操作"
+              :aria-label="$tr('更多任务操作')"
             />
           </template>
         </v-tooltip>
       </template>
-      <v-list density="compact" class="task-actions-menu" role="menu" :aria-label="`任务操作：${taskTitle(task)}`">
+      <v-list density="compact" class="task-actions-menu" role="menu" :aria-label="$tr('任务操作：{name}', { name: taskTitle(task) })">
         <v-list-item
           role="menuitem"
-          title="任务信息"
-          aria-label="任务信息"
+          :title="$tr('任务信息')"
+          :aria-label="$tr('任务信息')"
           :disabled="busy"
           prepend-icon="mdi-information-outline"
           @click="$emit('info')"
@@ -46,33 +46,33 @@
         <v-list-item
           v-if="!archived"
           role="menuitem"
-          title="重命名任务"
-          aria-label="重命名任务"
+          :title="$tr('重命名任务')"
+          :aria-label="$tr('重命名任务')"
           :disabled="busy"
           prepend-icon="mdi-pencil-outline"
           @click="$emit('rename')"
         />
         <v-menu v-if="!archived" submenu :disabled="busy">
           <template #activator="{ props: groupProps }">
-            <v-list-item v-bind="groupProps" role="menuitem" title="移至分组" aria-label="移至分组"
+            <v-list-item v-bind="groupProps" role="menuitem" :title="$tr('移至分组')" :aria-label="$tr('移至分组')"
               prepend-icon="mdi-folder-move-outline" append-icon="mdi-chevron-right" :disabled="busy" />
           </template>
-          <v-list density="compact" class="task-actions-menu task-group-menu" role="menu" aria-label="选择任务分组">
-            <v-list-item role="menuitem" title="未分组" aria-label="未分组" prepend-icon="mdi-folder-outline"
+          <v-list density="compact" class="task-actions-menu task-group-menu" role="menu" :aria-label="$tr('选择任务分组')">
+            <v-list-item role="menuitem" :title="$tr('未分组')" :aria-label="$tr('未分组')" prepend-icon="mdi-folder-outline"
               :disabled="busy || task.group_id === null" @click="$emit('group', null)" />
             <v-list-item v-for="group in groups" :key="group.id" role="menuitem" :title="group.name"
               :aria-label="group.name" prepend-icon="mdi-folder-outline" :disabled="busy || task.group_id === group.id"
               @click="$emit('group', group.id)" />
           </v-list>
         </v-menu>
-        <v-list-item role="menuitem" title="重新搜索" aria-label="重新搜索" prepend-icon="mdi-magnify"
+        <v-list-item role="menuitem" :title="$tr('重新搜索')" :aria-label="$tr('重新搜索')" prepend-icon="mdi-magnify"
           :disabled="busy" @click="$emit('rerun')" />
         <v-divider v-if="archived || archivable || active" />
-        <v-list-item v-if="archived" role="menuitem" title="恢复任务" aria-label="恢复任务"
+        <v-list-item v-if="archived" role="menuitem" :title="$tr('恢复任务')" :aria-label="$tr('恢复任务')"
           prepend-icon="mdi-delete-restore" :disabled="busy" @click="$emit('restore')" />
-        <v-list-item v-else-if="archivable" role="menuitem" title="移入回收箱" aria-label="移入回收箱"
+        <v-list-item v-else-if="archivable" role="menuitem" :title="$tr('移入回收箱')" :aria-label="$tr('移入回收箱')"
           prepend-icon="mdi-trash-can-outline" :disabled="busy" @click="$emit('archive')" />
-        <v-list-item v-if="active && !archived" role="menuitem" title="取消任务" aria-label="取消任务"
+        <v-list-item v-if="active && !archived" role="menuitem" :title="$tr('取消任务')" :aria-label="$tr('取消任务')"
           class="task-cancel-action" prepend-icon="mdi-stop-circle-outline" :disabled="busy" @click="$emit('cancel')" />
       </v-list>
     </v-menu>

@@ -1,6 +1,6 @@
 <template>
   <module-workbench
-    title="溶解度与溶剂"
+    :title="$tr('溶解度与溶剂')"
     :modules="modules"
     :active-module="tab"
     @select-module="replaceRoute"

@@ -14,6 +14,7 @@ import { reactive } from "vue";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "@vue/compiler-sfc";
+import { initializeLocale, setLocale } from "@/i18n";
 jest.mock("@vueuse/core", () => ({ useResizeObserver: jest.fn() }));
 
 test("the document title does not suppress the shared keyboard-focus outline", () => {
@@ -177,6 +178,59 @@ beforeEach(() => {
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
   window.confirm.mockRestore();
+});
+
+test("new-route title uses the creation locale but language changes never edit the draft or its dirty baseline", async () => {
+  initializeLocale(null);
+  const { wrapper, route } = await setup("draft", "");
+  const titleInput = wrapper.get(".editor-create-form input");
+  expect(titleInput.element.value).toBe("Untitled route");
+  expect(wrapper.vm.hasUnsavedChanges).toBe(false);
+  expect(wrapper.get('[role="status"]').text()).toBe("New route");
+  setLocale("zh-CN", { persist: false });
+  await flushPromises();
+  expect(wrapper.get(".editor-create-form input").element).toBe(titleInput.element);
+  expect(titleInput.element.value).toBe("Untitled route");
+  expect(wrapper.vm.hasUnsavedChanges).toBe(false);
+  expect(wrapper.get('[role="status"]').text()).toBe("新路线");
+  await titleInput.setValue("未命名路线");
+  expect(wrapper.vm.hasUnsavedChanges).toBe(true);
+  setLocale("en", { persist: false });
+  await flushPromises();
+  expect(titleInput.element.value).toBe("未命名路线");
+  expect(wrapper.vm.hasUnsavedChanges).toBe(true);
+  expect(wrapper.get('[role="status"]').text()).toBe("Unsaved");
+  expect(API.post).not.toHaveBeenCalled();
+  expect(API.put).not.toHaveBeenCalled();
+  route.params.id = documentId;
+  await flushPromises();
+  route.params.id = undefined;
+  await flushPromises();
+  expect(wrapper.get(".editor-create-form input").element.value).toBe("Untitled route");
+  expect(wrapper.vm.hasUnsavedChanges).toBe(false);
+  expect(window.confirm).not.toHaveBeenCalled();
+});
+
+test("an empty new-route title sends its fixed draft default, while a typed Chinese title remains literal", async () => {
+  initializeLocale(null);
+  const { wrapper } = await setup("draft", "");
+  const smiles = "[13CH3][C@H](F)C(=O)[O-].[Na+]";
+  API.post.mockImplementation(async (path, body) => path === "/api/v1/structure/validate"
+    ? { smiles: body.smiles } : { id: documentId, title: body.title, graph: body.graph, revision: 1, state: "draft" });
+  await wrapper.get(".editor-create-form input").setValue("");
+  await wrapper.get(".editor-create-form textarea").setValue(smiles);
+  setLocale("zh-CN", { persist: false });
+  await flushPromises();
+  await wrapper.get("form").trigger("submit");
+  await flushPromises();
+  expect(API.post.mock.calls[0]).toEqual(["/api/v1/structure/validate", { smiles }]);
+  expect(API.post.mock.calls[1][1].title).toBe("Untitled route");
+  await wrapper.get('[aria-label="路线名称"]').setValue("未命名路线");
+  setLocale("en", { persist: false });
+  await flushPromises();
+  expect(wrapper.get('[aria-label="Route name"]').element.value).toBe("未命名路线");
+  expect(wrapper.get("h1").text()).toBe("未命名路线");
+  expect(wrapper.vm.hasUnsavedChanges).toBe(true);
 });
 
 test("a pending real inspector Apply locks conflicting edits and save until the new structure is applied", async () => {

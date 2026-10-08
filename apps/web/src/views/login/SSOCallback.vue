@@ -1,8 +1,8 @@
 <template>
   <main class="auth-page">
     <section class="auth-form">
-      <router-link class="auth-brand d-block" to="/">X-Synth</router-link>
-      <h1>单点登录</h1>
+      <AuthHeader />
+      <h1>{{ $tr('单点登录') }}</h1>
       <div v-if="loading" role="status" class="d-flex align-center ga-3">
         <v-progress-circular
           indeterminate
@@ -10,7 +10,7 @@
           size="24"
           width="2"
         />
-        <span class="workspace-muted">正在验证登录状态</span>
+        <span class="workspace-muted">{{ $tr('正在验证登录状态') }}</span>
       </div>
       <template v-else>
         <v-alert
@@ -19,16 +19,16 @@
           density="compact"
           role="alert"
           class="mb-5"
-          >{{ errorMessage }}</v-alert
+          >{{ $tr(errorMessage) }}</v-alert
         >
         <v-btn
           to="/sso-login"
           color="primary"
           variant="flat"
           prepend-icon="mdi-login"
-          >返回登录</v-btn
+          >{{ $tr('返回登录') }}</v-btn
         >
-        <v-btn to="/" variant="text" class="ml-2">返回工作区</v-btn>
+        <v-btn to="/" variant="text" class="ml-2">{{ $tr('返回工作区') }}</v-btn>
       </template>
     </section>
   </main>
@@ -39,6 +39,7 @@ import { inject, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { API } from "@/common/api";
 import { safeAccountRedirect } from "./auth-navigation";
+import AuthHeader from "./AuthHeader.vue";
 
 const route = useRoute();
 const router = useRouter();

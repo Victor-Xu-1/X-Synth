@@ -12,7 +12,7 @@
           size="14"
           aria-hidden="true"
         />
-        {{ data.isTarget ? "目标分子" : data.isStarting ? "起始原料" : "中间体" }}
+        {{ data.isTarget ? $tr('目标分子') : data.isStarting ? $tr('起始原料') : $tr('中间体') }}
       </span>
       <strong v-if="data.label" :title="data.label">{{ data.label }}</strong>
     </div>
@@ -27,15 +27,15 @@
       <div
         v-if="data.isStarting && data.catalogPrice"
         class="graph-node-catalog-price"
-        :title="`${price.note} · ${data.catalogPrice.record.source} · ${data.catalogPrice.record.catalog_id} · ${data.catalogPrice.count} 条目录价格`"
+        :title="$tr('{value} · {value2} · {value3} · {count} 条目录价格', { value: $tr(price.note), value2: data.catalogPrice.record.source, value3: data.catalogPrice.record.catalog_id, count: data.catalogPrice.count })"
         data-cy="route-node-catalog-price"
       >
-        {{ price.text }} <span>目录基准</span>
+        {{ price.amount === null ? $tr(price.text) : price.text }} <span>{{ $tr('目录基准') }}</span>
       </div>
       <div v-else class="graph-node-smiles" :title="data.smiles">
         {{ data.smiles }}
       </div>
-      <v-tooltip v-if="!data.overview" text="查看化合物详情">
+      <v-tooltip v-if="!data.overview" :text="$tr('查看化合物详情')">
         <template #activator="{ props }">
           <v-btn
             v-bind="props"
@@ -43,7 +43,7 @@
             icon="mdi-dots-horizontal"
             size="x-small"
             variant="text"
-            aria-label="查看化合物详情"
+            :aria-label="$tr('查看化合物详情')"
           />
         </template>
       </v-tooltip>

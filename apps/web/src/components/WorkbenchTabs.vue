@@ -1,11 +1,11 @@
 <template>
   <div v-if="items.length" ref="tablist" class="workspace-tabs" role="tablist"
-    :aria-label="label" aria-orientation="horizontal" @keydown="move">
+    :aria-label="$tr(label)" aria-orientation="horizontal" @keydown="move">
     <button v-for="item in items" :id="tabId(item.value)" :key="item.value"
       type="button" role="tab" :aria-controls="panelId(item.value)"
       :aria-selected="item.value === modelValue" :disabled="disabled || item.disabled"
       :tabindex="item.value === tabStop ? 0 : -1" :class="{ active: item.value === modelValue }"
-      @click="choose(item.value)">{{ item.title }}</button>
+      @click="choose(item.value)">{{ $tr(item.title) }}</button>
   </div>
   <slot :tab-id="tabId" :panel-id="panelId" />
 </template>

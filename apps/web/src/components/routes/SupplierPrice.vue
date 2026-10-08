@@ -1,19 +1,19 @@
 <template>
   <div class="supplier-price" :class="{ 'supplier-price-compact': compact }">
-    <span class="supplier-price-value" :title="view.note">{{ view.text }}</span>
-    <span class="supplier-price-note">{{ compact && view.basis ? "目录基准 · 币种未标注" : view.note }}</span>
+    <span class="supplier-price-value" :title="$tr(view.note)">{{ view.amount === null ? $tr(view.text) : view.text }}</span>
+    <span class="supplier-price-note">{{ compact && view.basis ? $tr('目录基准 · 币种未标注') : $tr(view.note) }}</span>
     <details v-if="!compact && view.basis" class="supplier-price-evidence">
-      <summary>价格依据</summary>
+      <summary>{{ $tr('价格依据') }}</summary>
       <dl>
-        <dt>原始字段</dt><dd>ppg · $/g</dd>
-        <dt>币种 ISO</dt><dd>未标注</dd>
-        <dt>报价日期</dt><dd>未记录</dd>
-        <dt>包装 / 纯度</dt><dd>未记录</dd>
-        <dt>目录来源</dt><dd>{{ view.basis.source_id }}</dd>
-        <dt>源快照 SHA256</dt><dd>{{ view.basis.snapshot }}</dd>
-        <dt>目录文件 SHA256</dt><dd>{{ view.basis.catalog_sha256 }}</dd>
+        <dt>{{ $tr('原始字段') }}</dt><dd>ppg · $/g</dd>
+        <dt>{{ $tr('币种 ISO') }}</dt><dd>{{ $tr('未标注') }}</dd>
+        <dt>{{ $tr('报价日期') }}</dt><dd>{{ $tr('未记录') }}</dd>
+        <dt>{{ $tr('包装 / 纯度') }}</dt><dd>{{ $tr('未记录') }}</dd>
+        <dt>{{ $tr('目录来源') }}</dt><dd>{{ view.basis.source_id }}</dd>
+        <dt>{{ $tr('源快照 SHA256') }}</dt><dd>{{ view.basis.snapshot }}</dd>
+        <dt>{{ $tr('目录文件 SHA256') }}</dt><dd>{{ view.basis.catalog_sha256 }}</dd>
       </dl>
-      <a :href="view.basis.unit_evidence" target="_blank" rel="noopener noreferrer">ASKCOS 单位说明</a>
+      <a :href="view.basis.unit_evidence" target="_blank" rel="noopener noreferrer">{{ $tr('ASKCOS 单位说明') }}</a>
     </details>
   </div>
 </template>

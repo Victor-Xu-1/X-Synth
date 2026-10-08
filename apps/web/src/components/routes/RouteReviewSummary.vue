@@ -1,62 +1,43 @@
 <template>
   <section
     class="route-review-summary"
-    aria-label="软件自动核验与参考覆盖"
+    :aria-label="$tr('软件自动核验与参考覆盖')"
   >
     <div class="review-row">
       <span class="review-heading">
-        <v-icon icon="mdi-shield-search" size="16" aria-hidden="true" />
-        软件自动核验
-      </span>
+        <v-icon icon="mdi-shield-search" size="16" aria-hidden="true" />{{ $tr('软件自动核验') }}</span>
       <span class="review-item" data-review="forward">
-        {{ summary.forward.top1 === undefined ? '独立正向预测' : '步骤核验' }}：
+        {{ summary.forward.top1 === undefined ? $tr('独立正向预测：') : $tr('步骤核验：') }}
         <template v-if="summary.forward.status === 'ready'">
           <template v-if="summary.forward.total">
-            <strong>{{ summary.forward.matched }}/{{ summary.forward.total }}</strong>
-            步核验匹配
-            <template v-if="summary.forward.recorded">
-              （模型首选 {{ summary.forward.top1 }} 步，原始实验记录支持 {{ summary.forward.recorded }} 步）
-            </template>
+            <strong>{{ $tr('{matched}/{total} 步核验匹配', { matched: summary.forward.matched, total: summary.forward.total }) }}</strong><template v-if="summary.forward.recorded">{{ $tr('（模型首选 {value} 步，原始实验记录支持 {value2} 步）', { value: summary.forward.top1, value2: summary.forward.recorded }) }}</template>
           </template>
-          <template v-else>无反应步骤</template>
+          <template v-else>{{ $tr('无反应步骤') }}</template>
         </template>
-        <template v-else>{{ stateLabels[summary.forward.status] }}</template>
+        <template v-else>{{ $tr(stateLabels[summary.forward.status]) }}</template>
       </span>
       <span class="review-item" data-review="references">
         <v-icon
           icon="mdi-book-open-page-variant-outline"
           size="16"
           aria-hidden="true"
-        />
-        参考覆盖：
-        <template v-if="summary.references.status === 'ready'">
-          <template v-if="summary.references.total">
-            同反应 {{ summary.references.reaction }} 步 ·
-            同产物资料 {{ summary.references.product }} 步 ·
-            检索未匹配 {{ summary.references.unmatched }} 步
-            <template v-if="summary.references.coverage?.unchecked">
-              · 未检索 {{ summary.references.coverage.unchecked }} 步
-            </template>
+        />{{ $tr('参考覆盖：') }}<template v-if="summary.references.status === 'ready'">
+          <template v-if="summary.references.total">{{ $tr('同反应 {value} 步 · 同产物资料 {value2} 步 · 检索未匹配 {value3} 步', { value: summary.references.reaction, value2: summary.references.product, value3: summary.references.unmatched }) }}<template v-if="summary.references.coverage?.unchecked">{{ $tr('· 未检索 {value} 步', { value: summary.references.coverage.unchecked }) }}</template>
           </template>
-          <template v-else>无反应步骤</template>
+          <template v-else>{{ $tr('无反应步骤') }}</template>
         </template>
-        <template v-else>{{ stateLabels[summary.references.status] }}</template>
+        <template v-else>{{ $tr(stateLabels[summary.references.status]) }}</template>
       </span>
     </div>
     <p v-if="summary.references.coverage && (summary.references.coverage.truncated || summary.references.coverage.unavailable || summary.references.coverage.unknown)" class="review-boundary" data-review="coverage">
       <span v-if="summary.references.coverage.truncated">
-        {{ summary.references.coverage.truncated }} 步还有更多参考记录。
-      </span>
+        {{ $tr('{value} 步还有更多参考记录。', { value: summary.references.coverage.truncated }) }}</span>
       <span v-if="summary.references.coverage.unavailable">
-        {{ summary.references.coverage.unavailable }} 步部分资料源不可用。
-      </span>
+        {{ $tr('{value} 步部分资料源不可用。', { value: summary.references.coverage.unavailable }) }}</span>
       <span v-if="summary.references.coverage.unknown">
-        {{ summary.references.coverage.unknown }} 步的检索范围未记录。
-      </span>
+        {{ $tr('{value} 步的检索范围未记录。', { value: summary.references.coverage.unknown }) }}</span>
     </p>
-    <p class="review-boundary">
-      模型预测不等于实测；同产物资料不证明同反应。结构匹配不验证条件与收率。
-    </p>
+    <p class="review-boundary">{{ $tr('模型预测不等于实测；同产物资料不证明同反应。结构匹配不验证条件与收率。') }}</p>
   </section>
 </template>
 <script setup>

@@ -8,6 +8,9 @@ export default {
     ).trim(),
   },
   testEnvironment: "jsdom",
+  roots: ["<rootDir>/src"],
+  testEnvironmentOptions: { customExportConditions: ["node", "node-addons"] },
+  setupFilesAfterEnv: ["<rootDir>/src/i18n/test-setup.js"],
   moduleFileExtensions: ["js", "mjs", "json", "vue"],
   transform: {
     "^.+\\.js$": "babel-jest",

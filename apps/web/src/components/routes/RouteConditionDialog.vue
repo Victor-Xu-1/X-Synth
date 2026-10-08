@@ -8,13 +8,13 @@
     <section class="route-condition-dialog">
       <header>
         <div>
-          <span class="field-label">当前合成步骤</span>
-          <h2 id="route-condition-title">反应条件预测</h2>
+          <span class="field-label">{{ $tr('当前合成步骤') }}</span>
+          <h2 id="route-condition-title">{{ $tr('反应条件预测') }}</h2>
         </div>
         <v-btn
           icon="mdi-close"
           variant="text"
-          aria-label="关闭条件预测"
+          :aria-label="$tr('关闭条件预测')"
           @click="$emit('close')"
         />
       </header>
@@ -28,7 +28,7 @@
         />
         <div class="condition-run-controls">
           <label
-            ><span class="field-label">候选数量</span>
+            ><span class="field-label">{{ $tr('候选数量') }}</span>
             <select
               v-model.number="count"
               class="workspace-input"
@@ -46,11 +46,11 @@
             :loading="pending > 0"
             :disabled="pending > 0"
             @click="predict"
-            >预测条件</v-btn
+            >{{ $tr('预测条件') }}</v-btn
           >
         </div>
       </div>
-      <p v-if="error" class="tool-error" role="alert">{{ error }}</p>
+      <p v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</p>
       <ConditionRecommendation
         v-if="submitted || pending || error"
         :results="results"

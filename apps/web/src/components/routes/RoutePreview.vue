@@ -3,8 +3,8 @@
     <v-card class="route-preview-dialog">
       <header>
         <div>
-          <strong>{{ title || "路线预览" }}</strong
-          ><span class="workspace-muted">{{ candidates.length }} 条路线</span>
+          <strong>{{ title || $tr('路线预览') }}</strong
+          ><span class="workspace-muted">{{ $tr('{count} 条路线', { count: candidates.length }) }}</span>
         </div>
         <div class="page-actions">
           <v-btn
@@ -12,14 +12,14 @@
             variant="text"
             :to="detailLocation"
             @click="open = false"
-            >打开详情</v-btn
+            >{{ $tr('打开详情') }}</v-btn
           >
           <v-btn
             icon="mdi-close"
             variant="text"
             size="small"
-            title="关闭预览"
-            aria-label="关闭预览"
+            :title="$tr('关闭预览')"
+            :aria-label="$tr('关闭预览')"
             @click="open = false"
           />
         </div>
@@ -37,7 +37,7 @@
         @edit="edit"
         @navigate="open = false"
       />
-      <p v-if="error" class="tool-error" role="alert">{{ error }}</p>
+      <p v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</p>
     </v-card>
   </v-dialog>
 </template>

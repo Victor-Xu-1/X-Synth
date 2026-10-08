@@ -1,8 +1,7 @@
 <template>
-  <section class="manual-outcomes" aria-label="一步候选结果">
+  <section class="manual-outcomes" :aria-label="$tr('一步候选结果')">
     <header class="manual-result-heading">
-      <h2>
-        候选断键 <span>{{ result.outcomes.length }}</span>
+      <h2>{{ $tr('候选断键') }}<span>{{ result.outcomes.length }}</span>
       </h2>
       <span
         >{{ result.model }} ·
@@ -18,9 +17,7 @@
         :show-error-image="false"
       /><code>{{ result.canonical }}</code>
     </div>
-    <div v-if="!result.outcomes.length" class="workspace-empty">
-      当前模型没有返回候选
-    </div>
+    <div v-if="!result.outcomes.length" class="workspace-empty">{{ $tr('当前模型没有返回候选') }}</div>
     <div class="manual-outcome-list">
       <article
         v-for="(item, index) in result.outcomes.slice(0, visibleCount)"
@@ -28,19 +25,19 @@
         class="manual-outcome"
       >
         <header>
-          <strong>候选 {{ index + 1 }}</strong
+          <strong>{{ $tr('候选 {index}', { index: index + 1 }) }}</strong
           ><span v-if="typeof item.plausibility === 'number'"
             >FF {{ item.plausibility.toFixed(3) }}</span
           >
           <div class="page-actions">
-            <v-tooltip text="预览候选"
+            <v-tooltip :text="$tr('预览候选')"
               ><template #activator="{ props }"
                 ><v-btn
                   v-bind="props"
                   icon="mdi-eye-outline"
                   variant="text"
                   size="small"
-                  aria-label="预览候选"
+                  :aria-label="$tr('预览候选')"
                   @click="$emit('preview', index)" /></template></v-tooltip
             ><v-btn
               variant="text"
@@ -48,7 +45,7 @@
               prepend-icon="mdi-pencil-outline"
               :disabled="busy"
               @click="$emit('edit', index)"
-              >编辑副本</v-btn
+              >{{ $tr('编辑副本') }}</v-btn
             >
           </div>
         </header>
@@ -65,7 +62,7 @@
       variant="text"
       prepend-icon="mdi-chevron-down"
       @click="visibleCount += 12"
-      >更多候选</v-btn
+      >{{ $tr('更多候选') }}</v-btn
     >
   </section>
 </template>

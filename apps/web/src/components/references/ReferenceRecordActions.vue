@@ -1,5 +1,5 @@
 <template>
-  <div class="reference-record-actions" role="group" aria-label="参考反应操作">
+  <div class="reference-record-actions" role="group" :aria-label="$tr('参考反应操作')">
     <v-btn
       v-if="allowCanvasReuse"
       variant="text"
@@ -8,29 +8,29 @@
       :disabled="disabled || !exportable"
       data-cy="reference-load-reaction"
       @click="$emit('load-reaction', record)"
-    >载入画板</v-btn>
-    <v-tooltip text="复制原始反应 SMILES" location="top">
+    >{{ $tr('载入画板') }}</v-btn>
+    <v-tooltip :text="$tr('复制原始反应 SMILES')" location="top">
       <template #activator="{ props: activator }">
         <v-btn
           v-bind="activator"
           icon="mdi-content-copy"
           variant="text"
           size="small"
-          aria-label="复制原始反应 SMILES"
+          :aria-label="$tr('复制原始反应 SMILES')"
           :disabled="disabled"
           data-cy="reference-copy"
           @click="$emit('operate', record, 'copy')"
         />
       </template>
     </v-tooltip>
-    <v-tooltip :text="exportable ? '导出完整反应 RXN' : '该记录不能完整导出为 RXN'" location="top">
+    <v-tooltip :text="exportable ? $tr('导出完整反应 RXN') : $tr('该记录不能完整导出为 RXN')" location="top">
       <template #activator="{ props: activator }">
         <v-btn
           v-bind="activator"
           icon="mdi-download"
           variant="text"
           size="small"
-          aria-label="导出完整反应 RXN"
+          :aria-label="$tr('导出完整反应 RXN')"
           :disabled="disabled || !exportable"
           :loading="exporting"
           data-cy="reference-export"

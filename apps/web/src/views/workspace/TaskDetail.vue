@@ -1,5 +1,5 @@
 <template>
-  <section class="task-detail-workspace" aria-label="路线任务详情" :aria-busy="loading">
+  <section class="task-detail-workspace" :aria-label="$tr('路线任务详情')" :aria-busy="loading">
     <header class="task-detail-heading">
       <div class="task-title">
         <v-btn
@@ -7,10 +7,10 @@
           icon="mdi-arrow-left"
           variant="text"
           size="small"
-          title="返回任务列表"
-          aria-label="返回任务列表"
+          :title="$tr('返回任务列表')"
+          :aria-label="$tr('返回任务列表')"
         />
-        <h1>{{ job?.description || "任务详情" }}</h1>
+        <h1>{{ job?.description || $tr('任务详情') }}</h1>
         <span
           v-if="job"
           class="state-badge"
@@ -25,7 +25,7 @@
           variant="outlined"
           :loading="mutating"
           @click="changeTask('resume')"
-          >继续任务</v-btn
+          >{{ $tr('继续任务') }}</v-btn
         >
         <v-btn
           v-else-if="active"
@@ -33,21 +33,21 @@
           variant="text"
           :disabled="mutating"
           @click="changeTask('cancel')"
-          >取消任务</v-btn
+          >{{ $tr('取消任务') }}</v-btn
         >
         <v-btn
           icon="mdi-information-outline"
           variant="text"
-          title="任务参数"
-          aria-label="任务参数"
+          :title="$tr('任务参数')"
+          :aria-label="$tr('任务参数')"
           :disabled="!job"
           @click="infoOpen = true"
         />
         <v-btn
           icon="mdi-refresh"
           variant="text"
-          title="刷新详情"
-          aria-label="刷新详情"
+          :title="$tr('刷新详情')"
+          :aria-label="$tr('刷新详情')"
           :loading="loading"
           :disabled="loading"
           @click="refresh(true)"
@@ -59,7 +59,7 @@
       class="task-detail-message tool-error"
       role="alert"
     >
-      {{ error || copyError || actionError }}
+      {{ $tr(error || copyError || actionError) }}
     </div>
     <TaskSearchProgress
       v-if="job && (!candidates.length || active)"
@@ -83,12 +83,12 @@
       <h2>
         {{
           loading
-            ? "加载任务"
+            ? $tr('加载任务')
             : active
               ? taskStateLabel(job.status)
               : error
-                ? "任务详情暂不可用"
-                : "暂无合格路线"
+                ? $tr('任务详情暂不可用')
+                : $tr('暂无合格路线')
         }}
       </h2>
       <span v-if="job" class="workspace-muted">{{
@@ -102,7 +102,7 @@
         :disabled="mutating || rerunning"
         :loading="rerunning"
         @click="rerun"
-        >重新搜索</v-btn
+        >{{ $tr('重新搜索') }}</v-btn
       >
     </div>
     <TaskInfoDialog
@@ -120,6 +120,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { API } from "@/common/api";
+import { uiText } from "@/i18n";
 import { errorMessage } from "@/common/workspace-errors";
 import {
   taskStateLabel,
@@ -259,7 +260,7 @@ async function changeTask(action) {
   if (
     !id ||
     mutating.value ||
-    (action === "cancel" && !window.confirm("取消当前任务？"))
+    (action === "cancel" && !window.confirm(uiText("取消当前任务？")))
   )
     return;
   mutating.value = true;

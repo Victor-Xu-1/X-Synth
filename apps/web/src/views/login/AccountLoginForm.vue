@@ -1,8 +1,8 @@
 <template>
   <main class="auth-page">
     <section class="auth-form" aria-labelledby="account-heading">
-      <router-link class="auth-brand d-block" to="/">X-Synth</router-link>
-      <h1 id="account-heading">{{ registering ? "创建账号" : title }}</h1>
+      <AuthHeader />
+      <h1 id="account-heading">{{ registering ? $tr('创建账号') : $tr(title) }}</h1>
       <template v-if="sso">
         <v-btn
           v-if="ssoAvailable"
@@ -14,9 +14,9 @@
           :disabled="busy"
           data-cy="keycloakLogin"
           @click="keycloakLogin"
-          >单点登录</v-btn
+          >{{ $tr('单点登录') }}</v-btn
         >
-        <p v-else class="workspace-muted mb-4">当前工作区未启用单点登录。</p>
+        <p v-else class="workspace-muted mb-4">{{ $tr('当前工作区未启用单点登录。') }}</p>
         <v-divider class="my-5" />
       </template>
       <v-form
@@ -26,16 +26,18 @@
       >
         <v-text-field
           v-model="username"
-          label="用户名"
+          :label="$tr('用户名')"
           variant="outlined"
           autocomplete="username"
           :rules="usernameRules"
           data-cy="username"
           autofocus
-        />
+        >
+          <template #message="{ message }">{{ $tr(message) }}</template>
+        </v-text-field>
         <v-text-field
           v-model="password"
-          label="密码"
+          :label="$tr('密码')"
           variant="outlined"
           :type="showPassword ? 'text' : 'password'"
           :autocomplete="registering ? 'new-password' : 'current-password'"
@@ -47,23 +49,26 @@
               :icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
               size="small"
               variant="text"
-              :aria-label="showPassword ? '隐藏密码' : '显示密码'"
-              :title="showPassword ? '隐藏密码' : '显示密码'"
+              :aria-label="showPassword ? $tr('隐藏密码') : $tr('显示密码')"
+              :title="showPassword ? $tr('隐藏密码') : $tr('显示密码')"
               :disabled="busy || ssoLoading"
               @click="showPassword = !showPassword"
             />
           </template>
+          <template #message="{ message }">{{ $tr(message) }}</template>
         </v-text-field>
         <v-text-field
           v-if="registering"
           v-model="email"
-          :label="emailRequired ? '邮箱' : '邮箱（可选）'"
+          :label="emailRequired ? $tr('邮箱') : $tr('邮箱（可选）')"
           variant="outlined"
           type="email"
           autocomplete="email"
           :rules="emailRules"
           data-cy="email"
-        />
+        >
+          <template #message="{ message }">{{ $tr(message) }}</template>
+        </v-text-field>
         <v-alert
           v-if="errorMessage"
           type="error"
@@ -72,10 +77,10 @@
           class="mb-4"
           role="alert"
           data-cy="auth-error"
-          >{{ errorMessage }}</v-alert
+          >{{ $tr(errorMessage) }}</v-alert
         >
         <p v-if="notice" class="workspace-muted mb-4" role="status">
-          {{ notice }}
+          {{ $tr(notice) }}
         </p>
         <v-btn
           block
@@ -86,7 +91,7 @@
           :disabled="ssoLoading"
           :data-cy="registering ? 'signup-submit' : 'login'"
         >
-          {{ registering ? "创建账号并登录" : "登录" }}
+          {{ registering ? $tr('创建账号并登录') : $tr('登录') }}
         </v-btn>
       </v-form>
       <div class="auth-navigation">
@@ -96,16 +101,16 @@
           :disabled="busy || ssoLoading"
           data-cy="signup"
           @click="toggleRegistration"
-          >{{ registering ? "返回登录" : "创建账号" }}</v-btn
+          >{{ registering ? $tr('返回登录') : $tr('创建账号') }}</v-btn
         >
-        <v-btn v-if="admin" to="/login" variant="text">普通账号登录</v-btn>
+        <v-btn v-if="admin" to="/login" variant="text">{{ $tr('普通账号登录') }}</v-btn>
         <v-btn
           to="/"
           variant="text"
           prepend-icon="mdi-arrow-left"
           :disabled="busy || ssoLoading"
         >
-          {{ workspace.local ? "进入本机工作区" : "返回工作区" }}
+          {{ workspace.local ? $tr('进入本机工作区') : $tr('返回工作区') }}
         </v-btn>
       </div>
     </section>
@@ -119,6 +124,7 @@ import { API } from "@/common/api";
 import { useConfigStore } from "@/store/config";
 import { useWorkspaceStore } from "@/store/workspace";
 import { safeAccountRedirect } from "./auth-navigation";
+import AuthHeader from "./AuthHeader.vue";
 
 const props = defineProps({
   title: { type: String, default: "登录" },

@@ -4,7 +4,7 @@
       v-show="score === null"
       :inert="score !== null || undefined"
       class="calculator-input-layout"
-      aria-label="计算输入"
+      :aria-label="$tr('计算输入')"
       parameter-label="计算参数"
       @submit="calculate"
     >
@@ -13,15 +13,13 @@
           class="calculator-parameters"
           aria-labelledby="calculator-parameters-heading"
         >
-          <h2 id="calculator-parameters-heading" class="tool-section-title">
-            计算参数
-          </h2>
+          <h2 id="calculator-parameters-heading" class="tool-section-title">{{ $tr('计算参数') }}</h2>
           <dl class="calculator-model">
-            <dt>模型</dt>
-            <dd>{{ reactionMode ? "反应可行性模型（FF）" : "SCScore" }}</dd>
+            <dt>{{ $tr('模型') }}</dt>
+            <dd>{{ reactionMode ? $tr('反应可行性模型（FF）') : "SCScore" }}</dd>
           </dl>
           <p v-if="displayError" class="tool-error" role="alert">
-            {{ displayError }}
+            {{ $tr(displayError) }}
           </p>
           <v-btn
             color="primary"
@@ -31,7 +29,7 @@
             :loading="loading"
             :disabled="!submissionReady"
             data-cy="calculator-submit"
-            >计算</v-btn
+            >{{ $tr('计算') }}</v-btn
           >
         </div>
       </template>
@@ -42,7 +40,7 @@
         tabindex="-1"
       >
         <h2 id="calculator-structure-heading" class="tool-section-title">
-          {{ reactionMode ? "反应结构" : "分子结构" }}
+          {{ reactionMode ? $tr('反应结构') : $tr('分子结构') }}
         </h2>
         <ReactionInput
           v-if="reactionMode"

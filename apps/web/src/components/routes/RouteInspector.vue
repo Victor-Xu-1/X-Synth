@@ -1,20 +1,20 @@
 <template>
-  <aside class="route-inspector" aria-label="结构与反应详情">
+  <aside class="route-inspector" :aria-label="$tr('结构与反应详情')">
     <header>
       <strong>{{
         node
           ? node.type === "molecule"
             ? target
-              ? "目标化合物"
-              : "中间体或原料"
-            : "反应步骤"
-          : "结构与反应详情"
+              ? $tr('目标化合物')
+              : $tr('中间体或原料')
+            : $tr('反应步骤')
+          : $tr('结构与反应详情')
       }}</strong
       ><v-btn
         icon="mdi-close"
         size="x-small"
         variant="text"
-        aria-label="关闭详情"
+        :aria-label="$tr('关闭详情')"
         :disabled="busy"
         @click="$emit('close')"
       />
@@ -32,7 +32,7 @@
       />
       <label v-if="editable || node.label"
         ><span class="field-label">{{
-          node.type === "molecule" ? "化合物名称" : "反应名称"
+          node.type === "molecule" ? $tr('化合物名称') : $tr('反应名称')
         }}</span
         ><input
           v-if="editable"
@@ -40,7 +40,7 @@
           v-model="label"
           maxlength="120"
           :disabled="busy"
-        /><span v-else class="inspector-readonly">{{ node.label }}</span>
+        /><span v-else class="inspector-readonly">{{ generatedStepLabels && node.type === 'reaction' ? generatedReactionUiLabel(node.label) : node.label }}</span>
       </label>
       <StructureInput
         ref="structureInput"
@@ -55,7 +55,7 @@
         <code class="workspace-code">{{ node.smiles }}</code>
       </details>
       <label v-if="editable || node.note"
-        ><span class="field-label">备注</span
+        ><span class="field-label">{{ $tr('备注') }}</span
         ><textarea
           v-if="editable"
           class="workspace-input"
@@ -65,8 +65,7 @@
           :disabled="busy"
         /><span v-else class="inspector-readonly">{{ node.note }}</span>
       </label>
-      <div v-if="Number.isFinite(score)" class="workspace-muted">
-        模型分数 {{ score.toFixed(3) }}
+      <div v-if="Number.isFinite(score)" class="workspace-muted">{{ $tr('模型分数 {value}', { value: score.toFixed(3) }) }}
       </div>
       <RouteNodeContext
         :node="node"
@@ -75,7 +74,7 @@
         :snapshot="snapshot"
         @navigate="$emit('navigate')"
       />
-      <div v-if="message" class="tool-error" role="alert">{{ message }}</div>
+      <div v-if="message" class="tool-error" role="alert">{{ $tr(message) }}</div>
       <v-btn
         v-if="editable"
         variant="flat"
@@ -83,7 +82,7 @@
         :loading="busy"
         :disabled="busy || structureInput?.pending"
         @click="apply"
-        >应用修改</v-btn
+        >{{ $tr('应用修改') }}</v-btn
       >
       <v-btn
         v-if="editable && !target"
@@ -93,7 +92,7 @@
         :disabled="busy"
         @click="$emit('remove')"
         >{{
-          node.type === "molecule" ? "删除中间体或原料" : "删除反应步骤"
+          node.type === "molecule" ? $tr('删除中间体或原料') : $tr('删除反应步骤')
         }}</v-btn
       >
     </div>
@@ -106,6 +105,7 @@ import StructureInput from "@/components/workspace/StructureInput.vue";
 import RouteNodeContext from "./RouteNodeContext.vue";
 import { API } from "@/common/api";
 import { errorMessage } from "@/common/workspace-errors";
+import { generatedReactionUiLabel } from "./route-ui-text";
 const props = defineProps({
   node: Object,
   editable: Boolean,
@@ -115,6 +115,7 @@ const props = defineProps({
   step: Object,
   snapshot: String,
   contextId: String,
+  generatedStepLabels: Boolean,
 });
 const emit = defineEmits(["update", "pending", "close", "remove", "navigate"]);
 const structureInput = ref(null);

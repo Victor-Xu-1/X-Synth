@@ -5,6 +5,7 @@ import { API } from "@/common/api";
 import { oneStepCandidate } from "@/common/workbench-model";
 import { originalRouteIndex, stepDetails } from "@/common/route-details";
 import { routeLabel } from "@/common/route-reading";
+import { initializeLocale, setLocale } from "@/i18n";
 import RouteReader from "./RouteReader.vue";
 import { randomUUID } from "node:crypto";
 import { deserialize, serialize } from "node:v8";
@@ -349,6 +350,35 @@ test("multi-route reading restores its selection action and retained picks witho
   expect(document.activeElement.textContent).toBe("查看选中路线");
   expect(frame.scrollTop).toBe(73);
   expect(wrapper.findAll(".reader-overview-entry.picked")).toHaveLength(2);
+});
+
+test.each(["open", "open-graph"])("language changes retain route IDs, picks, geometry and exact %s return focus", async (action) => {
+  initializeLocale(null);
+  const frame = scrollFrame();
+  const wrapper = await setup([candidate("native-a"), candidate("native-b", "CCN")], {}, false, frame);
+  wrapper.vm.pick("native-b", true);
+  await flushPromises();
+  frame.scrollTop = 93;
+  const origin = wrapper.findAll(`[data-reader-action="${action}"]`)[1];
+  origin.element.focus();
+  await origin.trigger("click");
+  await flushPromises();
+  const selected = wrapper.get('.reader-route-tabs [aria-selected="true"]');
+  const graph = wrapper.getComponent({ name: "RouteGraph" }).props("graph");
+  expect(selected.text()).toBe("R002");
+  expect(document.activeElement).toBe(selected.element);
+  expect(wrapper.text()).toContain("Total steps 1");
+  setLocale("zh-CN", { persist: false });
+  await flushPromises();
+  expect(wrapper.getComponent({ name: "RouteGraph" }).props("graph")).toBe(graph);
+  expect(wrapper.get('.reader-route-tabs [aria-selected="true"]').element).toBe(selected.element);
+  expect(wrapper.text()).toContain("总步数 1");
+  await wrapper.findAll("button").find((button) => button.text() === "全部路线").trigger("click");
+  await flushPromises();
+  expect(document.activeElement).toBe(wrapper.findAll(`[data-reader-action="${action}"]`)[1].element);
+  expect(frame.scrollTop).toBe(93);
+  expect(wrapper.findAll(".reader-overview-entry.picked")).toHaveLength(1);
+  expect(layout).toHaveBeenCalledTimes(1);
 });
 
 test.each(["route", "selection"])("parent-bound %s entry focuses the requested route after the model update", async (entry) => {

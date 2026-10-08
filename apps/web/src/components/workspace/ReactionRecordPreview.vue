@@ -2,7 +2,7 @@
   <div class="reaction-record-preview">
     <section v-for="role in roles" :key="role.key">
       <h3>
-        {{ role.label }} <span>{{ value[role.key].length }}</span>
+        {{ $tr(role.label) }} <span>{{ value[role.key].length }}</span>
       </h3>
       <div
         v-for="record in value[role.key]"

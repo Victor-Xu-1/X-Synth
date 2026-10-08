@@ -2,6 +2,10 @@ import { defineComponent, reactive, ref, watch } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import Admin from "./Admin.vue";
 import { API } from "@/common/api";
+import { initializeLocale, setLocale } from "@/i18n";
+import { zhCN } from "date-fns/locale";
+
+const TimeagoPlugin = require("vue-timeago3").default;
 
 let mockWorkspace;
 const mockConfirm = jest.fn(), mockReplace = jest.fn();
@@ -23,12 +27,12 @@ const Dialog = defineComponent({
   template: '<div v-if="modelValue" class="protocol-dialog"><input aria-label="邮箱草稿" v-model="draft" /><button class="save" @click="$emit(\'save\', { username, email: draft })">保存</button></div>',
 });
 const wrappers = [];
-async function setup({ realDialog = false } = {}) {
-  const wrapper = mount(Admin, { global: { stubs: {
+async function setup({ realDialog = false, realTimeago = false } = {}) {
+  const wrapper = mount(Admin, { global: { plugins: realTimeago ? [[TimeagoPlugin, { locale: zhCN }]] : [], stubs: {
     ModuleWorkbench: { template: '<section><slot name="actions" /><slot /></section>' },
     AccountUserDialog: realDialog ? false : Dialog, RouterLink: true, VIcon: true, VProgressLinear: true,
     VBtn: { props: ["disabled", "loading"], template: '<button :disabled="disabled || loading"><slot /></button>' },
-    VSelect: true, VCheckbox: true, VMenu: true, VList: true, VListItem: true, Timeago: true,
+    VSelect: true, VCheckbox: true, VMenu: true, VList: true, VListItem: true, Timeago: !realTimeago,
     VDataTable: { props: ["items"], template: '<div class="private-users"><span v-for="item in items" :key="item.username">{{ item.username }}</span></div>' },
     VDialog: { props: ["modelValue"], template: '<div v-if="modelValue"><slot /></div>' },
     VForm: defineComponent({
@@ -78,6 +82,57 @@ test("the real account dialog preserves drafts through identical native-session 
   mockWorkspace.loading = true; mockWorkspace.session = { ...mockWorkspace.session }; await flushPromises();
   expect(wrapper.get('[aria-label="邮箱"]').element).toBe(field);
   expect(wrapper.get('[aria-label="邮箱"]').element.value).toBe("unsaved@example.invalid");
+});
+
+test("English profile and real dialog labels switch without losing its draft, identity or issuing a mutation", async () => {
+  initializeLocale(null);
+  const wrapper = await setup({ realDialog: true });
+  wrapper.vm.openEditor("email", wrapper.vm.currentUser); await flushPromises();
+  const field = wrapper.get('[aria-label="Email"]').element;
+  await wrapper.get('[aria-label="Email"]').setValue("unsaved@example.invalid");
+  const reads = API.get.mock.calls.length;
+  setLocale("zh-CN", { persist: false }); await flushPromises();
+  expect(wrapper.get('[aria-label="邮箱"]').element).toBe(field);
+  expect(field.value).toBe("unsaved@example.invalid");
+  expect(wrapper.vm.currentUser.username).toBe("researcher");
+  expect(API.get).toHaveBeenCalledTimes(reads);
+  expect(API.post).not.toHaveBeenCalled(); expect(API.delete).not.toHaveBeenCalled();
+});
+
+test("the actual relative-date widget overrides its Chinese plugin default and updates in place on language changes", async () => {
+  initializeLocale(null);
+  const lastLogin = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  API.get.mockImplementation((url) => Promise.resolve(url.endsWith("get-current-user")
+    ? { ...profile(), last_login: lastLogin } : false));
+  const wrapper = await setup({ realTimeago: true });
+  const widget = wrapper.get("timeago").element;
+  expect(widget.textContent).toContain("minutes");
+  const reads = API.get.mock.calls.length;
+  setLocale("zh-CN", { persist: false }); await flushPromises();
+  expect(wrapper.get("timeago").element === widget).toBe(true);
+  expect(widget.textContent).toContain("分钟");
+  expect(wrapper.vm.currentUser.last_login).toBe(lastLogin);
+  expect(API.get).toHaveBeenCalledTimes(reads);
+  expect(API.post).not.toHaveBeenCalled(); expect(API.delete).not.toHaveBeenCalled();
+});
+
+test("saved account status and completed-action counts remain reactive without repeating a mutation", async () => {
+  initializeLocale(null);
+  mockWorkspace.session = session({ administrator: true });
+  const wrapper = await setup();
+  wrapper.vm.openEditor("email", wrapper.vm.currentUser);
+  await wrapper.vm.submitEditor({ username: "researcher", email: "saved@example.invalid" });
+  await flushPromises();
+  expect(wrapper.vm.notice).toBe("Account information saved.");
+  setLocale("zh-CN", { persist: false }); await flushPromises();
+  expect(wrapper.vm.notice).toBe("账号信息已保存。");
+  expect(API.post).toHaveBeenCalledTimes(1);
+  await wrapper.vm.applyAction(["colleague"], "disable"); await flushPromises();
+  expect(wrapper.vm.notice).toBe("已完成 1 / 1 项操作。");
+  const mutations = API.post.mock.calls.length;
+  setLocale("en", { persist: false }); await flushPromises();
+  expect(wrapper.vm.notice).toBe("Completed 1 / 1 operations.");
+  expect(API.post).toHaveBeenCalledTimes(mutations);
 });
 
 test("background loading and identical core-session replacement retain profile, open form and draft", async () => {

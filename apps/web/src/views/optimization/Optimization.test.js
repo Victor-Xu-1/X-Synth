@@ -5,6 +5,7 @@ import { useRoute, useRouter } from "vue-router";
 import { API } from "@/common/api";
 import Optimization from "./Optimization.vue";
 import ParameterRail from "./ParameterRail.vue";
+import { DEFAULT_LOCALE, setLocale } from "@/i18n";
 jest.mock("vue-router", () => ({ useRoute: jest.fn(), useRouter: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn(), toErrorObject: (error) => ({ string_error: error.message }) } }));
 jest.mock("file-saver", () => ({ saveAs: jest.fn() }));
@@ -49,6 +50,24 @@ test("input-only view has no empty recommendation panel or automatic calculation
   expect(wrapper.find(".opt-recommendations").exists()).toBe(false);
   expect(wrapper.find('[role="tablist"]').exists()).toBe(false);
   expect(API.post).not.toHaveBeenCalled();
+});
+
+test("factor-level validation follows the locale without changing user column names or draft values", async () => {
+  const name = "研究者列 [Na+].CC(=O)[O-]";
+  const factors = [{ name, kind: "numerical", levels: "0\n0" }];
+  const original = JSON.stringify(factors);
+  const wrapper = mount(ParameterRail, { props: { columns: [{ name, unique_count: 2, selectable: true }],
+    factors, target: { name: "响应原文", kind: "response", direction: "minimize", unit: "mM" }, count: 0 },
+    global: { stubs: { VBtn: true } } });
+  try {
+    const input = wrapper.get("textarea").element;
+    setLocale(DEFAULT_LOCALE, { persist: false }); await flushPromises();
+    expect(wrapper.text()).toContain(`Levels for ${name} contain duplicates.`);
+    expect(wrapper.get("textarea").element).toBe(input); expect(input.value).toBe("0\n0");
+    setLocale("zh-CN", { persist: false }); await flushPromises();
+    expect(wrapper.text()).toContain(`${name} 的水平重复。`); expect(JSON.stringify(factors)).toBe(original);
+    expect(API.post).not.toHaveBeenCalled();
+  } finally { wrapper.unmount(); }
 });
 
 test("successful actual-input submission opens the immutable result route", async () => {

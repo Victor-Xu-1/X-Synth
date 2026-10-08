@@ -1,25 +1,25 @@
 <template>
-  <section class="task-search-summary" :class="{ compact }" aria-label="目标与搜索进度">
+  <section class="task-search-summary" :class="{ compact }" :aria-label="$tr('目标与搜索进度')">
     <figure v-if="!compact && job.target_smiles" class="search-target">
       <SmilesImage :smiles="job.target_smiles" width="100%" height="100%" :show-error-image="false" />
-      <figcaption>目标化合物</figcaption>
+      <figcaption>{{ $tr('目标化合物') }}</figcaption>
     </figure>
     <div class="search-status">
       <header>
         <h2>{{ taskStateLabel(job.status) }}</h2>
-        <span v-if="job.progress?.pass_number">第 {{ job.progress.pass_number }} 轮搜索</span>
+        <span v-if="job.progress?.pass_number">{{ $tr('第 {value} 轮搜索', { value: job.progress.pass_number }) }}</span>
       </header>
       <v-progress-linear v-if="computing" indeterminate height="2" />
-      <p v-if="job.status === 'waiting_for_engine'" class="search-wait">搜索断点已保留</p>
-      <p v-else-if="job.status === 'failed_unclosed'" class="search-wait">未获得符合原料闭合与反应核验要求的完整路线</p>
+      <p v-if="job.status === 'waiting_for_engine'" class="search-wait">{{ $tr('搜索断点已保留') }}</p>
+      <p v-else-if="job.status === 'failed_unclosed'" class="search-wait">{{ $tr('未获得符合原料闭合与反应核验要求的完整路线') }}</p>
       <details v-if="rows.length" class="search-counters">
-        <summary>搜索进度</summary>
+        <summary>{{ $tr('搜索进度') }}</summary>
         <dl>
           <div v-for="row in rows" :key="row.key">
-            <dt>{{ row.label }}</dt>
-            <dd>{{ row.iterations ?? '—' }} 次扩展</dd>
-            <dd>{{ row.chemicals ?? '—' }} 个化合物</dd>
-            <dd>{{ row.elapsed }}</dd>
+            <dt>{{ ['mcts', 'retro_star'].includes(row.key) ? $tr(row.label) : row.label }}</dt>
+            <dd>{{ $tr('{value} 次扩展', { value: row.iterations ?? '—' }) }}</dd>
+            <dd>{{ $tr('{value} 个化合物', { value: row.chemicals ?? '—' }) }}</dd>
+            <dd>{{ progressElapsedText(job.progress.native_progress[row.key].elapsed_seconds) }}</dd>
           </div>
         </dl>
       </details>
@@ -31,6 +31,7 @@ import { computed } from "vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import { taskStateLabel } from "@/common/task-state";
 import { searchProgressRows } from "@/common/task-progress";
+import { progressElapsedText } from "./workspace-ui-text";
 const props = defineProps({ job: { type: Object, required: true }, compact: Boolean });
 const rows = computed(() => searchProgressRows(props.job.progress));
 const computing = computed(() => ["preparing", "searching", "evaluating"].includes(props.job.status));

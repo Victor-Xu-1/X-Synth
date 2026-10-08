@@ -1,5 +1,5 @@
 <template>
-  <router-view />
+  <v-locale-provider :locale="widgetLocale"><router-view /></v-locale-provider>
 </template>
 
 <script setup>
@@ -7,8 +7,12 @@ import { onBeforeMount, onMounted, ref } from "vue";
 import { useConfigStore } from "@/store/config";
 import { configure, addGtag } from "vue-gtag";
 import { useTheme } from "@/composables/useTheme";
+import { useRoute } from "vue-router";
+import { useUiLanguage, useUiPageTitle } from "@/i18n";
 
 const { init: initTheme } = useTheme();
+const { widgetLocale } = useUiLanguage();
+useUiPageTitle(useRoute());
 const configStore = useConfigStore();
 const gtagId = ref(null);
 

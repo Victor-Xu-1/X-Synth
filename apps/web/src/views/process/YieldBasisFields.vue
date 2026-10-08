@@ -1,12 +1,12 @@
 <template>
   <section class="yield-section">
-    <label class="checkbox-label"><input v-model="enabled" type="checkbox" :disabled="disabled" />指定摩尔收率依据</label>
+    <label class="checkbox-label"><input v-model="enabled" type="checkbox" :disabled="disabled" />{{ $tr('指定摩尔收率依据') }}</label>
     <div v-if="enabled" class="yield-grid">
-      <label>限量原料<select v-model="basis.limiting_material_id" class="workspace-input" :disabled="disabled" aria-label="限量原料"><option value="">未指定</option><option v-for="(row, index) in reactants" :key="row.id" :value="row.id">{{ row.name || `反应物 ${index + 1}` }}</option></select></label>
-      <label>限量原料质量纯度 / %<input v-model="basis.limiting_purity_mass_percent" class="workspace-input" type="number" min="0" max="100" step="any" :disabled="disabled" placeholder="未录入" /></label>
-      <label>原料计量系数<input v-model="basis.reactant_coefficient" class="workspace-input" type="number" min="0" step="any" :disabled="disabled" placeholder="未录入" /></label>
-      <label>产物计量系数<input v-model="basis.product_coefficient" class="workspace-input" type="number" min="0" step="any" :disabled="disabled" placeholder="未录入" /></label>
-      <p class="workspace-muted">系数与限量关系由用户指定，未独立验证反应配平。</p>
+      <label>{{ $tr('限量原料') }}<select v-model="basis.limiting_material_id" class="workspace-input" :disabled="disabled" :aria-label="$tr('限量原料')"><option value="">{{ $tr('未指定') }}</option><option v-for="(row, index) in reactants" :key="row.id" :value="row.id">{{ row.name || $tr('反应物 {index}', { index: index + 1 }) }}</option></select></label>
+      <label>{{ $tr('限量原料质量纯度 / %') }}<input v-model="basis.limiting_purity_mass_percent" class="workspace-input" type="number" min="0" max="100" step="any" :disabled="disabled" :placeholder="$tr('未录入')" /></label>
+      <label>{{ $tr('原料计量系数') }}<input v-model="basis.reactant_coefficient" class="workspace-input" type="number" min="0" step="any" :disabled="disabled" :placeholder="$tr('未录入')" /></label>
+      <label>{{ $tr('产物计量系数') }}<input v-model="basis.product_coefficient" class="workspace-input" type="number" min="0" step="any" :disabled="disabled" :placeholder="$tr('未录入')" /></label>
+      <p class="workspace-muted">{{ $tr('系数与限量关系由用户指定，未独立验证反应配平。') }}</p>
     </div>
   </section>
 </template>

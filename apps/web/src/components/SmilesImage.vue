@@ -19,14 +19,14 @@
         src="@/assets/wrongSmiles.png"
       ></v-img>
       <v-icon v-else icon="mdi-molecule-off" size="44"></v-icon>
-      <strong>结构加载失败</strong>
-      <span>{{ smiles || "空结构输入" }}</span>
+      <strong>{{ $tr('结构加载失败') }}</strong>
+      <span>{{ smiles || $tr("空结构输入") }}</span>
       <v-btn
         icon="mdi-refresh"
         size="x-small"
         variant="text"
-        aria-label="重试结构加载"
-        title="重试结构加载"
+        :aria-label="$tr('重试结构加载')"
+        :title="$tr('重试结构加载')"
         @click="retryImage"
       ></v-btn>
     </div>
@@ -50,8 +50,8 @@
             src="@/assets/wrongSmiles.png"
           ></v-img>
           <v-icon v-else icon="mdi-molecule-off" size="44"></v-icon>
-          <strong>结构加载失败</strong>
-          <span>{{ smiles || "空结构输入" }}</span>
+          <strong>{{ $tr('结构加载失败') }}</strong>
+          <span>{{ smiles || $tr("空结构输入") }}</span>
         </div>
       </template>
     </component>
@@ -170,7 +170,7 @@ export default defineComponent({
       if (this.allowCopy) {
         return {
           data: this.smiles,
-          title: "复制 SMILES",
+          title: this.$tr("复制 SMILES"),
           noHighlight: true,
         };
       } else {

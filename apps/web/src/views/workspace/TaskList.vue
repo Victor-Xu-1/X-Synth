@@ -1,15 +1,15 @@
 <template>
   <section class="standard-page task-history" :aria-busy="loading">
     <header class="page-heading history-heading">
-      <h1>任务记录</h1>
+      <h1>{{ $tr('任务记录') }}</h1>
       <div class="page-actions">
-        <v-tooltip text="刷新任务">
+        <v-tooltip :text="$tr('刷新任务')">
           <template #activator="{ props }">
             <v-btn
               v-bind="props"
               icon="mdi-refresh"
               variant="text"
-              aria-label="刷新任务"
+              :aria-label="$tr('刷新任务')"
               :loading="loading"
               :disabled="loading"
               @click="refresh"
@@ -21,7 +21,7 @@
           variant="flat"
           prepend-icon="mdi-plus"
           to="/"
-          >新建任务</v-btn
+          >{{ $tr('新建任务') }}</v-btn
         >
       </div>
     </header>
@@ -54,12 +54,12 @@
           </h2>
           <p role="status">{{ countLabel }}</p>
         </header>
-        <div class="task-list-filters" role="search" aria-label="筛选任务">
+        <div class="task-list-filters" role="search" :aria-label="$tr('筛选任务')">
           <v-text-field
             v-model="query"
             prepend-inner-icon="mdi-magnify"
-            label="名称、SMILES 或 ID"
-            aria-label="搜索任务"
+            :label="$tr('名称、SMILES 或 ID')"
+            :aria-label="$tr('搜索任务')"
             density="compact"
             variant="outlined"
             hide-details
@@ -68,20 +68,21 @@
           <v-select
             v-model="status"
             :items="historyStatusOptions"
+            :item-title="item => $tr(item.title)"
             density="compact"
             variant="outlined"
-            label="任务状态"
-            aria-label="任务状态"
+            :label="$tr('任务状态')"
+            :aria-label="$tr('任务状态')"
             hide-details
           />
           <div class="history-view-tools">
-            <v-tooltip v-if="filtering" text="清除筛选">
+            <v-tooltip v-if="filtering" :text="$tr('清除筛选')">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"
                   icon="mdi-filter-remove-outline"
                   variant="text"
-                  aria-label="清除筛选"
+                  :aria-label="$tr('清除筛选')"
                   @click="clearFilters"
                 />
               </template>
@@ -93,26 +94,26 @@
               density="compact"
               variant="outlined"
               class="history-view-toggle"
-              aria-label="任务历史视图"
+              :aria-label="$tr('任务历史视图')"
             >
-              <v-tooltip text="结构卡片">
+              <v-tooltip :text="$tr('结构卡片')">
                 <template #activator="{ props }">
                   <v-btn
                     v-bind="props"
                     value="cards"
                     icon="mdi-view-grid-outline"
-                    aria-label="结构卡片"
+                    :aria-label="$tr('结构卡片')"
                     :aria-pressed="view === 'cards'"
                   />
                 </template>
               </v-tooltip>
-              <v-tooltip text="紧凑列表">
+              <v-tooltip :text="$tr('紧凑列表')">
                 <template #activator="{ props }">
                   <v-btn
                     v-bind="props"
                     value="list"
                     icon="mdi-format-list-bulleted"
-                    aria-label="紧凑列表"
+                    :aria-label="$tr('紧凑列表')"
                     :aria-pressed="view === 'list'"
                   />
                 </template>
@@ -121,18 +122,18 @@
           </div>
         </div>
         <div v-if="error" class="tool-error history-error" role="alert">
-          <span>{{ error }}</span
+          <span>{{ $tr(error) }}</span
           ><v-btn
             variant="text"
             size="small"
             prepend-icon="mdi-refresh"
             :disabled="loading"
             @click="refresh"
-            >重试</v-btn
+            >{{ $tr('重试') }}</v-btn
           >
         </div>
         <div v-if="actionError" class="tool-error" role="alert">
-          {{ actionError }}
+          {{ $tr(actionError) }}
         </div>
         <TaskBatchActions
           class="history-selection"
@@ -157,16 +158,14 @@
             v-show="loading"
             indeterminate
             height="2"
-            aria-label="读取任务历史"
+            :aria-label="$tr('读取任务历史')"
           />
         </div>
         <div
           v-if="loading && !rows.length"
           class="workspace-loading"
           role="status"
-        >
-          正在读取任务历史
-        </div>
+        >{{ $tr('正在读取任务历史') }}</div>
         <div
           v-else-if="loaded && !rows.length && !error"
           class="workspace-empty"
@@ -185,10 +184,10 @@
           <h2>
             {{
               filtering
-                ? "没有匹配的任务"
+                ? $tr('没有匹配的任务')
                 : archived
-                  ? "回收箱为空"
-                  : "暂无任务记录"
+                  ? $tr('回收箱为空')
+                  : $tr('暂无任务记录')
             }}
           </h2>
           <v-btn
@@ -196,14 +195,14 @@
             variant="text"
             prepend-icon="mdi-filter-remove-outline"
             @click="clearFilters"
-            >清除筛选</v-btn
+            >{{ $tr('清除筛选') }}</v-btn
           >
           <v-btn
             v-else-if="!archived"
             variant="outlined"
             prepend-icon="mdi-plus"
             to="/"
-            >新建任务</v-btn
+            >{{ $tr('新建任务') }}</v-btn
           >
         </div>
         <div v-if="rows.length && view === 'cards'" class="task-card-grid">
@@ -235,21 +234,21 @@
           v-else-if="rows.length"
           class="task-table-scroll"
           role="region"
-          aria-label="任务记录列表"
+          :aria-label="$tr('任务记录列表')"
           tabindex="0"
         >
           <table class="data-table task-table">
             <thead>
               <tr>
                 <th class="selection-cell" scope="col">
-                  <span class="history-selection-label">选择任务</span>
+                  <span class="history-selection-label">{{ $tr('选择任务') }}</span>
                 </th>
-                <th scope="col">目标与名称</th>
-                <th scope="col">状态</th>
-                <th scope="col">路线</th>
-                <th scope="col">分组</th>
-                <th scope="col">更新时间</th>
-                <th scope="col">操作</th>
+                <th scope="col">{{ $tr('目标与名称') }}</th>
+                <th scope="col">{{ $tr('状态') }}</th>
+                <th scope="col">{{ $tr('路线') }}</th>
+                <th scope="col">{{ $tr('分组') }}</th>
+                <th scope="col">{{ $tr('更新时间') }}</th>
+                <th scope="col">{{ $tr('操作') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -268,7 +267,7 @@
                     :model-value="selectedIds.has(task.result_id)"
                     :disabled="controlsBusy"
                     density="compact"
-                    :aria-label="`选择任务：${taskTitle(task)}`"
+                    :aria-label="$tr('选择任务：{name}', { name: taskTitle(task) })"
                     @update:model-value="toggleTask(task, Boolean($event))"
                   />
                 </td>
@@ -277,7 +276,7 @@
                     <router-link
                       :to="taskDetailLocation(task, historyContext)"
                       @click.capture="preserveStructureControl"
-                      :aria-label="`打开路线结果：${taskTitle(task)}`"
+                      :aria-label="$tr('打开路线结果：{name}', { name: taskTitle(task) })"
                     >
                       <SmilesImage
                         :smiles="task.target_smiles"
@@ -309,8 +308,8 @@
                   >
                 </td>
                 <td class="task-count-cell">
-                  <span class="task-mobile-label" aria-hidden="true">路线</span>
-                  {{ taskRouteCount(task) ?? "未记录" }}
+                  <span class="task-mobile-label" aria-hidden="true">{{ $tr('路线') }}</span>
+                  {{ taskRouteCount(task) ?? $tr('未记录') }}
                 </td>
                 <td class="task-group-cell" :title="groupLabel(task)">
                   {{ groupLabel(task) }}
@@ -343,31 +342,31 @@
         <nav
           v-if="loaded || page > 0"
           class="history-pagination"
-          aria-label="任务历史分页"
+          :aria-label="$tr('任务历史分页')"
         >
-          <v-tooltip text="上一页"
+          <v-tooltip :text="$tr('上一页')"
             ><template #activator="{ props }">
               <v-btn
                 v-bind="props"
                 icon="mdi-chevron-left"
                 variant="text"
-                aria-label="上一页"
+                :aria-label="$tr('上一页')"
                 :disabled="page === 0 || loading"
                 @click="previousPage"
               /> </template
           ></v-tooltip>
           <span>{{
             loaded
-              ? `第 ${page + 1} / ${pageCount} 页，共 ${total} 项`
-              : `第 ${page + 1} 页`
+              ? $tr('第 {page} / {count} 页，共 {total} 项', { page: page + 1, count: pageCount, total: total })
+              : $tr('第 {page} 页', { page: page + 1 })
           }}</span>
-          <v-tooltip text="下一页"
+          <v-tooltip :text="$tr('下一页')"
             ><template #activator="{ props }">
               <v-btn
                 v-bind="props"
                 icon="mdi-chevron-right"
                 variant="text"
-                aria-label="下一页"
+                :aria-label="$tr('下一页')"
                 :disabled="!more || loading || !loaded"
                 @click="nextPage"
               /> </template
@@ -408,13 +407,13 @@
 
 <script setup>
 import { computed } from "vue";
+import { uiText } from "@/i18n";
 import { useRoute, useRouter } from "vue-router";
 import { useTaskHistory } from "@/composables/useTaskHistory";
 import { useTaskActions } from "@/composables/useTaskActions";
 import { taskStateLabel, taskStateClass } from "@/common/task-state";
 import { canArchiveTask } from "@/common/task-history-selection";
 import {
-  historyCountLabel,
   historyStatusOptions,
   preserveStructureControl,
   taskDetailLocation,
@@ -531,15 +530,10 @@ const previewDetailQuery = computed(() =>
         .query
     : {},
 );
-const countLabel = computed(() =>
-  historyCountLabel({
-    loaded: loaded.value,
-    loading: loading.value,
-    total: total.value,
-    page: page.value,
-    pageCount: pageCount.value,
-  }),
-);
+const countLabel = computed(() => !loaded.value
+  ? uiText(loading.value ? "正在读取任务" : "任务尚未加载")
+  : uiText("共 {total} 个任务，第 {page} / {pageCount} 页",
+    { total: total.value, page: page.value + 1, pageCount: pageCount.value }));
 const selectionArchivable = computed(
   () =>
     selection.value.length > 0 &&
@@ -552,17 +546,17 @@ const groupNames = computed(
 );
 const collectionTitle = computed(() =>
   archived.value
-    ? "回收箱"
+    ? uiText("回收箱")
     : group.value === "all"
-      ? "全部任务"
+      ? uiText("全部任务")
       : group.value === "ungrouped"
-        ? "未分组"
-        : groupNames.value.get(group.value) || "分组已变更",
+        ? uiText("未分组")
+        : groupNames.value.get(group.value) || uiText("分组已变更"),
 );
 function groupLabel(task) {
   return task?.group_id
-    ? groupNames.value.get(task.group_id) || "分组已变更"
-    : "未分组";
+    ? groupNames.value.get(task.group_id) || uiText("分组已变更")
+    : uiText("未分组");
 }
 function isInfoLoading(task) {
   return infoLoading.value && infoTask.value?.result_id === task.result_id;

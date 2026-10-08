@@ -3,7 +3,7 @@
     ref="readerRoot"
     class="route-reader"
     :class="{ compact }"
-    aria-label="合成路线阅读工作台"
+    :aria-label="$tr('合成路线阅读工作台')"
     tabindex="-1"
   >
     <RouteFilters
@@ -16,11 +16,11 @@
         :model-value="allSelected"
         :indeterminate="picked.length > 0 && !allSelected"
         :disabled="!choices.length || busy"
-        aria-label="全选当前路线"
+        :aria-label="$tr('全选当前路线')"
         @update:model-value="selectAll"
       />
-      <span class="reader-selection-count">{{ choices.length }} 条路线</span>
-      <span class="reader-selection-picked">已选 {{ picked.length }} 条</span>
+      <span class="reader-selection-count">{{ $tr('{count} 条路线', { count: choices.length }) }}</span>
+      <span class="reader-selection-picked">{{ $tr('已选 {count} 条', { count: picked.length }) }}</span>
       <v-btn
         class="reader-selection-open"
         prepend-icon="mdi-eye-outline"
@@ -28,7 +28,7 @@
         size="small"
         :disabled="!picked.length || busy"
         @click="readSelected"
-        >查看选中路线</v-btn
+        >{{ $tr('查看选中路线') }}</v-btn
       >
     </div>
     <div
@@ -41,12 +41,12 @@
         size="small"
         variant="text"
         @click="showAll"
-        >全部路线</v-btn
+        >{{ $tr('全部路线') }}</v-btn
       >
       <div
         class="reader-route-tabs"
         role="tablist"
-        aria-label="所选合成路线"
+        :aria-label="$tr('所选合成路线')"
         @keydown="moveRouteTab"
       >
         <button
@@ -67,12 +67,12 @@
     </div>
     <div v-if="candidate && view !== 'overview'" class="reader-route-summary">
       <strong>{{ labelFor(selectedChoice) }}</strong>
-      <span>总步数 {{ candidate.steps.length }}</span>
-      <span>最长线性步数 {{ linearSteps ?? "未记录" }}</span>
+      <span>{{ $tr('总步数 {count}', { count: candidate.steps.length }) }}</span>
+      <span>{{ $tr('最长线性步数 {value}', { value: linearSteps ?? $tr('未记录') }) }}</span>
       <span
         class="state-badge"
         :class="{ success: candidate.closed === true, warning: candidate.closed === false }"
-        >{{ closureLabel(candidate) }}</span
+        >{{ $tr(closureLabel(candidate)) }}</span
       >
       <div class="page-actions">
         <v-menu
@@ -84,20 +84,20 @@
               variant="text"
               :disabled="exporting || busy"
               :loading="exporting"
-              >导出</v-btn
+              >{{ $tr('导出') }}</v-btn
             > </template
           ><v-list density="compact"
             ><v-list-item
-              title="完整路线图 PNG"
+              :title="$tr('完整路线图 PNG')"
               prepend-icon="mdi-image-outline"
               :disabled="view !== 'graph'"
               @click="exportPng" />
             <v-list-item
-              title="路线文档 JSON"
+              :title="$tr('路线文档 JSON')"
               prepend-icon="mdi-file-code-outline"
               @click="exportJson" />
             <v-list-item
-              title="起始原料 CSV"
+              :title="$tr('起始原料 CSV')"
               prepend-icon="mdi-table-arrow-right"
               @click="exportMaterials" /></v-list
         ></v-menu>
@@ -108,7 +108,7 @@
           size="small"
           :disabled="busy"
           @click="$emit('edit', candidate.route_id)"
-          >编辑副本</v-btn
+          >{{ $tr('编辑副本') }}</v-btn
         >
       </div>
     </div>
@@ -118,7 +118,7 @@
       :candidate="candidate"
     />
     <p v-if="exportError" class="reader-error tool-error" role="alert">
-      {{ exportError }}
+      {{ $tr(exportError) }}
     </p>
     <div
       v-if="view === 'overview' && choices.length"
@@ -135,7 +135,7 @@
             <v-checkbox-btn
               :model-value="picked.includes(choice.route.route_id)"
               :disabled="busy"
-              :aria-label="`选择${labelFor(choice)}`"
+              :aria-label="$tr('选择{name}', { name: labelFor(choice) })"
               @update:model-value="(value) => pick(choice.route.route_id, value)"
             />
           </div>
@@ -155,7 +155,7 @@
       <nav
         class="reader-tool-rail"
         role="tablist"
-        aria-label="路线视图"
+        :aria-label="$tr('路线视图')"
         @keydown="moveViewTab"
       >
         <v-btn
@@ -163,7 +163,7 @@
           :id="`${graphId}-view-${tool.value}`"
           :key="tool.value"
           :prepend-icon="tool.icon"
-          :aria-label="tool.label"
+          :aria-label="$tr(tool.label)"
           :aria-selected="view === tool.value"
           :aria-pressed="view === tool.value"
           :aria-controls="`${graphId}-panel`"
@@ -174,7 +174,7 @@
           variant="text"
           @click="view = tool.value"
         >
-          {{ tool.label }}
+          {{ $tr(tool.label) }}
         </v-btn>
       </nav>
       <div
@@ -190,7 +190,7 @@
           class="reader-catalog-status tool-error"
           role="status"
         >
-          {{ catalogError }}
+          {{ $tr(catalogError) }}
         </p>
         <div v-show="view === 'graph'" class="reader-graph">
           <RouteGraph
@@ -202,6 +202,7 @@
             :catalog-prices="catalogPrices"
             :editable="false"
             reading
+            generated-step-labels
             @select="selectNode"
           />
         </div>
@@ -224,15 +225,14 @@
         <RouteMaterials
           v-if="view === 'materials'"
           :graph="sourceGraph"
+          generated-step-labels
           :expected-snapshot="stockSnapshot"
           @select="selectNode"
           @navigate="$emit('navigate')"
         />
         <details class="reader-evidence" :key="candidate.route_id">
           <summary>
-            <v-icon icon="mdi-file-document-outline" size="18" aria-hidden="true" />
-            路线审查与来源
-          </summary>
+            <v-icon icon="mdi-file-document-outline" size="18" aria-hidden="true" />{{ $tr('路线审查与来源') }}</summary>
           <RouteEvidencePanel :candidate="candidate" />
         </details>
       </div>
@@ -242,6 +242,7 @@
         tabindex="-1"
         :key="candidate.route_id"
         :node="node"
+        generated-step-labels
         :graph="sourceGraph"
         :step="stepForNode(candidate, selectedNode)"
         :snapshot="stockSnapshot"
@@ -257,10 +258,10 @@
       <h2>
         {{
           loading
-            ? "正在读取路线"
+            ? $tr('正在读取路线')
             : candidates.length
-              ? "没有符合筛选的路线"
-              : "暂无路线数据"
+              ? $tr('没有符合筛选的路线')
+              : $tr('暂无路线数据')
         }}
       </h2>
     </div>
@@ -420,6 +421,7 @@ function rememberOverview(kind, routeId) {
   const entry = focused?.closest?.(".reader-overview-entry");
   overviewOrigin = {
     kind, routeId, candidates: props.candidates, filters: JSON.stringify(filters.value),
+    action: entry?.dataset.routeId === routeId ? focused.dataset.readerAction : null,
     label: entry?.dataset.routeId === routeId ? focused.getAttribute("aria-label") : null,
     scroller, top: scroller?.scrollTop || 0,
   };
@@ -439,7 +441,8 @@ function overviewControl(point) {
   const entry = [...(readerRoot.value?.querySelectorAll(".reader-overview-entry") || [])]
     .find((element) => element.dataset.routeId === point.routeId);
   const controls = [...(entry?.querySelectorAll('button, [role="button"]') || [])];
-  return controls.find((element) => point.label && element.getAttribute("aria-label") === point.label)
+  return controls.find((element) => point.action && element.dataset.readerAction === point.action)
+    || controls.find((element) => point.label && element.getAttribute("aria-label") === point.label)
     || entry?.querySelector(".overview-open");
 }
 function readSelected() {

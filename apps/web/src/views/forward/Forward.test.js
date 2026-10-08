@@ -5,6 +5,7 @@ import { API } from "@/common/api";
 import { useWorkspaceStore } from "@/store/workspace";
 import { reactionInput, setReactionDraft } from "../workspace/reaction-canvas.test-support";
 import Forward from "./Forward.vue";
+import { DEFAULT_LOCALE, setLocale } from "@/i18n";
 jest.mock("vue-router", () => ({ useRoute: jest.fn(), useRouter: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { post: jest.fn(), get: jest.fn() } }));
 jest.mock("@/store/workspace", () => ({ useWorkspaceStore: jest.fn() }));
@@ -37,6 +38,38 @@ async function setup(query = { tab: "context", reactants: "CCO", product: "CC=O"
   if (query.tab !== "forward") await setReactionDraft(wrapper, { reactants: ["CCO"], product: "CC=O" });
   return { wrapper, route, router };
 }
+test("English-default reaction copy and Chinese return preserve the same confirmed input and model parameters", async () => {
+  const { wrapper } = await setup(); const count = wrapper.get('[aria-label="结果数量"]').element;
+  setLocale(DEFAULT_LOCALE, { persist: false }); await nextTick();
+  expect(wrapper.text()).toContain("Reaction condition prediction");
+  expect(wrapper.text()).toContain("Predict conditions");
+  expect(wrapper.get('[aria-label="Result count"]').element).toBe(count); expect(count.value).toBe("10");
+  expect(API.post).not.toHaveBeenCalled(); expect(API.get).not.toHaveBeenCalled();
+  setLocale("zh-CN", { persist: false }); await nextTick();
+  expect(wrapper.get('[aria-label="结果数量"]').element).toBe(count); expect(count.value).toBe("10");
+});
+test("candidate range validation follows the current locale without changing the invalid numeric input", async () => {
+  const { wrapper } = await setup();
+  await wrapper.get('[aria-label="结果数量"]').setValue("0");
+  const count = wrapper.get('[aria-label="结果数量"]').element;
+  setLocale(DEFAULT_LOCALE, { persist: false }); await nextTick();
+  expect(wrapper.text()).toContain("Result count must be an integer from 1 to 20.");
+  expect(wrapper.get('[aria-label="Result count"]').element).toBe(count); expect(count.value).toBe("0");
+  setLocale("zh-CN", { persist: false }); await nextTick();
+  expect(wrapper.text()).toContain("结果数量需为 1-20 的整数。"); expect(API.post).not.toHaveBeenCalled();
+});
+test("request errors translate a complete phrase reactively while preserving uncontrolled scientific detail", async () => {
+  const { wrapper } = await setup();
+  const detail = "实验原文 [13CH3][C@H]([NH3+])CO.[Cl-]：0";
+  API.post.mockRejectedValue(new Error(detail));
+  await wrapper.get("form").trigger("submit"); await flushPromises();
+  expect(wrapper.get('[role="alert"]').text()).toBe(`反应条件推荐失败：${detail}`);
+  setLocale(DEFAULT_LOCALE, { persist: false }); await nextTick();
+  expect(wrapper.get('[role="alert"]').text()).toBe(`Reaction condition recommendation failed: ${detail}`);
+  expect(API.post).toHaveBeenCalledTimes(1);
+  setLocale("zh-CN", { persist: false }); await nextTick();
+  expect(wrapper.get('[role="alert"]').text()).toBe(`反应条件推荐失败：${detail}`);
+});
 test.each(["context", "forward"])("%s is an input-only workbench with no empty results or automatic inference", async (tab) => {
   const { wrapper } = await setup({ tab, reactants: "CCO", product: "CC=O" });
   expect(wrapper.findAll("form")).toHaveLength(1); expect(wrapper.find(".forward-results").exists()).toBe(false);
