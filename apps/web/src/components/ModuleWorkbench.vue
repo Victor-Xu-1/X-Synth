@@ -1,7 +1,7 @@
 <template>
   <section class="module-workbench">
     <header class="page-heading">
-      <h1>{{ title }}</h1>
+      <h1>{{ $tr(title) }}</h1>
       <div v-if="initialized" :key="scope" ref="actions" v-show="available" class="page-actions"
         :hidden="!available" :inert="!available || undefined" :aria-hidden="!available || undefined">
         <WorkbenchScope :active="available">
@@ -9,18 +9,18 @@
         </WorkbenchScope>
       </div>
     </header>
-    <WorkbenchTabs :items="modules" :model-value="activeModule" :label="`${title}模块`"
+    <WorkbenchTabs :items="modules" :model-value="activeModule" :label="$tr('{title}模块', { title: $tr(title) })"
       :panel="$slots.module ? undefined : contentId" :disabled="!available"
       @update:model-value="$emit('select-module', $event)">
       <template #default="{ tabId, panelId }">
         <div v-if="!available" ref="status" :class="checking ? 'workspace-loading' : 'workspace-empty'"
           role="status" aria-live="polite" tabindex="-1">
-          <template v-if="checking"><v-progress-linear indeterminate /><span>连接计算服务</span></template>
+          <template v-if="checking"><v-progress-linear indeterminate /><span>{{ $tr('连接计算服务') }}</span></template>
           <template v-else>
             <v-icon icon="mdi-server-off" size="32" />
-            <h2>{{ workspace.error ? "工作区连接不可用" : "当前服务未启用" }}</h2>
-            <p v-if="workspace.error" class="workspace-muted">{{ workspace.error }}</p>
-            <router-link to="/environments?tab=monitor">查看运行监测</router-link>
+            <h2>{{ $tr(workspace.error ? "工作区连接不可用" : "当前服务未启用") }}</h2>
+            <p v-if="workspace.error" class="workspace-muted">{{ $tr(workspace.error) }}</p>
+            <router-link to="/environments?tab=monitor">{{ $tr('查看运行监测') }}</router-link>
           </template>
         </div>
         <div v-if="initialized || modules.length" :key="scope" ref="content" v-show="available" class="workbench-content"

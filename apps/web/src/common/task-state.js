@@ -1,3 +1,5 @@
+import { i18n, uiText } from "@/i18n";
+
 export const activeTaskStates = [
   "queued",
   "preparing",
@@ -6,7 +8,7 @@ export const activeTaskStates = [
   "waiting_for_engine",
 ];
 export function taskStateLabel(value) {
-  return (
+  return uiText(
     {
       queued: "排队中",
       preparing: "准备中",
@@ -34,7 +36,7 @@ export function displayTime(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "—"
-    : new Intl.DateTimeFormat("zh-CN", {
+    : new Intl.DateTimeFormat(i18n.global.locale.value, {
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",

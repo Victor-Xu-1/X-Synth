@@ -1,4 +1,5 @@
 import { isJobTerminal } from "./job-state";
+import { i18n, uiText } from "@/i18n";
 
 export const HISTORY_PAGE_SIZE = 24;
 
@@ -35,13 +36,13 @@ function isRecord(value) {
 }
 
 export function taskTitle(task) {
-  return task?.description || task?.target_smiles || "未命名任务";
+  return task?.description || task?.target_smiles || uiText("未命名任务");
 }
 export function taskSourceLabel(task) {
   const tags = (Array.isArray(task?.tags) ? task.tags : []).filter(
     (tag) => typeof tag === "string" && !/^askcos(?: v2)?$/i.test(tag),
   );
-  return tags.join(" / ") || "路线记录";
+  return tags.join(" / ") || uiText("路线记录");
 }
 
 export function taskDetailLocation(task, context) {
@@ -148,8 +149,8 @@ export function taskEndedAt(task) {
 
 export function taskTimestampLabel(value) {
   const date = value ? new Date(value) : null;
-  if (!date || Number.isNaN(date.getTime())) return "未记录";
-  return new Intl.DateTimeFormat("zh-CN", {
+  if (!date || Number.isNaN(date.getTime())) return uiText("未记录");
+  return new Intl.DateTimeFormat(i18n.global.locale.value, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -163,7 +164,7 @@ export function taskTimestampLabel(value) {
 function parameterValue(key, value) {
   if (key === "backend" && value === "askcos") return "ASKCOS V2";
   if (key === "public" && typeof value === "boolean")
-    return value ? "是" : "否";
+    return uiText(value ? "是" : "否");
   if (
     key === "strategies" &&
     Array.isArray(value) &&
@@ -179,7 +180,7 @@ export function taskParameterGroups(settings) {
   if (!isRecord(settings)) return [];
   const field = (key, value, prefix = "") => ({
     key: `${prefix}${key}`,
-    label: parameterLabels[key] || key,
+    label: uiText(parameterLabels[key] || key),
     value: parameterValue(key, value),
   });
   const primary = Object.entries(settings)

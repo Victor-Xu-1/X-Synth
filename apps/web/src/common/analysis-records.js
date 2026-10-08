@@ -1,3 +1,5 @@
+import { formatUiDate, uiText } from "@/i18n";
+
 export const analysisKinds = Object.freeze({
   conditions: { title: "反应条件", to: "/forward?tab=context" },
   forward: { title: "产物预测", to: "/forward?tab=forward" },
@@ -12,9 +14,8 @@ export const analysisStatuses = Object.freeze({
 });
 
 export function recordDate(value) {
-  if (typeof value !== "string" || !value.trim()) return "未提供";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "未提供" : date.toLocaleString("zh-CN", { hour12: false });
+  if (typeof value !== "string" || !value.trim()) return uiText("未提供");
+  return formatUiDate(value);
 }
 
 export const analysisPageSize = 25;

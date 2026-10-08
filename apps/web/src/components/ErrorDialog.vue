@@ -1,8 +1,8 @@
 <template>
-    <v-alert v-if="errorObj.string_error !== undefined" style="white-space: pre-line" :text=errorObj.string_error
+    <v-alert v-if="errorObj.string_error !== undefined" style="white-space: pre-line" :text="$tr(errorObj.string_error)"
         type="error"></v-alert>
     <v-expansion-panels variant="popout" class="my-4" :model-value="opened">
-        <v-expansion-panel title="错误详情">
+        <v-expansion-panel :title="$tr('错误详情')">
             <v-expansion-panel-text>
                 <pre style="white-space: pre-wrap">{{ errorObj }}</pre>
             </v-expansion-panel-text>

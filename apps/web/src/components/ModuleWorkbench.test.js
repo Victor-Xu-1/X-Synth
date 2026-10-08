@@ -3,6 +3,7 @@ import { defineComponent, h, onMounted, onUnmounted, reactive, ref } from "vue";
 import { randomUUID } from "node:crypto";
 import ModuleWorkbench from "./ModuleWorkbench.vue";
 import WorkbenchDialog from "./workspace/WorkbenchDialog.vue";
+import { setLocale } from "@/i18n";
 
 global.CSS = { supports: () => false };
 const { createVuetify, components } = require("vuetify/dist/vuetify.js");
@@ -83,6 +84,29 @@ test("unrelated pending probes do not replace a confirmed available workbench", 
   expect(mounts).toBe(1);
   expect(unmounts).toBe(0);
   expect(wrapper.find(".workspace-loading").exists()).toBe(false);
+});
+
+test("language switches translate workbench headings while retaining the same scoped chemical draft", async () => {
+  const wrapper = await setup({ title: "工艺核算" });
+  const input = wrapper.get("input");
+  const draft = "[13CH3][C@H]([NH3+])CO.[Cl-]";
+  await input.setValue(draft);
+  setLocale("en", { persist: false });
+  await flushPromises();
+  expect(wrapper.get("h1").text()).toBe("Process accounting");
+  expect(wrapper.get("input").element).toBe(input.element);
+  expect(input.element.value).toBe(draft);
+  mockWorkspace.features.stock = false;
+  await flushPromises();
+  expect(wrapper.text()).toContain("Service not enabled");
+  expect(unmounts).toBe(0);
+  setLocale("zh-CN", { persist: false });
+  mockWorkspace.features.stock = true;
+  await flushPromises();
+  expect(wrapper.get("h1").text()).toBe("工艺核算");
+  expect(wrapper.get("input").element).toBe(input.element);
+  expect(input.element.value).toBe(draft);
+  expect(mounts).toBe(1);
 });
 test("known core error bypasses connecting and never initializes guarded contents or actions", async () => {
   mockWorkspace.features = {};

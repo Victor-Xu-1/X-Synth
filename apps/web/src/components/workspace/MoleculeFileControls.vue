@@ -1,13 +1,13 @@
 <template>
   <div class="molecule-file-controls">
-    <v-tooltip v-if="allowImport" text="导入结构（MOL / SDF / SMILES）">
+    <v-tooltip v-if="allowImport" :text="$tr('导入结构（MOL / SDF / SMILES）')">
       <template #activator="{ props: tooltip }">
         <v-btn
           v-bind="tooltip"
           icon="mdi-file-import-outline"
           variant="text"
           size="small"
-          aria-label="导入结构文件"
+          :aria-label="$tr('导入结构文件')"
           :disabled="disabled || busy"
           @click="fileInput.click()"
         />
@@ -20,7 +20,7 @@
           icon="mdi-file-export-outline"
           variant="text"
           size="small"
-          aria-label="导出化学结构"
+          :aria-label="$tr('导出化学结构')"
           :disabled="disabled || busy || (!smiles && !readStructure)"
         />
       </template>
@@ -28,7 +28,7 @@
         <v-list-item
           v-for="item in exportFormats"
           :key="item.value"
-          :title="item.title"
+          :title="$tr(item.title)"
           @click="exportStructure(item.value)"
         />
       </v-list>
@@ -38,7 +38,7 @@
       indeterminate
       size="16"
       width="2"
-      aria-label="处理化学文件"
+      :aria-label="$tr('处理化学文件')"
     />
     <input
       ref="fileInput"
@@ -53,9 +53,9 @@
       @update:model-value="cancel"
     >
       <v-card>
-        <v-card-title>选择化合物</v-card-title>
+        <v-card-title>{{ $tr('选择化合物') }}</v-card-title>
         <v-card-subtitle class="import-file-name"
-          >{{ filename }} · {{ records.length }} 条结构</v-card-subtitle
+          >{{ $tr('{filename} · {count} 条结构', { filename, count: records.length }) }}</v-card-subtitle
         >
         <v-card-text class="record-picker">
           <v-radio-group v-model="choice" hide-details>
@@ -73,13 +73,13 @@
               <div class="chemical-record-details">
                 <v-radio
                   :value="record.index"
-                  :label="record.name || `化合物 ${record.index}`"
+                  :label="record.name || $tr('化合物 {index}', { index: record.index })"
                 />
                 <div class="record-properties">
                   <span>{{ record.formula }}</span
                   ><span>MW {{ record.molecular_weight.toFixed(2) }}</span>
                   <span v-if="record.components > 1"
-                    >{{ record.components }} 个组分</span
+                    >{{ $tr('{count} 个组分', { count: record.components }) }}</span
                   >
                 </div>
               </div>
@@ -94,12 +94,12 @@
           />
         </v-card-text>
         <v-card-actions
-          ><v-spacer /><v-btn variant="text" @click="cancel">取消</v-btn>
+          ><v-spacer /><v-btn variant="text" @click="cancel">{{ $tr('取消') }}</v-btn>
           <v-btn
             color="primary"
             :disabled="choice === null || disabled"
             @click="apply"
-            >应用结构</v-btn
+            >{{ $tr('应用结构') }}</v-btn
           >
         </v-card-actions>
       </v-card>
@@ -110,10 +110,10 @@
       @update:model-value="error = ''"
     >
       <v-card
-        ><v-card-title>化学文件未处理</v-card-title
-        ><v-card-text role="alert">{{ error }}</v-card-text>
+        ><v-card-title>{{ $tr('化学文件未处理') }}</v-card-title
+        ><v-card-text role="alert">{{ $tr(error) }}</v-card-text>
         <v-card-actions
-          ><v-spacer /><v-btn @click="error = ''">关闭</v-btn></v-card-actions
+          ><v-spacer /><v-btn @click="error = ''">{{ $tr('关闭') }}</v-btn></v-card-actions
         >
       </v-card>
     </WorkbenchDialog>

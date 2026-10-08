@@ -9,14 +9,14 @@
       <v-card-text>
         <v-progress-linear v-if="loading" indeterminate height="2" />
         <v-alert v-if="editorError" type="error" variant="tonal" class="mb-3">{{
-          editorError
+          $tr(editorError)
         }}</v-alert>
         <iframe
           :key="frameKey"
           ref="ketcherIframe"
           data-cy="ketcher-iframe"
           :src="KETCHER_URL"
-          title="结构绘制器"
+          :title="$tr('结构绘制器')"
           class="structure-editor-frame"
           :inert="loading || busy || undefined"
         ></iframe>
@@ -31,7 +31,7 @@
               propShow = false;
             }
           "
-          >取消</v-btn
+          >{{ $tr('取消') }}</v-btn
         >
         <v-btn
           data-cy="ketcher-Done-button"
@@ -39,7 +39,7 @@
           :loading="busy"
           :disabled="loading"
           @click="commitStructure"
-          >完成</v-btn
+          >{{ $tr('完成') }}</v-btn
         >
       </v-card-actions>
     </v-card>

@@ -1,11 +1,11 @@
 <template>
   <div class="structure-preview">
     <div class="preview-heading">
-      <span>{{ label }}</span>
-      <v-tooltip :text="`放大${label}`">
+      <span>{{ $tr(label) }}</span>
+      <v-tooltip :text="$tr('放大{label}', { label: $tr(label) })">
         <template #activator="{ props }">
           <v-btn v-bind="props" icon="mdi-magnify-plus-outline" size="x-small" variant="text"
-            :aria-label="`放大${label}`" :disabled="!smiles.trim()" @click="showPreview" />
+            :aria-label="$tr('放大{label}', { label: $tr(label) })" :disabled="!smiles.trim()" @click="showPreview" />
         </template>
       </v-tooltip>
     </div>
@@ -13,22 +13,22 @@
     <WorkbenchDialog v-model="open" max-width="1100" :aria-labelledby="titleId">
       <section class="structure-viewer">
         <header>
-          <h2 :id="titleId">{{ label }}</h2>
-          <div class="preview-zoom" role="group" aria-label="结构缩放">
-            <v-tooltip text="缩小"><template #activator="{ props }">
-              <v-btn v-bind="props" icon="mdi-minus" variant="text" size="small" aria-label="缩小结构" :disabled="zoom <= 0.5" @click="changeZoom(1 / 1.25)" />
+          <h2 :id="titleId">{{ $tr(label) }}</h2>
+          <div class="preview-zoom" role="group" :aria-label="$tr('结构缩放')">
+            <v-tooltip :text="$tr('缩小')"><template #activator="{ props }">
+              <v-btn v-bind="props" icon="mdi-minus" variant="text" size="small" :aria-label="$tr('缩小结构')" :disabled="zoom <= 0.5" @click="changeZoom(1 / 1.25)" />
             </template></v-tooltip>
             <output aria-live="polite">{{ Math.round(zoom * 100) }}%</output>
-            <v-tooltip text="放大"><template #activator="{ props }">
-              <v-btn v-bind="props" icon="mdi-plus" variant="text" size="small" aria-label="放大结构" :disabled="zoom >= 6" @click="changeZoom(1.25)" />
+            <v-tooltip :text="$tr('放大')"><template #activator="{ props }">
+              <v-btn v-bind="props" icon="mdi-plus" variant="text" size="small" :aria-label="$tr('放大结构')" :disabled="zoom >= 6" @click="changeZoom(1.25)" />
             </template></v-tooltip>
-            <v-tooltip text="适应窗口"><template #activator="{ props }">
-              <v-btn v-bind="props" icon="mdi-fit-to-screen-outline" variant="text" size="small" aria-label="结构适应窗口" @click="zoom = 1" />
+            <v-tooltip :text="$tr('适应窗口')"><template #activator="{ props }">
+              <v-btn v-bind="props" icon="mdi-fit-to-screen-outline" variant="text" size="small" :aria-label="$tr('结构适应窗口')" @click="zoom = 1" />
             </template></v-tooltip>
           </div>
-          <v-btn icon="mdi-close" variant="text" size="small" aria-label="关闭结构预览" @click="open = false" />
+          <v-btn icon="mdi-close" variant="text" size="small" :aria-label="$tr('关闭结构预览')" @click="open = false" />
         </header>
-        <div ref="viewport" class="structure-viewer-viewport" tabindex="0" aria-label="只读结构图">
+        <div ref="viewport" class="structure-viewer-viewport" tabindex="0" :aria-label="$tr('只读结构图')">
           <div class="structure-viewer-sheet" :style="{ width: `${imageWidth}px`, height: `${imageHeight}px` }">
             <SmilesImage v-if="open" ref="largeImage" :smiles="smiles" :input-type="inputType"
               :width="imageWidth" :height="imageHeight" :eager="true" :show-error-image="false" @load="measureImage" />
