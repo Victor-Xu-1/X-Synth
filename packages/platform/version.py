@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import re
 import subprocess
 from importlib.metadata import version
 from pathlib import Path
+
+from .release_version import advance_version
 
 
 def product_version() -> str:
@@ -13,9 +14,7 @@ def product_version() -> str:
         if source.is_file()
         else version("x-synth")
     )
-    if not re.fullmatch(r"\d+\.\d+\.\d+", value):
-        raise ValueError("X-Synth product version must be a release SemVer")
-    return value
+    return advance_version(value, 0)
 
 
 def source_build(root: Path) -> dict:

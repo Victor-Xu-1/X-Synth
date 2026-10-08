@@ -2,11 +2,39 @@
 
 ## 支持边界
 
-产品 v0.1.0 支持 Linux / WSL、Python 3.12、Node.js 24。唯一产品入口是
+产品当前版本见 `VERSION`，支持 Linux / WSL、Python 3.12、Node.js 24。唯一产品入口是
 `scripts.operations.serve_platform`，同时提供工作台、API 和 ASKCOS 进程监督。
 引擎原有 Compose/deploy 工具是上游源码，不是产品启动入口。当前路线主链无需
 GPT Web、Codex token、AiZynthFinder、RabbitMQ 或 Redis。其他原生功能依赖其各自服务，
 未安装时不可用。源码发布不携带模型、商业数据、私人历史或个人配置。
+
+## 版本管理
+
+`VERSION` 是当前产品版本的唯一来源。版本采用项目指定的 PR 计数规则，而不是按变更
+类型手动决定 SemVer 增幅：每个合并到 `main` 的 PR 加 1；补丁号为 0-99，次版本号为
+0-9，超过范围时进位。`v0.1.99 -> v0.2.0`，`v0.9.99 -> v1.0.0`。API 协议、数据库
+迁移、模型与模板版本独立管理，不能从产品版本推导兼容性或迁移顺序。
+
+规则从启用前的 `0.1.0` / `17233bcf2d6c427fb4568552a0ba7ac1ebdce257` 主线基线开始，
+不回算旧 PR。`.github/version-state.json` 只记录基线和已计数的 PR 号 / 合并提交，不是
+第二个当前版本来源。未合并的关闭 PR、普通直接提交、自动版本提交不计数。
+
+`Merged PR Version` 工作流在主线推送、PR 合并或手动重跑时执行。它只运行可信 `main`
+上的代码，使用临时 Git 索引构造一个原子提交，同步 `VERSION`、前端 package/lock 根
+版本和计数记录，不改动检出的文件或真实索引。Python 包从 `VERSION` 读取版本；API
+运行时和前端构建同样消费该文件。合并源代码不代表旧构建资产已更新，部署必须从新的
+版本提交重新构建，并核对 API 与工作台版本一致。
+
+工作流串行执行，并扫描基线后所有主线可达的已合并 PR，避免待运行事件被替换时漏计。
+重复运行不再次加号；并发合并导致推送冲突时，重新读取主线、对账后重试，最多 4 次。
+权限或保护规则拒绝推送时明确失败，不强推、不绕过保护；恢复权限后在 Actions 中手动
+重跑 `Merged PR Version` 即可补计，不要手改 `VERSION` 或删除计数记录。版本元数据
+漂移、计数身份冲突、基线不再可达均拒绝发布，需要审查历史修复。
+
+GitHub 的默认并发队列可能替换待运行事件，因此版本对账不依赖每个事件都执行；
+内置 `GITHUB_TOKEN` 的版本提交不会递归触发普通推送工作流。
+参考 [GitHub 并发规则](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
+和 [工作流触发规则](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)。
 
 ## 目录与安装
 
@@ -319,7 +347,7 @@ python -m scripts.operations.recover_native_projection \
 不足时，第二轮使用 `max_cum_prob=1.0` 和扩大后的模板上限，避免单一高概率模板
 提前截断备选断键。反应可行性筛选、精确库存、正向模板重建和家族去重均不放宽。
 没有策略版本的旧任务按版本 1 恢复，保留其原始子请求哈希；重新搜索才采用新策略。
-策略版本与产品版本独立，产品仍为 v0.1.0。运行中的任务不能静默切换策略。
+策略版本与产品 `VERSION` 独立。运行中的任务不能静默切换策略。
 
 原生结果的 `build_time` 与 checkpoint 使用同一累计搜索时间，恢复后不会只报告最后
 一段进程运行时间；任务总时长还包含排队、服务恢复、审查和路径投影，不能混为一谈。

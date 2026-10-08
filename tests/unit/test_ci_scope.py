@@ -68,6 +68,11 @@ def mock_frontend(monkeypatch, before, after, old_records, new_records):
     "path",
     [
         ".github/workflows/ci.yml",
+        ".github/workflows/version.yml",
+        ".github/version-state.json",
+        "packages/platform/release_version.py",
+        "scripts/operations/version_release.py",
+        "scripts/operations/version_release_git.py",
         "scripts/diagnostics/ci_scope.py",
         "tests/unit/test_ci_scope.py",
         "scripts/diagnostics/ci_scope_profile.py",
@@ -109,6 +114,32 @@ def mock_frontend(monkeypatch, before, after, old_records, new_records):
 )
 def test_workspace_profile_accepts_explicitly_scoped_paths(path):
     profile.guard_paths({path})
+
+
+@pytest.mark.parametrize("path", sorted(profile.RELEASE_FILES))
+def test_release_changes_select_only_mapped_version_consumers(tmp_path, path):
+    files = {test: "pass\n" for test in profile.RELEASE_TESTS | {profile.VERSION_TEST}}
+    before, after = snapshot(tmp_path / "before", files), snapshot(tmp_path / "after", files)
+    assert profile.RELEASE_TESTS | {profile.VERSION_TEST} <= set(profile.python_tests(before, after, {path}))
+
+
+def test_version_workflow_only_executes_trusted_main_and_scoped_tests():
+    import yaml
+    root = Path(__file__).resolve().parents[2]
+    workflow = yaml.safe_load((root / ".github/workflows/version.yml").read_text(encoding="utf-8"))
+    assert workflow["on"]["pull_request_target"] == {"types": ["closed"], "branches": ["main"]}
+    assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["concurrency"]["cancel-in-progress"] is False
+    job = workflow["jobs"]["version"]
+    assert job["permissions"] == {"contents": "write", "pull-requests": "read"}
+    assert "merged == true" in job["if"]
+    checkout = next(step for step in job["steps"] if "checkout@" in step.get("uses", ""))
+    assert checkout["with"] == {"ref": "main", "fetch-depth": 0}
+    commands = [step["run"] for step in job["steps"] if "run" in step]
+    assert commands == [
+        "python -m unittest tests/unit/test_release_version.py tests/unit/test_version_release.py",
+        "python -m scripts.operations.version_release --publish",
+    ]
 
 
 @pytest.mark.parametrize(
