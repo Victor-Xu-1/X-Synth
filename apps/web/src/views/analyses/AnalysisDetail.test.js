@@ -1,9 +1,11 @@
 import { mount, flushPromises } from "@vue/test-utils";
+import { nextTick } from "vue";
 import { TextEncoder } from "node:util";
 import { createRouter, createMemoryHistory } from "vue-router";
 import { API } from "@/common/api";
 import { saveAs } from "file-saver";
 import AnalysisDetail from "./AnalysisDetail.vue";
+import AnalysisResult from "./AnalysisResult.vue";
 jest.mock("file-saver", () => ({ saveAs: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn(), delete: jest.fn(),
   toErrorObject: (error) => ({ string_error: error.message }) } }));
@@ -16,6 +18,7 @@ async function setup(url = "/analyses/record-a") {
   await router.push(url);
   const wrapper = mount(AnalysisDetail, { global: { plugins: [router], stubs: {
     VIcon: true,
+    VProgressCircular: true,
     VBtn: { props: ["disabled", "loading"], template: '<button :disabled="disabled || loading"><slot /></button>' },
   } } });
   wrappers.push(wrapper); await flushPromises(); return { wrapper, router };
@@ -25,7 +28,8 @@ afterEach(() => { wrappers.splice(0).forEach((wrapper) => wrapper.unmount()); je
 test("deep link and refresh read only, with list filter/page retained on the return link", async () => {
   API.get.mockResolvedValue(record());
   const { wrapper } = await setup("/analyses/record-a?kind=forward&page=2");
-  expect(API.get.mock.calls).toEqual([["/api/v1/analyses/record-a", null, false]]);
+  expect(API.get.mock.calls).toEqual([["/api/v1/analyses/record-a", null, false,
+    { signal: expect.any(AbortSignal), timeoutMs: 15000 }]]);
   expect(wrapper.findAll("button")[0].attributes("to")).toBeDefined();
   await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
   expect(API.get).toHaveBeenCalledTimes(2);
@@ -45,7 +49,7 @@ test("route changes clear old result/input immediately and late responses cannot
 test("failed reads expose retry, do not retain stale records, and reject response-ID mismatches", async () => {
   API.get.mockRejectedValueOnce(new Error("not found")).mockResolvedValueOnce(record("wrong-id")).mockResolvedValueOnce(record());
   const { wrapper } = await setup();
-  expect(wrapper.get('[role="alert"]').text()).toBe("not found");
+  expect(wrapper.get('[role="alert"] p').text()).toBe("not found");
   await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
   expect(wrapper.get('[role="alert"]').text()).toContain("不符");
   expect(wrapper.find("pre").exists()).toBe(false);
@@ -122,6 +126,8 @@ test("missing or non-optimization CSV has no export action", async () => {
 });
 
 test.each([
+  ["assessment", "/assessment", { record: "record-a" }],
+  ["process", "/process", { record: "record-a" }],
   ["conditions", "/forward", { tab: "context", record: "record-a" }],
   ["forward", "/forward", { tab: "forward", record: "record-a" }],
   ["impurity", "/impurity", { record: "record-a" }],
@@ -150,4 +156,188 @@ test("navigation and failed reads immediately remove the previous record's CSV e
   expect(wrapper.find('[aria-label="导出下一批实验 CSV"]').exists()).toBe(false);
   expect(saveAs).not.toHaveBeenCalled();
   expect(API.post).not.toHaveBeenCalled(); expect(API.delete).not.toHaveBeenCalled();
+});
+
+// Reader lifecycle probes use unit records, not real scientific acceptance data.
+test("same-record refresh retains the result and expanded inputs while locking snapshot actions", async () => {
+  let finishRefresh;
+  const known = record();
+  API.get.mockResolvedValueOnce(known).mockReturnValueOnce(new Promise((resolve) => { finishRefresh = resolve; }));
+  const { wrapper } = await setup();
+  const input = wrapper.get(".submitted-input");
+  input.element.open = true; await input.trigger("toggle");
+  const resultElement = wrapper.get(".read-only-result").element;
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click");
+  expect(wrapper.get(".read-only-result").element).toBe(resultElement);
+  expect(wrapper.get(".submitted-input").element).toBe(input.element);
+  expect(wrapper.get(".submitted-input").element.open).toBe(true);
+  expect(wrapper.get('[aria-label="下载研究记录"]').attributes("disabled")).toBeDefined();
+  expect(wrapper.get(".analysis-body").attributes("inert")).toBeDefined();
+  expect(wrapper.attributes("aria-busy")).toBe("true");
+  finishRefresh(JSON.parse(JSON.stringify(known))); await flushPromises();
+  expect(wrapper.get(".read-only-result").element).toBe(resultElement);
+  expect(wrapper.get(".submitted-input").element.open).toBe(true);
+  expect(JSON.parse(wrapper.get("pre").text())).toEqual(known.inputs);
+  expect(wrapper.get(".analysis-body").attributes("inert")).toBeUndefined();
+  expect(wrapper.get('[aria-label="下载研究记录"]').attributes("disabled")).toBeUndefined();
+});
+
+test("an independently parsed identical completed DTO retains the scientific result reference, not the response envelope", async () => {
+  const known = { ...record(), kind: "process", result: {
+    values: [0, null, ""], provenance: { revision: "unit-contract-only" },
+  } };
+  const refreshed = JSON.parse(JSON.stringify(known));
+  API.get.mockResolvedValueOnce(known).mockResolvedValueOnce(refreshed);
+  const { wrapper } = await setup();
+  const previousRecord = wrapper.vm.record;
+  const previousResult = wrapper.getComponent(AnalysisResult).props("result");
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  expect(wrapper.getComponent(AnalysisResult).props("result")).toBe(previousResult);
+  expect(wrapper.vm.record).not.toBe(previousRecord);
+  expect(wrapper.vm.record).toEqual(refreshed);
+});
+
+test.each([
+  ["nested result value", (value) => { value.result.values[0] = 1; }],
+  ["result provenance", (value) => { value.result.provenance.revision = "changed-unit-contract"; }],
+  ["original input", (value) => { value.inputs.note = "changed input"; }],
+  ["record kind", (value) => { value.kind = "assessment"; }],
+  ["completion metadata", (value) => { value.finished = "2026-10-04T00:01:00Z"; }],
+])("same-ID refresh publishes a fresh result reference when %s changes", async (_, change) => {
+  const known = { ...record(), kind: "process", result: {
+    values: [0, null, ""], provenance: { revision: "unit-contract-only" },
+  } };
+  const refreshed = JSON.parse(JSON.stringify(known)); change(refreshed);
+  API.get.mockResolvedValueOnce(known).mockResolvedValueOnce(refreshed);
+  const { wrapper } = await setup();
+  const previousResult = wrapper.getComponent(AnalysisResult).props("result");
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  expect(wrapper.getComponent(AnalysisResult).props("result")).not.toBe(previousResult);
+  expect(wrapper.vm.record).toEqual(refreshed);
+});
+
+test("an identical result from a different record never inherits the previous result reference", async () => {
+  const known = { ...record(), kind: "process", result: { values: [0, null, ""] } };
+  const next = { ...JSON.parse(JSON.stringify(known)), id: "record-b" };
+  API.get.mockResolvedValueOnce(known).mockResolvedValueOnce(next);
+  const { wrapper, router } = await setup();
+  const previousResult = wrapper.getComponent(AnalysisResult).props("result");
+  await router.replace("/analyses/record-b"); await flushPromises();
+  expect(wrapper.getComponent(AnalysisResult).props("result")).not.toBe(previousResult);
+  expect(wrapper.vm.record).toEqual(next);
+});
+
+test.each(["running", "failed", "interrupted"])("a completed snapshot retires on transition to %s and cannot reuse its result after recovery", async (status) => {
+  const known = { ...record(), kind: "process", result: { values: [0, null, ""] } };
+  API.get.mockResolvedValueOnce(known).mockResolvedValueOnce({ ...record("record-a", status), kind: "process" })
+    .mockResolvedValueOnce(JSON.parse(JSON.stringify(known)));
+  const { wrapper } = await setup();
+  const previousResult = wrapper.getComponent(AnalysisResult).props("result");
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  expect(wrapper.findComponent(AnalysisResult).exists()).toBe(false);
+  expect(wrapper.vm.record.status).toBe(status);
+  expect(wrapper.find('[aria-label="下载研究记录"]').exists()).toBe(false);
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  expect(wrapper.getComponent(AnalysisResult).props("result")).not.toBe(previousResult);
+  expect(wrapper.vm.record).toEqual(known);
+});
+
+test("a failed same-record refresh removes all prior result, inputs, metadata and snapshot actions", async () => {
+  API.get.mockResolvedValueOnce(record()).mockRejectedValueOnce(new Error("refresh failed"));
+  const { wrapper } = await setup();
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  expect(wrapper.get('[role="alert"] p').text()).toBe("refresh failed");
+  expect(wrapper.find(".read-only-result").exists()).toBe(false);
+  expect(wrapper.find(".submitted-input").exists()).toBe(false);
+  expect(wrapper.find(".analysis-record-meta").exists()).toBe(false);
+  expect(wrapper.find('[aria-label="下载研究记录"]').exists()).toBe(false);
+  expect(wrapper.vm.editLocation).toBe(null);
+});
+
+test.each([401, 403])("HTTP %s on refresh retires the loaded private snapshot until a successful reread", async (status) => {
+  API.get.mockResolvedValueOnce(record()).mockRejectedValueOnce(new Error(`HTTP ${status}`)).mockResolvedValueOnce(record());
+  const { wrapper } = await setup();
+  const input = wrapper.get(".submitted-input");
+  input.element.open = true; await input.trigger("toggle");
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  expect(wrapper.get('[role="alert"] p').text()).toBe(`HTTP ${status}`);
+  expect(wrapper.find(".analysis-body").exists()).toBe(false);
+  expect(wrapper.find(".analysis-record-meta").exists()).toBe(false);
+  expect(wrapper.find('[aria-label="下载研究记录"]').exists()).toBe(false);
+  expect(wrapper.text()).not.toContain("record-a");
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  expect(wrapper.get(".analysis-record-identity").text()).toBe("record-a");
+  expect(wrapper.get(".submitted-input").element.open).toBe(false);
+  expect(wrapper.find("pre").exists()).toBe(false);
+});
+
+test.each([record("wrong-id"), { ...record(), inputs: null }])(
+  "a malformed or mismatched refresh DTO retires the previous snapshot rather than relabelling it fresh: %j", async (invalid) => {
+  API.get.mockResolvedValueOnce(record()).mockResolvedValueOnce(invalid);
+  const { wrapper } = await setup();
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  expect(wrapper.get('[role="alert"] p').text()).toContain("不符");
+  expect(wrapper.find(".analysis-body").exists()).toBe(false);
+  expect(wrapper.find(".analysis-record-meta").exists()).toBe(false);
+  expect(wrapper.vm.editLocation).toBe(null);
+});
+
+test("record reads are bounded, route changes abort old reads and unmount aborts the active read", async () => {
+  API.get.mockReturnValue(new Promise(() => {}));
+  const { wrapper, router } = await setup();
+  const firstOptions = API.get.mock.calls[0][3];
+  expect(firstOptions).toEqual({ signal: expect.any(AbortSignal), timeoutMs: 15000 });
+  expect(firstOptions.signal.aborted).toBe(false);
+  await router.replace("/analyses/record-b"); await flushPromises();
+  expect(firstOptions.signal.aborted).toBe(true);
+  const secondOptions = API.get.mock.calls[1][3];
+  expect(secondOptions.signal.aborted).toBe(false);
+  wrapper.unmount();
+  expect(secondOptions.signal.aborted).toBe(true);
+});
+
+test("late failed reads and detached disclosure events cannot change the next record", async () => {
+  let rejectRefresh;
+  API.get.mockResolvedValueOnce(record())
+    .mockReturnValueOnce(new Promise((_, reject) => { rejectRefresh = reject; }))
+    .mockResolvedValueOnce(record("record-b"));
+  const { wrapper, router } = await setup();
+  const oldDisclosure = wrapper.get(".submitted-input");
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click");
+  await router.replace("/analyses/record-b"); await flushPromises();
+  oldDisclosure.element.open = true; await oldDisclosure.trigger("toggle");
+  rejectRefresh(new Error("old record failure")); await flushPromises();
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  expect(wrapper.get(".submitted-input").element.open).toBe(false);
+  expect(wrapper.find("pre").exists()).toBe(false);
+  expect(wrapper.get(".analysis-record-identity").text()).toBe("record-b");
+});
+
+test("same-ID list query changes update the return destination without rereading the record", async () => {
+  API.get.mockResolvedValue(record());
+  const { wrapper, router } = await setup();
+  await router.replace("/analyses/record-a?kind=process&page=3"); await nextTick();
+  expect(wrapper.vm.backLocation).toEqual({ path: "/analyses", query: { kind: "process", page: "3" } });
+  expect(API.get).toHaveBeenCalledTimes(1);
+});
+
+test("record identity is disclosed with original inputs while submitted/finished dates remain primary", async () => {
+  API.get.mockResolvedValueOnce({ ...record(), finished: "2026-10-04T00:01:00Z" }).mockResolvedValueOnce(record());
+  const { wrapper } = await setup();
+  expect(wrapper.get(".analysis-record-identity").text()).toBe("record-a");
+  expect(wrapper.find(".analysis-record-meta .analysis-record-identity").exists()).toBe(false);
+  expect(wrapper.get(".submitted-input .analysis-record-identity").text()).toBe("record-a");
+  expect(wrapper.get('time[datetime="2026-10-04T00:00:00Z"]').exists()).toBe(true);
+  expect(wrapper.get('time[datetime="2026-10-04T00:01:00Z"]').exists()).toBe(true);
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  expect(wrapper.get(".analysis-record-finished").text()).toContain("未记录");
+  expect(wrapper.find("pre").exists()).toBe(false);
+});
+
+test("failed records without an error still have an explicit terminal state, never an empty reader", async () => {
+  API.get.mockResolvedValue(record("record-a", "failed"));
+  const { wrapper } = await setup();
+  expect(wrapper.get('[role="status"]').text()).toContain("未完成");
+  expect(wrapper.find(".read-only-result").exists()).toBe(false);
 });

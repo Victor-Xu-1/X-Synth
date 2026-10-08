@@ -37,7 +37,7 @@ test("failed/nullable reads never clear an identity; only the explicit clear com
   await wrapper.findAll("button").find((button) => button.text() === "应用结构").trigger("click"); await flushPromises();
   expect(wrapper.get('[role="alert"]').text()).toContain("结构读取失败");
   expect(wrapper.vm.rows[0].smiles).toBe("CCO");
-  await wrapper.findAll("button").find((button) => button.text() === "清除结构").trigger("click");
+  await wrapper.get('[aria-label="清除结构"]').trigger("click");
   expect(wrapper.vm.rows[0]).toMatchObject({ smiles: "", name: "批号", mass: { value: 100, unit: "mg" } });
 });
 test("cancelled and unmounted editor reads cannot overwrite the row later", async () => {
@@ -57,4 +57,15 @@ test("applying locks user interaction without disabling and cancelling its own n
   });
   await wrapper.findAll("button").find((button) => button.text() === "应用结构").trigger("click"); await flushPromises();
   expect(wrapper.vm.rows[0].smiles).toBe("CCN");
+});
+
+test("material editor has an accessible compact clear action and a distinct apply action", async () => {
+  const wrapper = setup();
+  await wrapper.get('[aria-label="编辑投料 1 结构"]').trigger("click");
+  const clear = wrapper.get('[aria-label="清除结构"]');
+  expect(clear.attributes("icon")).toBe("mdi-eraser");
+  expect(clear.attributes("type")).toBe("button");
+  expect(wrapper.get(".material-apply").text()).toBe("应用结构");
+  expect(wrapper.getComponent(Input).props("label")).toBe("分子结构");
+  expect(wrapper.vm.rows[0].smiles).toBe("CCO");
 });

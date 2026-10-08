@@ -1,7 +1,10 @@
 <template>
-  <form class="opt-rail" :aria-busy="disabled" @submit.prevent="$emit('recommend')">
+  <form v-show="section !== 'measurements'" class="opt-rail" :hidden="section === 'measurements'"
+    :inert="section === 'measurements' || undefined" :aria-busy="disabled" @submit.prevent="submit">
     <fieldset class="opt-parameter-fields" :disabled="disabled">
-    <section class="opt-rail-section">
+    <section v-show="section === 'factors'" :id="configurationPanel" data-section="factors" class="opt-configuration-grid"
+      role="tabpanel" tabindex="-1" :aria-labelledby="configurationTab" :hidden="section !== 'factors'" :inert="section !== 'factors' || undefined">
+    <section class="opt-rail-section opt-response-fields">
       <h2>{{ $tr('实测响应') }}</h2>
       <label class="opt-field"
         >{{ $tr('响应列') }}<select
@@ -50,8 +53,8 @@
       </div>
       <label v-else class="opt-fixed-target">{{ $tr('最大化收率 · 实测单位 %') }}</label>
     </section>
-    <section class="opt-rail-section">
-      <h2> {{ $tr('实验因子') }} <span>{{ factors.length }} / 8</span>
+    <section class="opt-rail-section opt-factor-fields">
+      <h2> {{ $tr('实验因子') }} <span>{{ factors.length }} / {{ LIMITS.factors }}</span>
       </h2>
       <div
         v-for="column in factorColumns"
@@ -63,12 +66,14 @@
             type="checkbox"
             :aria-label="$tr('因子 {name}', { name: column.name })"
             :checked="!!factorFor(column.name)"
-            :disabled="!factorFor(column.name) && factors.length >= 8"
+            :disabled="!factorFor(column.name) && factors.length >= LIMITS.factors"
             @change="$emit('toggle-factor', column)"
           /><span>{{ column.name }}</span
-          ><small>{{ $tr('{count} 水平', { count: column.unique_count }) }}</small></label
+          ><small>{{ $tr('{count} 水平', { count: factorFor(column.name) ? levelCount(column.name) : column.unique_count }) }}</small></label
         >
-        <template v-if="factorFor(column.name)">
+        <details v-if="factorFor(column.name)" class="opt-factor-settings">
+          <summary><span>{{ $tr('候选水平') }}</span><small>{{ $tr(factorFor(column.name).kind === 'numerical' ? '数值 · 离散' : '分类 · 独热编码') }}</small></summary>
+          <div class="opt-factor-editor">
           <label class="opt-field"
             >{{ $tr('类型') }}<select
               :value="factorFor(column.name).kind"
@@ -88,6 +93,7 @@
               :value="factorFor(column.name).levels"
               :aria-label="$tr('{name} 候选水平', { name: column.name })"
               :aria-invalid="!!levelError(column.name)"
+              :aria-describedby="levelError(column.name) ? errorId(column.name) : undefined"
               rows="3"
               @input="
                 $emit('update-factor', column.name, {
@@ -96,40 +102,41 @@
               "
             />
           </label>
-          <p
-            v-if="levelError(column.name)"
-            class="opt-level-error"
-            role="status"
-          >
-            {{ optimizationMessage(levelError(column.name)) }}
-          </p>
-        </template>
+          </div>
+        </details>
+        <p v-if="factorFor(column.name) && levelError(column.name)" :id="errorId(column.name)" class="opt-level-error" role="status">
+          {{ optimizationMessage(levelError(column.name)) }}
+        </p>
       </div>
     </section>
-    <section class="opt-rail-section">
+    </section>
+    <section v-show="section === 'batch'" :id="batchPanel" data-section="batch" class="opt-batch-panel opt-rail-section"
+      role="tabpanel" tabindex="-1" :aria-labelledby="batchTab" :hidden="section !== 'batch'" :inert="section !== 'batch' || undefined">
       <h2>{{ $tr('下一批实验') }}</h2>
+      <div class="opt-batch-grid"><div class="opt-batch-settings">
       <label class="opt-field"
         >{{ $tr('实验数') }}<input
           type="number"
           :value="batchSize"
           min="1"
-          max="8"
+          :max="LIMITS.batch"
           step="1"
           :aria-label="$tr('下一批实验数')"
           @input="$emit('update:batchSize', $event.target.value)"
       /></label>
       <dl class="opt-counts">
         <dt>{{ $tr('候选组合') }}</dt>
-        <dd :class="{ 'opt-error-text': count > 4096 }">
-          {{ count.toLocaleString() }} / 4096
+        <dd :class="{ 'opt-error-text': count > LIMITS.candidates }">
+          {{ (count || 0).toLocaleString() }} / {{ LIMITS.candidates }}
         </dd>
         <dt>{{ $tr('实测记录') }}</dt>
-        <dd>{{ selectedCount }} / 256</dd>
+        <dd>{{ selectedCount }} / {{ LIMITS.measurements }}</dd>
       </dl>
       <details class="opt-seed-setting"><summary>{{ $tr('高级设置') }}</summary>
         <label class="opt-field">{{ $tr('随机种子') }}<input :value="seed" type="number" min="0" max="4294967295" step="1"
           :aria-label="$tr('随机种子')" @input="$emit('update:seed', $event.target.value)" /></label>
       </details>
+      </div><div class="opt-batch-confirmations">
       <label class="opt-confirmation"
         ><input
           type="checkbox"
@@ -142,7 +149,7 @@
         ><input
           type="checkbox"
           :checked="confirmedCandidates"
-          :disabled="!count || count > 4096"
+          :disabled="!count || count > LIMITS.candidates"
           @change="$emit('update:confirmedCandidates', $event.target.checked)"
         /><span>{{ $tr('确认离散水平的全部组合可作为候选实验条件') }}</span></label
       >
@@ -151,17 +158,18 @@
         color="primary"
         variant="flat"
         prepend-icon="mdi-flask-outline"
-        :disabled="!canRecommend"
+        :disabled="disabled || !canRecommend"
         :loading="running"
         >{{ $tr('推荐下一批') }}</v-btn
       >
+      </div></div>
     </section>
     </fieldset>
   </form>
 </template>
 <script setup>
-import { computed } from "vue";
-import { factorValues } from "./model";
+import { computed, useId } from "vue";
+import { factorValues, LIMITS } from "./model";
 import { optimizationMessage } from "./ui-copy";
 const props = defineProps({
   columns: { type: Array, required: true },
@@ -176,8 +184,13 @@ const props = defineProps({
   running: Boolean,
   disabled: Boolean,
   seed: { type: [Number, String], default: 42 },
+  section: { type: String, default: "factors" },
+  configurationPanel: String,
+  configurationTab: String,
+  batchPanel: String,
+  batchTab: String,
 });
-defineEmits([
+const emit = defineEmits([
   "toggle-factor",
   "update-target",
   "update-factor",
@@ -187,6 +200,9 @@ defineEmits([
   "update:confirmedCandidates",
   "recommend",
 ]);
+function submit() {
+  if (props.section === "batch" && !props.disabled && !props.running && props.canRecommend) emit("recommend");
+}
 const responseColumns = computed(() =>
   props.columns.filter(
     (column) => column.selectable !== false,
@@ -202,6 +218,7 @@ const factorColumns = computed(() =>
 );
 const factorFor = (name) =>
   props.factors.find((factor) => factor.name === name);
+const instanceId = useId(), errorId = name => `opt-factor-${instanceId}-${encodeURIComponent(name)}-error`;
 const levelError = (name) => {
   try {
     factorValues(factorFor(name));
@@ -209,5 +226,9 @@ const levelError = (name) => {
   } catch (error) {
     return error.message;
   }
+};
+const levelCount = (name) => {
+  try { return factorValues(factorFor(name)).length; }
+  catch { return 0; }
 };
 </script>
