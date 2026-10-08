@@ -5,14 +5,10 @@
     :active-module="tab"
     @select-module="replaceRoute"
   >
-    <v-window
-      v-if="workspace.can('solubility')"
-      :model-value="tab"
-      :touch="false"
-    >
-      <v-window-item value="solpred"><SolubilityPredict /></v-window-item>
-      <v-window-item value="solscreen"><SolventScreen /></v-window-item>
-    </v-window>
+    <template #module="{ value }">
+      <SolubilityPredict v-if="value === 'solpred'" />
+      <SolventScreen v-else-if="value === 'solscreen'" />
+    </template>
   </module-workbench>
 </template>
 
@@ -43,7 +39,7 @@ const modules = computed(() =>
       title: "溶剂筛选",
       disabled: !workspace.can("solubility"),
     },
-  ].filter((module) => !module.disabled),
+  ],
 );
 
 const replaceRoute = (value) => {

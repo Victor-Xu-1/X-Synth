@@ -97,8 +97,9 @@ test("native model flows and outer capability gates remain unchanged", () => {
   expect(prediction).toContain("'/api/fastsolv/call-async'");
   expect(prediction).toContain("'/api/solubility/batch/call-async'");
   expect(screening).toContain("'/api/solubility/batch/call-async'");
-  expect(read("SolProp.vue")).toContain("workspace.can('solubility')");
-  expect(read("../banlist/Banlist.vue")).toContain("workspace.can('native_account')");
+  expect(read("SolProp.vue")).toContain('disabled: !workspace.can("solubility")');
+  expect(read("SolProp.vue")).toContain('<template #module="{ value }">');
+  expect(read("../banlist/Banlist.vue")).toContain('disabled: !workspace.can("native_account")');
 });
 
 test("QM URL prefill only populates and requires explicit submission", () => {
