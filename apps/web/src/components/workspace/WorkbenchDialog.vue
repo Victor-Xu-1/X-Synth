@@ -1,5 +1,5 @@
 <template>
-  <v-dialog v-bind="scoped ? { ...$attrs, attach: true } : $attrs"
+  <v-dialog :key="dialogEpoch" v-bind="scoped ? { ...$attrs, attach: true } : $attrs"
     :model-value="presentation" :eager="eager || (opened && modelValue)"
     @update:model-value="update" @after-enter="enter" @after-leave="leave">
     <template v-for="(_, name) in $slots" #[name]="slotProps">
@@ -20,12 +20,21 @@ const scoped = scope !== null;
 const activity = scope ?? computed(() => true);
 const presentation = computed(() => props.modelValue && activity.value);
 const opened = ref(false);
+const dialogEpoch = ref(0);
 let suspendedLeave = false, disposed = false;
 
 watch(presentation, (visible, previous) => {
   if (visible) opened.value = true;
   else if (previous) suspendedLeave = !activity.value || props.modelValue;
 }, { immediate: true, flush: "sync" });
+
+// An already-suspended overlay has no second leave event to release its lazy subtree.
+watch(() => [props.modelValue, activity.value], ([open, active], [previousOpen]) => {
+  if (previousOpen && !open && !active && !props.eager) {
+    opened.value = false;
+    dialogEpoch.value++;
+  }
+}, { flush: "sync" });
 
 function update(value) {
   if (!disposed && activity.value) emit("update:modelValue", value);

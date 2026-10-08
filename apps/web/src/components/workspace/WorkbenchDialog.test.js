@@ -93,6 +93,31 @@ test("normal owner close tears down its file/radio/iframe subtree through actual
   expect(wrapper.get("iframe").element).not.toBe(nodes[2]);
 });
 
+test("owner close after a completed suspension releases the subtree and recovery cannot resurrect it", async () => {
+  const { wrapper, state, updates, left } = await setup();
+  const iframe = wrapper.get("iframe").element;
+  state.active = false; await flushPromises();
+  expect(iframe.isConnected).toBe(true);
+  state.open = false; await flushPromises();
+  expect(iframe.isConnected).toBe(false);
+  expect(unmounts).toBe(1);
+  state.active = true; await flushPromises();
+  expect(wrapper.find("iframe").exists()).toBe(false);
+  expect(mounts).toBe(1);
+  expect(updates).not.toHaveBeenCalled(); expect(left).not.toHaveBeenCalled();
+  state.open = true; await flushPromises();
+  expect(mounts).toBe(2);
+  expect(wrapper.get("iframe").element).not.toBe(iframe);
+});
+
+test("explicit eager retains an inactive owner-closed subtree by the consumer's request", async () => {
+  const { wrapper, state } = await setup(undefined, { eager: true });
+  const iframe = wrapper.get("iframe").element;
+  state.active = false; await flushPromises();
+  state.open = false; await flushPromises();
+  expect(iframe.isConnected).toBe(true); expect(unmounts).toBe(0);
+});
+
 test("explicit consumer eager still retains content after normal owner close", async () => {
   const { wrapper, state, left } = await setup(undefined, { eager: true });
   const iframe = wrapper.get("iframe").element;
