@@ -15,6 +15,7 @@ import {
 } from "../workspace/reaction-canvas.test-support";
 import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import ReferenceSearch from "./ReferenceSearch.vue";
+import { setLocale } from "@/i18n";
 import "@/components/references/reference-dialog.test-support";
 
 jest.mock("vue-router", () => ({ useRoute: jest.fn() }));
@@ -46,6 +47,24 @@ const ready = {
   reason: null,
 };
 const wrappers = [];
+test("retrieval copy changes language without replacing the selected reaction or issuing a search", async () => {
+  API.get.mockResolvedValue(ready);
+  const { wrapper } = await setup();
+  const input = wrapper.getComponent(reactionInput).element;
+  await setReactionDraft(wrapper, { product: "[13CH3][C@H]([NH3+])CO.[Cl-]", reactants: ["CCO"] });
+  const draft = reactionDraft(wrapper);
+  const before = { product: draft.product.value, reactants: [...draft.reactants.value], pending: draft.pending.value };
+  API.post.mockClear();
+  setLocale("en", { persist: false }); await nextTick();
+  expect(wrapper.text()).toContain("Search parameters");
+  expect(wrapper.text()).toContain("Search reference reactions");
+  expect(wrapper.getComponent(reactionInput).element).toBe(input);
+  expect({ product: draft.product.value, reactants: [...draft.reactants.value], pending: draft.pending.value }).toEqual(before);
+  expect(API.post).not.toHaveBeenCalled();
+  setLocale("zh-CN", { persist: false }); await nextTick();
+  expect(wrapper.text()).toContain("检索参数");
+  expect(wrapper.getComponent(reactionInput).element).toBe(input);
+});
 async function setup(query = {}) {
   const route = reactive({ path: "/references", query });
   useRoute.mockReturnValue(route);

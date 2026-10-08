@@ -1,0 +1,18 @@
+export default [
+  ["参考反应检索", "Reference reaction search"], ["待确认的链接反应", "Linked reaction awaiting confirmation"],
+  ["确认并应用反应", "Confirm and apply reaction"], ["忽略链接输入", "Ignore linked input"],
+  ["参考反应检索输入", "Reference reaction search inputs"], ["检索参数", "Search parameters"],
+  ["匹配方式", "Match type"], ["产物结构精确匹配", "Exact product-structure match"],
+  ["参考记录", "Reference records"], ["来源与数据覆盖", "Sources and data coverage"],
+  ["含收率记录", "Records with yields"], ["含条件/投料记录", "Records with conditions / inputs"],
+  ["数据许可", "Data license"], ["结果数量", "Result count"], ["已就绪", "Ready"],
+  ["查询参考反应", "Search reference reactions"], ["刷新参考来源状态", "Refresh reference-source status"],
+  ["模板详情", "Template details"], ["{count} 例", "{count} example | {count} examples"],
+  ["模板集", "Template set"], ["原生模板集", "Native template set"], ["原生 _id", "Native _id"],
+  ["原生 index", "Native index"], ["方向", "Direction"], ["逆合成", "Retrosynthesis"], ["正向", "Forward"],
+  ["领域", "Domain"], ["反应 SMARTS", "Reaction SMARTS"], ["试剂与限制", "Reagents and constraints"],
+  ["必要试剂", "Required reagents"], ["仅分子内反应", "Intramolecular only"], ["仅二聚反应", "Dimerization only"],
+  ["属性", "Attributes"], ["未记录属性", "No attributes recorded"], ["未记录参考来源", "No reference sources recorded"],
+  ["参考记录分页", "Reference-record pagination"], ["上一页", "Previous page"], ["下一页", "Next page"],
+  ["原始来源", "Original source"],
+];

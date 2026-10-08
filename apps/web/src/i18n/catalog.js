@@ -2,6 +2,7 @@ import common from "./catalog-common";
 import system from "./catalog-system";
 import routes from "./catalog-routes";
 import research from "./catalog-research";
+import retrieval from "./catalog-retrieval";
 
 export function buildCatalog(domains) {
   const zh = Object.create(null), en = Object.create(null);
@@ -16,4 +17,4 @@ export function buildCatalog(domains) {
   return { "zh-CN": zh, en };
 }
 
-export const messages = buildCatalog([common, system, routes, research]);
+export const messages = buildCatalog([common, system, routes, research, retrieval]);

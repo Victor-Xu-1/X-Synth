@@ -1,79 +1,79 @@
 <template>
-  <article class="template-details" aria-label="模板详情">
+  <article class="template-details" :aria-label="$tr('模板详情')">
     <header>
       <h2>{{ template.template_id }}</h2>
-      <span class="workspace-muted">{{ template.count }} 例</span>
+      <span class="workspace-muted">{{ $tr('{count} 例', { count: template.count }) }}</span>
     </header>
     <div v-if="$slots.preview" class="template-preview"><slot name="preview" /></div>
     <dl class="template-metadata">
       <div>
-        <dt>来源</dt>
+        <dt>{{ $tr('来源') }}</dt>
         <dd>{{ template.source }}</dd>
       </div>
       <div>
-        <dt>模板集</dt>
+        <dt>{{ $tr('模板集') }}</dt>
         <dd>{{ template.template_set }}</dd>
       </div>
       <div>
-        <dt>原生模板集</dt>
-        <dd>{{ templateValue(template.raw?.template_set) }}</dd>
+        <dt>{{ $tr('原生模板集') }}</dt>
+        <dd>{{ displayValue(template.raw?.template_set) }}</dd>
       </div>
       <div>
-        <dt>原生 _id</dt>
-        <dd>{{ templateValue(template.raw?._id) }}</dd>
+        <dt>{{ $tr('原生 _id') }}</dt>
+        <dd>{{ displayValue(template.raw?._id) }}</dd>
       </div>
       <div>
-        <dt>原生 index</dt>
-        <dd>{{ templateValue(template.raw?.index) }}</dd>
+        <dt>{{ $tr('原生 index') }}</dt>
+        <dd>{{ displayValue(template.raw?.index) }}</dd>
       </div>
       <div>
-        <dt>方向</dt>
-        <dd>{{ template.direction === "retro" ? "逆合成" : "正向" }}</dd>
+        <dt>{{ $tr('方向') }}</dt>
+        <dd>{{ $tr(template.direction === "retro" ? "逆合成" : "正向") }}</dd>
       </div>
       <div>
-        <dt>领域</dt>
+        <dt>{{ $tr('领域') }}</dt>
         <dd>{{ template.domain }}</dd>
       </div>
     </dl>
     <section>
-      <h3>反应 SMARTS</h3>
+      <h3>{{ $tr('反应 SMARTS') }}</h3>
       <pre>{{ template.reaction_smarts }}</pre>
     </section>
     <section>
-      <h3>试剂与限制</h3>
+      <h3>{{ $tr('试剂与限制') }}</h3>
       <dl class="template-metadata">
         <div>
-          <dt>必要试剂</dt>
-          <dd>{{ templateValue(template.necessary_reagent) }}</dd>
+          <dt>{{ $tr('必要试剂') }}</dt>
+          <dd>{{ displayValue(template.necessary_reagent) }}</dd>
         </div>
         <div>
-          <dt>仅分子内反应</dt>
-          <dd>{{ template.intra_only ? "是" : "否" }}</dd>
+          <dt>{{ $tr('仅分子内反应') }}</dt>
+          <dd>{{ $tr(template.intra_only ? "是" : "否") }}</dd>
         </div>
         <div>
-          <dt>仅二聚反应</dt>
-          <dd>{{ template.dimer_only ? "是" : "否" }}</dd>
+          <dt>{{ $tr('仅二聚反应') }}</dt>
+          <dd>{{ $tr(template.dimer_only ? "是" : "否") }}</dd>
         </div>
       </dl>
     </section>
     <section>
-      <h3>属性</h3>
+      <h3>{{ $tr('属性') }}</h3>
       <dl
         v-if="Object.keys(template.attributes).length"
         class="template-metadata"
       >
         <div v-for="(value, key) in template.attributes" :key="key">
           <dt>{{ key }}</dt>
-          <dd>{{ templateValue(value) }}</dd>
+          <dd>{{ displayValue(value) }}</dd>
         </div>
       </dl>
-      <p v-else class="workspace-muted">未记录属性</p>
+      <p v-else class="workspace-muted">{{ $tr('未记录属性') }}</p>
     </section>
     <section>
       <h3>
-        参考记录 <span class="workspace-muted">{{ references.length }}</span>
+        {{ $tr('参考记录') }} <span class="workspace-muted">{{ references.length }}</span>
       </h3>
-      <p v-if="!references.length" class="workspace-muted">未记录参考来源</p>
+      <p v-if="!references.length" class="workspace-muted">{{ $tr('未记录参考来源') }}</p>
       <ol v-else :start="(page - 1) * pageSize + 1" class="template-references">
         <li v-for="(reference, index) in visibleReferences" :key="index">
           <span>{{ reference.label }}</span>
@@ -84,7 +84,7 @@
             target="_blank"
             rel="noopener noreferrer"
           >
-            {{ link.label
+            {{ $tr(link.label)
             }}<span class="mdi mdi-open-in-new" aria-hidden="true" />
           </a>
         </li>
@@ -92,12 +92,12 @@
       <nav
         v-if="pages > 1"
         class="reference-pagination"
-        aria-label="参考记录分页"
+        :aria-label="$tr('参考记录分页')"
       >
         <button
           type="button"
-          title="上一页"
-          aria-label="上一页"
+          :title="$tr('上一页')"
+          :aria-label="$tr('上一页')"
           :disabled="page === 1"
           @click="page--"
         >
@@ -106,8 +106,8 @@
         <span>{{ page }} / {{ pages }}</span>
         <button
           type="button"
-          title="下一页"
-          aria-label="下一页"
+          :title="$tr('下一页')"
+          :aria-label="$tr('下一页')"
           :disabled="page === pages"
           @click="page++"
         >
@@ -120,6 +120,8 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import { templateReference, templateValue } from "@/common/template-references";
+import { uiText } from "@/i18n";
+const displayValue = (value) => value === null || value === undefined || value === "" ? uiText("未记录") : templateValue(value);
 const props = defineProps({ template: { type: Object, required: true } });
 const pageSize = 50,
   page = ref(1);
