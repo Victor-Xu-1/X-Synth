@@ -104,9 +104,9 @@ export const researchTools = [
 const environmentTools = [
   { title: "环境部署", icon: "mdi-server-network", to: "/environments" },
   {
-    title: "用户与权限",
+    title: "账号管理",
     to: "/admin",
-    feature: "administrator",
+    feature: "native_account",
     icon: "mdi-account-cog-outline",
   },
   {
