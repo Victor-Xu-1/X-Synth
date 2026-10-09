@@ -30,6 +30,9 @@ test("structure input defaults to an inline board below the compact SMILES field
   expect(text).toContain("useIntersectionObserver");
   expect(text).toContain("editor.value.pending");
   expect(text).toContain(':read-structure="read"');
+  expect(script.bindings).toHaveProperty("working");
+  expect(text).toContain(':aria-busy="working"');
+  expect(text).not.toContain(':aria-busy="pending"');
 });
 
 test("the primary target board publishes native edits and exposes input readiness", () => {

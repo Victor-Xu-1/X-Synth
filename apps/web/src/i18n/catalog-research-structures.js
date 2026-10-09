@@ -30,4 +30,7 @@ export default [
   ["结构标准化失败，请检查输入与服务状态。", "Structure canonicalization failed. Check inputs and service status."],
   ["结构读取失败，请检查画板状态。", "Could not read the structure. Check the canvas status."],
   ["画板已清空。", "Canvas cleared."], ["画板清空失败，请检查绘制器状态。", "Could not clear the canvas. Check the editor status."],
+  ["重新加载画板", "Reload drawing editor"], ["正在重新加载画板", "Reloading drawing editor"],
+  ["结构导入已中断。重新加载画板后恢复当前文本输入。", "The structure import was interrupted. Reload the drawing editor to restore the current text input."],
+  ["画板已中断。尚未同步的绘图未被确认，请重新加载当前文本输入。", "The drawing editor was interrupted. Unsynchronized drawing changes are not confirmed. Reload the current text input."],
 ];

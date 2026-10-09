@@ -10,6 +10,7 @@ import {
   REACTION_DRAFT_PATH,
 } from "@/common/reaction-input";
 import { compactInitialReaction, requireSameReactionRoles } from "@/common/ketcher-reaction-layout";
+import { runKetcherOperation } from "@/common/ketcher-native-operations";
 
 export function useReactionDraft({
   text,
@@ -74,7 +75,7 @@ export function useReactionDraft({
     const expected = cachedValue;
     if (expected.input_kind !== "reaction" || !expected.reactants.length || !expected.products.length
       || expected.agents.reduce((count, record) => count + record.components, 0) < 4) return;
-    const document = JSON.parse(await ketcher.getKet());
+    const document = JSON.parse(await runKetcherOperation(ketcher, () => ketcher.getKet(), current));
     if (!current()) return;
     const layout = compactInitialReaction(document, expected,
       ketcher.editor?.render?.clientArea?.getBoundingClientRect?.());
@@ -83,7 +84,7 @@ export function useReactionDraft({
     try {
       applied = await write(JSON.stringify(layout));
       if (!applied || !current()) return;
-      const content = await ketcher.getRxn("v3000");
+      const content = await runKetcherOperation(ketcher, () => ketcher.getRxn("v3000"), current);
       if (!current()) return;
       const checked = await parseCanvasReaction(content, declaredGroups(expected), api,
         { signal, timeoutMs: 15000 });
@@ -105,8 +106,8 @@ export function useReactionDraft({
     compoundGroups = declaredGroups(cachedValue);
     canvasReaction = cachedValue.input_kind === "reaction";
   }
-  const readCanvas = (editor) =>
-    readReactionCanvas(editor, compoundGroups, api, canvasReaction);
+  const readCanvas = (editor, context) =>
+    readReactionCanvas(editor, compoundGroups, api, canvasReaction, context);
   function canvasRead(snapshot) {
     if (snapshot.kind === "empty") {
       compoundGroups = undefined;

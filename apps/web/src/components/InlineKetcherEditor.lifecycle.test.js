@@ -192,6 +192,88 @@ describe("inline Ketcher viewport lifecycle", () => {
     expect(wrapper.find(".editor-error").exists()).toBe(false);
   });
 
+  test("a timed-out import retries the latest text in a fresh frame with one live change subscription", async () => {
+    const { iframe } = createEditor({ smiles: "CCO", autoSync: true });
+    const first = nativeEditor();
+    first.editor.subscribe = jest.fn(() => "first-subscription");
+    first.editor.unsubscribe = jest.fn();
+    iframe.contentWindow.ketcher = first;
+    await jest.advanceTimersByTimeAsync(160);
+    first.setMolecule.mockImplementation(() => Promise.resolve());
+    await wrapper.setProps({ smiles: "CCN" });
+    await jest.advanceTimersByTimeAsync(18100);
+    expect(wrapper.find(".editor-error").exists()).toBe(true);
+    expect(wrapper.emitted("commit")).toBeUndefined();
+    first.editor.subscribe.mock.calls[0][1]();
+    first.eventBus.emit("SUCCESS");
+    await jest.advanceTimersByTimeAsync(300);
+    expect(wrapper.find(".editor-error").exists()).toBe(true);
+
+    const retry = wrapper.vm.$.exposed.retryEditor();
+    await nextTick();
+    const freshFrame = wrapper.get("iframe").element;
+    expect(freshFrame).not.toBe(iframe);
+    let changed;
+    const fresh = nativeEditor();
+    fresh.editor.subscribe = jest.fn((event, callback) => { changed = callback; return "fresh-subscription"; });
+    fresh.editor.unsubscribe = jest.fn();
+    fresh.getSmiles.mockResolvedValue("CCCl");
+    freshFrame.contentWindow.ketcher = fresh;
+    await jest.advanceTimersByTimeAsync(160);
+    await retry;
+    expect(first.editor.unsubscribe).toHaveBeenCalledWith("change", "first-subscription");
+    expect(fresh.setMolecule).toHaveBeenCalledWith("CCN");
+    expect(fresh.editor.subscribe).toHaveBeenCalledTimes(1);
+    expect(wrapper.find(".editor-error").exists()).toBe(false);
+    changed();
+    await jest.advanceTimersByTimeAsync(300);
+    expect(wrapper.emitted("commit")).toEqual([["CCCl"]]);
+    expect(fresh.setMolecule).toHaveBeenCalledTimes(1);
+  });
+
+  test("an obsolete export does not block recovery or publish into the fresh owner", async () => {
+    const { iframe } = createEditor({ smiles: "CCO" });
+    const first = nativeEditor(); iframe.contentWindow.ketcher = first;
+    await jest.advanceTimersByTimeAsync(160);
+    let finishOld;
+    first.getSmiles.mockImplementation(() => new Promise(resolve => { finishOld = resolve; }));
+    const oldRead = wrapper.vm.$.exposed.readSmilesFromEditor();
+    await jest.advanceTimersByTimeAsync(32);
+    first.setMolecule.mockImplementation(() => Promise.resolve());
+    await wrapper.setProps({ smiles: "CCN" });
+    await jest.advanceTimersByTimeAsync(18100);
+    const retry = wrapper.vm.$.exposed.retryEditor();
+    await nextTick();
+    const freshFrame = wrapper.get("iframe").element;
+    expect(freshFrame).not.toBe(iframe);
+    const fresh = nativeEditor(); freshFrame.contentWindow.ketcher = fresh;
+    await jest.advanceTimersByTimeAsync(160); await retry;
+    expect(fresh.setMolecule).toHaveBeenCalledWith("CCN");
+    finishOld("CCO"); await oldRead;
+    expect(wrapper.emitted("commit")).toBeUndefined();
+    expect(wrapper.find(".editor-error").exists()).toBe(false);
+  });
+
+  test("disposing an interrupted-import retry never publishes through its late fresh frame", async () => {
+    const { iframe } = createEditor({ smiles: "CCO" });
+    const first = nativeEditor();
+    first.setMolecule.mockImplementation(() => Promise.resolve());
+    iframe.contentWindow.ketcher = first;
+    await jest.advanceTimersByTimeAsync(18160);
+    expect(wrapper.find(".editor-error").exists()).toBe(true);
+    const retry = wrapper.vm.$.exposed.retryEditor();
+    await nextTick();
+    const freshFrame = wrapper.get("iframe").element;
+    expect(freshFrame).not.toBe(iframe);
+    wrapper.unmount(); wrapper = null;
+    const fresh = nativeEditor();
+    freshFrame.contentWindow.ketcher = fresh;
+    await jest.advanceTimersByTimeAsync(200);
+    await retry;
+    expect(fresh.setMolecule).not.toHaveBeenCalled();
+    expect(fresh.getSmiles).not.toHaveBeenCalled();
+  });
+
   test("a queued read cannot relabel its failed prerequisite write as a canvas-read failure", async () => {
     let rejectInitial;
     const afterImport = jest.fn().mockImplementationOnce(() => new Promise((_, reject) => { rejectInitial = reject; }))

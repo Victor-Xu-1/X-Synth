@@ -42,6 +42,10 @@ export function createKetcherFocusGuard(getFrame, syncing) {
     if (snapshot.active?.isConnected && snapshot.active.tagName !== "IFRAME")
       snapshot.active.focus({ preventScroll: true });
   }
+  function focused(event) {
+    if (event.target?.tagName !== "IFRAME" && event.target !== host.body
+      && event.target !== host.documentElement) capture(true);
+  }
   function observe() {
     const frame = getFrame();
     if (!frame) return;
@@ -51,6 +55,8 @@ export function createKetcherFocusGuard(getFrame, syncing) {
       host.addEventListener("scroll", capture, true);
       host.addEventListener("pointerdown", capture, true);
       host.addEventListener("keydown", capture, true);
+      host.addEventListener("input", capture, true);
+      host.addEventListener("focusin", focused, true);
     }
     if (document !== frame.contentDocument) {
       document?.removeEventListener("focusin", restore, true);
@@ -64,6 +70,8 @@ export function createKetcherFocusGuard(getFrame, syncing) {
     host?.removeEventListener("scroll", capture, true);
     host?.removeEventListener("pointerdown", capture, true);
     host?.removeEventListener("keydown", capture, true);
+    host?.removeEventListener("input", capture, true);
+    host?.removeEventListener("focusin", focused, true);
   }
   return { capture, observe, dispose };
 }

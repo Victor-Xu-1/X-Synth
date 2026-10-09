@@ -1,10 +1,12 @@
 import { EventEmitter } from "node:events";
 import {
   KETCHER_URL,
+  KetcherImportInterruptedError,
   createKetcherWriter,
   replaceKetcherMolecule,
   waitForKetcher,
 } from "./ketcher";
+import { runKetcherOperation } from "./ketcher-native-operations";
 
 function importProtocol() {
   const eventBus = new EventEmitter();
@@ -105,6 +107,8 @@ test("failed and cancelled imports remove their listeners without claiming succe
   const ketcher = importProtocol();
   ketcher.setMolecule = () => Promise.resolve();
   const failure = replaceKetcherMolecule(ketcher, "invalid");
+  await Promise.resolve();
+  expect(ketcher.eventBus.listenerCount("FAILURE")).toBe(1);
   ketcher.eventBus.emit("FAILURE");
   await expect(failure).rejects.toThrow("import failed");
   expect(ketcher.eventBus.eventNames()).toEqual([]);
@@ -131,4 +135,61 @@ test("failed and cancelled imports remove their listeners without claiming succe
   await expect(
     replaceKetcherMolecule(importProtocol(), "CCN"),
   ).resolves.toBeUndefined();
+});
+
+test("actual owner pagehide interrupts its pending import without awaiting the timeout", async () => {
+  const owner = new EventTarget();
+  const native = importProtocol();
+  native.setMolecule = () => Promise.resolve();
+  const result = replaceKetcherMolecule(native, "CCN", { getWindow: () => owner });
+  owner.dispatchEvent(new Event("pagehide"));
+  await expect(result).rejects.toBeInstanceOf(KetcherImportInterruptedError);
+  expect(native.eventBus.eventNames()).toEqual([]);
+  await expect(replaceKetcherMolecule(native, "CCO")).rejects.toBeInstanceOf(KetcherImportInterruptedError);
+});
+
+test("queued import listens only after the same-owner export ends and awaits real terminal completion", async () => {
+  const native = importProtocol();
+  native.setMolecule = jest.fn(() => Promise.resolve());
+  let finishExport;
+  const exporting = runKetcherOperation(native, () => new Promise(resolve => { finishExport = resolve; }));
+  await Promise.resolve();
+  const imported = replaceKetcherMolecule(native, "RXN input");
+  let finished = false; imported.then(() => { finished = true; });
+  expect(native.eventBus.listenerCount("SUCCESS")).toBe(0);
+  expect(native.setMolecule).not.toHaveBeenCalled();
+  finishExport("old export"); await exporting;
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(native.setMolecule).toHaveBeenCalledTimes(1);
+  expect(finished).toBe(false);
+  native.eventBus.emit("SUCCESS"); await imported;
+  expect(finished).toBe(true);
+});
+
+test("the import deadline covers native queue waiting and a retired queued import never starts", async () => {
+  const native = importProtocol();
+  let finishExport;
+  const exporting = runKetcherOperation(native, () => new Promise(resolve => { finishExport = resolve; }));
+  await Promise.resolve();
+  await expect(replaceKetcherMolecule(native, "RXN input", { timeoutMs: 1 }))
+    .rejects.toBeInstanceOf(KetcherImportInterruptedError);
+  finishExport("old export"); await exporting;
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(native.calls).toEqual([]);
+  expect(native.eventBus.eventNames()).toEqual([]);
+});
+
+test("a queued import rechecks whether an earlier import made the native owner unsafe", async () => {
+  const native = importProtocol();
+  native.setMolecule = value => { native.calls.push(value); return Promise.resolve(); };
+  const first = replaceKetcherMolecule(native, "CCO", { timeoutMs: 5 });
+  const second = replaceKetcherMolecule(native, "CCN", { timeoutMs: 30 });
+  let outcome = "pending";
+  second.then(() => { outcome = "resolved"; }, () => { outcome = "rejected"; });
+  await expect(first).rejects.toBeInstanceOf(KetcherImportInterruptedError);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  native.eventBus.emit("SUCCESS");
+  await second.catch(() => {});
+  expect(native.calls).toEqual(["CCO"]);
+  expect(outcome).toBe("rejected");
 });

@@ -1,9 +1,9 @@
 <template>
-  <section ref="root" class="impurity-structure-editor" :aria-label="label">
+  <section class="impurity-structure-editor" :aria-label="label">
     <header><h2>{{ label }}</h2><MoleculeFileControls ref="files" :smiles="draft" :disabled="disabled || reading || !ready" :read-structure="read"
       @import="draft = $event.smiles" @busy="fileBusy = $event" /></header>
     <label class="field-label">SMILES<input v-model="draft" class="workspace-input workspace-code" :disabled="disabled || reading || fileBusy || !ready" :aria-label="`${label} SMILES`" spellcheck="false" /></label>
-    <div class="impurity-board" :inert="disabled || reading || fileBusy || !ready || undefined"><InlineKetcherEditor ref="editor" v-model:smiles="draft" :show-actions="false" fill-height /></div>
+    <div class="impurity-board" :inert="disabled || reading || fileBusy || !ready || undefined"><InlineKetcherEditor ref="editor" v-model:smiles="draft" :show-actions="false" :content-changed="canvasChanged" fill-height /></div>
     <p v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</p>
   </section>
 </template>
@@ -11,16 +11,15 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import InlineKetcherEditor from "@/components/InlineKetcherEditor.vue";
 import MoleculeFileControls from "@/components/workspace/MoleculeFileControls.vue";
-import { waitForKetcher } from "@/common/ketcher";
 const draft = defineModel({ type: String, default: "" });
 defineProps({ label: { type: String, required: true }, disabled: Boolean });
 const emit = defineEmits(["dirty"]);
-const editor = ref(null), files = ref(null), root = ref(null), fileBusy = ref(false), reading = ref(false), checking = ref(false), ready = ref(false), error = ref("");
+const editor = ref(null), files = ref(null), fileBusy = ref(false), reading = ref(false), checking = ref(false), ready = ref(false), error = ref("");
 const lifetime = new AbortController();
-let ketcher, baseline, revision = 0;
+let baseline, revision = 0;
 const changed = () => { revision++; checking.value = false; emit("dirty", true); };
 async function nativeDocument() {
-  const value = await ketcher.getKet();
+  const value = await editor.value.exportKet();
   if (typeof value !== "string" || !value.trim()) throw new Error("invalid_native_document");
   return value;
 }
@@ -41,13 +40,10 @@ watch(draft, changed, { flush: "sync" });
 onMounted(async () => {
   try {
     await nextTick();
-    ketcher = await waitForKetcher(() => root.value?.querySelector("iframe"), { signal: lifetime.signal });
     await editor.value.setSmilesToEditor(draft.value);
     if (lifetime.signal.aborted) return;
-    if (typeof ketcher.editor.subscribe !== "function" || typeof ketcher.editor.unsubscribe !== "function") throw new Error("editor_change_events_unavailable");
     baseline = await nativeDocument();
     if (lifetime.signal.aborted) return;
-    ketcher.editor.subscribe("change", canvasChanged);
     ready.value = true;
   } catch {
     if (!lifetime.signal.aborted) error.value = "结构画板未就绪，请重新打开本结构。";
@@ -68,9 +64,8 @@ async function read() {
 onBeforeUnmount(() => {
   lifetime.abort();
   revision++;
-  ketcher?.editor?.unsubscribe("change", canvasChanged);
 });
-defineExpose({ read, pending: computed(() => !ready.value || checking.value || !!error.value || reading.value || fileBusy.value || files.value?.hasPending === true) });
+defineExpose({ read, pending: computed(() => !ready.value || checking.value || !!error.value || editor.value?.pending || reading.value || fileBusy.value || files.value?.hasPending === true) });
 </script>
 <style scoped>
 .impurity-structure-editor { min-width: 0; }

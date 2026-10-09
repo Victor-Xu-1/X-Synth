@@ -1,10 +1,11 @@
 <template>
-  <div class="editor-view-tools" role="group" :aria-label="$tr('绘图视图工具')" @keydown.esc="dismissed = true">
+  <div ref="root" class="editor-view-tools" role="group" :aria-label="$tr('绘图视图工具')" @keydown.esc="dismissed = true">
     <span v-if="expanded" class="editor-view-title">{{ $tr(title) }}</span>
     <v-tooltip v-for="tool in tools" :key="tool.label" :text="$tr(tool.label)" :model-value="current === tool.event"
       :open-on-hover="false" :open-on-focus="false" :transition="false" @update:model-value="value => changed(tool.event, value)">
       <template #activator="{ props: activator }"><v-btn v-bind="activator" type="button"
         :icon="tool.icon" variant="text" size="small" :aria-label="$tr(tool.label)"
+        :data-view-action="tool.event"
         :disabled="disabled" @mouseenter="enter(tool.event)" @mouseleave="leave(tool.event)"
         @focus="focus(tool.event)" @blur="blur(tool.event)" @click="$emit(tool.event)" /></template>
     </v-tooltip>
@@ -24,6 +25,10 @@ import { useWorkbenchActivity } from "./workbench-activity";
 const props = defineProps({ expanded: Boolean, supported: Boolean, disabled: Boolean, title: String });
 defineEmits(['zoomOut', 'zoomIn', 'fit', 'expand']);
 const activity = useWorkbenchActivity();
+const root = ref(null);
+defineExpose({ focusFit() {
+  if (!props.disabled && activity.value) root.value?.querySelector('[data-view-action="fit"]')?.focus({ preventScroll: true });
+} });
 const hovered = ref(null), focused = ref(null), target = ref(null), dismissed = ref(false);
 const current = computed(() => !props.disabled && activity.value && !dismissed.value ? target.value : null);
 function enter(key) { if (!props.disabled) { hovered.value = key; target.value = key; dismissed.value = false; } }
