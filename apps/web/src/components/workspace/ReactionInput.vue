@@ -1,5 +1,5 @@
 <template>
-  <section class="reaction-input" :aria-label="$tr(label)" :aria-busy="pending">
+  <section class="reaction-input" :aria-label="$tr(label)" :aria-busy="working">
     <header class="reaction-input-heading">
       <label class="reaction-code-label" :for="id">{{ $tr('反应 SMILES') }}</label>
       <div class="reaction-input-actions">
@@ -81,6 +81,7 @@
         :empty-content="EMPTY_REACTION_CANVAS"
         :canvas-height="480"
         :prepare-content="draft.prepareContent"
+        :after-import="draft.layoutImported"
         :read-content="draft.readCanvas"
         :content-applied="draft.canvasApplied"
         :content-published="draft.canvasRead"
@@ -207,6 +208,7 @@ const {
   error: parseError,
   pending: parsePending,
   structurePending,
+  loading: parseLoading,
 } = draft;
 const {
   fileBusy,
@@ -224,6 +226,8 @@ const error = computed(() => fileError.value || parseError.value);
 const pending = computed(
   () => !!(fileBusy.value || fileDraft.value || parsePending.value),
 );
+const working = computed(() => !!(fileBusy.value || parseLoading.value || board.value?.busy
+  || (!board.value?.ready && !board.value?.error)));
 const options = (value) =>
   value?.products.map((record) => ({
     title: record.name || uiText('产物 {index} · {formula}', { index: record.index, formula: record.formula }),

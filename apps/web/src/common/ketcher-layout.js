@@ -41,7 +41,7 @@ export function fitKetcherCanvas(editor) {
       height > 0 ? Math.max(1, viewport.height - 64) / height : zoom,
     );
     if (Number.isFinite(fitted) && fitted > 0)
-      zoom = Math.max(0.1, Math.floor(fitted * 100) / 100);
+      zoom = fitted >= 0.01 ? Math.floor(fitted * 100) / 100 : fitted;
   }
   // Refresh the camera at its current zoom without moving molecular coordinates.
   editor.zoom(zoom);

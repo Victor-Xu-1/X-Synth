@@ -28,9 +28,13 @@
         @load="patchKetcherDocument"
       ></iframe>
     </div>
-    <p v-if="editorError" class="editor-error" role="alert">
-      {{ $tr(editorError) }}
-    </p>
+    <div v-if="editorError" class="editor-error" role="alert">
+      <span>{{ $tr(editorError) }}</span>
+      <v-tooltip :text="$tr('重试结构同步')"><template #activator="{ props: activator }">
+        <v-btn v-bind="activator" icon="mdi-refresh" variant="text" size="small"
+          :aria-label="$tr('重试结构同步')" :disabled="disabled || busy" @click="retryEditor" />
+      </template></v-tooltip>
+    </div>
     <div v-if="showActions" class="inline-ketcher-actions">
       <span class="editor-status">{{ $tr(editorStatus) }}</span>
       <div class="editor-buttons">
@@ -94,6 +98,7 @@ const props = defineProps({
   emptyContent: { type: String, default: "" },
   canvasHeight: { type: Number, default: 0 },
   prepareContent: { type: Function, default: null },
+  afterImport: { type: Function, default: null },
   readContent: { type: Function, default: null },
   contentApplied: { type: Function, default: null },
   contentPublished: { type: Function, default: null },
@@ -258,6 +263,7 @@ const {
   clearEditor,
   setSmilesToEditor,
   readSnapshot,
+  retryFailedOperation,
 } = useKetcherMolecule({
   smiles,
   getEditor: waitForKetcher,
@@ -278,6 +284,7 @@ const {
       ? props.prepareContent(value)
       : value || props.emptyContent,
   onApplied: (value) => props.contentApplied?.(value),
+  afterImport: props.afterImport ? context => props.afterImport(context) : null,
   onPublished: (snapshot) => props.contentPublished?.(snapshot),
   formatError: (failure, fallback) =>
     props.reaction
@@ -286,6 +293,13 @@ const {
         : errorMessage(failure, fallback)
       : fallback,
 });
+
+async function retryEditor() {
+  if (props.disabled || busy.value) return;
+  try {
+    await retryFailedOperation();
+  } catch { /* The existing write owner keeps its current error visible. */ }
+}
 
 onMounted(() => {
   focusGuard.observe();
@@ -314,6 +328,8 @@ onBeforeUnmount(() => {
 defineExpose({
   ready,
   pending,
+  busy,
+  error: editorError,
   readSmilesFromEditor,
   captureDraft: () =>
     ketcherIframe.value?.contentWindow?.ketcher?.editor
@@ -321,6 +337,7 @@ defineExpose({
       : null,
   clearEditor,
   setSmilesToEditor,
+  retryEditor,
   exportRxn: () => readSnapshot((editor) => editor.getRxn("v3000")),
 });
 </script>
@@ -365,10 +382,14 @@ defineExpose({
   z-index: 1;
 }
 .editor-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   color: var(--ws-danger, #b42318);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+.editor-error span { flex: 1; min-width: 0; }
 
 .inline-ketcher-frame iframe {
   position: absolute;

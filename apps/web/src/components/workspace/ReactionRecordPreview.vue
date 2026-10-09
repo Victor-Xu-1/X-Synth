@@ -9,11 +9,11 @@
         :key="record.index"
         class="reaction-compound"
       >
-        <SmilesImage
+        <StructurePreview
           :smiles="record.smiles"
+          :label="uiText(role.structureLabel, { index: record.index })"
           :width="200"
           :height="110"
-          :show-error-image="false"
         />
         <span>{{ record.name || record.formula }}</span>
       </div>
@@ -21,12 +21,13 @@
   </div>
 </template>
 <script setup>
-import SmilesImage from "@/components/SmilesImage.vue";
+import StructurePreview from "./StructurePreview.vue";
+import { uiText } from "@/i18n";
 defineProps({ value: { type: Object, required: true } });
 const roles = [
-  { key: "reactants", label: "反应物" },
-  { key: "products", label: "产物" },
-  { key: "agents", label: "试剂 / 溶剂记录" },
+  { key: "reactants", label: "反应物", structureLabel: "反应物结构 {index}" },
+  { key: "products", label: "产物", structureLabel: "产物结构 {index}" },
+  { key: "agents", label: "试剂 / 溶剂记录", structureLabel: "试剂结构 {index}" },
 ];
 </script>
 <style scoped>
@@ -48,7 +49,10 @@ h3 span,
 }
 .reaction-compound {
   min-width: 0;
+  margin-bottom: 16px;
 }
+.reaction-compound :deep(.preview-heading) { font-size: 12px; }
+.reaction-compound :deep(.preview-heading .v-btn) { min-width: 44px; min-height: 44px; }
 @media (max-width: 600px) {
   .reaction-record-preview {
     grid-template-columns: minmax(0, 1fr);
