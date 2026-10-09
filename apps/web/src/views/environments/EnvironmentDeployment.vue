@@ -167,7 +167,8 @@
   </section>
 </template>
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, useId } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from "vue";
+import { useOnline } from "@vueuse/core";
 import { useRoute, useRouter } from "vue-router";
 import { API } from "@/common/api";
 import { loadRuntimeStatus } from "@/common/runtime-status";
@@ -178,6 +179,7 @@ import BackendInventory from "@/components/environments/BackendInventory.vue";
 const route = useRoute(),
   router = useRouter();
 const productVersion = __X_SYNTH_VERSION__;
+const online = useOnline();
 const snapshot = ref({}),
   loading = ref(false),
   error = ref("");
@@ -193,7 +195,7 @@ const tab = computed(() =>
     ? route.query.tab
     : "engines",
 );
-let alive = true;
+let alive = true, reconnectPending = false;
 function setTab(value) {
   router.replace({ path: "/environments", query: { tab: value } });
 }
@@ -208,11 +210,24 @@ async function refresh() {
   } catch (e) {
     if (alive) error.value = errorMessage(e, "无法读取部署环境。");
   } finally {
-    if (alive) loading.value = false;
+    if (alive) {
+      loading.value = false;
+      if (reconnectPending && online.value) {
+        reconnectPending = false;
+        void refresh();
+      }
+    }
   }
 }
+watch(online, (connected, previous) => {
+  if (!connected) { reconnectPending = false; return; }
+  if (!alive || previous) return;
+  // Coalesce reconnects while a read is finishing; never overlap snapshots.
+  if (loading.value) reconnectPending = true;
+  else void refresh();
+});
 onMounted(refresh);
-onBeforeUnmount(() => (alive = false));
+onBeforeUnmount(() => { alive = false; reconnectPending = false; });
 </script>
 <style scoped>
 .environment-panel { min-width: 0; }

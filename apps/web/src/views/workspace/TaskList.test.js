@@ -613,6 +613,16 @@ test("zero-route waiting task in the info dialog opens progress and closes the i
   expect(API.post).not.toHaveBeenCalled();
 });
 
+test("the create action uses the shared theme foreground and status badges cannot escape their cell", () => {
+  const filename = resolve(__dirname, "TaskList.vue");
+  const { descriptor } = parse(readFileSync(filename, "utf8"));
+  expect(descriptor.template.content).toMatch(/color="primary"\s+variant="flat"\s+prepend-icon="mdi-plus"/);
+  const styles = readFileSync(resolve(__dirname, "task-history.css"), "utf8");
+  expect(styles).toMatch(/\.task-state-cell \.state-badge\s*\{[^}]*max-width:\s*100%/);
+  expect(styles).toMatch(/\.task-state-cell \.state-badge\s*\{[^}]*white-space:\s*normal/);
+  expect(styles).not.toContain(".history-create");
+});
+
 test("the history page and its exclusive card compile scripts, templates and responsive styles", () => {
   for (const relative of [
     "views/workspace/TaskList.vue",

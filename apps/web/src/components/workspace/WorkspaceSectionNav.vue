@@ -1,6 +1,7 @@
 <template>
   <nav
     v-if="section && (section.items.length || section.more.length)"
+    ref="navigation"
     class="workspace-section-nav"
     :aria-label="$tr(section.label)"
   >
@@ -40,9 +41,11 @@
   </nav>
 </template>
 <script setup>
-import { computed } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { useResizeObserver } from "@vueuse/core";
 import { useRoute } from "vue-router";
 import { useWorkspaceStore } from "@/store/workspace";
+import { useUiLanguage } from "@/i18n";
 import {
   activeNavigation,
   sectionNavigation,
@@ -53,6 +56,41 @@ const section = computed(() => sectionNavigation(route, workspace.features));
 const activeExtra = computed(() =>
   section.value?.more.find((item) => activeNavigation(item, route)),
 );
+const navigation = ref(null);
+const { locale } = useUiLanguage();
+const navigationKey = computed(() => {
+  if (!section.value) return "";
+  const { label, items, more } = section.value;
+  return JSON.stringify([label, [...items, ...more].map((item) => [item.to, activeNavigation(item, route)])]);
+});
+let disposed = false;
+function revealCurrentTool() {
+  const container = navigation.value;
+  if (disposed || !container?.isConnected || !container.clientWidth) return;
+  const active = container.querySelector('[aria-current="page"], .section-more.active');
+  if (!active) return;
+  const bounds = container.getBoundingClientRect();
+  const item = active.getBoundingClientRect();
+  if (!item.width || !item.height) return;
+  const left = bounds.left + container.clientLeft;
+  const right = left + container.clientWidth;
+  const inset = Math.min(8, container.clientWidth / 4);
+  let offset = 0;
+  if (item.left < left + inset || item.width > container.clientWidth - inset * 2)
+    offset = item.left - left - inset;
+  else if (item.right > right - inset)
+    offset = item.right - right + inset;
+  // Move only the local strip, never the page or the user's reading focus.
+  if (offset) container.scrollLeft = Math.max(0, Math.min(
+    container.scrollWidth - container.clientWidth, container.scrollLeft + offset,
+  ));
+}
+watch([navigationKey, locale], async () => {
+  await nextTick();
+  revealCurrentTool();
+}, { immediate: true, flush: "post" });
+useResizeObserver(navigation, revealCurrentTool);
+onBeforeUnmount(() => { disposed = true; });
 </script>
 <style scoped>
 .workspace-section-nav {

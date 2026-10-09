@@ -107,6 +107,8 @@ test("compact controls retain accessible theme labels and authenticated account 
 
 test("the drawer offers a labeled close command while keeping the existing brand link", async () => {
   expect(wrapper.get(".workspace-brand").attributes("href")).toBe("/");
+  expect(wrapper.get('button[aria-label="关闭导航"]').attributes("width")).toBe("44");
+  expect(wrapper.get('button[aria-label="关闭导航"]').attributes("height")).toBe("44");
   await wrapper.get('button[aria-label="关闭导航"]').trigger("click");
   expect(wrapper.emitted("navigate")).toEqual([[]]);
 });
