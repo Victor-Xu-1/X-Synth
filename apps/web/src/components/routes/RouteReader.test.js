@@ -275,12 +275,14 @@ test("busy overview cards cannot navigate while an edit is in progress", async (
 
 test("narrow-screen node details reveal immediately and closing returns focus to the actual step", async () => {
   const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+  const width = Object.getOwnPropertyDescriptor(window, "innerWidth");
   const scroll = jest.fn();
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scroll });
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
   try {
     const wrapper = await setup([candidate("native-a")], { view: "steps" }, true, true);
     const button = wrapper.get('.step-select[data-node-id="r-1"]');
-    await button.trigger("click");
+    button.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
     await flushPromises();
     const inspector = wrapper.getComponent({ name: "RouteInspector" });
     expect(inspector.element).toBe(document.activeElement);
@@ -291,9 +293,161 @@ test("narrow-screen node details reveal immediately and closing returns focus to
     expect(document.activeElement).toBe(button.element);
     expect(scroll.mock.contexts).toContain(button.element);
   } finally {
+    Object.defineProperty(window, "innerWidth", width);
     if (original) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", original);
     else delete HTMLElement.prototype.scrollIntoView;
   }
+});
+
+describe("inspector activation focus", () => {
+  let originalWidth, originalScroll, scroll;
+  beforeEach(() => {
+    originalWidth = Object.getOwnPropertyDescriptor(window, "innerWidth");
+    originalScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1440 });
+    scroll = jest.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scroll });
+  });
+  afterEach(() => {
+    Object.defineProperty(window, "innerWidth", originalWidth);
+    if (originalScroll) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScroll);
+    else delete HTMLElement.prototype.scrollIntoView;
+  });
+
+  test.each([".step-select", ".step-product", ".step-precursors .step-molecule"])(
+    "desktop keyboard activation of %s reveals details and normal close restores its exact origin", async (selector) => {
+      const route = candidate("native-a"), before = JSON.stringify(route);
+      const wrapper = await setup([route], { view: "steps" }, true, true);
+      const origin = wrapper.get(selector);
+      origin.element.focus();
+      origin.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+      await flushPromises();
+      const inspector = wrapper.getComponent({ name: "RouteInspector" });
+      expect(document.activeElement === inspector.element).toBe(true);
+      expect(scroll.mock.contexts).toContain(inspector.element);
+      inspector.vm.$emit("close");
+      await flushPromises();
+      expect(document.activeElement).toBe(origin.element);
+      expect(scroll.mock.contexts).toContain(origin.element);
+      expect(mockFocus).not.toHaveBeenCalled();
+      expect(JSON.stringify(route)).toBe(before);
+    },
+  );
+
+  test("desktop pointer inspection preserves reading focus and graph pan", async () => {
+    const wrapper = await setup([candidate("native-a")], { view: "steps" }, true, true);
+    const origin = wrapper.get(".step-select");
+    origin.element.focus();
+    origin.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    await flushPromises();
+    const inspector = wrapper.getComponent({ name: "RouteInspector" });
+    expect(document.activeElement).toBe(origin.element);
+    expect(scroll).not.toHaveBeenCalled();
+    expect(mockFocus).not.toHaveBeenCalled();
+    inspector.vm.$emit("close");
+    await flushPromises();
+    expect(document.activeElement).toBe(origin.element);
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  test.each([390, 1440])("Locate at %ipx changes only the graph viewport, not DOM focus", async (width) => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+    const frame = scrollFrame(), outside = document.createElement("button");
+    frame.appendChild(outside);
+    const wrapper = await setup([candidate("native-a")], { view: "steps" }, true, frame);
+    outside.focus();
+    await wrapper.vm.locateNode("r-1", false);
+    await flushPromises();
+    expect(mockFocus).toHaveBeenCalledWith(["r-1"], { padding: 0.45, maxZoom: 1, duration: 150 });
+    expect(document.activeElement).toBe(outside);
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  test("selectNode's false reveal argument also suppresses zero-detail keyboard focus", async () => {
+    const frame = scrollFrame(), outside = document.createElement("button");
+    frame.appendChild(outside);
+    const wrapper = await setup([candidate("native-a")], { view: "steps" }, true, frame);
+    outside.focus();
+    await wrapper.vm.selectNode("r-1", false, new MouseEvent("click", { detail: 0 }));
+    await flushPromises();
+    expect(wrapper.findComponent({ name: "RouteInspector" }).exists()).toBe(true);
+    expect(document.activeElement).toBe(outside);
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  test.each(["view", "source"])("a %s change retires a pending Locate without panning a stale graph", async (change) => {
+    const wrapper = await setup([candidate("native-a")], { view: "steps" }, true, true);
+    const pending = wrapper.vm.locateNode("r-1", false);
+    const update = wrapper.setProps(change === "view"
+      ? { view: "materials" }
+      : { candidates: [candidate("native-a", "CN")] });
+    await Promise.all([pending, update]);
+    await flushPromises();
+    expect(mockFocus).not.toHaveBeenCalled();
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  test.each(["selection", "route", "view", "source", "unmount"])(
+    "%s changes retire a pending keyboard inspector handoff", async (change) => {
+      const frame = scrollFrame(), outside = document.createElement("button");
+      frame.appendChild(outside);
+      const wrapper = await setup([candidate("native-a"), candidate("native-b", "CCN")], { view: "steps" }, true, frame);
+      const origin = wrapper.get(".step-select");
+      origin.element.focus();
+      origin.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+      let update;
+      if (change === "selection") origin.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+      if (change === "route") update = wrapper.setProps({ selectedRoute: "native-b" });
+      if (change === "view") update = wrapper.setProps({ view: "graph" });
+      if (change === "source") update = wrapper.setProps({ candidates: [candidate("native-a", "CN"), candidate("native-b", "CCN")] });
+      if (change === "unmount") wrapper.unmount();
+      outside.focus();
+      await update;
+      await flushPromises();
+      expect(document.activeElement).toBe(outside);
+      expect(scroll).not.toHaveBeenCalled();
+    },
+  );
+
+  test("a new same-node pointer selection cannot receive an older close's return focus", async () => {
+    const frame = scrollFrame(), outside = document.createElement("button");
+    frame.appendChild(outside);
+    const wrapper = await setup([candidate("native-a")], { view: "steps" }, true, frame);
+    const origin = wrapper.get(".step-select");
+    origin.element.focus();
+    origin.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+    await flushPromises();
+    wrapper.getComponent({ name: "RouteInspector" }).vm.$emit("close");
+    origin.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    outside.focus();
+    scroll.mockClear();
+    await flushPromises();
+    expect(wrapper.findComponent({ name: "RouteInspector" }).exists()).toBe(true);
+    expect(document.activeElement).toBe(outside);
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  test.each(["route", "view", "source", "unmount"])("a %s change retires pending close restoration", async (change) => {
+    const frame = scrollFrame(), outside = document.createElement("button");
+    frame.appendChild(outside);
+    const wrapper = await setup([candidate("native-a"), candidate("native-b", "CCN")], { view: "steps" }, true, frame);
+    const origin = wrapper.get(".step-select");
+    origin.element.focus();
+    origin.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+    await flushPromises();
+    wrapper.getComponent({ name: "RouteInspector" }).vm.$emit("close");
+    scroll.mockClear();
+    let update;
+    if (change === "route") update = wrapper.setProps({ selectedRoute: "native-b" });
+    if (change === "view") update = wrapper.setProps({ view: "graph" });
+    if (change === "source") update = wrapper.setProps({ candidates: [candidate("native-a", "CN"), candidate("native-b", "CCN")] });
+    if (change === "unmount") wrapper.unmount();
+    outside.focus();
+    await update;
+    await flushPromises();
+    expect(document.activeElement).toBe(outside);
+    expect(scroll).not.toHaveBeenCalled();
+  });
 });
 
 test("fresh source snapshots and reactive chemistry updates cannot reuse a stale prepared graph", async () => {

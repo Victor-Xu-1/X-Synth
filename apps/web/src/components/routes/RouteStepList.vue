@@ -137,7 +137,7 @@
           :disabled="!step.nodeId"
           :aria-pressed="selectedNode === step.nodeId"
           :aria-label="$tr('查看合成步骤 {value}详情', { value: step.number })"
-          @click="$emit('select', step.nodeId)"
+          @click="$emit('select', step.nodeId, $event)"
         >
           <strong>{{ $tr('合成步骤 {value}', { value: step.number }) }}</strong>
         </button>
@@ -168,7 +168,7 @@
             :data-node-id="precursor.nodeId"
             :disabled="!precursor.nodeId"
             :aria-label="$tr('查看步骤 {value}反应物 {index}', { value: step.number, index: index + 1 })"
-            @click="$emit('select', precursor.nodeId)"
+            @click="$emit('select', precursor.nodeId, $event)"
           >
             <span>{{ $tr('反应物 {index}', { index: index + 1 }) }}</span>
             <SmilesImage
@@ -186,7 +186,7 @@
           :data-node-id="step.product.nodeId"
           :disabled="!step.product.nodeId"
           :aria-label="$tr('查看步骤 {value}产物', { value: step.number })"
-          @click="$emit('select', step.product.nodeId)"
+          @click="$emit('select', step.product.nodeId, $event)"
         >
           <span>{{ $tr('产物') }}</span>
           <SmilesImage

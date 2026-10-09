@@ -55,9 +55,26 @@ test("structure, step selection and graph location retain actual graph node IDs"
   await wrapper.get(".step-select").trigger("click");
   await wrapper.get(".step-product").trigger("click");
   await wrapper.get('.step-heading button[aria-label="定位步骤 1"]').trigger("click");
-  expect(wrapper.emitted("select")).toEqual([["r-1"], [graph.target_id]]);
+  expect(wrapper.emitted("select").map(([id]) => id)).toEqual(["r-1", graph.target_id]);
   expect(wrapper.emitted("locate")).toEqual([["r-1"]]);
 });
+
+test.each([".step-select", ".step-product", ".step-precursors .step-molecule"])(
+  "%s forwards native activation intent without changing its node identity", (selector) => {
+    const wrapper = setup();
+    const button = wrapper.get(selector);
+    const pointer = new MouseEvent("click", { bubbles: true, detail: 1 });
+    const keyboard = new MouseEvent("click", { bubbles: true, detail: 0 });
+    button.element.dispatchEvent(pointer);
+    button.element.dispatchEvent(keyboard);
+    const selected = wrapper.emitted("select");
+    expect(selected.map(([id]) => id)).toEqual([
+      button.attributes("data-node-id"), button.attributes("data-node-id"),
+    ]);
+    expect(selected[0][1] === pointer).toBe(true);
+    expect(selected[1][1] === keyboard).toBe(true);
+  },
+);
 
 test("missing node identities disable navigation and empty steps stay explicit", async () => {
   const wrapper = setup({ graph: { nodes: [], edges: [] } });
