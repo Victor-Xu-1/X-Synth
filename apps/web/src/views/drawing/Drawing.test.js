@@ -15,11 +15,25 @@ jest.mock("@/components/SmilesImage.vue", () => ({ name: "SmilesImage", template
 jest.mock("@/components/workspace/MoleculeFileControls.vue", () => ({ name: "MoleculeFileControls", template: "<div />" }));
 let wrapper;
 const mockReadDrawing = jest.fn();
+const mockWriteDrawing = jest.fn();
 const picker = defineComponent({ name: "MoleculeFileControls", emits: ["busy", "import"],
   setup(_, { expose }) { const hasPending = ref(false); expose({ hasPending }); return { selected: ref("unconfirmed_salt"), hasPending }; },
   template: '<div><input v-model="selected" aria-label="Test-only retained file choice" /><input v-model="hasPending" type="checkbox" aria-label="Test-only file confirmation pending" /></div>' });
 const editor = defineComponent({ name: "InlineKetcherEditor", props: ["smiles"],
-  setup(_, { expose }) { expose({ readSmilesFromEditor: mockReadDrawing }); return { marker: ref("unconfirmed_editor_state") }; }, template: '<input v-model="marker" aria-label="Test-only retained drawing state" />' });
+  emits: ["update:smiles", "commit"],
+  setup(_, { expose, emit }) {
+    const readSmilesFromEditor = async () => {
+      const value = await mockReadDrawing();
+      if (typeof value === "string") {
+        emit("update:smiles", value.trim());
+        emit("commit", value.trim());
+        await nextTick();
+      }
+      return value;
+    };
+    expose({ readSmilesFromEditor, setSmilesToEditor: mockWriteDrawing, pending: ref(false) });
+    return { marker: ref("unconfirmed_editor_state") };
+  }, template: '<input v-model="marker" aria-label="Test-only retained drawing state" />' });
 const stubs = {
   VDefaultsProvider: { props: ["defaults"], template: "<slot />" }, VForm: { template: "<form><slot /></form>" },
   VTextField: { props: ["modelValue"], template: '<input :value="modelValue" />' },
@@ -29,6 +43,7 @@ const stubs = {
 };
 beforeEach(() => { mockAllowed.value = true; mockWorkspace.loading = false; mockWorkspace.error = "";
   mockReadDrawing.mockReset().mockResolvedValue("CCO"); API.post.mockReset().mockResolvedValue({ smiles: "CCO" });
+  mockWriteDrawing.mockReset().mockResolvedValue(true);
   API.toErrorObject.mockReturnValue({ string_error: "read error" }); crypto.randomUUID = jest.fn(() => "drawing-instance"); });
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; });
 function setup() { wrapper = mount(Drawing, { global: { stubs } }); }
@@ -87,4 +102,236 @@ test("an unconfirmed file record cannot apply or standardize the older displayed
   await wrapper.get('[data-cy="draw-apply-btn"]').trigger("click");
   await wrapper.get('[data-cy="draw-canonicalize-btn"]').trigger("click");
   expect(mockReadDrawing).not.toHaveBeenCalled(); expect(API.post).not.toHaveBeenCalled();
+});
+
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
+}
+
+test("standardization reads the live canvas and publishes only after a confirmed write and readback", async () => {
+  setLocale(DEFAULT_LOCALE, { persist: false });
+  const source = "[13CH3][C@H]([NH3+])CO.[Cl-]";
+  const normalized = "[Cl-].[13CH3][C@H]([NH3+])CO";
+  const writing = deferred();
+  mockReadDrawing.mockResolvedValueOnce(source).mockResolvedValueOnce(normalized);
+  API.post.mockResolvedValue({ smiles: normalized });
+  mockWriteDrawing.mockReturnValue(writing.promise);
+  setup();
+  await wrapper.get('[data-cy="draw-canonicalize-btn"]').trigger("click");
+  await flushPromises();
+  expect(mockReadDrawing).toHaveBeenCalledTimes(1);
+  expect(API.post.mock.calls[0].slice(0, 2)).toEqual(["/api/rdkit/canonicalize", { smiles: source }]);
+  expect(mockWriteDrawing).toHaveBeenCalledWith(normalized);
+  expect(wrapper.find('[data-cy="draw-committed-smiles"]').exists()).toBe(false);
+  expect(wrapper.find('[role="status"]').exists()).toBe(false);
+  writing.resolve(true);
+  await flushPromises();
+  expect(mockReadDrawing).toHaveBeenCalledTimes(2);
+  expect(mockWriteDrawing).toHaveBeenCalledTimes(1);
+  expect(wrapper.get('[data-cy="draw-committed-smiles"]').text()).toBe(normalized);
+  expect(wrapper.get('[role="status"]').text()).toBe("Structure canonicalized.");
+});
+
+async function standardize() {
+  await wrapper.get('[data-cy="draw-canonicalize-btn"]').trigger("click");
+  await flushPromises();
+}
+
+function seedAppliedStructure() {
+  wrapper.getComponent(editor).vm.$emit("commit", "CCC");
+}
+
+test("a fresh nonempty canvas can be standardized while the raw text is empty", async () => {
+  mockReadDrawing.mockResolvedValue("CCN");
+  API.post.mockResolvedValue({ smiles: "CCN" });
+  setup();
+  wrapper.getComponent(editor).vm.$emit("update:smiles", "");
+  await nextTick();
+  expect(wrapper.get('[data-cy="draw-canonicalize-btn"]').element.disabled).toBe(false);
+  await standardize();
+  expect(API.post.mock.calls[0].slice(0, 2)).toEqual(["/api/rdkit/canonicalize", { smiles: "CCN" }]);
+  expect(wrapper.get('[data-cy="draw-committed-smiles"]').text()).toBe("CCN");
+});
+
+test.each([null, undefined, "", " \n", 7])("an invalid canvas snapshot %p never falls back to text", async snapshot => {
+  mockReadDrawing.mockResolvedValue(snapshot);
+  setup(); seedAppliedStructure();
+  await standardize();
+  expect(API.post).not.toHaveBeenCalled();
+  expect(mockWriteDrawing).not.toHaveBeenCalled();
+  expect(wrapper.get('[role="alert"]').text()).toBe("read error");
+  expect(wrapper.find('[role="status"]').exists()).toBe(false);
+  expect(wrapper.get('[data-cy="draw-committed-smiles"]').text()).toBe("CCC");
+});
+
+test("a rejected canvas read preserves the last applied structure and prevents the request", async () => {
+  mockReadDrawing.mockRejectedValue(new Error("native read failed"));
+  setup(); seedAppliedStructure();
+  await standardize();
+  expect(API.post).not.toHaveBeenCalled();
+  expect(mockWriteDrawing).not.toHaveBeenCalled();
+  expect(wrapper.get('[role="alert"]').text()).toBe("read error");
+  expect(wrapper.get('[data-cy="draw-committed-smiles"]').text()).toBe("CCC");
+});
+
+test.each([{}, { smiles: "" }, { smiles: " " }, { smiles: 7 }])(
+  "an invalid normalized response %p is not imported or claimed as applied", async response => {
+    API.post.mockResolvedValue(response);
+    setup(); seedAppliedStructure();
+    await standardize();
+    expect(mockWriteDrawing).not.toHaveBeenCalled();
+    expect(wrapper.get('[role="alert"]').text()).toBe("read error");
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+    expect(wrapper.get('[data-cy="draw-committed-smiles"]').text()).toBe("CCC");
+  },
+);
+
+test.each([false, undefined])("an unconfirmed native write %p cannot publish normalized success", async applied => {
+  mockWriteDrawing.mockResolvedValue(applied);
+  setup(); seedAppliedStructure();
+  await standardize();
+  expect(mockReadDrawing).toHaveBeenCalledTimes(1);
+  expect(wrapper.get('[role="alert"]').text()).toBe("read error");
+  expect(wrapper.find('[role="status"]').exists()).toBe(false);
+  expect(wrapper.get('[data-cy="draw-committed-smiles"]').text()).toBe("CCC");
+});
+
+test("a failed native write retains the source snapshot and the prior applied preview", async () => {
+  mockReadDrawing.mockResolvedValue("CCN");
+  mockWriteDrawing.mockRejectedValue(new Error("native import failed"));
+  setup(); seedAppliedStructure();
+  await standardize();
+  expect(mockReadDrawing).toHaveBeenCalledTimes(1);
+  expect(wrapper.get('[data-cy="draw-enter-smiles"]').element.value).toBe("CCN");
+  expect(wrapper.get('[role="alert"]').text()).toBe("read error");
+  expect(wrapper.get('[data-cy="draw-committed-smiles"]').text()).toBe("CCC");
+});
+
+test("a failed readback does not mark a completed write as an applied normalized structure", async () => {
+  mockReadDrawing.mockResolvedValueOnce("CCN").mockResolvedValueOnce(null);
+  setup(); seedAppliedStructure();
+  await standardize();
+  expect(mockWriteDrawing).toHaveBeenCalledTimes(1);
+  expect(mockReadDrawing).toHaveBeenCalledTimes(2);
+  expect(wrapper.get('[role="alert"]').text()).toBe("read error");
+  expect(wrapper.find('[role="status"]').exists()).toBe(false);
+  expect(wrapper.get('[data-cy="draw-committed-smiles"]').text()).toBe("CCC");
+});
+
+test("a request failure retains the live snapshot without rewriting the canvas", async () => {
+  mockReadDrawing.mockResolvedValue("CCN");
+  API.post.mockRejectedValue(new Error("canonicalize unavailable"));
+  setup(); seedAppliedStructure();
+  await standardize();
+  expect(mockWriteDrawing).not.toHaveBeenCalled();
+  expect(wrapper.get('[data-cy="draw-enter-smiles"]').element.value).toBe("CCN");
+  expect(wrapper.get('[data-cy="draw-committed-smiles"]').text()).toBe("CCC");
+  expect(wrapper.get('[role="alert"]').text()).toBe("read error");
+});
+
+test("pending native input blocks both the control and its handler", async () => {
+  setup();
+  wrapper.getComponent(editor).vm.$.exposed.pending.value = true;
+  await nextTick();
+  expect(wrapper.get('[data-cy="draw-canonicalize-btn"]').element.disabled).toBe(true);
+  await wrapper.vm.$.setupState.canonicalize();
+  expect(mockReadDrawing).not.toHaveBeenCalled();
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test("repeated clicks cannot start a competing normalization while the write is pending", async () => {
+  const writing = deferred();
+  mockWriteDrawing.mockReturnValue(writing.promise);
+  setup();
+  await standardize();
+  expect(wrapper.get('[data-cy="draw-canonicalize-btn"]').element.disabled).toBe(true);
+  await wrapper.vm.$.setupState.canonicalize();
+  expect(API.post).toHaveBeenCalledTimes(1);
+  expect(mockWriteDrawing).toHaveBeenCalledTimes(1);
+  writing.resolve(true); await flushPromises();
+  expect(mockReadDrawing).toHaveBeenCalledTimes(2);
+});
+
+test("a response for a superseded snapshot cannot write over a newer field", async () => {
+  const response = deferred();
+  API.post.mockReturnValue(response.promise);
+  setup(); seedAppliedStructure();
+  await standardize();
+  wrapper.getComponent(editor).vm.$emit("update:smiles", "CCN");
+  await nextTick();
+  response.resolve({ smiles: "CCO" }); await flushPromises();
+  expect(mockWriteDrawing).not.toHaveBeenCalled();
+  expect(wrapper.get('[data-cy="draw-enter-smiles"]').element.value).toBe("CCN");
+  expect(wrapper.get('[data-cy="draw-committed-smiles"]').text()).toBe("CCC");
+  expect(wrapper.find('[role="status"]').exists()).toBe(false);
+});
+
+test("leaving while the live read is pending prevents any subsequent request or write", async () => {
+  const reading = deferred();
+  mockReadDrawing.mockReturnValue(reading.promise);
+  setup();
+  await standardize();
+  wrapper.unmount(); wrapper = undefined;
+  reading.resolve("CCN"); await flushPromises();
+  expect(API.post).not.toHaveBeenCalled();
+  expect(mockWriteDrawing).not.toHaveBeenCalled();
+});
+
+test("leaving cancels the bounded request and ignores its late result", async () => {
+  const response = deferred();
+  API.post.mockReturnValue(response.promise);
+  setup();
+  await standardize();
+  const options = API.post.mock.calls[0][3];
+  expect(options.timeoutMs).toBe(15000);
+  expect(options.signal.aborted).toBe(false);
+  wrapper.unmount(); wrapper = undefined;
+  expect(options.signal.aborted).toBe(true);
+  response.resolve({ smiles: "CCN" }); await flushPromises();
+  expect(mockWriteDrawing).not.toHaveBeenCalled();
+});
+
+test("lost drawing authority retires a request even if the workbench recovers before its response", async () => {
+  const response = deferred();
+  API.post.mockReturnValue(response.promise);
+  setup(); seedAppliedStructure();
+  await standardize();
+  const options = API.post.mock.calls[0][3];
+  mockAllowed.value = false; await nextTick();
+  mockAllowed.value = true; await nextTick();
+  expect(options.signal.aborted).toBe(true);
+  response.resolve({ smiles: "CCN" }); await flushPromises();
+  expect(mockWriteDrawing).not.toHaveBeenCalled();
+  expect(wrapper.get('[data-cy="draw-committed-smiles"]').text()).toBe("CCC");
+  expect(wrapper.find('[role="status"]').exists()).toBe(false);
+});
+
+test("a write retired by newer input cannot read back or claim the old normalized result", async () => {
+  const writing = deferred();
+  mockWriteDrawing.mockReturnValue(writing.promise);
+  setup(); seedAppliedStructure();
+  await standardize();
+  wrapper.getComponent(editor).vm.$emit("update:smiles", "CCN");
+  await nextTick();
+  writing.resolve(false); await flushPromises();
+  expect(mockReadDrawing).toHaveBeenCalledTimes(1);
+  expect(wrapper.get('[data-cy="draw-enter-smiles"]').element.value).toBe("CCN");
+  expect(wrapper.get('[data-cy="draw-committed-smiles"]').text()).toBe("CCC");
+  expect(wrapper.find('[role="status"]').exists()).toBe(false);
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+});
+
+test("a write that settles after disposal cannot read back or publish normalized success", async () => {
+  const writing = deferred();
+  mockWriteDrawing.mockReturnValue(writing.promise);
+  setup(); seedAppliedStructure();
+  await standardize();
+  const state = wrapper.vm.$.setupState;
+  wrapper.unmount(); wrapper = undefined;
+  writing.resolve(true); await flushPromises();
+  expect(mockReadDrawing).toHaveBeenCalledTimes(1);
+  expect(state.committedSmiles).toBe("CCC");
+  expect(state.notice).toBe("");
 });
