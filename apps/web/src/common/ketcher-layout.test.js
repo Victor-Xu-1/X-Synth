@@ -1,118 +1,120 @@
 import { fitKetcherCanvas, prepareKetcherDocument } from "./ketcher-layout";
-const nativeViewEvents = (selection = null) => ({
-  selection: () => selection,
-  event: {
-    selectionChange: { dispatch: jest.fn() },
-    change: { dispatch: jest.fn() },
-  },
-});
+
+class Point {
+  constructor(x = 0, y = 0) { this.x = x; this.y = y; }
+  add(value) { return new Point(this.x + value.x, this.y + value.y); }
+}
+
+// Camera protocol isolation only; real Ketcher/RDKit identities need browser acceptance.
+function camera({ width = 207, height = 402, box = [0, 0, 42, 38], zoom = .04 } = {}) {
+  const selected = { atoms: [1, 2], bonds: [3] };
+  const molecule = { atoms: { size: 181 }, coordinates: [[0, 0], [42, 38]] };
+  const area = { scrollLeft: 39, scrollTop: 2, getBoundingClientRect: () => ({ width, height }) };
+  const render = {
+    options: { scale: 40, offset: new Point(-100, 250) }, clientArea: area,
+    ctab: {
+      getVBoxObj: jest.fn(() => ({ p0: new Point(box[0], box[1]), p1: new Point(box[2], box[3]) })),
+      translate: jest.fn(),
+    },
+    obj2view: jest.fn(point => new Point(
+      (point.x * 40 + render.options.offset.x) * zoom - area.scrollLeft,
+      (point.y * 40 + render.options.offset.y) * zoom - area.scrollTop,
+    )),
+    setPaperSize: jest.fn(),
+    setOffset: jest.fn(offset => { render.options.offset = offset; }),
+  };
+  const editor = {
+    struct: () => molecule,
+    zoom: jest.fn(value => value === undefined ? zoom : (zoom = value)),
+    zoomAccordingContent: jest.fn(() => { zoom = .1; }),
+    render, selection: () => selected,
+    event: { selectionChange: { dispatch: jest.fn() }, change: { dispatch: jest.fn() } },
+    rotateController: { rerender: jest.fn() },
+  };
+  return editor;
+}
+
 test("inline and modal editors share one responsive compatibility adapter", () => {
-  prepareKetcherDocument(document);
-  prepareKetcherDocument(document);
-  expect(
-    document.querySelectorAll("#x-synth-ketcher-responsive-style"),
-  ).toHaveLength(1);
-  expect(
-    document.querySelector("#x-synth-ketcher-responsive-style").textContent,
-  ).toContain(".Ketcher-root");
+  prepareKetcherDocument(document); prepareKetcherDocument(document);
+  expect(document.querySelectorAll("#x-synth-ketcher-responsive-style")).toHaveLength(1);
+  expect(document.querySelector("#x-synth-ketcher-responsive-style").textContent).toContain(".Ketcher-root");
   document.querySelector("#x-synth-ketcher-responsive-style").remove();
 });
-test("resize fitting uses the bundled camera API, not molecular-coordinate edits", () => {
-  const molecule = { atoms: { size: 12 } };
-  let zoom = 1;
-  const editor = {
-    ...nativeViewEvents(),
-    struct: () => molecule,
-    zoomAccordingContent: (value) => {
-      expect(value).toBe(molecule);
-      zoom = 0.7;
-    },
-    zoom: jest.fn((value) => (value === undefined ? zoom : (zoom = value))),
-  };
+
+test("the complete visual box is fitted once without native double-shrinking", () => {
+  const editor = camera();
   expect(fitKetcherCanvas(editor)).toBe(true);
-  expect(editor.zoom).toHaveBeenLastCalledWith(0.7);
-});
-test("empty or unavailable drawings are not mutated", () => {
-  expect(fitKetcherCanvas(null)).toBe(false);
-  expect(
-    fitKetcherCanvas({
-      struct: () => ({ atoms: { size: 0 } }),
-      zoom: () => {
-        throw new Error("empty canvas");
-      },
-      zoomAccordingContent: () => {},
-    }),
-  ).toBe(false);
+  expect(editor.zoom()).toBeCloseTo((207 - 24) / (42 * 40), 10);
+  expect(editor.zoomAccordingContent).not.toHaveBeenCalled();
+  expect(editor.render.ctab.getVBoxObj).toHaveBeenCalledWith();
 });
 
-test("a widened canvas restores readable zoom instead of retaining the narrow fit", () => {
-  const bounds = { min: { x: 0, y: 0 }, max: { x: 12, y: 5 } };
-  const before = JSON.stringify(bounds);
-  const molecule = { atoms: { size: 37 }, getCoordBoundingBox: () => bounds };
-  const selected = { atoms: [1, 2], bonds: [3] };
-  const selectionBefore = JSON.stringify(selected);
-  let zoom = 0.24;
-  const editor = {
-    ...nativeViewEvents(selected),
-    struct: () => molecule,
-    zoomAccordingContent: jest.fn(),
-    zoom: jest.fn(value => value === undefined ? zoom : (zoom = value)),
-    render: {
-      options: { scale: 40 },
-      clientArea: { getBoundingClientRect: () => ({ width: 753, height: 582 }) },
-    },
-  };
+test("fitted content is centered after an inherited scroll origin", () => {
+  const editor = camera({ box: [-4, 3, 38, 41] });
   expect(fitKetcherCanvas(editor)).toBe(true);
-  expect(zoom).toBe(1);
-  expect(editor.zoomAccordingContent).toHaveBeenCalledWith(molecule);
-  expect(editor.event.selectionChange.dispatch).toHaveBeenCalledWith(selected);
+  const { p0, p1 } = editor.render.ctab.getVBoxObj();
+  const a = editor.render.obj2view(p0), b = editor.render.obj2view(p1);
+  expect((a.x + b.x) / 2).toBeCloseTo(207 / 2, 8);
+  expect((a.y + b.y) / 2).toBeCloseTo(402 / 2, 8);
+  expect(editor.render.clientArea.scrollLeft).toBe(0);
+  expect(editor.render.clientArea.scrollTop).toBe(0);
+});
+
+test("render translations preserve molecular coordinates and current selection", () => {
+  const editor = camera();
+  const chemistry = JSON.stringify(editor.struct()), selection = JSON.stringify(editor.selection());
+  fitKetcherCanvas(editor);
+  expect(JSON.stringify(editor.struct())).toBe(chemistry);
+  expect(JSON.stringify(editor.selection())).toBe(selection);
+  expect(editor.event.selectionChange.dispatch).toHaveBeenCalledWith(editor.selection());
   expect(editor.event.change.dispatch).not.toHaveBeenCalled();
-  expect(JSON.stringify(selected)).toBe(selectionBefore);
-  expect(JSON.stringify(bounds)).toBe(before);
+  expect(editor.rotateController.rerender).toHaveBeenCalledTimes(1);
 });
 
-test("an unsupported nonempty view does not silently report a successful fit", () => {
-  const editor = {
-    struct: () => ({ atoms: { size: 8 } }),
-    zoom: jest.fn(),
-    zoomAccordingContent: jest.fn(),
-  };
-  expect(() => fitKetcherCanvas(editor)).toThrow("Ketcher view update events are unavailable");
+test("a widened canvas restores readable scale without inheriting the narrow fit", () => {
+  const editor = camera({ width: 753, height: 582, box: [0, 0, 12, 5], zoom: .04 });
+  fitKetcherCanvas(editor);
+  expect(editor.zoom()).toBe(1);
+});
+
+test("height and annotations constrain fitting independently of the atom skeleton", () => {
+  const editor = camera({ width: 689, height: 160, box: [0, 0, 12, 30] });
+  fitKetcherCanvas(editor);
+  expect(editor.zoom()).toBeCloseTo((160 - 24) / (30 * 40), 10);
+});
+
+test("a very large complete drawing may fit below one percent without rounding to zero", () => {
+  const editor = camera({ width: 137, box: [0, 0, 500, 50] });
+  fitKetcherCanvas(editor);
+  expect(editor.zoom()).toBeGreaterThan(0);
+  expect(editor.zoom()).toBeLessThan(.01);
+  expect(editor.zoom() * 500 * 40).toBeLessThanOrEqual(137 - 24);
+});
+
+test("single-point visual content stays finite and centers at normal zoom", () => {
+  const editor = camera({ box: [3, -4, 3, -4] });
+  fitKetcherCanvas(editor);
+  expect(editor.zoom()).toBe(1);
+  expect(editor.render.options.offset.x).toBeCloseTo(207 / 2 - 3 * 40);
+  expect(editor.render.options.offset.y).toBeCloseTo(402 / 2 + 4 * 40);
+});
+
+test("empty and hidden drawings do not mutate the camera", () => {
+  expect(fitKetcherCanvas(null)).toBe(false);
+  const empty = camera(); empty.struct = () => ({ atoms: { size: 0 } });
+  expect(fitKetcherCanvas(empty)).toBe(false); expect(empty.zoom).not.toHaveBeenCalled();
+  const hidden = camera({ width: 0, height: 0 });
+  expect(fitKetcherCanvas(hidden)).toBe(false); expect(hidden.zoom).not.toHaveBeenCalled();
+});
+
+test.each(["setOffset", "setPaperSize", "obj2view"])("unsupported native %s fails before changing the view", method => {
+  const editor = camera(); editor.render[method] = undefined;
+  expect(() => fitKetcherCanvas(editor)).toThrow("Ketcher camera API is unavailable");
   expect(editor.zoom).not.toHaveBeenCalled();
 });
 
-test("narrow camera fitting reserves atom-label space without changing coordinates", () => {
-  const bounds = { min: { x: 4, y: 3 }, max: { x: 8.5, y: 6.5 } };
-  const before = JSON.stringify(bounds);
-  let zoom = 1;
-  const editor = {
-    ...nativeViewEvents(),
-    struct: () => ({ atoms: { size: 13 }, getCoordBoundingBox: () => bounds }),
-    zoomAccordingContent: () => {},
-    zoom: (value) => (value === undefined ? zoom : (zoom = value)),
-    render: {
-      options: { scale: 40 },
-      clientArea: {
-        getBoundingClientRect: () => ({ width: 184, height: 370 }),
-      },
-    },
-  };
-  expect(fitKetcherCanvas(editor)).toBe(true);
-  expect(zoom).toBe(0.66);
-  expect(JSON.stringify(bounds)).toBe(before);
-});
-
-test("a very wide reaction may fit below ten percent without clipping its content", () => {
-  let zoom = 1;
-  const bounds = { min: { x: 0, y: 0 }, max: { x: 96, y: 10 } };
-  const editor = {
-    ...nativeViewEvents(), struct: () => ({ atoms: { size: 181 }, getCoordBoundingBox: () => bounds }),
-    zoomAccordingContent: () => { zoom = 0.1; },
-    zoom: value => value === undefined ? zoom : (zoom = value),
-    render: { options: { scale: 40 }, clientArea: { getBoundingClientRect: () => ({ width: 207, height: 402 }) } },
-  };
-  expect(fitKetcherCanvas(editor)).toBe(true);
-  expect(zoom).toBeGreaterThan(0);
-  expect(zoom).toBeLessThan(0.1);
-  expect(96 * 40 * zoom).toBeLessThanOrEqual(207 - 64);
+test("invalid native geometry is not silently accepted", () => {
+  const editor = camera({ box: [0, 0, Number.NaN, 4] });
+  expect(() => fitKetcherCanvas(editor)).toThrow("Ketcher view bounds are invalid");
+  expect(editor.zoom).not.toHaveBeenCalled();
 });
