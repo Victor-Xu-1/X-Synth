@@ -12,8 +12,8 @@ jest.mock("@vue-flow/core", () => ({
   VueFlow: {
     name: "VueFlow",
     props: ["nodes", "edges", "minZoom"],
-    emits: ["node-drag-stop", "connect", "node-click"],
-    template: '<div><div v-for="node in nodes" :key="node.id" @click="$emit(\'node-click\', { node })"><slot :name="\'node-\' + node.type" :data="node.data" :selected="node.selected" /></div><slot /></div>',
+    emits: ["node-drag-stop", "connect", "node-click", "nodes-initialized"],
+    template: '<div><div v-for="node in nodes" :key="node.id" @click="$emit(\'node-click\', { node, event: $event })"><slot :name="\'node-\' + node.type" :data="node.data" :selected="node.selected" /></div><slot /></div>',
   },
   useVueFlow: () => ({
     fitView: mockFitView,
@@ -53,6 +53,23 @@ test("optional toolbar keeps viewport actions outside the molecule pan-and-zoom 
   expect(wrapper.getComponent({ name: "VueFlow" }).element.contains(actions.element)).toBe(false);
   expect(actions.findAll("button")).toHaveLength(3);
   expect(wrapper.emitted("update:graph")).toBeUndefined();
+});
+
+test("initialization readiness is emitted only after the genuine viewport fit and not after release", async () => {
+  const wrapper = setup({ target_id: "m", nodes: [{ id: "m", type: "molecule", position: { x: 20, y: 20 } }], edges: [] });
+  const ready = jest.fn(); await wrapper.setProps({ onReady: ready });
+  jest.spyOn(wrapper.element, "getBoundingClientRect").mockReturnValue({ width: 800, height: 400 });
+  await flushPromises();
+  let finish;
+  mockFitView.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  wrapper.getComponent({ name: "VueFlow" }).vm.$emit("nodes-initialized"); await flushPromises();
+  expect(wrapper.emitted("ready")).toBeUndefined();
+  finish(); await flushPromises();
+  expect(ready).toHaveBeenCalledTimes(1);
+  mockFitView.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  wrapper.getComponent({ name: "VueFlow" }).vm.$emit("nodes-initialized"); await flushPromises();
+  wrapper.unmount(); finish(); await flushPromises();
+  expect(ready).toHaveBeenCalledTimes(1);
 });
 
 test("a resized or revealed canvas refits the whole graph and ignores zero-size or disposed callbacks", async () => {
@@ -228,8 +245,11 @@ test("the reaction detail button uses the existing Vue Flow selection event with
   };
   const wrapper = setup(graph);
   await wrapper.setProps({ reading: true, scores: { reaction: 0 } });
-  await wrapper.get('button[aria-label="查看步骤 1详情"]').trigger("click");
-  expect(wrapper.emitted("select")).toEqual([["reaction"]]);
+  const event = new MouseEvent("click", { bubbles: true, detail: 0 });
+  wrapper.get('button[aria-label="查看步骤 1详情"]').element.dispatchEvent(event);
+  await flushPromises();
+  expect(wrapper.emitted("select")[0][0]).toBe("reaction");
+  expect(wrapper.emitted("select")[0][1]).toBe(event);
   expect(wrapper.emitted("update:graph")).toBeUndefined();
   expect(graph.nodes[0].position).toEqual({ x: 200, y: 80 });
   expect(wrapper.getComponent({ name: "VueFlow" }).props("nodes")[0].data.score).toBe(0);

@@ -102,6 +102,8 @@ export default [
   ["中间体或原料 {index}", "Intermediate or starting material {index}"],
   ["原料 {index}", "Starting material {index}"],
   ["步骤 {index}", "Step {index}"],
+  ["输入结构记录 ×{count}", "Input structure records ×{count}"],
+  ["反应物未连接", "Reactants not connected"], ["产物未连接", "Product not connected"],
   ["模板重构 通过", "Template reconstruction passed"], ["模板重构 未通过", "Template reconstruction not passed"],
   ["步骤验证 通过", "Step verification passed"], ["步骤验证 未通过", "Step verification not passed"],
 ];

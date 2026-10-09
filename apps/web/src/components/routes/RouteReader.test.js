@@ -350,6 +350,20 @@ describe("inspector activation focus", () => {
     expect(scroll).not.toHaveBeenCalled();
   });
 
+  test("graph keyboard activation retains the native entry and does not confuse the event with revealDetails", async () => {
+    const wrapper = await setup([candidate("native-a")], { view: "graph" }, true, true);
+    const flow = wrapper.getComponent({ name: "RouteGraph" });
+    const button = document.createElement("button"), icon = document.createElement("span");
+    button.append(icon); flow.element.append(button);
+    flow.element.addEventListener("click", event => flow.vm.$emit("select", "r-1", event));
+    button.focus(); icon.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+    await flushPromises();
+    const inspector = wrapper.getComponent({ name: "RouteInspector" });
+    expect(document.activeElement).toBe(inspector.element);
+    inspector.vm.$emit("close"); await flushPromises();
+    expect(document.activeElement).toBe(button);
+  });
+
   test.each([390, 1440])("Locate at %ipx changes only the graph viewport, not DOM focus", async (width) => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
     const frame = scrollFrame(), outside = document.createElement("button");

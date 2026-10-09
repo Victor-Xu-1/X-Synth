@@ -2,7 +2,10 @@
   <WorkbenchDialog v-model="open" max-width="1100" :aria-labelledby="titleId" @after-leave="leave">
     <v-card class="document-preview-dialog">
       <header class="document-preview-heading">
-        <h2 :id="titleId">{{ document?.title }}</h2>
+        <div class="document-preview-title">
+          <h2 :id="titleId">{{ document?.title }}</h2>
+          <span class="state-badge">{{ $tr(documentStateLabel(document, document?.graph)) }}</span>
+        </div>
         <div class="page-actions">
           <v-btn
             :to="`/editor/${document.id}`"
@@ -19,23 +22,37 @@
           />
         </div>
       </header>
+      <v-tabs :model-value="view" density="compact" :aria-label="$tr('路线视图')" @update:model-value="changeView">
+        <v-tab v-for="tool in views" :key="tool.value" :value="tool.value" :id="`${titleId}-${tool.value}-tab`"
+          :prepend-icon="tool.icon" :aria-selected="view === tool.value" :aria-controls="`${titleId}-${tool.value}-panel`">
+          {{ $tr(tool.label) }}
+        </v-tab>
+      </v-tabs>
       <div class="document-preview-body">
-        <div class="document-preview-canvas">
-          <RouteGraph
-            v-if="document"
-            toolbar
-            :graph="graph"
-            :scores="document.prediction_scores"
-            @select="selected = $event"
-          />
+        <div ref="readingMain" v-show="!mobileDetails" class="document-preview-main">
+          <v-select v-if="steps.length" class="document-step-picker" :model-value="reactionSelection" :items="stepChoices"
+            :label="$tr('反应步骤')" variant="outlined" density="compact" hide-details clearable
+            @update:model-value="(id) => selectNode(id, null, true)" />
+          <div v-show="view === 'graph'" :id="`${titleId}-graph-panel`" class="document-preview-canvas" role="tabpanel"
+            :aria-labelledby="`${titleId}-graph-tab`">
+            <RouteGraph v-if="document && graphActive" ref="graphView" toolbar :graph="graph"
+              :scores="document.prediction_scores" @select="selectNode" @ready="graphInitialized" />
+          </div>
+          <div v-show="view === 'steps'" :id="`${titleId}-steps-panel`" class="document-step-scroll" role="tabpanel"
+            :aria-labelledby="`${titleId}-steps-tab`">
+            <p v-if="stepError" class="tool-error" role="alert">{{ $tr(stepError) }}</p>
+            <DocumentStepList v-else :steps="steps" :selected-node="selected" @select="selectNode" @locate="locateStep" />
+          </div>
         </div>
         <RouteInspector
-          v-if="node"
+          v-if="node && detailsOpen"
+          ref="inspectorView"
+          tabindex="-1"
           :node="node"
           :graph="graph"
           :score="document.prediction_scores?.[selected]"
           :target="selected === graph.target_id"
-          @close="selected = null"
+          @close="closeDetails"
           @navigate="navigate"
         />
       </div>
@@ -45,9 +62,11 @@
 <script setup>
 import RouteGraph from "./RouteGraph.vue";
 import RouteInspector from "./RouteInspector.vue";
+import DocumentStepList from "./DocumentStepList.vue";
 import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
-import { computed, onBeforeUnmount, ref, useId, watch } from "vue";
-import { layoutGraph } from "@/common/route-graph";
+import { onBeforeUnmount, toRef, useId } from "vue";
+import { useDocumentReading } from "@/composables/useDocumentReading";
+import { documentStateLabel } from "@/common/document-navigation";
 const open = defineModel({ type: Boolean, default: false });
 const props = defineProps({ document: Object, focusTicket: { type: Number, default: null } });
 const emit = defineEmits(["afterLeave", "navigate"]);
@@ -57,23 +76,9 @@ function leave() { if (!disposed) emit("afterLeave", presentationTicket); }
 function navigate() { emit("navigate"); open.value = false; }
 onBeforeUnmount(() => { disposed = true; });
 const titleId = useId();
-const selected = ref(null);
-const graph = computed(() =>
-  !props.document
-    ? { nodes: [], edges: [], target_id: "" }
-    : props.document.graph.nodes.every(
-          (node) => node.position.x === 0 && node.position.y === 0,
-        )
-      ? layoutGraph(props.document.graph)
-      : props.document.graph,
-);
-const node = computed(() =>
-  graph.value.nodes.find((value) => value.id === selected.value),
-);
-watch(
-  () => [open.value, props.document?.id],
-  () => (selected.value = null),
-);
+const { selected, detailsOpen, view, views, graphActive, graphView, readingMain, inspectorView,
+  graph, node, steps, stepError, stepChoices, reactionSelection, mobileDetails,
+  changeView, selectNode, closeDetails, locateStep, graphInitialized } = useDocumentReading(open, toRef(props, "document"));
 </script>
 <style scoped>
 .document-preview-dialog {
@@ -95,6 +100,9 @@ watch(
   min-width: 0;
   flex-shrink: 0;
 }
+.document-preview-title {
+  min-width: 0; flex: 1;
+}
 .document-preview-heading h2 {
   min-width: 0;
   margin: 0;
@@ -107,10 +115,15 @@ watch(
   overflow: auto;
 }
 .document-preview-heading .page-actions { flex-shrink: 0; }
+.document-preview-title .state-badge { margin-top: 6px; }
+.document-preview-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.document-step-picker { flex: 0 0 auto; max-width: 360px; margin: 12px 16px; }
 .document-preview-canvas {
-  height: 100%;
+  flex: 1 1 auto;
   min-height: 0;
 }
+.document-preview-canvas :deep(.route-graph-surface) { min-height: 0; }
+.document-step-scroll { overflow: auto; flex: 1 1 auto; min-height: 0; }
 .document-preview-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -131,13 +144,14 @@ watch(
   .document-preview-heading .page-actions { width: 100%; justify-content: flex-end; gap: 8px; }
   .document-preview-body {
     grid-template-columns: minmax(0, 1fr);
-    grid-auto-rows: minmax(0, auto);
   }
+  .document-preview-title { flex-basis: 100%; }
   .document-preview-body > :deep(.route-inspector) {
     width: 100%;
     border-left: 0;
     border-top: 1px solid var(--ws-border);
-    max-height: 360px;
+    max-height: none;
+    min-height: 0;
   }
 }
 </style>

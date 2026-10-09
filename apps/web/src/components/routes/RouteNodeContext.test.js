@@ -66,7 +66,10 @@ test("read-only preview selection is inspected and reset across route/document c
     const preview = source(filename);
     expect(preview).toContain("<RouteInspector");
     expect(preview).toContain("@select=");
-    expect(preview).toContain(
+    const stateSource = filename === "DocumentPreview.vue"
+      ? readFileSync(resolve(__dirname, "../../composables/useDocumentReading.js"), "utf8")
+      : preview;
+    expect(stateSource).toContain(
       filename === "RouteReader.vue"
         ? "selectedNode.value = null"
         : "selected.value = null",

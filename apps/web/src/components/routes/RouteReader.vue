@@ -203,7 +203,7 @@
             :editable="false"
             reading
             generated-step-labels
-            @select="selectNode"
+            @select="selectStepNode"
           />
         </div>
         <RouteStepList
@@ -508,7 +508,8 @@ async function selectNode(id, revealDetails = true, event = null) {
   // Native keyboard and assistive activation dispatch clicks with zero detail.
   if (!selectedNode.value || !revealDetails || (window.innerWidth > 1100 && event?.detail !== 0)) return;
   const routeId = selectedId.value, readingView = view.value, source = sourceGraph.value;
-  const focused = event?.currentTarget || document.activeElement;
+  const focused = event?.target?.closest?.('button, a[href], input, [tabindex]')
+    || event?.currentTarget || document.activeElement;
   await nextTick();
   if (disposed || navigation !== inspectorNavigation || routeId !== selectedId.value ||
     id !== selectedNode.value || readingView !== view.value || source !== sourceGraph.value) return;

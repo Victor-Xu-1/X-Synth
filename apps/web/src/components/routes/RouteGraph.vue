@@ -20,8 +20,8 @@
       :zoom-on-scroll="!overview"
       :zoom-on-double-click="!overview"
       :zoom-on-pinch="!overview"
-      @nodes-initialized="fit"
-      @node-click="({ node }) => $emit('select', node.id)"
+      @nodes-initialized="initialized"
+      @node-click="({ node, event }) => $emit('select', node.id, event)"
       @edge-click="({ edge }) => $emit('select-edge', edge.id)"
       @pane-click="$emit('select', null)"
       @node-drag-stop="onDrag"
@@ -51,7 +51,7 @@
   </div>
 </template>
 <script setup>
-import { computed, onMounted, ref, watch, nextTick } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from "vue";
 import { VueFlow, useVueFlow, MarkerType } from "@vue-flow/core";
 import "@vue-flow/core/dist/style.css";
 import MoleculeNode from "./MoleculeNode.vue";
@@ -74,7 +74,13 @@ const props = defineProps({
   catalogPrices: { type: Object, default: () => ({}) },
   id: { type: String, default: () => `route-${crypto.randomUUID()}` },
 });
-const emit = defineEmits(["update:graph", "select", "select-edge", "error"]);
+const emit = defineEmits(["update:graph", "select", "select-edge", "error", "ready"]);
+let disposed = false;
+async function initialized() {
+  await fit();
+  if (!disposed) emit("ready");
+}
+onBeforeUnmount(() => { disposed = true; });
 const surface = ref(null);
 const { fitView, zoomIn, zoomOut } = useVueFlow({ id: props.id });
 const { fit, focus } = useRouteViewport(surface, fitView, () => ({
