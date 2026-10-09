@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { compileScript, compileStyle, compileTemplate, parse } from "@vue/compiler-sfc";
 import RouteReviewSummary from "./RouteReviewSummary.vue";
 import RouteReader from "./RouteReader.vue";
+import { setLocale } from "@/i18n";
 
 jest.mock("@vue-flow/core", () => ({ useVueFlow: () => ({ fitView: jest.fn() }) }));
 jest.mock("@/common/route-export", () => ({ routeImage: jest.fn() }));
@@ -112,6 +113,21 @@ test("the compact summary separates prediction and reference coverage without yi
   expect(wrapper.text()).not.toMatch(/成功率|已实测|核验通过|90%|0\.9/);
   expect(wrapper.find("button, a, .v-card").exists()).toBe(false);
   expect(wrapper.emitted()).toEqual({});
+  expect(JSON.stringify(value)).toBe(before);
+});
+
+test("review facts have separate labelled terms and values in both languages without rewriting evidence", async () => {
+  const value = candidate(), before = JSON.stringify(value);
+  const wrapper = setup(RouteReviewSummary, { candidate: value });
+  const facts = wrapper.get("dl.review-row");
+  expect(facts.findAll("dt")).toHaveLength(2);
+  expect(facts.findAll("dd")).toHaveLength(2);
+  expect(facts.get('[data-review="forward"] dt').text()).toBe("独立正向预测：");
+  expect(facts.get('[data-review="forward"] dd').text()).toContain("4/4 步核验匹配");
+  expect(facts.get('[data-review="references"] dt').text()).toBe("参考覆盖：");
+  setLocale("en", { persist: false }); await wrapper.vm.$nextTick();
+  expect(facts.get('[data-review="references"] dt').text()).toBe("Reference coverage:");
+  expect(facts.get('[data-review="references"] dd').text()).toContain("Same reaction: 1 steps");
   expect(JSON.stringify(value)).toBe(before);
 });
 

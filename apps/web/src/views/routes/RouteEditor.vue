@@ -81,6 +81,7 @@
         @click="error = ''"
       />
     </div>
+    <div v-if="reloadError" class="route-editor-error" role="alert" data-cy="document-reload-error">{{ $tr(reloadError) }}</div>
     <div v-if="document && stepError" class="route-editor-error" role="alert">{{ $tr(stepError) }}</div>
     <div v-if="loading" class="workspace-empty">
       <v-progress-circular indeterminate size="24" /><span>{{ $tr('加载路线') }}</span>
@@ -266,6 +267,8 @@ const {
   graph,
   title,
   loading,
+  reloading,
+  reloadError,
   saving,
   validating,
   error,
@@ -277,6 +280,7 @@ const {
   scores,
   clear,
   load,
+  reload,
   create,
   replaceGraph,
   undo,
@@ -299,6 +303,7 @@ const canvas = ref(null),
 const inspectorLocked = computed(
   () =>
     loading.value ||
+    reloading.value ||
     saving.value ||
     importing.value ||
     validating.value ||
@@ -497,7 +502,7 @@ async function saveDocument(asCopy) {
 async function reloadConflict() {
   if (editingLocked.value || !revisionConflict.value) return;
   if (!window.confirm(uiText("重新载入文档？当前未保存及未应用修改将丢失。"))) return;
-  await load(document.value.id);
+  await reload();
 }
 async function insertMolecule() {
   if (moleculeStructure.value?.pending) return;

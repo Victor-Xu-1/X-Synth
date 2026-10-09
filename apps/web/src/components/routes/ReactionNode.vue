@@ -1,5 +1,5 @@
 <template>
-  <div class="reaction-graph-node" :class="{ selected }">
+  <div class="reaction-graph-node" :class="{ selected, numbered: hasReadingNumber }">
     <Handle type="target" :position="Position.Left" />
     <v-tooltip v-if="!data.overview" :text="$tr('查看{name}详情', { name: label })">
       <template #activator="{ props }">
@@ -34,6 +34,7 @@
       size="18"
     />
     <strong :title="label">{{ label }}</strong>
+    <small v-if="hasReadingNumber && data.label" class="reaction-source-label" :title="data.label">{{ data.label }}</small>
     <small v-if="typeof data.score === 'number' && Number.isFinite(data.score)"
       :title="$tr('步骤分数 {value}', { value: data.score.toFixed(2) })"
       >{{ $tr('步骤分数 {value}', { value: data.score.toFixed(2) }) }}</small
@@ -47,7 +48,9 @@ import { computed } from "vue";
 import { uiText } from "@/i18n";
 import { generatedReactionUiLabel } from "./route-ui-text";
 const props = defineProps({ data: { type: Object, required: true }, selected: Boolean });
-const label = computed(() => props.data.generatedStepLabels ? generatedReactionUiLabel(props.data.label) : props.data.label || uiText("反应"));
+const hasReadingNumber = computed(() => Number.isInteger(props.data.readingStepNumber) && props.data.readingStepNumber > 0);
+const label = computed(() => hasReadingNumber.value ? uiText("步骤 {index}", { index: props.data.readingStepNumber })
+  : props.data.generatedStepLabels ? generatedReactionUiLabel(props.data.label) : props.data.label || uiText("反应"));
 </script>
 <style scoped>
 .reaction-graph-node {
@@ -91,6 +94,10 @@ const label = computed(() => props.data.generatedStepLabels ? generatedReactionU
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.reaction-graph-node.numbered { gap: 1px; }
+.numbered > strong { line-height: 1.25; }
+.numbered > small { line-height: 1.2; }
+.reaction-source-label { max-width: calc(var(--route-reaction-width) - 4px); }
 .reaction-direction-icon {
   /* html-to-image discovers fonts on elements, not on ::before. */
   font-family: "Material Design Icons";
