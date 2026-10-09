@@ -41,7 +41,7 @@
           <v-btn variant="outlined" prepend-icon="mdi-refresh" data-cy="stock-retry" :disabled="inputPending" @click="runSearch">{{ $tr('重试检索') }}</v-btn>
         </div>
         <template v-else-if="matchedResult">
-          <StructurePreview :smiles="matchedResult.smiles" :label="matchedResult.records.length ? '匹配结构' : '查询结构'"
+          <StructurePreview :smiles="matchedResult.smiles" label="规范化结构"
             :width="900" :height="180" />
           <p v-if="!matchedResult.records.length" class="workspace-muted stock-no-match" role="status">{{ $tr('当前快照没有此结构的精确目录记录，未取得采购证据。') }}</p>
           <template v-else>
@@ -66,7 +66,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useStockSearch } from "@/composables/useStockSearch";
 import { stockQueryPrefill } from "@/common/stock-lookup";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -79,7 +79,7 @@ import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import StockRecordList from "@/components/stock/StockRecordList.vue";
 import StockEvidence from "@/components/stock/StockEvidence.vue";
 
-const route = useRoute(), workspace = useWorkspaceStore();
+const route = useRoute(), router = useRouter(), workspace = useWorkspaceStore();
 const smiles = ref(""), expectedSnapshot = ref(null), prefillError = ref("");
 const structure = ref(null), queryPanel = ref(null), recordHeading = ref(null), evidenceHeading = ref(null);
 const layer = ref("query"), selectedIndex = ref(null);
@@ -136,8 +136,15 @@ function editQuery() {
   layer.value = "query";
   focusIn("query", () => queryPanel.value?.querySelector("textarea"));
 }
-function newQuery() {
+async function newQuery() {
   if (inputPending.value) return;
+  const query = { ...route.query };
+  for (const key of ["smiles", "q", "snapshot"]) delete query[key];
+  if (Object.keys(query).length !== Object.keys(route.query).length) {
+    await router.replace({ query });
+    if (["smiles", "q", "snapshot"].some((key) => key in route.query)) return;
+  }
+  if (disposed) return;
   reset();
   smiles.value = "";
   expectedSnapshot.value = null;

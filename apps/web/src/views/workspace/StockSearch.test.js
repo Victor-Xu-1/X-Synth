@@ -1,6 +1,6 @@
 import { defineComponent, h, nextTick, reactive, ref } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { API } from "@/common/api";
 import { useWorkspaceStore } from "@/store/workspace";
 import StockSearch from "./StockSearch.vue";
@@ -11,7 +11,7 @@ import { parse } from "@vue/compiler-sfc";
 import postcss from "postcss";
 import { randomUUID } from "node:crypto";
 
-jest.mock("vue-router", () => ({ useRoute: jest.fn() }));
+jest.mock("vue-router", () => ({ useRoute: jest.fn(), useRouter: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 jest.mock("@/store/workspace", () => ({ useWorkspaceStore: jest.fn() }));
 jest.mock("@/components/workspace/StructureInput.vue", () => ({
@@ -46,13 +46,15 @@ const wrappers = [], hosts = [];
 function setup(query = { smiles: "CCO", snapshot }) {
   const route = reactive({ query });
   useRoute.mockReturnValue(route);
+  const router = { replace: jest.fn(async ({ query: nextQuery }) => { route.query = nextQuery; }) };
+  useRouter.mockReturnValue(router);
   useWorkspaceStore.mockReturnValue({ health: {} });
   const host = document.createElement("div");
   document.body.appendChild(host);
   hosts.push(host);
   const wrapper = mount(StockSearch, { attachTo: host, global: { stubs } });
   wrappers.push(wrapper);
-  return { route, wrapper };
+  return { route, router, wrapper };
 }
 function tab(wrapper, name) {
   return wrapper.findAll('[role="tab"]').find((item) => item.text() === name);
@@ -164,6 +166,7 @@ test("matched stock structure uses the shared read-only preview without changing
   await flushPromises();
   const preview = wrapper.getComponent({ name: "StructurePreview" });
   expect(preview.props("smiles")).toBe("CCO");
+  expect(preview.props("label")).toBe("规范化结构");
   expect(wrapper.text()).toContain("record-a");
   expect(API.post).toHaveBeenCalledTimes(2);
 });
@@ -249,7 +252,7 @@ test("no-match presents the query structure without any supplier or purchasable 
   const { wrapper } = setup();
   await lookup(wrapper, []);
   expect(panel(wrapper, "目录记录").text()).toContain("未找到精确目录记录");
-  expect(wrapper.getComponent({ name: "StructurePreview" }).props("label")).toBe("查询结构");
+  expect(wrapper.getComponent({ name: "StructurePreview" }).props("label")).toBe("规范化结构");
   expect(wrapper.find('[data-cy="stock-record-details"]').exists()).toBe(false);
   expect(panel(wrapper, "目录记录").text()).not.toContain("精确结构匹配");
   await tab(wrapper, "证据详情").trigger("click");
@@ -374,4 +377,35 @@ test("new unconfirmed input rejects an outstanding catalog success even when sou
   expect(wrapper.text()).not.toContain("stale-record");
   expect(tab(wrapper, "目录记录").element.disabled).toBe(true);
   expect(panel(wrapper, "查询").isVisible()).toBe(true);
+});
+
+test("new query removes both structure aliases and task snapshot from the URL while preserving unrelated context", async () => {
+  const { route, router, wrapper } = setup({ smiles: "CCO", q: "OCC", snapshot, context: "reading" });
+  await lookup(wrapper);
+  await wrapper.get('[data-cy="stock-new-query"]').trigger("click");
+  await flushPromises();
+  expect(router.replace).toHaveBeenCalledTimes(1);
+  expect(route.query).toEqual({ context: "reading" });
+  expect(wrapper.get("textarea").element.value).toBe("");
+  expect(document.activeElement).toBe(wrapper.get("textarea").element);
+  expect(tab(wrapper, "目录记录").element.disabled).toBe(true);
+  expect(tab(wrapper, "证据详情").element.disabled).toBe(true);
+  expect(API.post).toHaveBeenCalledTimes(2);
+});
+
+test("a superseding structure link during new-query navigation retains its own input and task snapshot", async () => {
+  const { route, router, wrapper } = setup();
+  await lookup(wrapper);
+  let finishNavigation;
+  router.replace.mockImplementation(() => new Promise((resolve) => { finishNavigation = resolve; }));
+  await wrapper.get('[data-cy="stock-new-query"]').trigger("click");
+  route.query = { smiles: "O", snapshot: otherSnapshot };
+  await nextTick();
+  finishNavigation();
+  await flushPromises();
+  expect(wrapper.get("textarea").element.value).toBe("O");
+  await lookup(wrapper, [], "O");
+  await tab(wrapper, "证据详情").trigger("click");
+  expect(panel(wrapper, "证据详情").text()).toContain(otherSnapshot);
+  expect(API.post).toHaveBeenCalledTimes(4);
 });
