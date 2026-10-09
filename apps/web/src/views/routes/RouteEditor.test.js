@@ -54,7 +54,7 @@ Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID });
 globalThis.structuredClone = (value) => deserialize(serialize(value));
 jest.mock("@/components/routes/RouteGraph.vue", () => ({
   name: "RouteGraph",
-  props: ["graph", "editable"],
+  props: ["graph", "editable", "stepNumbers"],
   emits: ["update:graph", "select"],
   template: '<div class="editor-graph" />',
 }));
@@ -605,4 +605,210 @@ test("closing the add-material dialog invalidates its pending structure check", 
     graph,
   );
   expect(wrapper.text()).toContain("已保存");
+});
+
+async function idleInspector(wrapper) {
+  wrapper.getComponent({ name: "RouteGraph" }).vm.$emit("select", "target");
+  await flushPromises();
+  const inspector = wrapper.getComponent({ name: "RouteInspector" });
+  await inspector.get('textarea[maxlength="4096"]').setValue("idle draft");
+  return inspector;
+}
+
+test("idle unapplied edits protect navigation, unload and cancelled file loading without any write", async () => {
+  const { wrapper } = await setup();
+  const inspector = await idleInspector(wrapper);
+  expect(wrapper.get('[role="status"]').text()).toBe("未应用修改");
+  window.confirm.mockReturnValue(false);
+  expect(onBeforeRouteLeave.mock.calls[0][0]({ path: "/documents" })).toBe(false);
+  const unload = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(unload);
+  expect(unload.defaultPrevented).toBe(true);
+  const file = await selectFile(wrapper);
+  expect(file.text).not.toHaveBeenCalled();
+  expect(inspector.get('textarea[maxlength="4096"]').element.value).toBe("idle draft");
+  expect(API.post).not.toHaveBeenCalled();
+  expect(API.put).not.toHaveBeenCalled();
+});
+
+test.each(["close", "select", "undo", "save", "copy", "remove", "arrange"])(
+  "cancelled %s retains an idle draft and the applied graph",
+  async (action) => {
+    const { wrapper } = await setup();
+    const canvas = wrapper.getComponent({ name: "RouteGraph" });
+    const edited = { ...graph, nodes: [...graph.nodes, { ...graph.nodes[0], id: "material", smiles: "N" }] };
+    canvas.vm.$emit("update:graph", edited);
+    const inspector = await idleInspector(wrapper);
+    window.confirm.mockReturnValue(false);
+    if (action === "close") inspector.vm.$emit("close");
+    if (action === "select") canvas.vm.$emit("select", "material");
+    if (action === "undo") wrapper.vm.runEditAction(wrapper.vm.editActions.find(item => item.label === "撤销"));
+    if (action === "save" || action === "copy") await wrapper.vm.saveDocument(action === "copy");
+    if (action === "remove") inspector.vm.$emit("remove");
+    if (action === "arrange") wrapper.vm.runEditAction(wrapper.vm.editActions.find(item => item.label === "自动布局"));
+    await flushPromises();
+    expect(window.confirm).toHaveBeenCalled();
+    expect(canvas.props("graph")).toEqual(edited);
+    expect(wrapper.getComponent({ name: "RouteInspector" }).props("node").id).toBe("target");
+    expect(inspector.get('textarea[maxlength="4096"]').element.value).toBe("idle draft");
+    expect(API.put).not.toHaveBeenCalled();
+    expect(API.post).not.toHaveBeenCalled();
+  },
+);
+
+test("confirmed save-copy discards only the staged fields and never serializes unconfirmed structures", async () => {
+  const { wrapper } = await setup();
+  const inspector = await idleInspector(wrapper);
+  await inspector.get('textarea[aria-label="目标化合物结构"]').setValue("unconfirmed");
+  API.post.mockImplementation(async (_, body) => ({ id: importedId, ...body, revision: 0, state: "draft" }));
+  await wrapper.vm.saveDocument(true);
+  await flushPromises();
+  expect(window.confirm).toHaveBeenCalledTimes(1);
+  expect(API.post).toHaveBeenCalledWith("/api/v1/route-documents", { title: "Document", graph });
+  expect(API.put).not.toHaveBeenCalled();
+});
+
+const conflictMessage = "文档已被其他页面修改，请重新载入或另存副本。";
+test("only a deterministic revision conflict offers confirmed reload and cancellation preserves both draft layers", async () => {
+  const { wrapper } = await setup();
+  await wrapper.get('[aria-label="路线名称"]').setValue("local title");
+  API.put.mockRejectedValue(new Error(JSON.stringify({ detail: conflictMessage })));
+  await wrapper.vm.saveDocument(false);
+  await flushPromises();
+  const reload = wrapper.get('[data-cy="document-conflict-reload"]');
+  const inspector = await idleInspector(wrapper);
+  const reads = API.get.mock.calls.length;
+  window.confirm.mockReturnValue(false);
+  await reload.trigger("click");
+  expect(API.get).toHaveBeenCalledTimes(reads);
+  expect(wrapper.get('[aria-label="路线名称"]').element.value).toBe("local title");
+  expect(inspector.get('textarea[maxlength="4096"]').element.value).toBe("idle draft");
+  window.confirm.mockReturnValue(true);
+  API.get.mockResolvedValue({ id: documentId, title: "server title", graph, revision: 2, state: "draft" });
+  await reload.trigger("click");
+  await flushPromises();
+  expect(API.get).toHaveBeenCalledTimes(reads + 1);
+  expect(wrapper.get('[aria-label="路线名称"]').element.value).toBe("server title");
+  expect(wrapper.get('[role="status"]').text()).toBe("已保存");
+  expect(wrapper.find('[data-cy="document-conflict-reload"]').exists()).toBe(false);
+  await wrapper.get('[aria-label="路线名称"]').setValue("another title");
+  API.put.mockRejectedValue(new Error(JSON.stringify({ detail: "other 409" })));
+  await wrapper.vm.saveDocument(false);
+  await flushPromises();
+  expect(wrapper.find('[data-cy="document-conflict-reload"]').exists()).toBe(false);
+});
+
+test("applied graph step numbers track undo and never rewrite original reaction labels", async () => {
+  const { wrapper } = await setup();
+  const canvas = wrapper.getComponent({ name: "RouteGraph" });
+  const value = { ...graph, nodes: [graph.nodes[0],
+    { id: "later", type: "reaction", smiles: "", label: "反应 1", note: "raw", position: { x: 200, y: 20 } },
+    { ...graph.nodes[0], id: "middle", smiles: "CO" },
+    { id: "earlier", type: "reaction", smiles: "", label: "反应 2", note: "", position: { x: 10, y: 10 } },
+    { ...graph.nodes[0], id: "start", smiles: "O" },
+  ], edges: [{ id: "a", source: "start", target: "earlier", input_occurrences: 2 },
+    { id: "b", source: "earlier", target: "middle" }, { id: "c", source: "middle", target: "later" },
+    { id: "d", source: "later", target: "target" }] };
+  const before = JSON.stringify(value);
+  canvas.vm.$emit("update:graph", value); canvas.vm.$emit("select", "earlier");
+  await flushPromises();
+  expect(canvas.props("stepNumbers")).toEqual({ earlier: 1, later: 2 });
+  expect(wrapper.getComponent({ name: "RouteInspector" }).props("displayStepNumber")).toBe(1);
+  expect(wrapper.getComponent({ name: "RouteInspector" }).get("input").element.value).toBe("反应 2");
+  await wrapper.get('button[aria-label="撤销"]').trigger("click");
+  expect(canvas.props("stepNumbers")).toEqual({});
+  expect(JSON.stringify(value)).toBe(before);
+});
+
+test("idle draft discard makes only confirmed applied edits undoable and redoable", async () => {
+  const { wrapper } = await setup();
+  const canvas = wrapper.getComponent({ name: "RouteGraph" });
+  const edited = { ...graph, nodes: [...graph.nodes, { ...graph.nodes[0], id: "material", smiles: "N" }] };
+  canvas.vm.$emit("update:graph", edited);
+  await flushPromises();
+  await wrapper.get('button[aria-label="撤销"]').trigger("click");
+  expect(canvas.props("graph")).toEqual(graph);
+  const inspector = await idleInspector(wrapper);
+  expect(inspector.vm.draftDirty).toBe(true);
+  expect(wrapper.vm.draftGuard.dirty.value).toBe(true);
+  window.confirm.mockReturnValue(false);
+  await wrapper.get('button[aria-label="重做"]').trigger("click");
+  expect(canvas.props("graph")).toEqual(graph);
+  expect(inspector.get('textarea[maxlength="4096"]').element.value).toBe("idle draft");
+  window.confirm.mockReturnValue(true);
+  await wrapper.get('button[aria-label="重做"]').trigger("click");
+  expect(canvas.props("graph")).toEqual(edited);
+  expect(canvas.props("graph").nodes.every(node => node.note === "")).toBe(true);
+  expect(wrapper.findComponent({ name: "RouteInspector" }).exists()).toBe(false);
+  expect(API.post).not.toHaveBeenCalled();
+  expect(API.put).not.toHaveBeenCalled();
+});
+
+test("position-only graph replacement retains unapplied fields without saving them", async () => {
+  const { wrapper } = await setup();
+  const canvas = wrapper.getComponent({ name: "RouteGraph" }), inspector = await idleInspector(wrapper);
+  const moved = { ...graph, nodes: graph.nodes.map(node => ({ ...node, position: { x: 250, y: 120 } })) };
+  canvas.vm.$emit("update:graph", moved); await flushPromises();
+  expect(inspector.get('textarea[maxlength="4096"]').element.value).toBe("idle draft");
+  expect(wrapper.vm.draftGuard.dirty.value).toBe(true);
+  expect(canvas.props("graph").nodes[0].note).toBe("");
+  expect(window.confirm).not.toHaveBeenCalled();
+  expect(API.put).not.toHaveBeenCalled();
+});
+
+test("cancelled graph content replacement retains the graph and inspected draft", async () => {
+  const { wrapper } = await setup();
+  const canvas = wrapper.getComponent({ name: "RouteGraph" }), inspector = await idleInspector(wrapper);
+  window.confirm.mockReturnValue(false);
+  canvas.vm.$emit("update:graph", { ...graph, nodes: graph.nodes.map(node => ({ ...node, smiles: "N" })) }); await flushPromises();
+  expect(canvas.props("graph")).toEqual(graph);
+  expect(inspector.get('textarea[maxlength="4096"]').element.value).toBe("idle draft");
+  expect(window.confirm).toHaveBeenCalledTimes(1);
+});
+
+test("accepted file load does not discard idle fields before navigation and needs only one confirmation", async () => {
+  const { wrapper, router } = await setup();
+  const inspector = await idleInspector(wrapper);
+  API.post.mockResolvedValue({ id: importedId });
+  router.replace.mockImplementation(async path => {
+    expect(onBeforeRouteUpdate.mock.calls[0][0]({ path })).toBe(true);
+  });
+  await selectFile(wrapper);
+  expect(window.confirm).toHaveBeenCalledTimes(1);
+  expect(router.replace).toHaveBeenCalledWith("/editor/" + importedId);
+  expect(inspector.get('textarea[maxlength="4096"]').element.value).toBe("idle draft");
+  expect(API.post.mock.calls[0][1].graph).toEqual(graph);
+});
+
+test("Apply clears the staged signal only when the validated update becomes applied graph data", async () => {
+  const { wrapper } = await setup();
+  const inspector = await idleInspector(wrapper);
+  API.post.mockResolvedValue({ smiles: "CCO" });
+  await buttonWithText(inspector, "应用修改").trigger("click");
+  await flushPromises();
+  expect(wrapper.getComponent({ name: "RouteGraph" }).props("graph").nodes[0].note).toBe("idle draft");
+  expect(wrapper.get('[role="status"]').text()).toBe("未保存");
+  expect(inspector.vm.draftDirty).toBe(false);
+  window.confirm.mockReturnValue(false);
+  inspector.vm.$emit("close");
+  await flushPromises();
+  expect(window.confirm).not.toHaveBeenCalled();
+  expect(wrapper.findComponent({ name: "RouteInspector" }).exists()).toBe(false);
+});
+
+test("old inspector signals cannot mark a loaded document with the same node ID dirty", async () => {
+  const { wrapper, route } = await setup();
+  const previous = await idleInspector(wrapper);
+  API.get.mockResolvedValue({ id: importedId, title: "new document", graph, revision: 1, state: "draft" });
+  route.params.id = importedId;
+  await flushPromises();
+  wrapper.getComponent({ name: "RouteGraph" }).vm.$emit("select", "target");
+  await flushPromises();
+  wrapper.getComponent({ name: "RouteInspector" }).vm.$emit("draft-change", {
+    contextId: documentId, nodeId: "target", dirty: true, revision: 999,
+  });
+  await flushPromises();
+  expect(previous.exists()).toBe(false);
+  expect(wrapper.get('[role="status"]').text()).toBe("已保存");
+  expect(wrapper.vm.hasUnsavedChanges).toBe(false);
 });

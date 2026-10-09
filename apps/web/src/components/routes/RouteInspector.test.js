@@ -8,6 +8,7 @@ jest.mock("@/components/workspace/StructureInput.vue", () => ({
   name: "StructureInput",
   props: ["modelValue", "label", "disabled"],
   emits: ["update:modelValue"],
+  setup: () => ({ pending: require("vue").ref(false) }),
   template:
     '<textarea :aria-label="label" :disabled="disabled" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
 }));
@@ -28,6 +29,19 @@ const node = () => ({
   label: "目标",
   note: "",
   position: { x: 0, y: 0 },
+});
+
+test("pending chemical input locks close and cannot be discarded before synchronization finishes", async () => {
+  const wrapper = setup();
+  wrapper.getComponent({ name: "StructureInput" }).vm.pending = true;
+  await flushPromises();
+  expect(wrapper.vm.pending).toBe(true);
+  expect(wrapper.get('button[aria-label="关闭详情"]').attributes("disabled")).toBeDefined();
+  expect(wrapper.vm.discardDraft()).toBe(false);
+  expect(wrapper.pendingEvents).toHaveBeenLastCalledWith(true);
+  wrapper.getComponent({ name: "StructureInput" }).vm.pending = false;
+  await flushPromises();
+  expect(wrapper.pendingEvents).toHaveBeenLastCalledWith(false);
 });
 const wrappers = [];
 function setup(props = {}) {
@@ -249,4 +263,33 @@ test("temporary read-only locks preserve unapplied edits without presenting them
   expect(wrapper.get('textarea[maxlength="4096"]').element.value).toBe(
     "尚未应用的备注",
   );
+});
+
+test("idle drafts report their current identity and explicit discard never applies chemistry", async () => {
+  const wrapper = setup();
+  await wrapper.get('textarea[maxlength="4096"]').setValue("unapplied note");
+  const signal = wrapper.emitted("draft-change").at(-1)[0];
+  expect(signal).toEqual(expect.objectContaining({ contextId: "document-a", nodeId: "target", dirty: true }));
+  expect(wrapper.vm.pending).toBe(false);
+  expect(wrapper.vm.draftDirty).toBe(true);
+  await wrapper.setProps({ editable: false });
+  expect(wrapper.vm.draftDirty).toBe(true);
+  await wrapper.setProps({ editable: true });
+  wrapper.vm.discardDraft();
+  await flushPromises();
+  expect(wrapper.get('textarea[maxlength="4096"]').element.value).toBe("");
+  expect(wrapper.emitted("draft-change").at(-1)[0].dirty).toBe(false);
+  expect(wrapper.emitted("update")).toBeUndefined();
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test("display step numbers are UI-only and preserve the original reaction name", async () => {
+  const reaction = { ...node(), id: "original-r", type: "reaction", smiles: "", label: "反应 9", note: "original note" };
+  const wrapper = setup({ node: reaction, editable: false, displayStepNumber: 2 });
+  expect(wrapper.get("header strong").text()).toBe("合成步骤 2");
+  expect(wrapper.get(".inspector-readonly").text()).toBe("反应 9");
+  await wrapper.setProps({ displayStepNumber: 0 });
+  expect(wrapper.get("header strong").text()).toBe("反应步骤");
+  expect(reaction.label).toBe("反应 9");
+  expect(wrapper.emitted("update")).toBeUndefined();
 });

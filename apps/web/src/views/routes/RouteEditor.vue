@@ -70,7 +70,10 @@
     </div>
     <div v-if="error" class="route-editor-error" role="alert">
       {{ $tr(error)
-      }}<v-btn
+      }}<v-btn v-if="revisionConflict" data-cy="document-conflict-reload"
+        prepend-icon="mdi-refresh" variant="outlined" :disabled="editingLocked" @click="reloadConflict">
+        {{ $tr('重新载入文档') }}
+      </v-btn><v-btn
         icon="mdi-close"
         size="x-small"
         variant="text"
@@ -78,6 +81,7 @@
         @click="error = ''"
       />
     </div>
+    <div v-if="document && stepError" class="route-editor-error" role="alert">{{ $tr(stepError) }}</div>
     <div v-if="loading" class="workspace-empty">
       <v-progress-circular indeterminate size="24" /><span>{{ $tr('加载路线') }}</span>
     </div>
@@ -135,6 +139,7 @@
         :graph="graph"
         :editable="!editingLocked"
         :scores="scores"
+        :step-numbers="stepNumbers"
         @update:graph="updateGraph"
         @select="selectNode"
         @select-edge="selectNode"
@@ -142,13 +147,17 @@
       />
       <RouteInspector
         v-if="selectedNode"
+        ref="inspectorView"
         :context-id="document.id"
         :node="selectedNode"
         :graph="graph"
         :editable="!inspectorLocked"
         :target="selected === graph.target_id"
         :score="scores[selected]"
-        @close="selected = null"
+        :display-step-number="stepNumbers[selected]"
+        @draft-change="draftGuard.receive"
+        @discard="discardInspector"
+        @close="closeInspector"
         @remove="removeNode"
         @pending="applying = $event"
         @update="updateNode"
@@ -216,6 +225,8 @@ import {
 } from "vue-router";
 import { routeImage, routeExportErrorMessage } from "@/common/route-export";
 import { useRouteDocument } from "@/composables/useRouteDocument";
+import { useInspectorDraftGuard } from "@/composables/useInspectorDraftGuard";
+import { documentStepDetails } from "@/common/document-step-details";
 import RouteGraph from "@/components/routes/RouteGraph.vue";
 import RouteInspector from "@/components/routes/RouteInspector.vue";
 import ExpandMolecule from "@/components/routes/ExpandMolecule.vue";
@@ -296,10 +307,27 @@ const inspectorLocked = computed(
     expandDialog.value,
 );
 const editingLocked = computed(() => inspectorLocked.value || applying.value);
+const inspectorView = ref(null);
+const draftGuard = useInspectorDraftGuard({
+  contextId: () => document.value?.id,
+  nodeId: () => selectedNode.value?.id,
+  confirm: () => window.confirm(uiText("存在未应用的结构或反应修改，仍要放弃？")),
+  discard: () => inspectorView.value?.discardDraft() ?? false,
+});
+const stepProjection = computed(() => {
+  try {
+    return { numbers: Object.fromEntries(documentStepDetails(graph.value).map(step => [step.node.id, step.number])), error: "" };
+  } catch (error) { return { numbers: {}, error: error.message }; }
+});
+const stepNumbers = computed(() => stepProjection.value.numbers);
+const stepError = computed(() => stepProjection.value.error);
+const DOCUMENT_REVISION_CONFLICT = "文档已被其他页面修改，请重新载入或另存副本。";
+const revisionConflict = computed(() => !!document.value && error.value === DOCUMENT_REVISION_CONFLICT);
 let expansionContext = null;
 const hasUnsavedChanges = computed(
   () =>
     dirty.value ||
+    draftGuard.dirty.value ||
     applying.value ||
     (!document.value &&
       !loading.value &&
@@ -315,6 +343,7 @@ const documentNavigation = createDocumentNavigation({
       id: document.value?.id,
       title: title.value,
       graph: cleanGraph(graph.value),
+      inspectorDraftRevision: draftGuard.revision.value,
       form: document.value
         ? null
         : { title: newTitle.value, smiles: newSmiles.value },
@@ -322,7 +351,8 @@ const documentNavigation = createDocumentNavigation({
   confirm: (message) => window.confirm(message),
 });
 const persistenceLabel = computed(() =>
-  documentPersistenceLabel(document.value, {
+  draftGuard.dirty.value && !dirty.value && !saving.value && !importing.value
+    ? "未应用修改" : documentPersistenceLabel(document.value, {
     dirty: hasUnsavedChanges.value,
     saving: saving.value,
     importing: importing.value,
@@ -333,16 +363,25 @@ const sourceStateLabel = computed(() =>
 );
 const origin = computed(() => documentOrigin(document.value));
 function runEditAction(action) {
-  if (!editingLocked.value && !action.disabled) action.run();
+  if (editingLocked.value || action.disabled) return;
+  if (action.label !== "打开路线文档" && !draftGuard.requestDiscard()) return;
+  action.run();
 }
 function selectNode(value) {
-  if (!editingLocked.value) selected.value = value;
+  if (editingLocked.value || value === selected.value || !draftGuard.requestDiscard()) return;
+  selected.value = value;
+}
+function discardInspector() {
+  if (!editingLocked.value) draftGuard.requestDiscard();
+}
+function closeInspector() {
+  if (!editingLocked.value && draftGuard.requestDiscard()) selected.value = null;
 }
 function updateGraph(value) {
-  if (!editingLocked.value) replaceGraph(value);
+  if (!editingLocked.value && draftGuard.permitsGraphChange(graph.value, value)) replaceGraph(value);
 }
 function removeNode() {
-  if (!editingLocked.value) removeSelected();
+  if (!editingLocked.value && draftGuard.requestDiscard()) removeSelected();
 }
 const editActions = computed(() => [
   {
@@ -451,9 +490,14 @@ async function createDocument() {
   if (value) router.replace(`/editor/${value.id}`);
 }
 async function saveDocument(asCopy) {
-  if (editingLocked.value) return;
+  if (editingLocked.value || !draftGuard.requestDiscard()) return;
   const value = await save(asCopy);
   if (value && asCopy) router.replace(`/editor/${value.id}`);
+}
+async function reloadConflict() {
+  if (editingLocked.value || !revisionConflict.value) return;
+  if (!window.confirm(uiText("重新载入文档？当前未保存及未应用修改将丢失。"))) return;
+  await load(document.value.id);
 }
 async function insertMolecule() {
   if (moleculeStructure.value?.pending) return;
@@ -624,6 +668,9 @@ onBeforeUnmount(() => {
   color: var(--ws-danger);
   font-size: 12px;
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: space-between;
   border-bottom: 1px solid var(--ws-border);
 }
