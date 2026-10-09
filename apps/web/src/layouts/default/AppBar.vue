@@ -35,7 +35,7 @@
         aria-hidden="true"
       />
       <span class="workspace-location-root">{{
-        workspace.local ? $tr('本地工作区') : $tr('研究工作区')
+        $tr(locationRoot)
       }}</span>
       <v-icon icon="mdi-chevron-right" size="16" aria-hidden="true" />
       <span class="workspace-location-current">{{
@@ -86,6 +86,8 @@ defineEmits(["toggle-navigation", "navigate"]);
 const version = __X_SYNTH_VERSION__;
 const route = useRoute();
 const workspace = useWorkspaceStore();
+const locationRoot = computed(() => workspace.local ? "本地工作区"
+  : workspace.session?.mode === "askcos" ? "研究工作区" : "工作区");
 const currentModule = computed(() =>
   visibleNavigation(workspace.features)
     .flatMap((group) => group.items)

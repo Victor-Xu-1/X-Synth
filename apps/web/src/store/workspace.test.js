@@ -241,3 +241,50 @@ test("deadline releases a stalled JSON body and late optional data cannot overwr
   for (let i = 0; i < 24; i++) await Promise.resolve();
   expect(workspace.references.ready).toBe(true); expect(jest.getTimerCount()).toBe(0);
 });
+
+test("reconnect bypasses the freshness cache and confirms current core identity and readiness", async () => {
+  const workspace = useWorkspaceStore(); await workspace.refresh(true);
+  expect(global.fetch).toHaveBeenCalledTimes(5);
+  await workspace.reconnect();
+  expect(global.fetch).toHaveBeenCalledTimes(10);
+  expect(workspace.ready).toBe(true); expect(workspace.error).toBe("");
+});
+
+test("reconnect behind an unfinished offline probe is coalesced and uses a new snapshot", async () => {
+  const workspace = useWorkspaceStore();
+  let release;
+  global.fetch.mockImplementation(async url => url === "/api/v1/references/status"
+    ? new Promise(resolve => { release = () => resolve({ ok: false }); })
+    : { ok: url !== "/api/v1/health", json: async () => healthy[url] });
+  const old = workspace.refresh(true);
+  for (let i = 0; i < 24; i++) await Promise.resolve();
+  expect(workspace.error).toBeTruthy(); expect(workspace.loading).toBe(true);
+  const first = workspace.reconnect(), second = workspace.reconnect();
+  expect(global.fetch).toHaveBeenCalledTimes(5);
+  global.fetch.mockImplementation(async url => ({ ok: true, json: async () => healthy[url] }));
+  release(); await Promise.all([old, first, second]);
+  expect(global.fetch).toHaveBeenCalledTimes(10);
+  expect(workspace.ready).toBe(true); expect(workspace.error).toBe("");
+  expect(workspace.references.ready).toBe(true); expect(workspace.loading).toBe(false);
+});
+
+test("reconnect does not wait for a stalled optional probe and late old data cannot overwrite it", async () => {
+  jest.useFakeTimers();
+  const workspace = useWorkspaceStore(); let release;
+  global.fetch.mockImplementation(async url => url === "/api/v1/references/status"
+    ? new Promise(resolve => { release = () => resolve({ ok: true, json: async () => ({ ready: false }) }); })
+    : { ok: url !== "/api/v1/health", json: async () => healthy[url] });
+  const old = workspace.refresh(true);
+  for (let i = 0; i < 24; i++) await Promise.resolve();
+  global.fetch.mockImplementation(async url => ({ ok: true, json: async () => healthy[url] }));
+  let resolved = false;
+  const retry = workspace.reconnect().then(() => { resolved = true; });
+  try {
+    await jest.advanceTimersByTimeAsync(100);
+    expect(resolved).toBe(true);
+    expect(workspace.ready).toBe(true); expect(workspace.references.ready).toBe(true);
+    release(); await jest.advanceTimersByTimeAsync(1);
+    expect(workspace.references.ready).toBe(true);
+    expect(jest.getTimerCount()).toBe(0);
+  } finally { release(); await Promise.all([old, retry]); }
+});

@@ -36,6 +36,11 @@ test("system pairs are complete, deterministic and compatible with the published
   }
 });
 
+test("controlled core probe errors have English copy, not raw Chinese fallback", () => {
+  expect(messages.en["无法连接工作区服务"]).toBe("Could not connect to the workspace service");
+  expect(messages.en["无法确认工作区会话"]).toBe("Could not confirm the workspace session");
+});
+
 test("all router-controlled meta titles and account names have catalog entries without altering routes", () => {
   const source = readFileSync(resolve(__dirname, "../router/index.js"), "utf8");
   const titles = [];

@@ -26,7 +26,7 @@ const stubs = {
 };
 beforeEach(() => {
   Object.assign(mockRoute, { path: "/", query: {}, meta: { title: "路线设计" } });
-  Object.assign(mockWorkspace, { ready: false, loading: false, local: true, error: "", coreChecking: false, features: {} });
+  Object.assign(mockWorkspace, { ready: false, loading: false, local: true, error: "", coreChecking: false, features: {}, session: null });
   wrapper = mount(AppBar, { global: { stubs } });
 });
 afterEach(() => wrapper.unmount());
@@ -61,6 +61,16 @@ test("an unavailable tool does not manufacture an available navigation family", 
   mockWorkspace.features = { stock: true };
   await nextTick();
   expect(wrapper.get(".workspace-location-current").text()).toBe("原料检索");
+});
+
+test("an unknown session uses a neutral location rather than a native research identity", async () => {
+  mockWorkspace.local = false; mockWorkspace.session = null;
+  await nextTick();
+  expect(wrapper.get(".workspace-location-root").text()).toBe("工作区");
+  mockWorkspace.session = { mode: "askcos" };
+  await nextTick();
+  expect(wrapper.get(".workspace-location-root").text()).toBe("研究工作区");
+  mockWorkspace.session = null;
 });
 
 test("service readiness, loading and offline states remain distinct", async () => {

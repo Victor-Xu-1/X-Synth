@@ -120,6 +120,9 @@ watch(mobile, () => {
   mobileOpen.value = false;
   if (focused) nextTick(focusToggle);
 });
+watch(online, (connected, previous) => {
+  if (connected && !previous) workspace.reconnect();
+});
 onMounted(() => {
   workspace.refresh(true);
   timer = setInterval(() => workspace.refresh(true), 15000);

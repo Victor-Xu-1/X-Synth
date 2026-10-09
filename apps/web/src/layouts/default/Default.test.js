@@ -20,7 +20,7 @@ jest.mock("@/components/workspace/BrandMark.vue", () => ({
 }));
 const mockWidth = ref(1440);
 const mockOnline = ref(true);
-const mockWorkspace = { refresh: jest.fn(), features: {} };
+const mockWorkspace = { refresh: jest.fn(), reconnect: jest.fn(), features: {} };
 let wrapper;
 const stubs = {
   VApp: { template: "<div><slot /></div>" },
@@ -43,6 +43,7 @@ const stubs = {
 beforeEach(() => {
   jest.useFakeTimers();
   mockWorkspace.refresh.mockClear();
+  mockWorkspace.reconnect.mockClear();
   mockWidth.value = 1440;
   mockOnline.value = true;
 });
@@ -162,4 +163,17 @@ test("offline message and readiness polling are preserved and the interval is cl
   wrapper = undefined;
   jest.advanceTimersByTime(15000);
   expect(mockWorkspace.refresh).toHaveBeenCalledTimes(2);
+});
+
+test("coming online rechecks readiness immediately and unmounted layouts cannot request another reconnect", async () => {
+  setup();
+  mockOnline.value = false; await nextTick();
+  expect(mockWorkspace.reconnect).not.toHaveBeenCalled();
+  mockOnline.value = true; await nextTick();
+  expect(mockWorkspace.reconnect).toHaveBeenCalledTimes(1);
+  expect(mockWorkspace.refresh).toHaveBeenCalledTimes(1);
+  wrapper.unmount(); wrapper = undefined;
+  mockOnline.value = false; await nextTick();
+  mockOnline.value = true; await nextTick();
+  expect(mockWorkspace.reconnect).toHaveBeenCalledTimes(1);
 });
