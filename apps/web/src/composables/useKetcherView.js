@@ -11,10 +11,12 @@ export function useKetcherView({ root, active, ready, blocked, onChange, getFram
   const owns = element => !!element && document?.fullscreenElement === element;
   const admitted = () => !disposed && active.value && ready.value && !blocked.value && !pending.value;
 
-  async function release(element = root.value) {
+  async function release(element = root.value, context) {
     if (!owns(element)) return;
+    const requested = epoch;
+    const current = context?.current ?? (() => !disposed && active.value && requested === epoch);
     try { await document.exitFullscreen(); }
-    catch { if (!disposed && active.value) error.value = failureText; }
+    catch { if (current()) { error.value = failureText; lastCommand = next => release(element, next); } }
   }
   function keydown(event) {
     if (event.key !== "Escape" || !root.value || !owns(root.value)) return;
@@ -26,14 +28,14 @@ export function useKetcherView({ root, active, ready, blocked, onChange, getFram
     frameDocument?.removeEventListener("keydown", keydown, true);
     frameDocument = owner; frameDocument?.addEventListener("keydown", keydown, true);
   }
-  async function adjust(context, returnFocus = false) {
+  async function adjust(context, returnFocus = false, command = onChange) {
     if (!context.current()) return;
     adjustments.value++;
     try {
-      await onChange(context); await nextTick();
+      await command(context); await nextTick();
       if (returnFocus && context.current()) focusReturn = { context, target: invoker };
     } catch {
-      if (context.current()) { error.value = failureText; lastCommand = next => adjust(next); }
+      if (context.current()) { error.value = failureText; lastCommand = next => adjust(next, false, command); }
     } finally { adjustments.value--; }
   }
   function changed() {
@@ -55,6 +57,11 @@ export function useKetcherView({ root, active, ready, blocked, onChange, getFram
     try { await command({ current: () => !disposed && active.value && current === epoch }); }
     catch { if (!disposed && active.value && current === epoch) error.value = failureText; }
     finally { commands.value = false; }
+  }
+  function adjustView(command) {
+    if (disposed || !active.value || !ready.value) return;
+    const requested = epoch;
+    return adjust({ current: () => !disposed && active.value && requested === epoch }, false, command);
   }
   async function toggle(target) {
     if (!admitted() || !supported.value || document.fullscreenElement && !owns(root.value)) return;
@@ -108,6 +115,6 @@ export function useKetcherView({ root, active, ready, blocked, onChange, getFram
     frameDocument?.removeEventListener("keydown", keydown, true);
     void release();
   });
-  return { expanded, supported, pending, error, observe, observeFrame, toggle, run,
+  return { expanded, supported, pending, error, observe, observeFrame, toggle, run, adjustView,
     retry: () => lastCommand && run(lastCommand) };
 }

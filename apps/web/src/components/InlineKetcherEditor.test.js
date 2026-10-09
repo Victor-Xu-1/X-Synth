@@ -42,7 +42,9 @@ test("inline Ketcher editor scales the fixed-width Ketcher app to the available 
   expect(text).toContain(
     "const KETCHER_COMPACT_VIEWPORT_HEIGHT_RESERVE = 300;",
   );
-  expect(text).toContain("const syncKetcherLayout = () => {");
+  expect(text).toContain("const syncKetcherLayout = (options = {}) => {");
+  expect(text).toContain("view.adjustView(fitDrawing)");
+  expect(text).toContain("context?.current && !context.current()");
   expect(text).toContain(
     "if (!frame || !frame.getClientRects().length) return;",
   );

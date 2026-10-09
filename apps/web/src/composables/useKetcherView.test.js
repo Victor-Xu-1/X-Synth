@@ -109,3 +109,25 @@ test("Escape exits only the owned drawing view and removes its listener on dispo
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
   expect(document.exitFullscreen).toHaveBeenCalledTimes(1);
 });
+
+test("failed Escape exit retries exit rather than the previous successful zoom", async () => {
+  const wrapper = create(); await api.toggle(); const zoom = jest.fn(); await api.run(zoom);
+  document.exitFullscreen.mockRejectedValueOnce(new Error("native exit denied"));
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); await Promise.resolve();
+  expect(api.error.value).toBe("画板视图操作失败，请重试。");
+  await api.retry(); expect(owner).toBe(null); expect(zoom).toHaveBeenCalledTimes(1); wrapper.unmount();
+});
+
+test("automatic resize failures retry only their own current camera adjustment", async () => {
+  const wrapper = create(); await api.toggle();
+  const fit = jest.fn().mockRejectedValueOnce(new Error("resize fit failed")).mockResolvedValueOnce();
+  await api.adjustView(fit); expect(api.error.value).toBe("画板视图操作失败，请重试。");
+  await api.retry(); expect(fit).toHaveBeenCalledTimes(2); expect(api.expanded.value).toBe(true); wrapper.unmount();
+});
+
+test("late automatic resize errors cannot revive after a scope generation change", async () => {
+  const wrapper = create(); let fail;
+  const held = api.adjustView(() => new Promise((_resolve, reject) => { fail = reject; }));
+  active.value = false; active.value = true; fail(new Error("old fit")); await held;
+  expect(api.error.value).toBe(""); await api.retry(); wrapper.unmount();
+});

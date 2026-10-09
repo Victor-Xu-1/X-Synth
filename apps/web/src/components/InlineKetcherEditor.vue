@@ -138,12 +138,14 @@ const ketcherViewportHeight = ref(KETCHER_BASE_HEIGHT);
 let resizeObserver = null;
 let fitRevision = 0;
 const editorLifetime = new AbortController();
-const fitDrawing = async () => {
+const fitDrawing = async (context) => {
   const current = ++fitRevision;
   await nextTick();
   await new Promise((resolve) => window.requestAnimationFrame(resolve));
   if (
     editorLifetime.signal.aborted ||
+    !activity.value ||
+    context?.current && !context.current() ||
     current !== fitRevision ||
     !ketcherFrame.value?.clientWidth
   )
@@ -165,7 +167,7 @@ const ketcherFrameStyle = computed(() => {
   };
 });
 
-const syncKetcherLayout = () => {
+const syncKetcherLayout = (options = {}) => {
   const frame = ketcherFrame.value;
   if (!frame || !frame.getClientRects().length) return;
   // Ketcher 2.13 registers its resize handler before its native editor exists.
@@ -179,7 +181,7 @@ const syncKetcherLayout = () => {
     ketcherViewportWidth.value = width;
     ketcherViewportHeight.value = height;
     ketcherVisualHeight.value = height;
-    if (resized) fitDrawing().catch(() => { view.error.value = "画板视图操作失败，请重试。"; });
+    if (resized && options.fit !== false) void view.adjustView(fitDrawing);
     return;
   }
 
@@ -230,10 +232,7 @@ const syncKetcherLayout = () => {
     ketcherViewportWidth.value = availableWidth;
     ketcherViewportHeight.value = visualHeightLimit;
     ketcherVisualHeight.value = visualHeightLimit;
-    if (resized)
-      fitDrawing().catch(() => {
-        editorStatus.value = "结构视图调整失败，请重新打开画板。";
-      });
+    if (resized && options.fit !== false) void view.adjustView(fitDrawing);
     return;
   }
 
@@ -326,7 +325,7 @@ const view = useKetcherView({ root: editorRoot, active: activity, ready,
   blocked: computed(() => props.disabled || busy.value),
   onChange: async context => {
     await nextTick(); if (!context.current()) return;
-    syncKetcherLayout(); await fitDrawing();
+    syncKetcherLayout({ fit: false }); await fitDrawing(context);
   },
 });
 const zoomDrawing = factor => view.run(() => zoomKetcherCanvas(ketcherIframe.value?.contentWindow?.ketcher?.editor, factor));
