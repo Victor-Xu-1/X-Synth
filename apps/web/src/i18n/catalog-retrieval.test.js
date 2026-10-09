@@ -9,7 +9,7 @@ test("retrieval additions retain complete English/Chinese catalog pairs and Engl
     "模板索引状态返回格式无效，检索未启用。", "模板记录返回格式无效，未展示结果。"];
   titles.push("统一模板索引未配置。", "统一模板索引不可用。", "该来源中没有对应模板。",
     "模板标识必须包含匹配的来源命名空间。", "模板索引快照已变更，请明确开始新的查询。",
-    "模板分页游标无效或与筛选条件不匹配。");
+    "模板分页游标无效或与筛选条件不匹配。", "参考反应不能完整载入，未改变画板。");
   setLocale("en", { persist: false });
   for (const title of titles) {
     expect(uiText(title)).not.toBe(title);

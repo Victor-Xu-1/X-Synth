@@ -45,7 +45,8 @@ export function useTemplateSearch({ route = useRoute(), router = useRouter(), ap
   const canNext = computed(() => canSearch.value && searched.value && result.value.hasMore);
   const canPrevious = computed(() => canSearch.value && searched.value && session.previous(cursor.value) !== undefined);
   const canFirst = computed(() => canSearch.value && cursor.value !== null);
-  let active = true, applyingRoute = false, searchGeneration = 0, detailGeneration = 0, healthGeneration = 0;
+  let active = true, applyingRoute = false, draftEdited = false;
+  let searchGeneration = 0, detailGeneration = 0, healthGeneration = 0;
   let searchController, detailController, healthController, navigationTarget = null;
 
   function readCursor() {
@@ -66,7 +67,7 @@ export function useTemplateSearch({ route = useRoute(), router = useRouter(), ap
   }
   watch(filterKey, () => {
     session.reset();
-    if (!applyingRoute) { cursor.value = null; cursorError.value = ""; }
+    if (!applyingRoute) { draftEdited = true; cursor.value = null; cursorError.value = ""; }
   }, { flush: "sync" });
   watch(pageKey, () => invalidateSearch(), { flush: "sync" });
 
@@ -105,6 +106,7 @@ export function useTemplateSearch({ route = useRoute(), router = useRouter(), ap
     Object.assign(filters, templateSearchFilters(route.query));
     readCursor();
     applyingRoute = false;
+    draftEdited = false;
     if (!isDetail.value && !requested(route.query)) {
       invalidateSearch();
       session.reset();
@@ -215,7 +217,8 @@ export function useTemplateSearch({ route = useRoute(), router = useRouter(), ap
     } catch (failure) {
       if (active && generation === healthGeneration) indexError.value = errorMessage(failure, "模板索引不可用。");
     } finally { if (active && generation === healthGeneration) healthLoading.value = false; }
-    if (active && generation === healthGeneration && !isDetail.value && requested(route.query) && !searched.value) runSearch();
+    if (active && generation === healthGeneration && !draftEdited && !isDetail.value && requested(route.query) && !searched.value
+      && filterKey.value === JSON.stringify(templateSearchFilters(route.query))) runSearch();
   }
   onMounted(loadHealth);
   onUnmounted(() => {

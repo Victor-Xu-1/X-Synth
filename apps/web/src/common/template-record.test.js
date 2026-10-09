@@ -9,6 +9,13 @@ test("a complete index is not mutated and actual zero coverage remains zero", ()
   const empty = { status: "ready", template_count: 0, source_count: 0, sources: [], directions: {} };
   expect(readTemplateHealth(empty)).toBe(empty);
 });
+test("registered sources may be empty or outnumber their actual template records", () => {
+  const empty = { status: "ready", template_count: 0, source_count: 3,
+    sources: ["pistachio", "ord", "uspto"], directions: {} };
+  expect(readTemplateHealth(empty)).toBe(empty);
+  const partial = { ...empty, template_count: 1, directions: { retro: 1 } };
+  expect(readTemplateHealth(partial)).toBe(partial);
+});
 test.each([{ ...health, sources: ["ord", "ord"] }, { ...health, template_count: 13 },
   { ...health, directions: { retro: 12.5 } }, { ...health, directions: { unknown: 12 } },
   { ...health, source_count: 0, sources: [] },

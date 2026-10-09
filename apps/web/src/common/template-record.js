@@ -9,7 +9,7 @@ export function readTemplateHealth(value) {
   if (!record(value) || value.status !== "ready" || !count(value.template_count)
     || !count(value.source_count) || !Array.isArray(value.sources) || !record(value.directions)
     || value.source_count !== value.sources.length || new Set(value.sources).size !== value.source_count
-    || value.source_count > value.template_count || Boolean(value.source_count) !== Boolean(value.template_count)
+    || (value.template_count > 0 && value.source_count === 0)
     || value.sources.some(source => !templateSelectionFromQuery({ source, id: `${source}:record` }))
     || Object.entries(value.directions).some(([direction, total]) => !["retro", "forward"].includes(direction) || !count(total))
     || Object.values(value.directions).reduce((total, value) => total + value, 0) !== value.template_count)
