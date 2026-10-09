@@ -7,6 +7,17 @@ export function emptyProbeState() {
   return Object.fromEntries([...core, ...optional].map(([field]) => [field, false]));
 }
 
+export function reconnectWorkspace(store) {
+  const current = refreshes.get(store);
+  if (!current) return refreshWorkspace(store, true);
+  // Replace only the owned readonly probes; never reuse an offline snapshot.
+  if (!current.reconnect) {
+    current.controller.abort();
+    current.reconnect = current.all.then(() => refreshWorkspace(store, true));
+  }
+  return current.reconnect;
+}
+
 function checkedCore(field, value) {
   const object = value !== null && typeof value === "object" && !Array.isArray(value);
   if (field === "health" && (!object || typeof value.route_search_ready !== "boolean")
@@ -67,6 +78,6 @@ export function refreshWorkspace(store, force = false, coreOnly = false) {
     store.loading = false;
     refreshes.delete(store);
   });
-  refreshes.set(store, { core: coreReady, all: pending });
+  refreshes.set(store, { core: coreReady, all: pending, controller });
   return coreOnly ? coreReady : pending;
 }

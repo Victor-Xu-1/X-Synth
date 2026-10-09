@@ -17,6 +17,8 @@ export default [
   ["状态", "Status"], ["来源", "Source"], ["详情", "Details"], ["操作", "Actions"],
   ["未知", "Unknown"], ["未定义", "Undefined"], ["未提供", "Not provided"], ["未记录", "Not recorded"],
   ["连接中", "Connecting"], ["搜索就绪", "Search ready"], ["服务未就绪", "Service not ready"],
+  ["无法连接工作区服务", "Could not connect to the workspace service"],
+  ["无法确认工作区会话", "Could not confirm the workspace session"],
   ["网络离线", "Offline"], ["网络已断开", "Network disconnected"],
   ["连接计算服务", "Connecting to computation services"], ["当前服务未启用", "Service not enabled"],
   ["工作区连接不可用", "Workspace unavailable"], ["查看运行监测", "Open monitoring"],

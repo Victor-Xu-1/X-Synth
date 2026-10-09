@@ -13,7 +13,7 @@ jest.mock("@/components/workspace/BrandMark.vue", () => ({
   template: '<img alt="" />',
 }));
 const mockRoute = reactive({ path: "/", query: {} });
-const mockWorkspace = reactive({ features: {}, local: true, refreshed: 1 });
+const mockWorkspace = reactive({ features: {}, local: true, refreshed: 1, session: { mode: "local" } });
 const mockDark = ref(false);
 const mockToggleTheme = jest.fn();
 let wrapper;
@@ -31,7 +31,7 @@ const stubs = {
   VBtn: { emits: ["click"], template: "<button @click=\"$emit('click')\" />" },
 };
 beforeEach(() => {
-  Object.assign(mockWorkspace, { features: {}, local: true, refreshed: 1 });
+  Object.assign(mockWorkspace, { features: {}, local: true, refreshed: 1, session: { mode: "local" } });
   Object.assign(mockRoute, { path: "/", query: {} });
   mockDark.value = false;
   mockToggleTheme.mockClear();
@@ -92,6 +92,7 @@ test("compact controls retain accessible theme labels and authenticated account 
   await theme.trigger("click");
   expect(mockToggleTheme).toHaveBeenCalledTimes(1);
   mockWorkspace.local = false;
+  mockWorkspace.session = { mode: "askcos" };
   await nextTick();
   expect(wrapper.get('a[href="/login"]').attributes("aria-label")).toBe("账户");
   expect(wrapper.get('a[href="/results"]').attributes("title")).toBe(
@@ -108,4 +109,10 @@ test("the drawer offers a labeled close command while keeping the existing brand
   expect(wrapper.get(".workspace-brand").attributes("href")).toBe("/");
   await wrapper.get('button[aria-label="关闭导航"]').trigger("click");
   expect(wrapper.emitted("navigate")).toEqual([[]]);
+});
+
+test("a missing failed core session cannot invent a native account entry", async () => {
+  mockWorkspace.local = false; mockWorkspace.session = null;
+  await nextTick();
+  expect(wrapper.find('a[href="/login"]').exists()).toBe(false);
 });

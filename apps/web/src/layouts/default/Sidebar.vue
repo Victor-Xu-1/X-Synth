@@ -67,7 +67,7 @@
         /><span>{{ isDark ? $tr('浅色模式') : $tr('深色模式') }}</span>
       </button>
       <router-link
-        v-if="workspace.refreshed && !workspace.local"
+        v-if="workspace.session?.mode === 'askcos'"
         class="nav-item"
         :aria-label="$tr('账户')"
         :title="compact ? $tr('账户') : undefined"

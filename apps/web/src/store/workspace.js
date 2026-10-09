@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { emptyProbeState, refreshWorkspace } from "./workspace-probes";
+import { emptyProbeState, reconnectWorkspace, refreshWorkspace } from "./workspace-probes";
 
 export const useWorkspaceStore = defineStore("workspace", {
   state: () => ({
@@ -64,6 +64,9 @@ export const useWorkspaceStore = defineStore("workspace", {
     },
     refreshCore(force = false) {
       return refreshWorkspace(this, force, true);
+    },
+    reconnect() {
+      return reconnectWorkspace(this);
     },
     can(feature) {
       return !feature || this.features[feature] === true;
