@@ -1,3 +1,6 @@
+import { installKetcherScrollCoordinates, resetKetcherScrollCoordinates } from "./ketcher-scroll";
+import { installKetcherPaperExtent } from "./ketcher-paper";
+
 export function prepareKetcherDocument(doc) {
   if (!doc?.head || doc.getElementById("x-synth-ketcher-responsive-style"))
     return;
@@ -85,6 +88,8 @@ export function fitKetcherCanvas(editor, { preserveZoom = false } = {}) {
   const zoom = preserveZoom ? editor.zoom() : Math.min(1,
     width > 0 ? (viewport.width - 2 * margin) / width : 1,
     height > 0 ? (viewport.height - 2 * margin) / height : 1);
+  installKetcherScrollCoordinates(render);
+  installKetcherPaperExtent(editor);
   editor.zoom(zoom);
   const currentBox = visualBounds(editor);
   const a = render.obj2view(currentBox.p0), b = render.obj2view(currentBox.p1);
@@ -94,11 +99,15 @@ export function fitKetcherCanvas(editor, { preserveZoom = false } = {}) {
     (viewport.width / 2 - (a.x + b.x) / 2 - render.clientArea.scrollLeft) / zoom,
     (viewport.height / 2 - (a.y + b.y) / 2 - render.clientArea.scrollTop) / zoom);
   // Translate only cached visual elements; native atoms and the undo history stay intact.
+  render.clientArea.scrollLeft = 0;
+  render.clientArea.scrollTop = 0;
+  resetKetcherScrollCoordinates(render);
   render.setPaperSize(new Point(viewport.width / zoom, viewport.height / zoom));
   render.ctab.translate(delta);
   render.setOffset(render.options.offset.add(delta));
   render.clientArea.scrollLeft = 0;
   render.clientArea.scrollTop = 0;
+  resetKetcherScrollCoordinates(render);
   editor.rotateController.rerender();
   // The native toolbar observes view events, not direct camera changes.
   editor.event.selectionChange.dispatch(editor.selection());
