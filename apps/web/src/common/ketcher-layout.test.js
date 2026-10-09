@@ -1,4 +1,4 @@
-import { fitKetcherCanvas, prepareKetcherDocument } from "./ketcher-layout";
+import { fitKetcherCanvas, prepareKetcherDocument, zoomKetcherCanvas } from "./ketcher-layout";
 
 class Point {
   constructor(x = 0, y = 0) { this.x = x; this.y = y; }
@@ -139,4 +139,16 @@ test("invalid native geometry is not silently accepted", () => {
   const editor = camera({ box: [0, 0, Number.NaN, 4] });
   expect(() => fitKetcherCanvas(editor)).toThrow("Ketcher view bounds are invalid");
   expect(editor.zoom).not.toHaveBeenCalled();
+});
+
+test("an explicit camera zoom does not import chemistry or enter undo history", () => {
+  const editor = camera(); const chemical = JSON.stringify(editor.struct()), selection = JSON.stringify(editor.selection());
+  zoomKetcherCanvas(editor, 1.25); expect(editor.zoom()).toBeCloseTo(.05);
+  expect(JSON.stringify(editor.struct())).toBe(chemical); expect(JSON.stringify(editor.selection())).toBe(selection);
+  expect(editor.event.selectionChange.dispatch).toHaveBeenCalledWith(editor.selection());
+  expect(editor.event.change.dispatch).not.toHaveBeenCalled();
+});
+test("explicit zoom validates native scale and bounds magnification", () => {
+  const editor = camera({ zoom: 3.5 }); zoomKetcherCanvas(editor, 1.25); expect(editor.zoom()).toBe(4);
+  expect(() => zoomKetcherCanvas(editor, Number.NaN)).toThrow("Ketcher view bounds are invalid");
 });

@@ -15,6 +15,17 @@ export function prepareKetcherDocument(doc) {
 
 const finitePoint = point => point && Number.isFinite(point.x) && Number.isFinite(point.y);
 
+export function zoomKetcherCanvas(editor, factor) {
+  if (typeof editor?.zoom !== "function" || typeof editor.selection !== "function"
+    || typeof editor.event?.selectionChange?.dispatch !== "function")
+    throw new Error("Ketcher camera API is unavailable");
+  const current = editor.zoom();
+  if (!Number.isFinite(factor) || factor <= 0 || !Number.isFinite(current) || current <= 0)
+    throw new Error("Ketcher view bounds are invalid");
+  editor.zoom(Math.min(4, current * factor));
+  editor.event.selectionChange.dispatch(editor.selection());
+}
+
 function visualBounds(editor) {
   const render = editor.render, box = render.ctab.getVBoxObj();
   if (!finitePoint(box?.p0) || !finitePoint(box?.p1) || box.p1.x < box.p0.x || box.p1.y < box.p0.y)
