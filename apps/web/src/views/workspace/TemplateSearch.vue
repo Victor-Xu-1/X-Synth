@@ -52,9 +52,17 @@
           :disabled="!canSearch"
           prepend-icon="mdi-magnify"
           >{{ $tr('检索模板') }}</v-btn
-        ><span class="workspace-muted template-index-count">{{ $tr('索引总量 {total}', { total: total }) }}</span>
-        <div v-if="indexError" class="tool-error" role="alert">
-          {{ $tr(indexError) }}
+        >
+        <div class="template-index-state">
+          <span class="workspace-muted template-index-count" role="status">{{ healthLoading ? $tr('读取模板索引状态') : $tr('索引总量 {total}', { total: total }) }}</span>
+          <v-tooltip :text="$tr('刷新模板索引状态')"><template #activator="{ props }">
+            <v-btn v-bind="props" icon="mdi-refresh" variant="text" data-cy="template-index-refresh"
+              :aria-label="$tr('刷新模板索引状态')" :loading="healthLoading" :disabled="healthLoading || busy" @click="loadHealth" />
+          </template></v-tooltip>
+        </div>
+        <div v-if="indexError" class="tool-error template-index-error" role="alert">
+          <span>{{ $tr(indexError) }}</span>
+          <v-btn variant="text" prepend-icon="mdi-refresh" :disabled="healthLoading || busy" @click="loadHealth">{{ $tr('重试') }}</v-btn>
         </div>
         <p v-if="coverageReason" class="workspace-muted" role="status">{{ coverageLabel }}</p>
       </form>
@@ -213,6 +221,7 @@ const {
   directionItems,
   error,
   health,
+  healthLoading,
   indexError,
   isDetail,
   detail,
@@ -226,6 +235,7 @@ const {
   openTemplate,
   backToList,
   loadDetail,
+  loadHealth,
 } = useTemplateSearch();
 const list = ref(null);
 const route = useRoute(), detailBack = ref(null);
@@ -315,6 +325,8 @@ const sources = computed(() => [
   align-self: start;
   position: static;
 }
+.template-index-state, .template-index-error { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.template-index-state :deep(.v-btn) { width: 44px; height: 44px; min-width: 44px; }
 @media (min-width: 1200px) and (min-height: 800px) {
   .template-controls {
     position: sticky;

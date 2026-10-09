@@ -2,6 +2,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { API } from "@/common/api";
 import { errorMessage } from "@/common/workspace-errors";
+import { readTemplateDetail, readTemplateHealth } from "@/common/template-record";
 import {
   templateDetailLocation, templateSearchBody, templateSearchFilters,
   templateSearchQuery, templateSelectionFromQuery,
@@ -44,8 +45,8 @@ export function useTemplateSearch({ route = useRoute(), router = useRouter(), ap
   const canNext = computed(() => canSearch.value && searched.value && result.value.hasMore);
   const canPrevious = computed(() => canSearch.value && searched.value && session.previous(cursor.value) !== undefined);
   const canFirst = computed(() => canSearch.value && cursor.value !== null);
-  let active = true, applyingRoute = false, searchGeneration = 0, detailGeneration = 0;
-  let searchController, navigationTarget = null;
+  let active = true, applyingRoute = false, searchGeneration = 0, detailGeneration = 0, healthGeneration = 0;
+  let searchController, detailController, healthController, navigationTarget = null;
 
   function readCursor() {
     try {
@@ -70,7 +71,9 @@ export function useTemplateSearch({ route = useRoute(), router = useRouter(), ap
   watch(pageKey, () => invalidateSearch(), { flush: "sync" });
 
   async function loadDetail() {
+    if (!active) return;
     const generation = ++detailGeneration;
+    detailController?.abort();
     detail.value = null;
     detailLoading.value = false;
     detailError.value = "";
@@ -82,15 +85,12 @@ export function useTemplateSearch({ route = useRoute(), router = useRouter(), ap
       return;
     }
     detailLoading.value = true;
+    detailController = new AbortController();
     try {
-      const response = await api.get("/api/v1/template-library/template", selection);
+      const response = await api.get("/api/v1/template-library/template", selection, true,
+        { signal: detailController.signal, timeoutMs: 15000 });
       if (!active || generation !== detailGeneration) return;
-      if (
-        response?.template?.source !== selection.source ||
-        response.template?.template_id !== selection.template_id ||
-        typeof response.template?.reaction_smarts !== "string" || !response.template.reaction_smarts.trim()
-      ) throw new Error("模板详情与请求的来源或标识不一致。");
-      detail.value = response.template;
+      detail.value = readTemplateDetail(response, selection);
     } catch (failure) {
       if (active && generation === detailGeneration)
         detailError.value = errorMessage(failure, "模板详情读取失败。");
@@ -200,25 +200,37 @@ export function useTemplateSearch({ route = useRoute(), router = useRouter(), ap
       if (active) detailError.value = errorMessage(failure, "返回模板列表失败，请重试。");
     }
   }
-  onMounted(async () => {
+  async function loadHealth() {
+    if (!active) return;
+    const generation = ++healthGeneration;
+    healthController?.abort();
+    healthController = new AbortController();
+    healthLoading.value = true;
+    health.value = null;
+    indexError.value = "";
     try {
-      const response = await api.get("/api/v1/template-library/health", null, false);
-      if (active) health.value = response;
+      const response = await api.get("/api/v1/template-library/health", null, false,
+        { signal: healthController.signal, timeoutMs: 15000 });
+      if (active && generation === healthGeneration) health.value = readTemplateHealth(response);
     } catch (failure) {
-      if (active) indexError.value = errorMessage(failure, "模板索引不可用。");
-    } finally { if (active) healthLoading.value = false; }
-    if (active && !isDetail.value && requested(route.query) && !searched.value) runSearch();
-  });
+      if (active && generation === healthGeneration) indexError.value = errorMessage(failure, "模板索引不可用。");
+    } finally { if (active && generation === healthGeneration) healthLoading.value = false; }
+    if (active && generation === healthGeneration && !isDetail.value && requested(route.query) && !searched.value) runSearch();
+  }
+  onMounted(loadHealth);
   onUnmounted(() => {
     active = false;
     invalidateSearch();
     detailGeneration++;
+    healthGeneration++;
+    detailController?.abort();
+    healthController?.abort();
     session.reset();
   });
   return {
     filters, rows, searched, loading, busy, canSearch, canNext, canPrevious, canFirst,
     pageKey, pageNumber, matchedCount, showPagination, coverageReason, directionItems,
-    error, health, indexError, isDetail, detail, detailLoading, detailError,
-    search, nextPage, previousPage, firstPage, retrySearch, openTemplate, backToList, loadDetail,
+    error, health, healthLoading, indexError, isDetail, detail, detailLoading, detailError,
+    search, nextPage, previousPage, firstPage, retrySearch, openTemplate, backToList, loadDetail, loadHealth,
   };
 }

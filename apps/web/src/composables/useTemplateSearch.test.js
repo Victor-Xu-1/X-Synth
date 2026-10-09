@@ -1,4 +1,6 @@
 import { defineComponent } from "vue";
+import { randomUUID } from "node:crypto";
+Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID });
 import { flushPromises, mount } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
 import TemplateDetails from "@/components/templates/TemplateDetails.vue";
@@ -332,7 +334,7 @@ describe("isolated cursor state", () => {
   let client;
   beforeEach(() => {
     client = {
-      get: jest.fn().mockResolvedValue({ template_count: 100, directions: { retro: 100 }, sources: ["isolated"] }),
+      get: jest.fn().mockResolvedValue({ status: "ready", template_count: 100, source_count: 1, directions: { retro: 100 }, sources: ["isolated"] }),
       post: jest.fn().mockImplementation(async (_, body) => body.cursor ? lastPage : firstPage),
     };
   });
@@ -481,5 +483,58 @@ describe("isolated cursor state", () => {
     expect(state.error.value).toBe("new page unavailable");
     expect(state.rows.value).toEqual([]);
     expect(state.loading.value).toBe(false);
+  });
+});
+
+describe("index and detail response boundary", () => {
+  const health = { status: "ready", template_count: 1, source_count: 1, sources: ["isolated"], directions: { retro: 1 } };
+  const detail = { source: "isolated", template_id: "isolated:a", template_set: "isolated", count: 1,
+    reaction_smarts: "[C:1]=[O:2]>>[C:1]-[O:2]", direction: "retro", domain: "strict_synthesis",
+    necessary_reagent: "", intra_only: false, dimer_only: false, attributes: {}, references: [], raw: {} };
+  test.each([{}, { ...health, status: "unavailable" }, { ...health, source_count: 2 },
+    { ...health, directions: [] }, { ...health, directions: { retro: "1" } }])(
+    "invalid index %j cannot enable template queries", async value => {
+      const client = { get: jest.fn().mockResolvedValue(value), post: jest.fn() };
+      const { state } = await setup("/template?searched=1", client);
+      await flushPromises();
+      expect(state.canSearch.value).toBe(false);
+      expect(state.health.value).toBeNull();
+      expect(state.indexError.value).toBeTruthy();
+      expect(client.post).not.toHaveBeenCalled();
+    },
+  );
+  test("an explicit index retry restores the same idle input without posting a query", async () => {
+    const client = { get: jest.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(health), post: jest.fn() };
+    const { state, router } = await setup("/template?filter_source=isolated&min_count=7&limit=3", client);
+    const before = { ...state.filters };
+    expect(state.canSearch.value).toBe(false);
+    await state.loadHealth();
+    expect(state.canSearch.value).toBe(true);
+    expect(state.filters).toEqual(before);
+    expect(state.indexError.value).toBe("");
+    expect(router.currentRoute.value.query.min_count).toBe("7");
+    expect(client.post).not.toHaveBeenCalled();
+  });
+  test("disposed detail and index retries do not send requests or reopen loading state", async () => {
+    const client = { get: jest.fn().mockImplementation(async path => path.endsWith("/health") ? health : { template: detail }), post: jest.fn() };
+    const { state, wrapper } = await setup("/template?source=isolated&id=isolated:a", client);
+    await flushPromises();
+    expect(state.detail.value).toEqual(detail);
+    wrapper.unmount();
+    const requests = client.get.mock.calls.length;
+    await state.loadDetail();
+    await state.loadHealth();
+    expect(client.get).toHaveBeenCalledTimes(requests);
+    expect(state.detailLoading.value).toBe(false);
+    expect(state.healthLoading.value).toBe(false);
+  });
+  test.each(["attributes", "references", "raw"])("null %s cannot enter template rendering", async field => {
+    const client = { get: jest.fn().mockImplementation(async path => path.endsWith("/health") ? health : { template: { ...detail, [field]: null } }), post: jest.fn() };
+    const { state } = await setup("/template?source=isolated&id=isolated:a", client);
+    await flushPromises();
+    expect(state.detail.value).toBeNull();
+    expect(state.detailError.value).toBeTruthy();
+    expect(state.detailLoading.value).toBe(false);
+    expect(client.post).not.toHaveBeenCalled();
   });
 });

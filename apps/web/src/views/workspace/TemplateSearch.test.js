@@ -7,6 +7,8 @@ import postcss from "postcss";
 import { API } from "@/common/api";
 import TemplateSearch from "./TemplateSearch.vue";
 import { initializeLocale, setLocale } from "@/i18n";
+import { randomUUID } from "node:crypto";
+Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID });
 
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn() } }));
 jest.mock("@/components/ModuleWorkbench.vue", () => ({
@@ -21,6 +23,7 @@ jest.mock("@/components/workspace/StructurePreview.vue", () => ({
 const row = (id) => ({
   template_id: `isolated:${id}`, source: "isolated", template_set: "isolated",
   reaction_smarts: "[C:1]=[O:2]>>[C:1]-[O:2]", count: 12, direction: "retro",
+  domain: "strict_synthesis", necessary_reagent: "", intra_only: false, dimer_only: false,
   attributes: {}, references: [], raw: { _id: id, index: 1, template_set: "isolated" },
 });
 const rows = [row("one"), row("two")];
@@ -55,7 +58,7 @@ async function setup(query = {}) {
 }
 beforeEach(() => {
   API.get.mockReset().mockImplementation(async (path, selection) => path.endsWith("/health")
-    ? { template_count: 252029, sources: ["isolated"] }
+    ? { status: "ready", template_count: 252029, source_count: 1, sources: ["isolated"], directions: { retro: 252029 } }
     : { template: [...rows, ...followingRows, lastRow].find((value) => value.template_id === selection.template_id) });
   API.post.mockReset().mockImplementation(async (_, body) => {
     if (body.cursor === "page-b") return response(followingRows, 5, "page-c");
@@ -89,7 +92,7 @@ test("sticky filters are confined to wide, tall desktop screens and remain bound
 });
 
 test("a direction missing from the index is not represented as an ordinary no-match query", async () => {
-  API.get.mockResolvedValue({ template_count: 252029, sources: ["isolated"], directions: { retro: 252029 } });
+  API.get.mockResolvedValue({ status: "ready", template_count: 252029, source_count: 1, sources: ["isolated"], directions: { retro: 252029 } });
   const { wrapper } = await setup({ direction: "forward", searched: "1" });
   expect(API.post).not.toHaveBeenCalled();
   expect(wrapper.text()).toContain("当前索引未包含正向模板");
@@ -100,7 +103,7 @@ test("a direction missing from the index is not represented as an ordinary no-ma
 
 test("English index coverage explains a missing direction and changes language without a query or filter reset", async () => {
   initializeLocale(null);
-  API.get.mockResolvedValue({ template_count: 252029, sources: ["isolated"], directions: { retro: 252029 } });
+  API.get.mockResolvedValue({ status: "ready", template_count: 252029, source_count: 1, sources: ["isolated"], directions: { retro: 252029 } });
   const { wrapper, router } = await setup({ direction: "forward", searched: "1" });
   expect(wrapper.get('p[role="status"]').text()).toBe("The current index contains no Forward templates.");
   const button = wrapper.get('button[type="submit"]');
@@ -190,15 +193,15 @@ test.each([null, undefined, "unknown", -1])("unrecorded index total %p never bec
 
 test("a malformed deep-link drawing is a detail error, not a crashing preview", async () => {
   API.get.mockImplementation(async (path) => path.endsWith("/health")
-    ? { template_count: 252029, sources: ["isolated"] }
+    ? { status: "ready", template_count: 252029, source_count: 1, sources: ["isolated"], directions: { retro: 252029 } }
     : { template: { ...rows[0], reaction_smarts: null } });
   const { wrapper } = await setup({ source: "isolated", id: rows[0].template_id });
-  expect(wrapper.get(".tool-error").text()).toContain("模板详情读取失败");
+  expect(wrapper.get(".tool-error").text()).toContain("模板记录返回格式无效");
   expect(wrapper.findComponent({ name: "StructurePreview" }).exists()).toBe(false);
 });
 
 test("a genuine zero in index metadata remains a recorded zero", async () => {
-  API.get.mockResolvedValueOnce({ template_count: 0, sources: [] });
+  API.get.mockResolvedValueOnce({ status: "ready", template_count: 0, source_count: 0, sources: [], directions: {} });
   const { wrapper } = await setup();
   expect(wrapper.get(".template-index-count").text()).toBe("索引总量 0 条模板记录");
 });
@@ -365,7 +368,7 @@ test("unmount during paging cannot refocus detached controls or restore an old r
   expect(focus).not.toHaveBeenCalled();
 });
 
-test("template detail hides retained query controls and leads with identity then the same preview", async () => {
+test("template detail hides retained controls and leads with a chemical label while retaining exact identity in technical details", async () => {
   const { wrapper, router } = await setup({ limit: "2", searched: "1", min_count: "4" });
   const controls = wrapper.get(".template-controls").element;
   const disclosure = wrapper.get(".template-row-code").element;
@@ -383,7 +386,8 @@ test("template detail hides retained query controls and leads with identity then
   expect(document.activeElement).toBe(wrapper.get(".template-back").element);
   const identity = wrapper.get(".template-reading h2").element;
   const preview = wrapper.get(".template-reading .isolated-preview").element;
-  expect(identity.textContent).toBe(rows[1].template_id);
+  expect(identity.textContent).toBe("逆合成模板");
+  expect(wrapper.get('[data-section="technical"]').text()).toContain(rows[1].template_id);
   expect(identity.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(wrapper.get(".template-reading pre").text()).toBe(rows[1].reaction_smarts);
   expect(router.currentRoute.value.query).toMatchObject({ limit: "2", min_count: "4", searched: "1" });
@@ -407,10 +411,24 @@ test("a detail-only layout removes the old fixed filter track at every viewport"
 
 test("a direct detail error still hides disabled filters and retains the existing back/retry layer", async () => {
   API.get.mockImplementation(async (path) => path.endsWith("/health")
-    ? { template_count: 252029, sources: ["isolated"] }
+    ? { status: "ready", template_count: 252029, source_count: 1, sources: ["isolated"], directions: { retro: 252029 } }
     : Promise.reject(new Error("detail unavailable")));
   const { wrapper } = await setup({ source: "isolated", id: rows[0].template_id });
   expect(wrapper.get(".template-controls").isVisible()).toBe(false);
   expect(wrapper.find(".template-back").exists()).toBe(true);
   expect(wrapper.get(".tool-error").text()).toContain("模板详情读取失败");
+});
+
+test("the index error retry reuses the current controls and never creates a query intent", async () => {
+  API.get.mockRejectedValueOnce(new Error("offline"));
+  const { wrapper, router } = await setup({ filter_source: "isolated", limit: "3" });
+  const input = wrapper.get('input').element;
+  const retry = wrapper.get('.template-index-error button');
+  await retry.trigger("click");
+  await flushPromises();
+  expect(wrapper.find('.template-index-error').exists()).toBe(false);
+  expect(wrapper.get('input').element).toBe(input);
+  expect(router.currentRoute.value.query.filter_source).toBe("isolated");
+  expect(API.post).not.toHaveBeenCalled();
+  expect(API.get).toHaveBeenCalledTimes(2);
 });
