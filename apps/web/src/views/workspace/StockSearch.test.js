@@ -3,6 +3,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { useRoute, useRouter } from "vue-router";
 import { API } from "@/common/api";
 import { useWorkspaceStore } from "@/store/workspace";
+import { setLocale } from "@/i18n";
 import StockSearch from "./StockSearch.vue";
 import { priceContractRecord } from "@/common/route-price-test-data";
 import { readFileSync } from "node:fs";
@@ -61,6 +62,11 @@ function tab(wrapper, name) {
 }
 function panel(wrapper, name) {
   return wrapper.get(`#${tab(wrapper, name).attributes("aria-controls")}`);
+}
+function trackRuntimeErrors(wrapper) {
+  const errors = jest.fn();
+  wrapper.vm.$.appContext.config.errorHandler = errors;
+  return errors;
 }
 async function lookup(wrapper, records = [{ smiles: "CCO", source: "supplier-a", catalog_id: "record-a" }], canonical = "CCO") {
   API.post.mockResolvedValueOnce({ smiles: canonical }).mockResolvedValueOnce({ snapshot, results: { [canonical]: records } });
@@ -408,4 +414,79 @@ test("a superseding structure link during new-query navigation retains its own i
   await tab(wrapper, "证据详情").trigger("click");
   expect(panel(wrapper, "证据详情").text()).toContain(otherSnapshot);
   expect(API.post).toHaveBeenCalledTimes(4);
+});
+
+test("rejected new-query navigation reports controlled feedback without clearing accepted input, records or snapshot", async () => {
+  const { route, router, wrapper } = setup();
+  const runtimeErrors = trackRuntimeErrors(wrapper);
+  await lookup(wrapper);
+  const input = wrapper.get("textarea").element, origin = document.activeElement;
+  const acceptedQuery = route.query;
+  router.replace.mockRejectedValueOnce(new Error("private router diagnostic"));
+  await wrapper.get('[data-cy="stock-new-query"]').trigger("click");
+  await flushPromises();
+  expect(runtimeErrors).not.toHaveBeenCalled();
+  expect(route.query).toBe(acceptedQuery);
+  expect(wrapper.get("textarea").element).toBe(input);
+  expect(input.value).toBe("CCO");
+  expect(document.activeElement).toBe(origin);
+  expect(panel(wrapper, "目录记录").isVisible()).toBe(true);
+  expect(panel(wrapper, "目录记录").text()).toContain("record-a");
+  expect(tab(wrapper, "证据详情").element.disabled).toBe(false);
+  const feedback = wrapper.get('[data-cy="stock-navigation-error"]');
+  expect(feedback.attributes("role")).toBe("alert");
+  expect(feedback.text()).toBe("请求未完成，请重试。");
+  expect(wrapper.text()).not.toContain("private router diagnostic");
+  setLocale("en", { persist: false });
+  await flushPromises();
+  expect(feedback.text()).toBe("The request did not complete. Retry it.");
+  setLocale("zh-CN", { persist: false });
+  await flushPromises();
+  await tab(wrapper, "证据详情").trigger("click");
+  expect(panel(wrapper, "证据详情").text()).toContain(snapshot);
+  await wrapper.get('[data-cy="stock-back-records"]').trigger("click");
+  await wrapper.get('[data-cy="stock-new-query"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.find('[data-cy="stock-navigation-error"]').exists()).toBe(false);
+  expect(input.value).toBe("");
+  expect(route.query).toEqual({});
+  expect(API.post).toHaveBeenCalledTimes(2);
+  expect(runtimeErrors).not.toHaveBeenCalled();
+});
+
+test("rejected new-query navigation after a superseding accepted structure cannot report stale feedback or reset it", async () => {
+  const { route, router, wrapper } = setup();
+  const runtimeErrors = trackRuntimeErrors(wrapper);
+  await lookup(wrapper);
+  let rejectNavigation;
+  router.replace.mockImplementation(() => new Promise((_, reject) => { rejectNavigation = reject; }));
+  await wrapper.get('[data-cy="stock-new-query"]').trigger("click");
+  route.query = { smiles: "O", snapshot: otherSnapshot };
+  await nextTick();
+  await lookup(wrapper, [{ smiles: "O", catalog_id: "new-record" }], "O");
+  rejectNavigation(new Error("obsolete router rejection"));
+  await flushPromises();
+  expect(runtimeErrors).not.toHaveBeenCalled();
+  expect(wrapper.find('[data-cy="stock-navigation-error"]').exists()).toBe(false);
+  expect(wrapper.get("textarea").element.value).toBe("O");
+  expect(panel(wrapper, "目录记录").isVisible()).toBe(true);
+  expect(panel(wrapper, "目录记录").text()).toContain("new-record");
+  await tab(wrapper, "证据详情").trigger("click");
+  expect(panel(wrapper, "证据详情").text()).toContain(otherSnapshot);
+  expect(API.post).toHaveBeenCalledTimes(4);
+});
+
+test("rejected new-query navigation after unmount cannot escape through Vue runtime error handling", async () => {
+  const { router, wrapper } = setup();
+  const runtimeErrors = trackRuntimeErrors(wrapper);
+  await lookup(wrapper);
+  let rejectNavigation;
+  router.replace.mockImplementation(() => new Promise((_, reject) => { rejectNavigation = reject; }));
+  await wrapper.get('[data-cy="stock-new-query"]').trigger("click");
+  wrappers.splice(wrappers.indexOf(wrapper), 1);
+  wrapper.unmount();
+  rejectNavigation(new Error("disposed router rejection"));
+  await flushPromises();
+  expect(runtimeErrors).not.toHaveBeenCalled();
+  expect(API.post).toHaveBeenCalledTimes(2);
 });
