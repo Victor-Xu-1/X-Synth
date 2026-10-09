@@ -1,4 +1,9 @@
 export default [
+  ["重试结构同步", "Retry structure sync"],
+  ["反应物结构 {index}", "Reactant structure {index}"],
+  ["产物结构 {index}", "Product structure {index}"],
+  ["试剂结构 {index}", "Reagent structure {index}"],
+  ["初始反应排布不能保持完整角色或结构身份。", "The initial reaction layout could not preserve every role and chemical identity."],
   ["逆合成模板", "Retrosynthesis template"], ["正向反应模板", "Forward reaction template"],
   ["模板详情分区", "Template detail sections"], ["模板标识", "Template identity"],
   ["技术详情", "Technical details"],

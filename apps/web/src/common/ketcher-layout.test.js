@@ -101,3 +101,18 @@ test("narrow camera fitting reserves atom-label space without changing coordinat
   expect(zoom).toBe(0.66);
   expect(JSON.stringify(bounds)).toBe(before);
 });
+
+test("a very wide reaction may fit below ten percent without clipping its content", () => {
+  let zoom = 1;
+  const bounds = { min: { x: 0, y: 0 }, max: { x: 96, y: 10 } };
+  const editor = {
+    ...nativeViewEvents(), struct: () => ({ atoms: { size: 181 }, getCoordBoundingBox: () => bounds }),
+    zoomAccordingContent: () => { zoom = 0.1; },
+    zoom: value => value === undefined ? zoom : (zoom = value),
+    render: { options: { scale: 40 }, clientArea: { getBoundingClientRect: () => ({ width: 207, height: 402 }) } },
+  };
+  expect(fitKetcherCanvas(editor)).toBe(true);
+  expect(zoom).toBeGreaterThan(0);
+  expect(zoom).toBeLessThan(0.1);
+  expect(96 * 40 * zoom).toBeLessThanOrEqual(207 - 64);
+});

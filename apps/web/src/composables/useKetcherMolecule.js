@@ -12,6 +12,7 @@ export function useKetcherMolecule({
   commit,
   readStructure = (editor) => editor.getSmiles(),
   editorContent = (value) => value,
+  afterImport = null,
   onApplied = () => {},
   onPublished = () => {},
   formatError = (_failure, fallback) => fallback,
@@ -35,9 +36,13 @@ export function useKetcherMolecule({
     subscription;
   let readQueue = Promise.resolve();
   let writeQueue = Promise.resolve();
+  let verificationController;
+  let failedRead;
 
   function invalidate() {
     clearTimeout(timer);
+    verificationController?.abort();
+    failedRead = undefined;
     return ++revision;
   }
   function current(requested) {
@@ -56,6 +61,9 @@ export function useKetcherMolecule({
   async function setSmilesToEditor(value = smiles.value, options = {}) {
     captureFocus();
     const requested = invalidate();
+    const verification = new AbortController();
+    verificationController = verification;
+    const abortVerification = () => verification.abort();
     error.value = "";
     dirty.value = true;
     writes.value++;
@@ -63,10 +71,19 @@ export function useKetcherMolecule({
     const write = async () => {
       try {
         if (!current(requested)) return false;
+        signal.addEventListener("abort", abortVerification, { once: true });
         const content = await editorContent(value);
         if (!current(requested)) return false;
         const applied = await writeMolecule(content);
         if (!applied || !current(requested)) return false;
+        if (afterImport) {
+          const editor = await getEditor();
+          if (!current(requested)) return false;
+          await afterImport({ ketcher: editor, source: value,
+            write: content => current(requested) ? writeMolecule(content) : false,
+            current: () => current(requested), signal: verification.signal });
+          if (!current(requested)) return false;
+        }
         await fitDrawing();
         if (!current(requested)) return false;
         onApplied(value);
@@ -83,6 +100,8 @@ export function useKetcherMolecule({
         }
         throw failure;
       } finally {
+        signal.removeEventListener("abort", abortVerification);
+        if (verificationController === verification) verificationController = undefined;
         writes.value--;
       }
     };
@@ -97,11 +116,13 @@ export function useKetcherMolecule({
     const read = async () => {
       if (!canRead()) return null;
       reads.value++;
+      let readingCanvas = false;
       try {
         // Preparation, native import and accepted context are one owned write transaction.
         await writeQueue;
         await writeMolecule.flush();
         if (!canRead() || error.value) return null;
+        readingCanvas = true;
         const editor = await getEditor();
         const content = await reader(editor);
         const snapshot =
@@ -110,15 +131,17 @@ export function useKetcherMolecule({
           throw new Error("Invalid editor export");
         const value = snapshot.text.trim();
         if (!canRead()) return null;
+        failedRead = undefined;
         if (shouldPublish) await publish(value);
         if (shouldPublish && canRead()) {
           onPublished(snapshot);
           dirty.value = false;
           status.value = value ? "结构已同步" : "当前画板为空";
-        }
+        } else if (canRead()) status.value = "画板就绪";
         return value || null;
       } catch (failure) {
-        if (canRead()) {
+        if (canRead() && readingCanvas) {
+          failedRead = { reader, shouldPublish };
           error.value = formatError(failure, "结构读取失败，请检查画板内容。");
           status.value = error.value;
         }
@@ -133,6 +156,15 @@ export function useKetcherMolecule({
   function readSmilesFromEditor() {
     return readSnapshot(readStructure, true);
   }
+  async function retryFailedOperation() {
+    if (disabled() || busy.value || signal.aborted) return;
+    if (!ready.value) return initialize();
+    if (!failedRead) return setSmilesToEditor();
+    const { reader, shouldPublish } = failedRead;
+    error.value = "";
+    status.value = "正在读取画板";
+    return readSnapshot(reader, shouldPublish);
+  }
   function changed() {
     // Imported structures emit the same events as drawing; do not echo them back.
     if (!autoSync() || writes.value || disabled() || signal.aborted) return;
@@ -144,6 +176,7 @@ export function useKetcherMolecule({
   }
   async function initialize() {
     captureFocus();
+    let handedToWriter = false;
     try {
       ketcher = await getEditor();
       if (signal.aborted) return;
@@ -156,9 +189,11 @@ export function useKetcherMolecule({
         subscription = ketcher.editor.subscribe("change", changed);
       }
       ready.value = true;
+      handedToWriter = true;
       await setSmilesToEditor();
     } catch (failure) {
-      if (!signal.aborted) {
+      // The write queue alone publishes current write errors, including initial writes.
+      if (!handedToWriter && !signal.aborted) {
         error.value = formatError(
           failure,
           "结构绘制器未就绪，请检查输入或重新打开画板。",
@@ -210,5 +245,6 @@ export function useKetcherMolecule({
     readSmilesFromEditor,
     clearEditor,
     readSnapshot,
+    retryFailedOperation,
   };
 }

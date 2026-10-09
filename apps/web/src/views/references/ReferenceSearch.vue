@@ -42,8 +42,10 @@
       <div class="reference-transfer-identity">
         <span>{{ reuseRecord.provenance.source }}</span>
         <strong>{{ referenceRecordTitle(reuseRecord) }}</strong>
-        <p v-if="reusePhase === 'preparing'" role="status">{{ $tr('载入参考反应') }}</p>
-        <p v-if="reuseError" class="tool-error" role="alert">{{ $tr(reuseError) }}</p>
+        <p v-if="reusePhase === 'preparing'" ref="transferStatus" class="reference-transfer-feedback"
+          role="status" tabindex="-1" data-cy="reference-transfer-status">{{ $tr('载入参考反应') }}</p>
+        <p v-if="reuseError" ref="transferError" class="tool-error reference-transfer-feedback" role="alert"
+          tabindex="-1" :aria-label="$tr('载入参考反应')" data-cy="reference-transfer-error">{{ $tr(reuseError) }}</p>
       </div>
       <v-btn v-if="reusePhase === 'preparing'" variant="text" prepend-icon="mdi-close"
         data-cy="reference-cancel-transfer" @click="cancelReference">{{ $tr('取消') }}</v-btn>
@@ -218,6 +220,7 @@ const reactionSmiles = ref(""),
   limit = ref(20);
 const canvas = ref(null);
 const layer = ref("query"), queryPanel = ref(null), readingHeading = ref(null), readingPanel = ref(null);
+const transferStatus = ref(null), transferError = ref(null);
 let navigationGeneration = 0, disposed = false;
 let resultFocus = null;
 const product = computed(() => canvas.value?.product || "");
@@ -273,15 +276,25 @@ const layers = computed(() => [
 ]);
 watch(searched, (value) => { if (!value) layer.value = "query"; }, { flush: "sync" });
 watch(layer, () => { navigationGeneration++; }, { flush: "sync" });
-async function focusLayer(expected, target) {
+async function focusLayer(expected, target, current = () => true) {
   const generation = ++navigationGeneration;
   await nextTick();
   const element = target();
-  if (disposed || generation !== navigationGeneration || layer.value !== expected || !element?.isConnected
-    || element.disabled || element.closest('[hidden],[inert]')) return;
+  if (disposed || generation !== navigationGeneration || layer.value !== expected || !current() || !element?.isConnected
+    || element.disabled || element.closest('[hidden],[inert],[aria-hidden="true"],[aria-disabled="true"]')) return;
   element.focus({ preventScroll: true });
   element.scrollIntoView?.({ block: "nearest" });
 }
+watch([reusePhase, reuseRecord, layer], ([phase, record], [previousPhase, previousRecord]) => {
+  if (!record || layer.value !== "query" || !["preparing", "error"].includes(phase)) return;
+  if (phase === "error" && phase === previousPhase && record === previousRecord) return;
+  const response = result.value, input = reactionSmiles.value, inputCanvas = canvas.value;
+  // The transfer can be retired between rendering its feedback and moving focus.
+  focusLayer("query", () => phase === "error" ? transferError.value : transferStatus.value,
+    () => reusePhase.value === phase && reuseRecord.value === record && result.value === response
+      && reactionSmiles.value === input && canvas.value === inputCanvas && !loading.value && !linkedInput.value
+      && (phase !== "error" || !blocked.value));
+}, { flush: "post" });
 function openResults() {
   if (!searched.value || blocked.value) return;
   layer.value = "records";
@@ -359,6 +372,8 @@ function retryReference() {
 .reference-transfer-identity > span { display: block; color: var(--ws-muted); font-size: 12px; }
 .reference-transfer-identity > strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
 .reference-transfer-identity p { margin: 8px 0 0; font-size: 12px; }
+.reference-transfer-feedback { scroll-margin: calc(var(--ws-header-height) + 16px) 0 16px; }
+.reference-transfer-feedback:focus-visible { outline: 2px solid var(--ws-accent); outline-offset: 3px; }
 .reference-transfer :deep(.v-btn__content) { white-space: normal; }
 .reference-reading { min-width: 0; padding: 24px 32px; }
 .reference-reading-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }

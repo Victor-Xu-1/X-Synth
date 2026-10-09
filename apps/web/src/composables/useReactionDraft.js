@@ -9,6 +9,7 @@ import {
   checkedReactionDraft,
   REACTION_DRAFT_PATH,
 } from "@/common/reaction-input";
+import { compactInitialReaction, requireSameReactionRoles } from "@/common/ketcher-reaction-layout";
 
 export function useReactionDraft({
   text,
@@ -62,6 +63,37 @@ export function useReactionDraft({
       throw new Error("反应绘图数据不完整。");
     return value.canvas_rxn;
   }
+  const declaredGroups = value => Object.fromEntries(
+    ["reactants", "products", "agents"].map(role => [role,
+      value[role].filter(record => record.components > 1).map(record => record.smiles)]),
+  );
+  async function layoutImported({ ketcher, source, write, current, signal }) {
+    if (!source.trim() || !current()) return;
+    if (cachedContent !== source.trim() || !cachedValue)
+      throw new Error("反应画板与当前输入不一致。");
+    const expected = cachedValue;
+    if (expected.input_kind !== "reaction" || !expected.reactants.length || !expected.products.length
+      || expected.agents.reduce((count, record) => count + record.components, 0) < 4) return;
+    const document = JSON.parse(await ketcher.getKet());
+    if (!current()) return;
+    const layout = compactInitialReaction(document, expected,
+      ketcher.editor?.render?.clientArea?.getBoundingClientRect?.());
+    if (!layout) return;
+    let applied = false;
+    try {
+      applied = await write(JSON.stringify(layout));
+      if (!applied || !current()) return;
+      const content = await ketcher.getRxn("v3000");
+      if (!current()) return;
+      const checked = await parseCanvasReaction(content, declaredGroups(expected), api,
+        { signal, timeoutMs: 15000 });
+      if (!current()) return;
+      requireSameReactionRoles(expected, checked);
+    } catch (failure) {
+      if (applied && current()) await write(expected.canvas_rxn);
+      throw failure;
+    }
+  }
   function canvasApplied(content) {
     if (!content.trim()) {
       compoundGroups = undefined;
@@ -70,14 +102,7 @@ export function useReactionDraft({
     }
     if (cachedContent !== content.trim() || !cachedValue)
       throw new Error("反应画板与当前输入不一致。");
-    compoundGroups = Object.fromEntries(
-      ["reactants", "products", "agents"].map((role) => [
-        role,
-        cachedValue[role]
-          .filter((record) => record.components > 1)
-          .map((record) => record.smiles),
-      ]),
-    );
+    compoundGroups = declaredGroups(cachedValue);
     canvasReaction = cachedValue.input_kind === "reaction";
   }
   const readCanvas = (editor) =>
@@ -182,6 +207,7 @@ export function useReactionDraft({
     invalidate,
     validate,
     prepareContent,
+    layoutImported,
     canvasApplied,
     readCanvas,
     canvasRead,

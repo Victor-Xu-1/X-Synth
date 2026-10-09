@@ -1,4 +1,4 @@
-import { nextTick, reactive } from "vue";
+import { nextTick, reactive, watch } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import { useRoute } from "vue-router";
 import { API } from "@/common/api";
@@ -372,6 +372,145 @@ test("a transfer can be cancelled while awaiting the real canvas contract withou
   expect(wrapper.findAll('[data-cy="reference-row"]')).toHaveLength(1);
   expect(API.post).toHaveBeenCalledTimes(1);
 });
+
+async function preparingTransfer() {
+  const { wrapper, route } = await setup();
+  await wrapper.get(".reaction-text").setValue("CCO>>CC=O");
+  await setReactionDraft(wrapper, { product: "CC=O", reactants: ["CCO"] });
+  const response = packet(), held = deferred(), draft = reactionDraft(wrapper);
+  API.post.mockResolvedValue(response);
+  await wrapper.vm.search(); await flushPromises();
+  draft.importRecords = jest.fn(() => { draft.pending.value = true; return held.promise; });
+  draft.cancelImport = jest.fn(() => { draft.importRevision.value++; draft.pending.value = false; });
+  const action = wrapper.get('[data-cy="reference-load-reaction"]');
+  action.element.focus();
+  await action.trigger("click"); await flushPromises();
+  return { wrapper, route, draft, held, response, action };
+}
+
+test("current transfer preparation brings its named status into view and keyboard focus", async () => {
+  const scroll = jest.fn();
+  const previous = HTMLElement.prototype.scrollIntoView;
+  HTMLElement.prototype.scrollIntoView = scroll;
+  try {
+    const { wrapper, held } = await preparingTransfer();
+    const status = wrapper.get('.reference-transfer [role="status"]');
+    expect(status.attributes("tabindex")).toBe("-1");
+    expect(status.text()).toBe("载入参考反应");
+    expect(document.activeElement).toBe(status.element);
+    expect(scroll.mock.contexts).toContain(status.element);
+    await wrapper.get('[data-cy="reference-cancel-transfer"]').trigger("click");
+    held.resolve(false); await flushPromises();
+  } finally { HTMLElement.prototype.scrollIntoView = previous; }
+});
+
+test.each(["rejected", "not-staged"])(
+  "%s current transfer focuses its named error without replacing query, canvas or source record",
+  async (failure) => {
+    const { wrapper, draft, held, response } = await preparingTransfer();
+    const input = wrapper.getComponent(reactionInput).element, before = JSON.stringify(response);
+    const scroll = jest.fn(), previous = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scroll;
+    try {
+      draft.pending.value = false;
+      if (failure === "rejected") held.reject(new Error("transport failed"));
+      else held.resolve(false);
+      await flushPromises();
+      const alert = wrapper.get('.reference-transfer [role="alert"]');
+      expect(alert.attributes("aria-label")).toBe("载入参考反应");
+      expect(alert.attributes("tabindex")).toBe("-1");
+      expect(alert.text()).toBe("记录操作失败，请重试。");
+      expect(document.activeElement).toBe(alert.element);
+      expect(scroll.mock.contexts).toContain(alert.element);
+      expect(scroll).toHaveBeenLastCalledWith({ block: "nearest" });
+      expect(wrapper.getComponent(reactionInput).element).toBe(input);
+      expect(wrapper.get(".reaction-text").element.value).toBe("CCO>>CC=O");
+      expect(draft.product.value).toBe("CC=O");
+      expect(draft.reactants.value).toEqual(["CCO"]);
+      expect(JSON.stringify(response)).toBe(before);
+      expect(wrapper.get('[data-cy="reference-search-submit"]').element.disabled).toBe(false);
+      expect(API.post).toHaveBeenCalledTimes(1);
+    } finally { HTMLElement.prototype.scrollIntoView = previous; }
+  },
+);
+
+test("retry focuses the current transfer phase, locale changes do not steal focus, and back restores the same record", async () => {
+  const { wrapper, draft, held, action, response } = await preparingTransfer();
+  const before = JSON.stringify(response);
+  draft.pending.value = false; held.resolve(false); await flushPromises();
+  const retry = wrapper.get('[data-cy="reference-transfer-retry"]');
+  retry.element.focus();
+  setLocale("en", { persist: false }); await nextTick();
+  expect(wrapper.get('.reference-transfer [role="alert"]').attributes("aria-label")).toBe("Loading reference reaction");
+  expect(wrapper.get('.reference-transfer [role="alert"]').text()).toBe("The record action failed. Retry.");
+  expect(document.activeElement).toBe(retry.element);
+  const second = deferred();
+  draft.importRecords.mockImplementationOnce(() => { draft.pending.value = true; return second.promise; });
+  await retry.trigger("click"); await flushPromises();
+  expect(document.activeElement).toBe(wrapper.get('.reference-transfer [role="status"]').element);
+  draft.pending.value = false; second.resolve(false); await flushPromises();
+  expect(document.activeElement).toBe(wrapper.get('.reference-transfer [role="alert"]').element);
+  await wrapper.get('[data-cy="reference-transfer-back"]').trigger("click"); await flushPromises();
+  expect(document.activeElement).toBe(action.element);
+  expect(wrapper.find(".reference-transfer").exists()).toBe(false);
+  expect(draft.importRecords).toHaveBeenCalledTimes(2);
+  expect(JSON.stringify(response)).toBe(before);
+  expect(API.post).toHaveBeenCalledTimes(1);
+});
+
+test("returning to edit an unchanged query does not refocus an already acknowledged transfer error", async () => {
+  const { wrapper, draft, held } = await preparingTransfer();
+  draft.pending.value = false; held.resolve(false); await flushPromises();
+  await wrapper.get('[data-cy="reference-open-results"]').trigger("click"); await flushPromises();
+  await wrapper.get('[data-cy="reference-edit-query"]').trigger("click"); await flushPromises();
+  expect(wrapper.find('.reference-transfer [role="alert"]').exists()).toBe(true);
+  expect(document.activeElement).toBe(wrapper.get(".reaction-text").element);
+});
+
+test.each(["new-link", "edited-input", "new-query", "new-canvas", "other-layer", "unmount", "detached", "inert", "hidden", "aria-hidden", "aria-disabled", "disabled"])(
+  "queued error focus never targets an obsolete or unavailable context: %s",
+  async (operation) => {
+    const { wrapper, route, draft, held } = await preparingTransfer();
+    let focus;
+    const stop = watch(() => wrapper.vm.reusePhase, phase => {
+      if (phase !== "error") return;
+      const alert = wrapper.get('.reference-transfer [role="alert"]').element;
+      focus = jest.spyOn(alert, "focus");
+      if (operation === "new-link") route.query = { reaction_smiles: "CCN>>CC=N" };
+      else if (operation === "edited-input") wrapper.vm.reactionSmiles = "CCN>>CC=N";
+      else if (operation === "new-query") wrapper.vm.limit = 10;
+      else if (operation === "new-canvas") wrapper.vm.canvas = { pending: false, product: "CC=O", reactants: ["CCO"] };
+      else if (operation === "other-layer") wrapper.vm.layer = "records";
+      else if (operation === "unmount") wrapper.unmount();
+      else if (operation === "detached") alert.remove();
+      else if (operation === "disabled") alert.disabled = true;
+      else if (operation === "aria-disabled") alert.setAttribute("aria-disabled", "true");
+      else if (operation === "aria-hidden") wrapper.get('[data-cy="reference-query-panel"]').element.setAttribute("aria-hidden", "true");
+      else wrapper.get('[data-cy="reference-query-panel"]').element.setAttribute(operation, "");
+    }, { flush: "post" });
+    draft.pending.value = false; held.resolve(false); await flushPromises();
+    stop();
+    expect(focus).toBeDefined();
+    expect(focus).not.toHaveBeenCalled();
+  },
+);
+
+test.each(["new-link", "cancel", "unmount"])(
+  "a late transfer rejection cannot reclaim focus after %s",
+  async (operation) => {
+    const { wrapper, route, draft, held, action } = await preparingTransfer();
+    if (operation === "new-link") route.query = { reaction_smiles: "CCN>>CC=N" };
+    else if (operation === "cancel") await wrapper.get('[data-cy="reference-cancel-transfer"]').trigger("click");
+    else wrapper.unmount();
+    await flushPromises();
+    const before = document.activeElement;
+    draft.pending.value = false; held.reject(new Error("late transport failure")); await flushPromises();
+    expect(document.activeElement).toBe(before);
+    if (operation !== "unmount") expect(wrapper.find('.reference-transfer [role="alert"]').exists()).toBe(false);
+    if (operation === "cancel") expect(document.activeElement).toBe(action.element);
+    expect(API.post).toHaveBeenCalledTimes(1);
+  },
+);
 
 test("a new URL cannot restore evidence after proposal suspension and late import completion", async () => {
   const { wrapper, route } = await setup();

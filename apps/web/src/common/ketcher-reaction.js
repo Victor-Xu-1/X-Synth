@@ -27,14 +27,15 @@ export async function parseReactionText(content, api = API) {
   return checkedReactionDraft(await api.post(REACTION_DRAFT_PATH, body), body);
 }
 
-export async function parseCanvasReaction(content, compoundGroups, api = API) {
+export async function parseCanvasReaction(content, compoundGroups, api = API, options) {
   const body = { format: "rxn", content, single_role: "product" };
   if (
     compoundGroups &&
     Object.values(compoundGroups).some((records) => records.length)
   )
     body.compound_groups = compoundGroups;
-  return checkedReactionDraft(await api.post(REACTION_DRAFT_PATH, body), body);
+  const response = options ? await api.post(REACTION_DRAFT_PATH, body, false, options) : await api.post(REACTION_DRAFT_PATH, body);
+  return checkedReactionDraft(response, body);
 }
 
 export class ReactionCanvasError extends Error {}
