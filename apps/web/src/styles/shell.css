@@ -174,8 +174,6 @@
   justify-content: space-between;
 }
 .workspace-navigation-toggle.v-btn {
-  width: 36px;
-  height: 36px;
   flex-shrink: 0;
   color: var(--ws-muted);
 }
@@ -253,7 +251,7 @@
   }
   .workspace-sidebar {
     position: fixed;
-    top: var(--ws-header-height);
+    top: 0;
     bottom: 0;
     left: 0;
     width: min(280px, calc(100vw - 40px));
@@ -279,8 +277,6 @@
     gap: 2px;
   }
   .workspace-drawer-heading .v-btn {
-    width: 30px;
-    height: 30px;
     flex-shrink: 0;
   }
   .workspace-header {
@@ -352,7 +348,7 @@
   .mobile-navigation-open .navigation-scrim {
     display: block;
     position: fixed;
-    inset: var(--ws-header-height) 0 0;
+    inset: 0;
     background: #0006;
     border: 0;
     z-index: 1199;

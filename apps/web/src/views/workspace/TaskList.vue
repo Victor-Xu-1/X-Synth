@@ -17,7 +17,7 @@
           </template>
         </v-tooltip>
         <v-btn
-          class="history-create"
+          color="primary"
           variant="flat"
           prepend-icon="mdi-plus"
           to="/"

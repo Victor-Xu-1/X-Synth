@@ -17,6 +17,8 @@
         icon="mdi-close"
         variant="text"
         size="small"
+        width="44"
+        height="44"
         :aria-label="$tr('关闭导航')"
         :title="$tr('关闭导航')"
         @click="$emit('navigate')"

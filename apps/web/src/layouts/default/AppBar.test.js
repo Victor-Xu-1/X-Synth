@@ -108,6 +108,8 @@ test("navigation toggle exposes drawer state without adding a navigation impleme
   const toggle = wrapper.get('[aria-label="切换导航"]');
   expect(toggle.attributes("aria-controls")).toBe("workspace-navigation");
   expect(toggle.attributes("aria-expanded")).toBe("true");
+  expect(toggle.attributes("width")).toBe("44");
+  expect(toggle.attributes("height")).toBe("44");
   expect(toggle.attributes("data-icon")).toBe("mdi-close");
   await toggle.trigger("click");
   expect(wrapper.emitted("toggle-navigation")).toEqual([[]]);

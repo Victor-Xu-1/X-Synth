@@ -8,9 +8,11 @@
         'mobile-navigation-open': mobileOpen,
       }"
       @keydown="handleNavigationKeydown"
+      @focusin="containNavigationFocus"
     >
-      <a class="skip-navigation" href="#workspace-content" @click="focusContent">{{ $tr('跳到工作区') }}</a>
+      <a class="skip-navigation" href="#workspace-content" :inert="mobileOpen ? true : undefined" @click="focusContent">{{ $tr('跳到工作区') }}</a>
       <AppBar
+        :inert="mobileOpen ? true : undefined"
         :mobile="mobile"
         :navigation-open="mobile ? mobileOpen : !compact"
         :online="online"
@@ -21,6 +23,8 @@
         v-if="mobileOpen"
         type="button"
         class="navigation-scrim"
+        tabindex="-1"
+        aria-hidden="true"
         :aria-label="$tr('关闭导航')"
         @click="closeNavigation()"
       />
@@ -66,7 +70,7 @@ const shell = ref(null);
 const preferredCompact = ref(false);
 const compact = computed(() => !mobile.value && preferredCompact.value);
 const mobileOpen = ref(false);
-let timer;
+let timer, navigationGeneration = 0, disposed = false;
 function focusContent() {
   shell.value?.querySelector("#workspace-content")?.focus({ preventScroll: true });
 }
@@ -75,15 +79,18 @@ function navigationControls() {
     ...(shell.value?.querySelectorAll(
       '#workspace-navigation a[href], #workspace-navigation button:not([disabled]), #workspace-navigation [tabindex="0"]',
     ) || []),
-  ];
+  ].filter((control) => !control.closest('[inert], [hidden], [aria-hidden="true"]'));
 }
 function focusToggle() {
-  shell.value?.querySelector(".workspace-navigation-toggle")?.focus();
+  shell.value?.querySelector(".workspace-navigation-toggle")?.focus({ preventScroll: true });
 }
 function closeNavigation() {
   if (!mobileOpen.value) return;
+  const generation = ++navigationGeneration;
   mobileOpen.value = false;
-  nextTick(focusToggle);
+  nextTick(() => {
+    if (!disposed && generation === navigationGeneration && !mobileOpen.value) focusToggle();
+  });
 }
 async function toggleNavigation() {
   if (!mobile.value) {
@@ -91,9 +98,15 @@ async function toggleNavigation() {
     return;
   }
   if (mobileOpen.value) return closeNavigation();
+  const generation = ++navigationGeneration;
   mobileOpen.value = true;
   await nextTick();
-  navigationControls()[0]?.focus();
+  if (!disposed && mobile.value && mobileOpen.value && generation === navigationGeneration)
+    navigationControls()[0]?.focus();
+}
+function containNavigationFocus(event) {
+  if (mobileOpen.value && !shell.value?.querySelector("#workspace-navigation")?.contains(event.target))
+    navigationControls()[0]?.focus();
 }
 function handleNavigationKeydown(event) {
   if (!mobileOpen.value) return;
@@ -104,21 +117,25 @@ function handleNavigationKeydown(event) {
     const controls = navigationControls();
     const first = controls[0];
     const last = controls.at(-1);
-    if (event.shiftKey && document.activeElement === first) {
+    const outside = !shell.value?.querySelector("#workspace-navigation")?.contains(document.activeElement);
+    if (event.shiftKey && (outside || document.activeElement === first)) {
       event.preventDefault();
       last?.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
+    } else if (!event.shiftKey && (outside || document.activeElement === last)) {
       event.preventDefault();
       first?.focus();
     }
   }
 }
 watch(mobile, () => {
+  const generation = ++navigationGeneration;
   const focused = shell.value
     ?.querySelector(".workspace-sidebar")
     ?.contains(document.activeElement);
   mobileOpen.value = false;
-  if (focused) nextTick(focusToggle);
+  if (focused) nextTick(() => {
+    if (!disposed && generation === navigationGeneration && !mobileOpen.value) focusToggle();
+  });
 });
 watch(online, (connected, previous) => {
   if (connected && !previous) workspace.reconnect();
@@ -127,5 +144,9 @@ onMounted(() => {
   workspace.refresh(true);
   timer = setInterval(() => workspace.refresh(true), 15000);
 });
-onBeforeUnmount(() => clearInterval(timer));
+onBeforeUnmount(() => {
+  disposed = true;
+  ++navigationGeneration;
+  clearInterval(timer);
+});
 </script>

@@ -20,6 +20,8 @@
             :icon="mobile && navigationOpen ? 'mdi-close' : 'mdi-menu'"
             variant="text"
             size="small"
+            width="44"
+            height="44"
             :aria-label="$tr('切换导航')"
             aria-controls="workspace-navigation"
             :aria-expanded="navigationOpen"

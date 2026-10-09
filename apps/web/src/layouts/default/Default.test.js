@@ -102,11 +102,17 @@ test("mobile drawer traps focus, closes on Escape and returns focus to its toggl
   expect(aside.attributes("role")).toBe("dialog");
   expect(aside.attributes("aria-modal")).toBe("true");
   expect(wrapper.get(".workspace-main").attributes("inert")).toBeDefined();
+  expect(wrapper.get("header").attributes("inert")).toBeDefined();
+  expect(wrapper.get(".skip-navigation").attributes("inert")).toBeDefined();
+  expect(wrapper.get(".navigation-scrim").attributes("tabindex")).toBe("-1");
+  expect(wrapper.get(".navigation-scrim").attributes("aria-hidden")).toBe("true");
   const first = aside.get("a").element;
   const last = aside.get("button").element;
+  const lastFocus = jest.spyOn(last, "focus");
   expect(document.activeElement).toBe(first);
   await aside.trigger("keydown", { key: "Tab", shiftKey: true });
   expect(document.activeElement).toBe(last);
+  expect(lastFocus).toHaveBeenLastCalledWith();
   await aside.trigger("keydown", { key: "Tab" });
   expect(document.activeElement).toBe(first);
   await aside.trigger("keydown", { key: "Escape" });
@@ -114,6 +120,46 @@ test("mobile drawer traps focus, closes on Escape and returns focus to its toggl
   expect(aside.attributes("aria-hidden")).toBe("true");
   expect(toggle.attributes("aria-expanded")).toBe("false");
   expect(document.activeElement).toBe(toggle.element);
+  expect(wrapper.get("header").attributes("inert")).toBeUndefined();
+  lastFocus.mockRestore();
+});
+
+test("a focus attempt outside the open drawer stays within its controls", async () => {
+  setup(390);
+  await wrapper.get(".workspace-navigation-toggle").trigger("click");
+  const first = wrapper.get("aside a").element;
+  wrapper.get(".page-action").element.focus();
+  expect(document.activeElement).toBe(first);
+});
+
+test("queued close focus cannot steal focus from a subsequently reopened drawer", async () => {
+  setup(390);
+  const toggle = wrapper.get(".workspace-navigation-toggle").element;
+  toggle.click();
+  await nextTick();
+  wrapper.get("aside button").element.click();
+  toggle.click();
+  await nextTick();
+  await nextTick();
+  expect(wrapper.get("aside").attributes("aria-modal")).toBe("true");
+  expect(document.activeElement).toBe(wrapper.get("aside a").element);
+});
+
+test("an immediately closed or unmounted drawer cannot publish late opening focus", async () => {
+  setup(390);
+  const toggle = wrapper.get(".workspace-navigation-toggle").element;
+  toggle.click();
+  toggle.click();
+  await nextTick();
+  await nextTick();
+  expect(document.activeElement).toBe(toggle);
+  toggle.click();
+  wrapper.unmount(); wrapper = undefined;
+  const elsewhere = document.createElement("button");
+  document.body.append(elsewhere); elsewhere.focus();
+  await nextTick();
+  expect(document.activeElement).toBe(elsewhere);
+  elsewhere.remove();
 });
 
 test.each([".navigation-scrim", "aside button"])(
