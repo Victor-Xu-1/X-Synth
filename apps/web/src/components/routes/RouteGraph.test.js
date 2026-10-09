@@ -271,3 +271,20 @@ test("language switches update generated captions without replacing flow nodes, 
   expect(wrapper.emitted("update:graph")).toBeUndefined();
   expect(JSON.stringify(graph)).toBe(before);
 });
+
+test("saved-document step numbers are UI-only and keep the literal source name, geometry and zero score", async () => {
+  initializeLocale(null);
+  const graph = { target_id: "target", edges: [], nodes: [{ id: "r-original", type: "reaction", label: "原始反应 7", position: { x: 800, y: 50 } }] };
+  const before = JSON.stringify(graph), wrapper = setup(graph);
+  await wrapper.setProps({ stepNumbers: { "r-original": 3 }, scores: { "r-original": 0 } });
+  const nodes = wrapper.getComponent({ name: "VueFlow" }).props("nodes");
+  expect(wrapper.get("strong").text()).toBe("Step 3");
+  expect(wrapper.get(".reaction-source-label").text()).toBe("原始反应 7");
+  expect(nodes[0].data.label).toBe("原始反应 7");
+  expect(nodes[0].data.score).toBe(0);
+  setLocale("zh-CN", { persist: false }); await flushPromises();
+  expect(wrapper.get("strong").text()).toBe("步骤 3");
+  expect(wrapper.get(".reaction-source-label").text()).toBe("原始反应 7");
+  expect(wrapper.getComponent({ name: "VueFlow" }).props("nodes")).toBe(nodes);
+  expect(JSON.stringify(graph)).toBe(before); expect(wrapper.emitted("update:graph")).toBeUndefined();
+});

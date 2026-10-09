@@ -1,12 +1,14 @@
 import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 import StructurePreview from "./StructurePreview.vue";
+import WorkbenchDialog from "./WorkbenchDialog.vue";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "@vue/compiler-sfc";
 import postcss from "postcss";
 jest.mock("@vueuse/core", () => ({ useResizeObserver: jest.fn() }));
 jest.mock("@/components/SmilesImage.vue", () => ({
+  name: "SmilesImage",
   props: ["smiles", "inputType", "width", "height"],
   emits: ["load"],
   template: '<div class="test-image"><img :alt="smiles" /></div>',
@@ -42,8 +44,39 @@ test("an empty structure cannot open a misleading viewer", () => {
   expect(wrapper.get('[aria-label="放大结构预览"]').element.disabled).toBe(true);
   wrapper.unmount();
 });
+
+test("normal close returns focus only after the dialog leaves, not on its model update", async () => {
+  const wrapper = mount(StructurePreview, { attachTo: document.body, props: { smiles: "CCO" }, global: { stubs } });
+  try {
+    const origin = wrapper.get('[aria-label="放大结构预览"]').element;
+    jest.spyOn(origin, "getClientRects").mockReturnValue([{ width: 44, height: 44 }]);
+    origin.focus();
+    origin.click();
+    await nextTick();
+    const dialog = wrapper.getComponent(WorkbenchDialog);
+    const close = wrapper.get('[aria-label="关闭结构预览"]').element;
+    close.focus();
+    close.click();
+    await nextTick();
+    await nextTick();
+    expect(document.activeElement === origin).toBe(false);
+    dialog.vm.$emit("afterLeave");
+    await nextTick();
+    expect(document.activeElement === origin).toBe(true);
+  } finally { wrapper.unmount(); jest.restoreAllMocks(); }
+});
+
+test("existing preview defaults and reaction input are passed verbatim to the thumbnail", () => {
+  const wrapper = mount(StructurePreview, { props: { smiles: "[13CH3]O>>[13CH2]=O", inputType: "reaction" }, global: { stubs } });
+  try {
+    expect(wrapper.props()).toMatchObject({ width: 260, height: 160, label: "结构预览" });
+    const image = wrapper.getComponent({ name: "SmilesImage" });
+    expect(image.props()).toMatchObject({ inputType: "reaction", width: 260, height: 160, smiles: "[13CH3]O>>[13CH2]=O" });
+    expect(wrapper.find("img").attributes("alt")).toBe("[13CH3]O>>[13CH2]=O");
+  } finally { wrapper.unmount(); }
+});
 test("short screens shrink the scrolling canvas without hiding it beneath the fixed header", () => {
-  const { descriptor } = parse(readFileSync(resolve(__dirname, "StructurePreview.vue"), "utf8"));
+  const { descriptor } = parse(readFileSync(resolve(__dirname, "StructureDrawingDialog.vue"), "utf8"));
   const css = postcss.parse(descriptor.styles[0].content);
   const values = selector => Object.fromEntries(css.nodes.find(rule => rule.selector === selector).nodes.filter(node => node.type === "decl").map(node => [node.prop,node.value]));
   expect(values(".structure-viewer").display).toBe("flex");

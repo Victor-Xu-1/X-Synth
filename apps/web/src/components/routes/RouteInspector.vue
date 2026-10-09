@@ -7,7 +7,9 @@
             ? target
               ? $tr('目标化合物')
               : $tr('中间体或原料')
-            : $tr('反应步骤')
+            : headerStepNumber
+              ? $tr('合成步骤 {value}', { value: headerStepNumber })
+              : $tr('反应步骤')
           : $tr('结构与反应详情')
       }}</strong
       ><v-btn
@@ -15,7 +17,7 @@
         size="x-small"
         variant="text"
         :aria-label="$tr('关闭详情')"
-        :disabled="busy"
+        :disabled="pending"
         @click="$emit('close')"
       />
     </header>
@@ -45,7 +47,7 @@
       <StructureInput
         ref="structureInput"
         v-if="editable && node.type === 'molecule'"
-        :key="`${contextId || ''}/${node.id}`"
+        :key="`${contextId || ''}/${node.id}/${draftEpoch}`"
         v-model="smiles"
         :label="target ? '目标化合物结构' : '中间体或原料结构'"
         :disabled="busy"
@@ -75,6 +77,12 @@
         @navigate="$emit('navigate')"
       />
       <div v-if="message" class="tool-error" role="alert">{{ $tr(message) }}</div>
+      <div v-if="editable && draftDirty" class="inspector-draft-state" role="status">
+        <span>{{ $tr('未应用修改') }}</span>
+        <v-btn variant="text" size="small" :disabled="busy" @click="$emit('discard')">
+          {{ $tr('放弃未应用修改') }}
+        </v-btn>
+      </div>
       <v-btn
         v-if="editable"
         variant="flat"
@@ -99,7 +107,7 @@
   </aside>
 </template>
 <script setup>
-import { onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import StructurePreview from "@/components/workspace/StructurePreview.vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import RouteNodeContext from "./RouteNodeContext.vue";
@@ -116,36 +124,56 @@ const props = defineProps({
   snapshot: String,
   contextId: String,
   generatedStepLabels: Boolean,
+  displayStepNumber: Number,
 });
-const emit = defineEmits(["update", "pending", "close", "remove", "navigate"]);
+const emit = defineEmits(["update", "pending", "close", "remove", "navigate", "draft-change", "discard"]);
 const structureInput = ref(null);
 const label = ref(""),
   smiles = ref(""),
   note = ref(""),
   busy = ref(false),
   message = ref("");
-let generation = 0,
+const draftEpoch = ref(0);
+const draftDirty = computed(() => !!props.node && (
+  label.value !== (props.node.label || "") || smiles.value !== (props.node.smiles || "") || note.value !== (props.node.note || "")
+));
+const headerStepNumber = computed(() => props.node?.type === "reaction" &&
+  Number.isInteger(props.displayStepNumber) && props.displayStepNumber > 0 ? props.displayStepNumber : null);
+let generation = 0, draftRevision = 0,
   disposed = false;
-watch(busy, (value) => emit("pending", value), { flush: "sync" });
-defineExpose({ pending: busy });
+const pending = computed(() => busy.value || !!structureInput.value?.pending);
+watch(pending, (value) => emit("pending", value), { flush: "sync" });
+function resetDraft() {
+  generation++;
+  busy.value = false;
+  label.value = props.node?.label || "";
+  smiles.value = props.node?.smiles || "";
+  note.value = props.node?.note || "";
+  message.value = "";
+}
+function discardDraft() {
+  if (pending.value) return false;
+  resetDraft();
+  draftEpoch.value++;
+  return true;
+}
+defineExpose({ pending, draftDirty, discardDraft });
 watch(
-  () => [
-    props.node?.id,
-    props.node?.smiles,
-    props.node?.label,
-    props.node?.note,
-    props.contextId,
+  [
+    () => props.node?.id,
+    () => props.node?.smiles,
+    () => props.node?.label,
+    () => props.node?.note,
+    () => props.contextId,
   ],
-  () => {
-    generation++;
-    busy.value = false;
-    label.value = props.node?.label || "";
-    smiles.value = props.node?.smiles || "";
-    note.value = props.node?.note || "";
-    message.value = "";
-  },
+  resetDraft,
   { immediate: true, flush: "sync" },
 );
+watch([() => props.contextId, () => props.node?.id, draftDirty, label, smiles, note], () => {
+  if (!disposed) emit("draft-change", {
+    contextId: props.contextId, nodeId: props.node?.id, dirty: draftDirty.value, revision: ++draftRevision,
+  });
+}, { immediate: true, flush: "sync" });
 watch(
   () => props.editable,
   () => {
@@ -210,6 +238,7 @@ onBeforeUnmount(() => {
   disposed = true;
   generation++;
   busy.value = false;
+  if (pending.value) emit("pending", false);
 });
 </script>
 <style scoped>
@@ -243,6 +272,14 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   margin-bottom: 20px;
   font-size: 13px;
+}
+.inspector-draft-state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ws-muted);
 }
 .inspector-empty {
   display: grid;

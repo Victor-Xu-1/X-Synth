@@ -89,6 +89,8 @@ export default [
   ["路线编辑", "Route editor"], ["导出路线", "Export route"],
   ["路线文档（X-Synth JSON）", "Route document (X-Synth JSON)"], ["路线图（PNG）", "Route diagram (PNG)"],
   ["另存副本", "Save as copy"], ["关闭错误", "Dismiss error"], ["加载路线", "Loading route"],
+  ["未应用修改", "Unapplied changes"], ["放弃未应用修改", "Discard unapplied changes"],
+  ["重新载入文档", "Reload document"],
   ["新建路线文档", "New route document"], ["目标化合物结构", "Target compound structure"],
   ["创建路线", "Create route"], ["打开路线文档", "Open route document"], ["已保存路线", "Saved routes"],
   ["添加中间体或原料", "Add intermediate or starting material"], ["中间体或原料结构", "Intermediate or starting-material structure"],

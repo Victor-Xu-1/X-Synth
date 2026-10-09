@@ -160,42 +160,26 @@
       </header>
       <div class="step-structures">
         <div class="step-precursors">
-          <button
+          <RouteStepStructure
             v-for="(precursor, index) in step.precursors"
             :key="index"
-            type="button"
-            class="step-molecule"
-            :data-node-id="precursor.nodeId"
-            :disabled="!precursor.nodeId"
-            :aria-label="$tr('查看步骤 {value}反应物 {index}', { value: step.number, index: index + 1 })"
-            @click="$emit('select', precursor.nodeId, $event)"
-          >
-            <span>{{ $tr('反应物 {index}', { index: index + 1 }) }}</span>
-            <SmilesImage
-              :smiles="precursor.smiles"
-              :width="170"
-              :height="100"
-              :show-error-image="false"
-            />
-          </button>
+            :node-id="precursor.nodeId"
+            :smiles="precursor.smiles"
+            :label="$tr('反应物 {index}', { index: index + 1 })"
+            :select-label="$tr('查看步骤 {value}反应物 {index}', { value: step.number, index: index + 1 })"
+            :context-key="structureContext(step, index)"
+            @select="(id, event) => $emit('select', id, event)"
+          />
         </div>
         <v-icon icon="mdi-arrow-right" class="step-arrow" :aria-label="$tr('生成')" />
-        <button
-          type="button"
-          class="step-molecule step-product"
-          :data-node-id="step.product.nodeId"
-          :disabled="!step.product.nodeId"
-          :aria-label="$tr('查看步骤 {value}产物', { value: step.number })"
-          @click="$emit('select', step.product.nodeId, $event)"
-        >
-          <span>{{ $tr('产物') }}</span>
-          <SmilesImage
-            :smiles="step.product.smiles"
-            :width="190"
-            :height="110"
-            :show-error-image="false"
-          />
-        </button>
+        <RouteStepStructure product
+          :node-id="step.product.nodeId"
+          :smiles="step.product.smiles"
+          label="产物"
+          :select-label="$tr('查看步骤 {value}产物', { value: step.number })"
+          :context-key="structureContext(step, 'product')"
+          @select="(id, event) => $emit('select', id, event)"
+        />
       </div>
       <details class="step-record">
         <summary>{{ $tr('反应 SMILES') }}</summary>
@@ -220,6 +204,7 @@ import { engineUiLabel } from "./route-ui-text";
 import SmilesImage from "@/components/SmilesImage.vue";
 import RouteEvidencePanel from "./RouteEvidencePanel.vue";
 import RouteGraph from "./RouteGraph.vue";
+import RouteStepStructure from "./RouteStepStructure.vue";
 import {
   prepareCandidateGraph,
   READING_NODE_SIZE,
@@ -241,6 +226,9 @@ const props = defineProps({
   canEdit: { type: Boolean, default: true },
 });
 defineEmits(["select", "locate", "choose", "edit"]);
+function structureContext(step, occurrence) {
+  return JSON.stringify([props.candidate?.route_id, step.nodeId, occurrence]);
+}
 const orderedSteps = computed(() => {
   try {
     return { steps: stepDetails(props.candidate, props.graph), error: "" };

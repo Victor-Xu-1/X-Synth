@@ -14,6 +14,7 @@ Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID });
 globalThis.structuredClone = (value) => deserialize(serialize(value));
 
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
+jest.mock("@vueuse/core", () => ({ useResizeObserver: jest.fn() }));
 const mockFocus = jest.fn();
 jest.mock("./RouteGraph.vue", () => ({
   name: "RouteGraph",

@@ -8,8 +8,8 @@ import postcss from "postcss";
 import { ref } from "vue";
 
 jest.mock("@vueuse/core", () => ({ useWindowSize: () => ({ width: mockWidth }), useResizeObserver: jest.fn() }));
-jest.mock("./RouteGraph.vue", () => ({ name: "RouteGraph", props: ["graph", "scores"], emits: ["select", "ready"], methods: { focus: (...args) => mockFocus(...args) }, template: '<div class="preview-graph" />' }));
-jest.mock("./RouteInspector.vue", () => ({ name: "RouteInspector", props: ["graph", "node"], template: '<aside class="route-inspector" />' }));
+jest.mock("./RouteGraph.vue", () => ({ name: "RouteGraph", props: ["graph", "scores", "stepNumbers"], emits: ["select", "ready"], methods: { focus: (...args) => mockFocus(...args) }, template: '<div class="preview-graph" />' }));
+jest.mock("./RouteInspector.vue", () => ({ name: "RouteInspector", props: ["graph", "node", "displayStepNumber"], template: '<aside class="route-inspector" />' }));
 jest.mock("./DocumentStepList.vue", () => ({ name: "DocumentStepList", props: ["steps", "selectedNode"], emits: ["select", "locate"], template: '<div class="document-step-list" />' }));
 const mockWidth = ref(1440), mockFocus = jest.fn();
 beforeEach(() => { mockWidth.value = 1440; mockFocus.mockClear(); });
@@ -46,6 +46,18 @@ const connected = { ...document, graph: { target_id: "m1", nodes: [
   { id: "r", type: "reaction", label: "raw label", note: "raw note", position: { x: 220, y: 10 } },
   document.graph.nodes[0],
 ], edges: [{ id: "in", source: "source", target: "r", input_occurrences: 2 }, { id: "out", source: "r", target: "m1" }] } };
+
+test("Graph, Steps and inspector receive one original-ID display sequence without changing source labels", async () => {
+  const before = JSON.stringify(connected);
+  const wrapper = mount(DocumentPreview, { props: { modelValue: true, document: connected }, global: { stubs } });
+  const graph = wrapper.getComponent({ name: "RouteGraph" });
+  expect(graph.props("stepNumbers")).toEqual({ r: 1 });
+  expect(graph.props("graph").nodes.find(node => node.id === "r").label).toBe("raw label");
+  graph.vm.$emit("select", "r"); await flushPromises();
+  expect(wrapper.getComponent({ name: "RouteInspector" }).props("displayStepNumber")).toBe(1);
+  expect(JSON.stringify(connected)).toBe(before);
+  wrapper.unmount();
+});
 
 test("mobile opens real saved steps and resize/language changes preserve the explicit reading view", async () => {
   mockWidth.value = 390;

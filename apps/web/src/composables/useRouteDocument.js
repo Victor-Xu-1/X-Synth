@@ -9,6 +9,8 @@ export function useRouteDocument() {
     graph = ref({ nodes: [], edges: [], target_id: "" }),
     title = ref("未命名路线");
   const loading = ref(false),
+    reloading = ref(false),
+    reloadError = ref(""),
     saving = ref(false),
     validating = ref(false),
     error = ref(""),
@@ -43,6 +45,8 @@ export function useRouteDocument() {
     graph.value = { nodes: [], edges: [], target_id: "" };
     title.value = "未命名路线";
     loading.value = false;
+    reloading.value = false;
+    reloadError.value = "";
     saving.value = false;
     error.value = "";
     dirty.value = false;
@@ -105,6 +109,22 @@ export function useRouteDocument() {
     } finally {
       if (current === generation) saving.value = false;
     }
+  }
+  async function reload() {
+    if (!document.value || loading.value || saving.value || reloading.value) return null;
+    const identifier = document.value.id, current = ++generation;
+    cancelValidation(); reloading.value = true; reloadError.value = "";
+    try {
+      const value = await API.get(`/api/v1/route-documents/${encodeURIComponent(identifier)}`, null, false);
+      if (current !== generation || document.value?.id !== identifier) return null;
+      accept(value, identifier); error.value = "";
+      return value;
+    } catch (cause) {
+      if (current === generation)
+        reloadError.value = cause instanceof RouteDocumentResponseError ? cause.message
+          : errorMessage(cause, "重新载入文档失败，现有修改仍保留。");
+      return null;
+    } finally { if (current === generation) reloading.value = false; }
   }
   function replaceGraph(value) {
     undoStack.value.push(copy(graph.value));
@@ -237,6 +257,8 @@ export function useRouteDocument() {
     graph,
     title,
     loading,
+    reloading,
+    reloadError,
     saving,
     validating,
     error,
@@ -248,6 +270,7 @@ export function useRouteDocument() {
     scores,
     clear,
     load,
+    reload,
     create,
     replaceGraph,
     undo,

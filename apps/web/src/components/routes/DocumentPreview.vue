@@ -36,7 +36,7 @@
           <div v-show="view === 'graph'" :id="`${titleId}-graph-panel`" class="document-preview-canvas" role="tabpanel"
             :aria-labelledby="`${titleId}-graph-tab`">
             <RouteGraph v-if="document && graphActive" ref="graphView" toolbar :graph="graph"
-              :scores="document.prediction_scores" @select="selectNode" @ready="graphInitialized" />
+              :step-numbers="stepNumbers" :scores="document.prediction_scores" @select="selectNode" @ready="graphInitialized" />
           </div>
           <div v-show="view === 'steps'" :id="`${titleId}-steps-panel`" class="document-step-scroll" role="tabpanel"
             :aria-labelledby="`${titleId}-steps-tab`">
@@ -52,6 +52,7 @@
           :graph="graph"
           :score="document.prediction_scores?.[selected]"
           :target="selected === graph.target_id"
+          :display-step-number="stepNumbers[selected]"
           @close="closeDetails"
           @navigate="navigate"
         />
@@ -77,7 +78,7 @@ function navigate() { emit("navigate"); open.value = false; }
 onBeforeUnmount(() => { disposed = true; });
 const titleId = useId();
 const { selected, detailsOpen, view, views, graphActive, graphView, readingMain, inspectorView,
-  graph, node, steps, stepError, stepChoices, reactionSelection, mobileDetails,
+  graph, node, steps, stepNumbers, stepError, stepChoices, reactionSelection, mobileDetails,
   changeView, selectNode, closeDetails, locateStep, graphInitialized } = useDocumentReading(open, toRef(props, "document"));
 </script>
 <style scoped>

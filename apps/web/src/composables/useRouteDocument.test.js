@@ -59,6 +59,29 @@ async function setup() {
 beforeEach(() => jest.clearAllMocks());
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
 
+test("failed same-document reload keeps local graph, title, selection and revision recoverable", async () => {
+  const state = await setup();
+  state.title.value = "local raw title"; state.selected.value = "target";
+  state.replaceGraph({ ...state.graph.value, nodes: state.graph.value.nodes.map(node => ({ ...node, note: "local raw note" })) });
+  const before = JSON.stringify(state.graph.value), original = state.document.value;
+  API.get.mockRejectedValue(new Error("offline"));
+  expect(await state.reload()).toBeNull();
+  expect(state.document.value).toBe(original); expect(state.title.value).toBe("local raw title");
+  expect(JSON.stringify(state.graph.value)).toBe(before); expect(state.selected.value).toBe("target");
+  expect(state.dirty.value).toBe(true); expect(state.reloading.value).toBe(false);
+  expect(state.reloadError.value).toBeTruthy();
+});
+
+test("a late same-document reload cannot publish into a subsequently opened document", async () => {
+  const state = await setup(), request = deferred();
+  API.get.mockReturnValueOnce(request.promise);
+  const pending = state.reload();
+  const replacement = documentValue("b".repeat(32)); API.get.mockResolvedValueOnce(replacement);
+  await state.load(replacement.id); request.resolve(documentValue()); await pending;
+  expect(state.document.value.id).toBe(replacement.id); expect(state.reloading.value).toBe(false);
+  expect(state.reloadError.value).toBe("");
+});
+
 test("selected reaction occurrences survive editing, undo, save-copy and reload", async () => {
   const state = await setup();
   const precursors = [

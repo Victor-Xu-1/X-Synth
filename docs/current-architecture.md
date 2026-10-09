@@ -378,6 +378,20 @@ and the exact focus origin. Mobile details replace the reading layer, while
 desktop pointer inspection does not hijack focus. Locale/resize does not reset
 the user's explicit view or mutate the saved graph or prediction scores.
 The server repeats graph and RDKit validation rather than trusting UI checks.
+`StructureDrawingDialog` is the single read-only chemical drawing/zoom surface
+used by `StructurePreview` and `RouteStepStructure`. Step details and magnify are
+separate native controls; diagrams are 320x200 before responsive containment.
+Immutable presentation tickets preserve focus and cancel stale same-structure,
+different-record windows. Review summaries use labelled fact groups while
+retaining exact verification/reference counters and scientific boundaries.
+Saved graphs and inspectors receive a nonpersisted ID-to-step-number map from
+the existing document projection, separate from literal source labels.
+`useInspectorDraftGuard` protects unapplied editor fields without becoming a
+second scientific graph authority. Position-only replacements retain fields;
+content/incident-edge changes require explicit discard. Chemical-input pending
+and Apply busy are propagated together. Same-document reload validates before
+accepting a new snapshot, retains local edits on failure, and rejects late results
+after document changes; normal initial navigation/loading keeps its own path.
 Topology preparation is distinct from display layout. Read-only inspection reuses
 prepared topology and incoming-edge indexes instead of rerunning Dagre on every
 selection. One-step candidate identities are stable within their session; they

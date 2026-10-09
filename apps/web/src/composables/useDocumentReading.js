@@ -16,6 +16,7 @@ export function useDocumentReading(open, record) {
     catch (error) { return { steps: [], error: error.message }; }
   });
   const steps = computed(() => projection.value.steps), stepError = computed(() => projection.value.error);
+  const stepNumbers = computed(() => Object.fromEntries(steps.value.map(step => [step.node.id, step.number])));
   const stepChoices = computed(() => steps.value.map(step => ({ value: step.node.id, title: uiText("合成步骤 {value}", { value: step.number }) })));
   const graph = computed(() => !record.value ? { nodes: [], edges: [], target_id: "" }
     : record.value.graph.nodes.every(node => node.position.x === 0 && node.position.y === 0)
@@ -80,6 +81,6 @@ export function useDocumentReading(open, record) {
   }
   onBeforeUnmount(() => { disposed = true; selectionEpoch++; pendingLocation = null; });
   return { selected, detailsOpen, view, views, graphActive, graphView, readingMain, inspectorView,
-    graph, node, steps, stepError, stepChoices, reactionSelection, mobileDetails,
+    graph, node, steps, stepNumbers, stepError, stepChoices, reactionSelection, mobileDetails,
     changeView, selectNode, closeDetails, locateStep, graphInitialized };
 }

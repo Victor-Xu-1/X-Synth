@@ -72,6 +72,7 @@ const props = defineProps({
   toolbar: Boolean,
   scores: { type: Object, default: () => ({}) },
   catalogPrices: { type: Object, default: () => ({}) },
+  stepNumbers: { type: Object, default: () => ({}) },
   id: { type: String, default: () => `route-${crypto.randomUUID()}` },
 });
 const emit = defineEmits(["update:graph", "select", "select-edge", "error", "ready"]);
@@ -99,6 +100,7 @@ const flowNodes = computed(() =>
       overview: props.overview,
       reading: props.reading,
       generatedStepLabels: props.generatedStepLabels,
+      readingStepNumber: props.stepNumbers[node.id],
       imageWidth: props.reading ? 200 : 168,
       imageHeight: props.reading ? 144 : 95,
       score: props.scores[node.id],
