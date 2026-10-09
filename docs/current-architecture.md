@@ -300,6 +300,14 @@ their originating panel rather than mounting an application-root confirmation di
 One shared tab component binds keyboard selection, panel IDs and roving focus. Process input uses
 three retained sections with adjacent navigation; calculations still publish only owned immutable
 analysis records and open their distinct result page, never a second empty output surface.
+`horizontal-selection` is the shared local-scroll geometry for tabs and tool navigation.
+Selection, resize and language reflow reveal the current control without changing outer scroll or
+passive focus. The three route-design modes use a bounded mobile layout with complete labels.
+Reaction HTTP preparation, RXN staging and reference conversion share a 15-second request deadline,
+distinct from model/job budgets. Draft/file controllers cancel superseded or disposed work and reject
+late data; native imports remain serialized and all exact role/group checks remain intact.
+Standalone drawing normalization reads the current native snapshot and only publishes success after
+confirmed native write/readback. It cannot silently substitute old field text for newer canvas input.
 The version notice consumes the existing health version and VERSION-derived frontend value, not
 another polling service. A newer confirmed release opens the current same-origin route separately;
 it never automatically reloads or copies an unsubmitted chemical draft.

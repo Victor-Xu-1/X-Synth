@@ -1,5 +1,5 @@
 import { API } from "./api";
-import { checkedReactionDraft, REACTION_DRAFT_PATH } from "./reaction-input";
+import { checkedReactionDraft, REACTION_DRAFT_PATH, REACTION_REQUEST_TIMEOUT_MS } from "./reaction-input";
 import { runKetcherOperation } from "./ketcher-native-operations";
 
 export const EMPTY_REACTION_CANVAS = JSON.stringify({
@@ -19,23 +19,23 @@ export const EMPTY_REACTION_CANVAS = JSON.stringify({
   },
 });
 
-export async function parseReactionText(content, api = API) {
+export async function parseReactionText(content, api = API, { signal, timeoutMs = REACTION_REQUEST_TIMEOUT_MS } = {}) {
   const body = {
     format: "smiles",
     content: content.trim(),
     single_role: "product",
   };
-  return checkedReactionDraft(await api.post(REACTION_DRAFT_PATH, body), body);
+  return checkedReactionDraft(await api.post(REACTION_DRAFT_PATH, body, false, { signal, timeoutMs }), body);
 }
 
-export async function parseCanvasReaction(content, compoundGroups, api = API, options) {
+export async function parseCanvasReaction(content, compoundGroups, api = API, { signal, timeoutMs = REACTION_REQUEST_TIMEOUT_MS } = {}) {
   const body = { format: "rxn", content, single_role: "product" };
   if (
     compoundGroups &&
     Object.values(compoundGroups).some((records) => records.length)
   )
     body.compound_groups = compoundGroups;
-  const response = options ? await api.post(REACTION_DRAFT_PATH, body, false, options) : await api.post(REACTION_DRAFT_PATH, body);
+  const response = await api.post(REACTION_DRAFT_PATH, body, false, { signal, timeoutMs });
   return checkedReactionDraft(response, body);
 }
 

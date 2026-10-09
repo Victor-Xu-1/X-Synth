@@ -1,4 +1,4 @@
-import { checkedReactionDraft, REACTION_DRAFT_PATH } from "./reaction-input";
+import { checkedReactionDraft, REACTION_DRAFT_PATH, REACTION_REQUEST_TIMEOUT_MS } from "./reaction-input";
 import { maxChemicalFileBytes } from "./chemical-files";
 
 export const REACTION_EXPORT_PATH = "/api/v1/structure/reaction-export";
@@ -39,8 +39,9 @@ export function matchingReactionRecords(draft, expected) {
   );
 }
 
-export async function exportedReactionDraft(body, api, current = () => true) {
-  const output = await api.post(REACTION_EXPORT_PATH, body);
+export async function exportedReactionDraft(body, api, current = () => true, options = {}) {
+  const requestOptions = { timeoutMs: REACTION_REQUEST_TIMEOUT_MS, ...options };
+  const output = await api.post(REACTION_EXPORT_PATH, body, false, requestOptions);
   if (!current()) return null;
   if (
     output?.format !== "rxn" ||
@@ -55,7 +56,7 @@ export async function exportedReactionDraft(body, api, current = () => true) {
     single_role: "product",
   };
   const value = checkedReactionDraft(
-    await api.post(REACTION_DRAFT_PATH, requested),
+    await api.post(REACTION_DRAFT_PATH, requested, false, requestOptions),
     requested,
   );
   if (!current()) return null;

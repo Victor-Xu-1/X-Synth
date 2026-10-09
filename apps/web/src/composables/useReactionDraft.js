@@ -8,6 +8,7 @@ import {
 import {
   checkedReactionDraft,
   REACTION_DRAFT_PATH,
+  REACTION_REQUEST_TIMEOUT_MS,
 } from "@/common/reaction-input";
 import { compactInitialReaction, requireSameReactionRoles } from "@/common/ketcher-reaction-layout";
 import { runKetcherOperation } from "@/common/ketcher-native-operations";
@@ -26,20 +27,28 @@ export function useReactionDraft({
     timer,
     disposed = false;
   let cachedContent, cachedDraft, cachedValue;
+  let parseController;
   let compoundGroups,
     canvasReaction = false;
   function parseText(content) {
+    if (disposed) return Promise.reject(new DOMException("Reaction parsing cancelled", "AbortError"));
     const requested = {
       format: "smiles",
       content: content.trim(),
       single_role: "product",
     };
     if (cachedContent !== requested.content) {
+      cancelParsing();
       cachedContent = requested.content;
       cachedValue = null;
+      const controller = new AbortController();
+      parseController = controller;
       const request = api
-        .post(REACTION_DRAFT_PATH, requested)
-        .then((value) => checkedReactionDraft(value, requested));
+        .post(REACTION_DRAFT_PATH, requested, false, { signal: controller.signal, timeoutMs: REACTION_REQUEST_TIMEOUT_MS })
+        .then((value) => {
+          if (controller.signal.aborted) throw controller.signal.reason;
+          return checkedReactionDraft(value, requested);
+        });
       cachedDraft = request;
       request.then(
         (value) => {
@@ -52,6 +61,11 @@ export function useReactionDraft({
       });
     }
     return cachedDraft;
+  }
+  function cancelParsing() {
+    parseController?.abort();
+    parseController = undefined;
+    cachedContent = cachedDraft = cachedValue = undefined;
   }
   async function prepareContent(content) {
     const value = await parseText(content);
@@ -87,7 +101,7 @@ export function useReactionDraft({
       const content = await runKetcherOperation(ketcher, () => ketcher.getRxn("v3000"), current);
       if (!current()) return;
       const checked = await parseCanvasReaction(content, declaredGroups(expected), api,
-        { signal, timeoutMs: 15000 });
+        { signal, timeoutMs: REACTION_REQUEST_TIMEOUT_MS });
       if (!current()) return;
       requireSameReactionRoles(expected, checked);
     } catch (failure) {
@@ -141,7 +155,8 @@ export function useReactionDraft({
       ),
   );
   const pending = computed(() => structurePending.value || !!incomplete.value);
-  function invalidate() {
+  function invalidate({ cancel = false } = {}) {
+    if (cancel || disposed || cachedContent !== text.value.trim()) cancelParsing();
     revision++;
     clearTimeout(timer);
     parsed.value = null;
@@ -193,7 +208,7 @@ export function useReactionDraft({
   );
   onBeforeUnmount(() => {
     disposed = true;
-    invalidate();
+    invalidate({ cancel: true });
   });
   return {
     parsed,

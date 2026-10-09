@@ -240,7 +240,7 @@ async function clear() {
   discardFile();
   fileError.value = "";
   selected.value = "";
-  draft.invalidate();
+  draft.invalidate({ cancel: true });
   if (board.value) await board.value.clearEditor();
   else text.value = "";
 }

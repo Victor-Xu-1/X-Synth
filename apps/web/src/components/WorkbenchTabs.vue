@@ -11,7 +11,9 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { useUiLanguage } from "@/i18n";
+import { revealHorizontalSelection } from "@/common/horizontal-selection";
 
 const props = defineProps({
   items: { type: Array, default: () => [] },
@@ -26,7 +28,21 @@ const enabled = computed(() => props.disabled ? [] : props.items.filter((item) =
 const tabStop = computed(() => enabled.value.find((item) => item.value === props.modelValue)?.value || enabled.value[0]?.value);
 const tabId = (value) => `${id}-tab-${encodeURIComponent(value)}`;
 const panelId = (value) => props.panel || `${id}-panel-${encodeURIComponent(value)}`;
-let generation = 0, disposed = false;
+let generation = 0, disposed = false, resizeObserver;
+const { locale } = useUiLanguage();
+function revealSelected() {
+  if (disposed || props.disabled) return;
+  revealHorizontalSelection(tablist.value, tablist.value?.querySelector('[aria-selected="true"]'));
+}
+watch([() => props.modelValue, () => props.disabled, () => props.items, locale], async () => {
+  await nextTick();
+  revealSelected();
+}, { immediate: true, deep: true, flush: "post" });
+watch(tablist, (element) => {
+  resizeObserver?.disconnect();
+  resizeObserver = element && typeof ResizeObserver !== "undefined" ? new ResizeObserver(revealSelected) : undefined;
+  resizeObserver?.observe(element);
+}, { flush: "post" });
 
 async function choose(value) {
   if (!enabled.value.some((item) => item.value === value)) return;
@@ -38,7 +54,7 @@ async function choose(value) {
     .find((button) => button.id === tabId(value));
   if (!target?.isConnected || target.disabled) return;
   target.focus({ preventScroll: true });
-  target.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  revealHorizontalSelection(tablist.value, target);
 }
 function move(event) {
   if (event.altKey || event.ctrlKey || event.metaKey ||
@@ -51,7 +67,7 @@ function move(event) {
   event.preventDefault();
   choose(enabled.value[next].value);
 }
-onBeforeUnmount(() => { disposed = true; generation++; });
+onBeforeUnmount(() => { disposed = true; generation++; resizeObserver?.disconnect(); });
 </script>
 
 <style scoped>

@@ -28,7 +28,7 @@
               type="button"
               :prepend-icon="item.icon"
               :disabled="busy || readingStructure"
-              >{{ $tr(item.title) }}</v-btn
+              ><span class="mode-label">{{ $tr(item.title) }}</span></v-btn
             ></v-btn-toggle
           >
         </div>
@@ -210,6 +210,28 @@ const comparisonVisible = computed(() =>
 .workbench-mode-bar :deep(.v-btn--active .v-btn__underlay) {
   opacity: 0;
 }
+@media (max-width: 600px) {
+  .workbench-mode-bar :deep(.v-btn-toggle) {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+  .workbench-mode-bar :deep(.v-btn) {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    height: 88px;
+    min-width: 0;
+    padding: 8px 4px;
+    font-size: 12px;
+  }
+  .workbench-mode-bar :deep(.v-btn__prepend) { margin: 0; }
+  .workbench-mode-bar :deep(.v-btn__prepend .v-icon) { font-size: 18px; }
+  .workbench-mode-bar :deep(.v-btn__content) { width: 100%; white-space: normal; }
+  .mode-label { min-width: 0; line-height: 1.3; overflow-wrap: anywhere; }
+}
 .workbench-settings {
   display: flex;
   flex-direction: column;
@@ -269,17 +291,5 @@ const comparisonVisible = computed(() =>
   justify-content: space-between;
   font-size: 14px;
   color: var(--ws-muted);
-}
-@media (max-width: 599px) {
-  .route-workbench h1 {
-    font-size: 24px;
-  }
-  .workbench-mode-bar :deep(.v-btn-toggle) {
-    height: 46px;
-  }
-  .workbench-mode-bar :deep(.v-btn) {
-    padding: 0 10px;
-    font-size: 13px;
-  }
 }
 </style>
