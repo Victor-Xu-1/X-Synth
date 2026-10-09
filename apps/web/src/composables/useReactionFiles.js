@@ -3,6 +3,7 @@ import { API } from "@/common/api";
 import {
   checkedReactionDraft,
   REACTION_DRAFT_PATH,
+  REACTION_REQUEST_TIMEOUT_MS,
   reactionFileBody,
 } from "@/common/reaction-input";
 import { downloadChemicalFile } from "@/common/chemical-files";
@@ -22,7 +23,10 @@ export function useReactionFiles({ text, disabled, board, draft }) {
   let revision = 0,
     disposed = false,
     applyingFile = false;
+  let stagingController;
   function discardFile() {
+    stagingController?.abort();
+    stagingController = undefined;
     revision++;
     fileDraft.value = null;
     fileProduct.value = "";
@@ -42,19 +46,19 @@ export function useReactionFiles({ text, disabled, board, draft }) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    return stageImport(async (current) => {
+    return stageImport(async (current, options) => {
       const body = await reactionFileBody(file);
       if (!current()) return null;
       return checkedReactionDraft(
-        await API.post(REACTION_DRAFT_PATH, body),
+        await API.post(REACTION_DRAFT_PATH, body, false, options),
         body,
       );
     }, "file");
   }
   async function importRecords(records) {
     return stageImport(
-      (current) =>
-        exportedReactionDraft(reactionRecordsBody(records), API, current),
+      (current, options) =>
+        exportedReactionDraft(reactionRecordsBody(records), API, current, options),
       "reference",
     );
   }
@@ -63,11 +67,13 @@ export function useReactionFiles({ text, disabled, board, draft }) {
     discardFile();
     const requested = revision;
     const current = () => !disposed && requested === revision && !disabled();
+    const controller = new AbortController();
+    stagingController = controller;
     fileOrigin.value = origin;
     fileBusy.value = true;
     fileError.value = "";
     try {
-      const value = await load(current);
+      const value = await load(current, { signal: controller.signal, timeoutMs: REACTION_REQUEST_TIMEOUT_MS });
       if (!current() || !value) return false;
       fileDraft.value = value;
       fileProduct.value =
@@ -86,6 +92,7 @@ export function useReactionFiles({ text, disabled, board, draft }) {
               );
       return false;
     } finally {
+      if (stagingController === controller) stagingController = undefined;
       if (current()) fileBusy.value = false;
     }
   }

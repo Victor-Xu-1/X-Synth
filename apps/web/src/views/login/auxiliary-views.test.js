@@ -48,7 +48,10 @@ test("drawing preserves genuine Ketcher and real committed previews", () => {
   const source = read("drawing/Drawing.vue");
   expect(source).toContain("InlineKetcherEditor");
   expect(source).toContain("readSmilesFromEditor()");
-  expect(source).toContain('@commit="commitStructure"');
+  expect(source).toContain('@commit="acceptEditorCommit"');
+  expect(source).toContain("!canonicalizing.value");
+  expect(source).toContain("const snapshot = await readDrawing()");
+  expect(source).toContain("if (applied !== true)");
   expect(source).toContain("/api/rdkit/canonicalize");
   expect(source).toContain(':smiles="committedSmiles"');
   expect(source).toContain('workspace.can("drawing")');

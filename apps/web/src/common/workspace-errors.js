@@ -7,5 +7,6 @@ export function errorMessage(error, fallback = "请求未完成，请重试。")
   } catch {
     /* Network errors have no structured API detail. */
   }
+  if (error?.name === "TimeoutError") return "服务请求超时，请刷新或重试。";
   return error?.name === "AbortError" ? "请求已取消。" : fallback;
 }

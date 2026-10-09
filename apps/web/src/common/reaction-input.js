@@ -2,6 +2,7 @@ import { chemicalRecords, maxChemicalFileBytes } from "./chemical-files";
 
 export const REACTION_DRAFT_PATH = "/api/v1/structure/reaction-draft";
 export const MAX_REACTION_TEXT = 8192;
+export const REACTION_REQUEST_TIMEOUT_MS = 15000;
 
 function side(value, singleCompound = false) {
   if (Array.isArray(value))

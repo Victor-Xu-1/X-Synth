@@ -17,6 +17,7 @@ export default [
   ["模板索引快照已变更，请明确开始新的查询。", "The template index snapshot has changed. Explicitly start a new query."],
   ["模板分页游标无效或与筛选条件不匹配。", "The template page cursor is invalid or does not match the filters."],
   ["参考反应不能完整载入，未改变画板。", "The complete reference reaction could not be loaded; the canvas was not changed."],
+  ["RXN 文件无法解析，未改变画板。", "The RXN file could not be parsed; the canvas was not changed."],
   ["参考反应检索", "Reference reaction search"], ["待确认的链接反应", "Linked reaction awaiting confirmation"],
   ["确认并应用反应", "Confirm and apply reaction"], ["忽略链接输入", "Ignore linked input"],
   ["参考反应检索输入", "Reference reaction search inputs"], ["检索参数", "Search parameters"],

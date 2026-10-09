@@ -2,6 +2,17 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { h } from "vue";
 import { randomUUID } from "node:crypto";
 import WorkbenchTabs from "./WorkbenchTabs.vue";
+import { useUiLanguage } from "@/i18n";
+
+let resize;
+const originalResizeObserver = globalThis.ResizeObserver;
+beforeEach(() => {
+  globalThis.ResizeObserver = class {
+    constructor(callback) { resize = callback; }
+    observe() {}
+    disconnect() {}
+  };
+});
 
 const wrappers = [], hosts = [];
 const items = [{ value: "first", title: "First" }, { value: "off", title: "Unavailable", disabled: true }, { value: "last", title: "Last" }];
@@ -24,6 +35,7 @@ beforeAll(() => Object.defineProperty(globalThis.crypto, "randomUUID", { configu
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
   hosts.splice(0).forEach((host) => host.remove());
+  globalThis.ResizeObserver = originalResizeObserver;
 });
 
 test("standalone native tab controls have named relationships and one enabled Tab stop", async () => {
@@ -94,4 +106,60 @@ test("unmount before queued focus cannot focus detached tabs", async () => {
   await flushPromises();
   expect(focus).not.toHaveBeenCalled();
   focus.mockRestore();
+});
+
+function scrollingStrip(wrapper) {
+  const strip = wrapper.get('[role="tablist"]').element;
+  Object.defineProperties(strip, {
+    clientWidth: { configurable: true, value: 180 },
+    scrollWidth: { configurable: true, value: 400 },
+  });
+  strip.getBoundingClientRect = () => ({ left: 0, right: 180, width: 180, height: 40 });
+  wrapper.findAll('[role="tab"]').forEach((tab, index) => {
+    tab.element.getBoundingClientRect = () => ({ left: index * 130 - strip.scrollLeft,
+      right: index * 130 + 120 - strip.scrollLeft, width: 120, height: 40 });
+    tab.element.scrollIntoView = jest.fn();
+  });
+  return strip;
+}
+
+test("a parent-selected offscreen tab is revealed locally without changing outside focus", async () => {
+  const wrapper = await setup(), strip = scrollingStrip(wrapper);
+  const outside = document.createElement("button");
+  hosts[0].appendChild(outside); outside.focus();
+  await wrapper.setProps({ modelValue: "last" }); await flushPromises();
+  expect(strip.scrollLeft).toBe(208);
+  expect(document.activeElement).toBe(outside);
+  expect(wrapper.emitted("update:modelValue")).toBeUndefined();
+  expect(wrapper.get('[aria-selected="true"]').element.scrollIntoView).not.toHaveBeenCalled();
+});
+
+test("keyboard activation reveals only the tab strip, not outer panels or the page", async () => {
+  const wrapper = await setup(), strip = scrollingStrip(wrapper);
+  const first = wrapper.get('[role="tab"]'); first.element.focus();
+  await first.trigger("keydown", { key: "End" }); await flushPromises();
+  expect(strip.scrollLeft).toBe(208);
+  expect(document.activeElement).toBe(wrapper.get('[aria-selected="true"]').element);
+  expect(wrapper.get('[aria-selected="true"]').element.scrollIntoView).not.toHaveBeenCalled();
+});
+
+test("resize and language reflow reveal selection while keeping outside focus", async () => {
+  const wrapper = await setup({ modelValue: "last" }), strip = scrollingStrip(wrapper);
+  const outside = document.createElement("button"); hosts[0].appendChild(outside); outside.focus();
+  resize(); expect(strip.scrollLeft).toBe(208);
+  const { setLocale } = useUiLanguage(); setLocale("en"); await flushPromises();
+  strip.scrollLeft = 0;
+  setLocale("zh-CN"); await flushPromises();
+  expect(strip.scrollLeft).toBe(208); expect(document.activeElement).toBe(outside);
+  setLocale("en"); await flushPromises();
+});
+
+test("disabled, hidden and unmounted strips do not scroll or restore stale focus", async () => {
+  const wrapper = await setup(), strip = scrollingStrip(wrapper);
+  await wrapper.setProps({ disabled: true, modelValue: "last" }); await flushPromises();
+  resize(); expect(strip.scrollLeft).toBe(0);
+  Object.defineProperty(strip, "clientWidth", { configurable: true, value: 0 });
+  await wrapper.setProps({ disabled: false }); await flushPromises();
+  expect(strip.scrollLeft).toBe(0);
+  wrapper.unmount(); resize(); expect(strip.scrollLeft).toBe(0);
 });

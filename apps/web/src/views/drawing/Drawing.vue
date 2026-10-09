@@ -31,7 +31,7 @@
             v-model:smiles="smiles"
             :show-actions="false"
             fill-height
-            @commit="commitStructure"
+            @commit="acceptEditorCommit"
           />
         </div>
         <div class="page-actions drawing-actions">
@@ -61,7 +61,7 @@
             variant="outlined"
             prepend-icon="mdi-auto-fix"
             :loading="canonicalizing"
-            :disabled="applying || inputPending || !smiles?.trim()"
+            :disabled="busy || inputPending"
             data-cy="draw-canonicalize-btn"
             @click="canonicalize"
             >{{ $tr('标准化') }}</v-btn
@@ -98,7 +98,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { API } from "@/common/api";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
@@ -123,11 +123,23 @@ const canonicalizing = ref(false);
 const busy = computed(() => applying.value || canonicalizing.value);
 const errorMessage = ref("");
 const notice = ref("");
+let disposed = false, normalizationController = null;
+
+watch(() => workspace.can("drawing"), (allowed) => {
+  if (!allowed) normalizationController?.abort();
+}, { flush: "sync" });
+onBeforeUnmount(() => {
+  disposed = true;
+  normalizationController?.abort();
+});
 
 const commitStructure = (value) => {
   committedSmiles.value = value;
   errorMessage.value = "";
   notice.value = value ? "结构已应用。" : "画板已清空。";
+};
+const acceptEditorCommit = (value) => {
+  if (!disposed && !canonicalizing.value) commitStructure(value);
 };
 
 const applyStructure = async () => {
@@ -163,27 +175,49 @@ const clearEditor = async () => {
 };
 
 const canonicalize = async () => {
-  if (busy.value || inputPending.value || !workspace.can("drawing") || !smiles.value?.trim()) return;
+  if (disposed || busy.value || inputPending.value || !workspace.can("drawing") || !editor.value) return;
+  const owner = editor.value, controller = new AbortController();
+  normalizationController = controller;
+  const current = () => !disposed && !controller.signal.aborted
+    && editor.value === owner && workspace.can("drawing");
+  let source, readingBack = false;
   canonicalizing.value = true;
   errorMessage.value = "";
   notice.value = "";
   try {
+    const snapshot = await readDrawing();
+    if (!current()) return;
+    if (typeof snapshot !== "string" || !snapshot.trim())
+      throw new Error("无法读取结构，请检查画板内容与绘制器状态。");
+    source = snapshot.trim();
+    if (smiles.value !== source) return;
     const response = await API.post("/api/rdkit/canonicalize", {
-      smiles: smiles.value.trim(),
-    });
-    if (!response?.smiles) throw new Error("Missing normalized structure");
-    smiles.value = response.smiles;
-    commitStructure(response.smiles);
-    await nextTick();
-    await editor.value?.setSmilesToEditor(response.smiles);
+      smiles: source,
+    }, false, { signal: controller.signal, timeoutMs: 15000 });
+    if (!current() || smiles.value !== source) return;
+    if (typeof response?.smiles !== "string" || !response.smiles.trim())
+      throw new Error("Missing normalized structure");
+    const applied = await owner.setSmilesToEditor(response.smiles.trim());
+    if (!current() || smiles.value !== source) return;
+    if (applied !== true)
+      throw new Error("结构标准化失败，请检查输入与服务状态。");
+    // The reader publishes the confirmed canvas without triggering another model-driven import.
+    readingBack = true;
+    const confirmed = await readDrawing();
+    if (!current()) return;
+    if (typeof confirmed !== "string" || !confirmed.trim())
+      throw new Error("无法读取结构，请检查画板内容与绘制器状态。");
+    commitStructure(confirmed.trim());
     notice.value = "结构已标准化。";
   } catch (error) {
-    errorMessage.value = API.toErrorObject(
-      error,
-      "结构标准化失败，请检查输入与服务状态。",
-    ).string_error;
+    if (current() && (source === undefined || readingBack || smiles.value === source))
+      errorMessage.value = API.toErrorObject(
+        error,
+        "结构标准化失败，请检查输入与服务状态。",
+      ).string_error;
   } finally {
-    canonicalizing.value = false;
+    if (normalizationController === controller) normalizationController = null;
+    if (!disposed) canonicalizing.value = false;
   }
 };
 

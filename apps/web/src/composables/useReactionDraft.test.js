@@ -94,3 +94,35 @@ test("small or incomplete drafts require no additional native serialization or v
   expect(ketcher.getKet).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled();
   expect(api.post).toHaveBeenCalledTimes(1);
 });
+
+test("parser preparation has a request deadline and superseded text releases the old request", async () => {
+  const api = { post: jest.fn((_, body, query, options) => body.content === source
+    ? new Promise((resolve, reject) => options?.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true }))
+    : Promise.resolve({ ...draftResponse(body), reaction_smiles: body.content })) };
+  const { state, text } = setup(api);
+  const first = state.prepareContent(source);
+  const rejected = expect(first).rejects.toThrow();
+  await flushPromises();
+  const options = api.post.mock.calls[0][3];
+  expect(options?.timeoutMs).toBe(15000);
+  expect(options?.signal).toBeInstanceOf(AbortSignal);
+  text.value = "CCN>>CC=N";
+  await rejected;
+  expect(options.signal.aborted).toBe(true);
+  expect(await state.prepareContent(text.value)).toBe("$RXN original protocol fixture");
+});
+
+test("explicit clearing and unmount abort pending parsing without accepting late data", async () => {
+  let resolve;
+  const api = { post: jest.fn((_, body) => new Promise(done => { resolve = () => done(draftResponse(body)); })) };
+  const { state } = setup(api);
+  const first = state.prepareContent(source), rejected = expect(first).rejects.toThrow(); await flushPromises();
+  const options = api.post.mock.calls[0][3];
+  state.invalidate({ cancel: true });
+  expect(options?.signal.aborted).toBe(true);
+  resolve(); await rejected;
+  const second = state.prepareContent(source), stopped = expect(second).rejects.toThrow(); await flushPromises();
+  const nextOptions = api.post.mock.calls[1][3];
+  wrappers.at(-1).unmount(); expect(nextOptions.signal.aborted).toBe(true);
+  resolve(); await stopped;
+});
