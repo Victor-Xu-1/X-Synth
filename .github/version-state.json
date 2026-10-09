@@ -60,6 +60,10 @@
     {
       "number": 68,
       "merge_commit_sha": "f7a12aac7cc8a6540287199db39b4d26dcf90d84"
+    },
+    {
+      "number": 69,
+      "merge_commit_sha": "fd53f79246f4efa99a459cf4a6bc7c3a26ddba22"
     }
   ]
 }
