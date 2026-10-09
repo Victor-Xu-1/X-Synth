@@ -1,7 +1,9 @@
 import { EventEmitter } from "node:events";
 import { mount } from "@vue/test-utils";
-import { nextTick } from "vue";
+import { nextTick, ref } from "vue";
 import InlineKetcherEditor from "./InlineKetcherEditor.vue";
+import { provideWorkbenchActivity } from "./workspace/workbench-activity";
+import DrawingViewTools from "./workspace/DrawingViewTools.vue";
 
 // Native API doubles exercise host layout ownership, not chemistry parsing.
 function nativeEditor() {
@@ -254,5 +256,22 @@ describe("inline Ketcher viewport lifecycle", () => {
     expect(ketcher.editor.clear).not.toHaveBeenCalled();
     expect(ketcher.setMolecule).not.toHaveBeenCalled();
     expect(observer.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  test("a fit queued before scope deactivation cannot paint after reactivation", async () => {
+    const active = ref(true);
+    wrapper = mount({ components: { InlineKetcherEditor }, setup() {
+      provideWorkbenchActivity(active); return {};
+    }, template: '<InlineKetcherEditor smiles="" fill-height :canvas-height="380" :show-actions="false" />' }, {
+      attachTo: document.body, global: { stubs: { VProgressLinear: true, VBtn: true,
+        VTooltip: { template: '<span><slot name="activator" :props="{}" /></span>' } } },
+    });
+    const native = nativeEditor(); native.editor.struct = jest.fn(() => ({ atoms: { size: 0 } }));
+    wrapper.get("iframe").element.contentWindow.ketcher = native;
+    await jest.advanceTimersByTimeAsync(1000); native.editor.struct.mockClear();
+    wrapper.findComponent(DrawingViewTools).vm.$emit("fit"); await nextTick();
+    active.value = false; active.value = true;
+    await jest.advanceTimersByTimeAsync(32);
+    expect(native.editor.struct).not.toHaveBeenCalled();
   });
 });

@@ -15,6 +15,17 @@ export function prepareKetcherDocument(doc) {
 
 const finitePoint = point => point && Number.isFinite(point.x) && Number.isFinite(point.y);
 
+export function zoomKetcherCanvas(editor, factor) {
+  if (typeof editor?.zoom !== "function" || typeof editor.selection !== "function"
+    || typeof editor.event?.selectionChange?.dispatch !== "function")
+    throw new Error("Ketcher camera API is unavailable");
+  const current = editor.zoom();
+  if (!Number.isFinite(factor) || factor <= 0 || !Number.isFinite(current) || current <= 0)
+    throw new Error("Ketcher view bounds are invalid");
+  editor.zoom(Math.min(4, current * factor));
+  editor.event.selectionChange.dispatch(editor.selection());
+}
+
 function visualBounds(editor) {
   const render = editor.render, box = render.ctab.getVBoxObj();
   if (!finitePoint(box?.p0) || !finitePoint(box?.p1) || box.p1.x < box.p0.x || box.p1.y < box.p0.y)
@@ -41,7 +52,7 @@ function visualBounds(editor) {
 }
 
 // The bundled Ketcher 2.13 camera is separate from molecular layout/centerStruct.
-export function fitKetcherCanvas(editor) {
+export function fitKetcherCanvas(editor, { preserveZoom = false } = {}) {
   if (typeof editor?.struct !== "function") return false;
   const molecule = editor.struct();
   if (!molecule?.atoms?.size) return false;
@@ -71,7 +82,7 @@ export function fitKetcherCanvas(editor) {
     throw new Error("Ketcher view bounds are invalid");
   const width = (box.p1.x - box.p0.x) * scale, height = (box.p1.y - box.p0.y) * scale;
   const margin = Math.min(12, viewport.width / 4, viewport.height / 4);
-  const zoom = Math.min(1,
+  const zoom = preserveZoom ? editor.zoom() : Math.min(1,
     width > 0 ? (viewport.width - 2 * margin) / width : 1,
     height > 0 ? (viewport.height - 2 * margin) / height : 1);
   editor.zoom(zoom);

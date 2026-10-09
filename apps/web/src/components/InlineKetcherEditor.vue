@@ -1,10 +1,14 @@
 <template>
   <div
+    ref="editorRoot"
     :class="[
       'inline-ketcher-editor',
       { 'fill-height-mode': fillHeight, 'compact-mode': compact },
     ]"
   >
+    <DrawingViewTools :expanded="view.expanded.value" :supported="view.supported.value" :title="title"
+      :disabled="disabled || busy || !ready || view.pending.value"
+      @zoom-out="zoomDrawing(.8)" @zoom-in="zoomDrawing(1.25)" @fit="view.run(fitDrawing)" @expand="view.toggle" />
     <div
       ref="ketcherFrame"
       class="inline-ketcher-frame"
@@ -34,6 +38,11 @@
         <v-btn v-bind="activator" icon="mdi-refresh" variant="text" size="small"
           :aria-label="$tr('重试结构同步')" :disabled="disabled || busy" @click="retryEditor" />
       </template></v-tooltip>
+    </div>
+    <div v-if="view.error.value" class="editor-error" role="alert">
+      <span>{{ $tr(view.error.value) }}</span>
+      <v-btn type="button" icon="mdi-refresh" variant="text" size="small" :aria-label="$tr('重试视图操作')"
+        :disabled="disabled || busy || !ready || view.pending.value" @click="view.retry" />
     </div>
     <div v-if="showActions" class="inline-ketcher-actions">
       <span class="editor-status">{{ $tr(editorStatus) }}</span>
@@ -68,6 +77,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { KETCHER_URL, waitForKetcher as waitForEditor } from "@/common/ketcher";
 import { useKetcherMolecule } from "@/composables/useKetcherMolecule";
+import { useKetcherView } from "@/composables/useKetcherView";
+import { useWorkbenchActivity } from "@/components/workspace/workbench-activity";
+import DrawingViewTools from "@/components/workspace/DrawingViewTools.vue";
 import { createKetcherFocusGuard } from "@/common/ketcher-focus";
 import {
   ReactionCanvasError,
@@ -76,6 +88,7 @@ import {
 import { errorMessage } from "@/common/workspace-errors";
 import {
   fitKetcherCanvas,
+  zoomKetcherCanvas,
   prepareKetcherDocument,
 } from "@/common/ketcher-layout";
 
@@ -106,6 +119,10 @@ const props = defineProps({
 
 const ketcherIframe = ref(null);
 const ketcherFrame = ref(null);
+const editorRoot = ref(null);
+const activity = useWorkbenchActivity();
+const manualZoom = ref(false);
+let fittedZoom = null;
 const KETCHER_BASE_WIDTH = 808;
 const KETCHER_BASE_HEIGHT = 432;
 const KETCHER_MIN_VIEWPORT_WIDTH = 320;
@@ -123,18 +140,26 @@ const ketcherViewportHeight = ref(KETCHER_BASE_HEIGHT);
 let resizeObserver = null;
 let fitRevision = 0;
 const editorLifetime = new AbortController();
-const fitDrawing = async () => {
+const fitDrawing = async (context) => {
   const current = ++fitRevision;
   await nextTick();
   await new Promise((resolve) => window.requestAnimationFrame(resolve));
   if (
     editorLifetime.signal.aborted ||
+    !activity.value ||
+    context?.current && !context.current() ||
     current !== fitRevision ||
     !ketcherFrame.value?.clientWidth
   )
     return;
-  fitKetcherCanvas(ketcherIframe.value?.contentWindow?.ketcher?.editor);
+  const editor = ketcherIframe.value?.contentWindow?.ketcher?.editor;
+  if (context?.automatic && fittedZoom !== null && typeof editor?.zoom === "function"
+    && Math.abs(editor.zoom() - fittedZoom) > 1e-8) manualZoom.value = true;
+  const preserveZoom = !!context?.automatic && manualZoom.value;
+  if (!context?.automatic) manualZoom.value = false;
+  if (fitKetcherCanvas(editor, { preserveZoom }) && !preserveZoom) fittedZoom = editor.zoom();
 };
+const fitResizedDrawing = context => fitDrawing({ ...context, automatic: true });
 
 const clampNumber = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -150,12 +175,23 @@ const ketcherFrameStyle = computed(() => {
   };
 });
 
-const syncKetcherLayout = () => {
+const syncKetcherLayout = (options = {}) => {
   const frame = ketcherFrame.value;
   if (!frame || !frame.getClientRects().length) return;
   // Ketcher 2.13 registers its resize handler before its native editor exists.
   // Keep the iframe viewport stable until that initialization has completed.
   if (!ketcherIframe.value?.contentWindow?.ketcher?.editor) return;
+
+  if (view.expanded.value) {
+    const width = frame.clientWidth, height = frame.clientHeight;
+    const resized = width !== ketcherViewportWidth.value || height !== ketcherViewportHeight.value;
+    ketcherScale.value = 1;
+    ketcherViewportWidth.value = width;
+    ketcherViewportHeight.value = height;
+    ketcherVisualHeight.value = height;
+    if (resized && options.fit !== false) void view.adjustView(fitResizedDrawing);
+    return;
+  }
 
   const availableWidth = Math.max(
     props.fillHeight || props.compact || props.reaction
@@ -204,10 +240,7 @@ const syncKetcherLayout = () => {
     ketcherViewportWidth.value = availableWidth;
     ketcherViewportHeight.value = visualHeightLimit;
     ketcherVisualHeight.value = visualHeightLimit;
-    if (resized)
-      fitDrawing().catch(() => {
-        editorStatus.value = "结构视图调整失败，请重新打开画板。";
-      });
+    if (resized && options.fit !== false) void view.adjustView(fitResizedDrawing);
     return;
   }
 
@@ -230,6 +263,7 @@ const patchKetcherDocument = () => {
   const doc = ketcherIframe.value?.contentDocument;
   prepareKetcherDocument(doc);
   focusGuard.observe();
+  view.observeFrame();
   scheduleKetcherLayoutSync();
 };
 
@@ -294,6 +328,19 @@ const {
       : fallback,
 });
 
+const view = useKetcherView({ root: editorRoot, active: activity, ready,
+  getFrame: () => ketcherIframe.value,
+  blocked: computed(() => props.disabled || busy.value),
+  onChange: async context => {
+    await nextTick(); if (!context.current()) return;
+    syncKetcherLayout({ fit: false }); await fitDrawing(context);
+  },
+});
+const zoomDrawing = factor => view.run(() => {
+  zoomKetcherCanvas(ketcherIframe.value?.contentWindow?.ketcher?.editor, factor);
+  manualZoom.value = true;
+});
+
 async function retryEditor() {
   if (props.disabled || busy.value) return;
   try {
@@ -344,8 +391,8 @@ defineExpose({
 
 <style scoped>
 .inline-ketcher-editor {
-  display: grid;
-  grid-template-rows: minmax(0, auto) auto;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   min-width: 0;
   min-height: 0;
@@ -354,8 +401,11 @@ defineExpose({
 
 .inline-ketcher-editor.fill-height-mode {
   height: 100%;
-  grid-template-rows: minmax(0, 1fr);
 }
+
+.inline-ketcher-editor:fullscreen { padding: 12px; gap: 8px; width: 100%; height: 100%; background: #fff; color: #18222a; overflow: hidden; }
+.inline-ketcher-editor:fullscreen .inline-ketcher-frame { flex: 1; height: auto; min-height: 0; border-radius: 4px; }
+.inline-ketcher-editor:fullscreen .inline-ketcher-actions { flex: none; }
 
 .inline-ketcher-frame {
   position: relative;
@@ -365,6 +415,7 @@ defineExpose({
   border: 1px solid rgba(15, 23, 42, 0.1);
   border-radius: 7px;
   background: #ffffff;
+  flex-shrink: 0;
 }
 
 .inline-ketcher-editor.fill-height-mode .inline-ketcher-frame {
