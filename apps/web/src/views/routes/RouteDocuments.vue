@@ -79,7 +79,7 @@
                 <v-tooltip :text="$tr('预览：{name}', { name: row.title })"><template #activator="{ props }">
                   <v-btn v-bind="props" icon="mdi-eye-outline" size="small" variant="text"
                     :aria-label="$tr('预览文档：{name}', { name: row.title })" :disabled="actionBusy"
-                    :loading="previewing === row.id" @click="preview(row)" />
+                    :loading="previewing === row.id" @click="preview(row, $event)" />
                 </template></v-tooltip>
                 <v-menu :disabled="actionBusy">
                   <template #activator="{ props: menuProps }">
@@ -105,13 +105,18 @@
     </footer>
     <DocumentPreview
       v-if="previewDocument"
+      :key="previewTicket"
       v-model="showPreview"
       :document="previewDocument"
+      :focus-ticket="previewTicket"
+      @after-leave="previewFocus.restore"
+      @navigate="previewFocus.cancel"
     />
   </section>
 </template>
 <script setup>
-import { computed, mergeProps, onMounted, onBeforeUnmount, ref } from "vue";
+import { computed, mergeProps, onMounted, onBeforeUnmount, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { API } from "@/common/api";
 import { uiText } from "@/i18n";
 import { readRouteDocument, RouteDocumentResponseError } from "@/common/route-document-response";
@@ -120,17 +125,27 @@ import { displayTime } from "@/common/task-state";
 import { taskTimestampLabel } from "@/common/task-history-view";
 import StructurePreview from "@/components/workspace/StructurePreview.vue";
 import DocumentPreview from "@/components/routes/DocumentPreview.vue";
+import { useDialogReturnFocus } from "@/composables/useDialogReturnFocus";
 
+const route = useRoute(), router = useRouter();
+const query = computed({
+  get: () => typeof route.query.query === "string" ? route.query.query : "",
+  set: (value) => {
+    retirePreview();
+    return router.replace({ path: "/documents", query: { ...route.query, query: value || undefined } });
+  },
+});
 const rows = ref([]),
-  query = ref(""),
   loading = ref(false),
   error = ref(""),
   more = ref(false);
 const showPreview = ref(false),
-  previewDocument = ref(null);
+  previewDocument = ref(null),
+  previewTicket = ref(0);
 const previewing = ref(""), removing = ref(""), actionError = ref("");
+const previewFocus = useDialogReturnFocus(showPreview, () => JSON.stringify([route.path, query.value]));
 const actionBusy = computed(() => Boolean(previewing.value || removing.value));
-let generation = 0;
+let generation = 0, previewGeneration = 0;
 let disposed = false;
 let failedAppend = false;
 const filtered = computed(() =>
@@ -163,8 +178,12 @@ async function read(append) {
 }
 const refresh = () => read(false);
 const loadMore = () => read(true);
-async function preview(row) {
+async function preview(row, event) {
   if (disposed || actionBusy.value) return;
+  const current = ++previewGeneration;
+  const ticket = previewFocus.begin(null, event?.currentTarget);
+  showPreview.value = false;
+  previewTicket.value = ticket;
   previewing.value = row.id;
   actionError.value = "";
   try {
@@ -173,15 +192,27 @@ async function preview(row) {
       null,
       false,
     );
-    if (disposed) return;
+    if (disposed || current !== previewGeneration) return;
     previewDocument.value = readRouteDocument(document, row.id);
     showPreview.value = true;
   } catch (e) {
-    if (!disposed) actionError.value = e instanceof RouteDocumentResponseError ? e.message : errorMessage(e, "预览加载失败。");
+    if (!disposed && current === previewGeneration) actionError.value = e instanceof RouteDocumentResponseError ? e.message : errorMessage(e, "预览加载失败。");
   } finally {
-    if (!disposed) previewing.value = "";
+    if (!disposed && current === previewGeneration) {
+      previewing.value = "";
+      if (!showPreview.value) previewFocus.discard(ticket);
+    }
   }
 }
+function retirePreview() {
+  previewGeneration++;
+  previewing.value = "";
+  showPreview.value = false;
+  previewDocument.value = null;
+  actionError.value = "";
+  previewFocus.cancel();
+}
+watch(query, retirePreview, { flush: "sync" });
 async function remove(row) {
   if (disposed || actionBusy.value || loading.value) return;
   if (!window.confirm(uiText("永久删除“{name}”？此操作不可撤销。", { name: row.title }))) return;
@@ -198,7 +229,7 @@ async function remove(row) {
   }
 }
 onMounted(refresh);
-onBeforeUnmount(() => { disposed = true; generation++; });
+onBeforeUnmount(() => { disposed = true; generation++; previewGeneration++; });
 </script>
 <style scoped>
 .document-history {

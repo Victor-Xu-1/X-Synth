@@ -41,3 +41,15 @@ test("a short viewport constrains the canvas under a fixed-height header without
   expect(values(".document-preview-body")["min-height"]).toBe("0");
   expect(values(".document-preview-canvas")["min-height"]).toBe("0");
 });
+
+test("normal leave is forwarded and editor navigation releases return focus before close", async () => {
+  const events = [];
+  const wrapper = mount(DocumentPreview, { props: { modelValue: true, document,
+    onNavigate: () => events.push("navigate"), "onUpdate:modelValue": value => events.push(value) }, global: { stubs } });
+  await wrapper.get('button[prepend-icon="mdi-pencil-outline"]').trigger("click");
+  expect(events).toEqual(["navigate", false]);
+  await wrapper.setProps({ modelValue: false });
+  wrapper.findComponent({ name: "WorkbenchDialog" }).vm.$emit("afterLeave");
+  expect(wrapper.emitted("afterLeave")).toEqual([[null]]);
+  wrapper.unmount();
+});

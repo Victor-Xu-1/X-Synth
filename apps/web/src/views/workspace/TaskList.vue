@@ -1,5 +1,5 @@
 <template>
-  <section class="standard-page task-history" :aria-busy="loading">
+  <section ref="historyRoot" class="standard-page task-history" :aria-busy="loading">
     <header class="page-heading history-heading">
       <h1>{{ $tr('任务记录') }}</h1>
       <div class="page-actions">
@@ -397,22 +397,27 @@
       @rerun="rerun(infoTask)"
     />
     <RoutePreview
+      :key="previewTicket"
       v-model="showPreview"
       :candidates="previewRoutes"
       :job-id="previewJob"
       :title="previewTitle"
       :stock-snapshot="previewSnapshot"
       :detail-query="previewDetailQuery"
+      :focus-ticket="previewTicket"
+      @after-leave="previewFocus.restore"
+      @navigate="previewFocus.cancel"
     />
   </section>
 </template>
 
 <script setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { uiText } from "@/i18n";
 import { useRoute, useRouter } from "vue-router";
 import { useTaskHistory } from "@/composables/useTaskHistory";
 import { useTaskActions } from "@/composables/useTaskActions";
+import { useDialogReturnFocus } from "@/composables/useDialogReturnFocus";
 import { taskStateLabel, taskStateClass } from "@/common/task-state";
 import { canArchiveTask } from "@/common/task-history-selection";
 import {
@@ -431,7 +436,7 @@ import TaskInfoDialog from "@/components/workspace/TaskInfoDialog.vue";
 import TaskGroups from "@/components/workspace/TaskGroups.vue";
 import TaskBatchActions from "@/components/workspace/TaskBatchActions.vue";
 
-const router = useRouter();
+const router = useRouter(), route = useRoute();
 const {
   rows,
   groups,
@@ -461,7 +466,7 @@ const {
   toggleTask,
   togglePage,
   clearSelection,
-} = useTaskHistory({ route: useRoute(), router });
+} = useTaskHistory({ route, router });
 const historyContext = computed(() => ({
   query: query.value || "",
   status: status.value,
@@ -483,7 +488,7 @@ const {
   previewTitle,
   previewSnapshot,
   info,
-  preview,
+  preview: previewTask,
   rerun,
   cancel,
   archive,
@@ -516,6 +521,20 @@ const {
     return true;
   },
 });
+const historyRoot = ref(null);
+const previewTicket = ref(0);
+const previewFocus = useDialogReturnFocus(showPreview, () => JSON.stringify([route.path, historyContext.value]));
+async function preview(task) {
+  if (!task?.result_id || pending.value[task.result_id] || batchPending.value) return false;
+  const row = [...(historyRoot.value?.querySelectorAll("[data-task-id]") || [])]
+    .find(node => node.dataset.taskId === task.result_id);
+  const fallback = row?.querySelector(".task-actions button:not(:disabled)") || row?.querySelector("a[href]") || null;
+  const ticket = previewFocus.begin(fallback, document.activeElement?.closest('[role="dialog"]') ? null : fallback);
+  previewTicket.value = ticket;
+  const accepted = await previewTask(task);
+  if (!accepted || !showPreview.value) previewFocus.discard(ticket);
+  return accepted;
+}
 const controlsBusy = computed(
   () =>
     loading.value ||

@@ -14,7 +14,7 @@ jest.mock("@/components/SmilesImage.vue", () => ({
   props: ["smiles"], template: '<div :data-smiles="smiles"><button aria-label="重试结构加载" /></div>',
 }));
 jest.mock("@/components/routes/DocumentPreview.vue", () => ({
-  props: ["modelValue", "document"], template: "<div />",
+  props: ["modelValue", "document", "focusTicket"], template: "<div />",
 }));
 
 const stubs = {
@@ -41,13 +41,13 @@ const row = (id = "document-a", patch = {}) => ({
 const savedDocument = (id = "document-a") => ({ ...row(id), revision: 0,
   graph: { target_id: "target", nodes: [{ id: "target", type: "molecule", smiles: "CCO", position: { x: 10, y: 10 } }], edges: [] } });
 const wrappers = [];
-async function setup() {
+async function setup(path = "/documents") {
   const router = createRouter({ history: createMemoryHistory(), routes: [
     { path: "/documents", component: { render: () => null } },
     { path: "/editor/:id?", component: { render: () => null } },
   ] });
-  await router.push("/documents");
-  const wrapper = mount(RouteDocuments, { global: { plugins: [router], stubs } });
+  await router.push(path);
+  const wrapper = mount(RouteDocuments, { attachTo: document.body, global: { plugins: [router], stubs } });
   wrappers.push(wrapper);
   await flushPromises();
   return wrapper;
@@ -137,10 +137,12 @@ test("search emptiness is limited to loaded records; reset does not discard docu
   API.get.mockResolvedValueOnce(documents);
   const wrapper = await setup();
   await wrapper.get('[aria-label="搜索保存的路线"]').setValue("不匹配");
+  await flushPromises();
   expect(wrapper.get(".document-empty h2").text()).toBe("已加载路线中无匹配项");
   expect(wrapper.find("table").exists()).toBe(false);
   expect(wrapper.get(".document-pagination button").text()).toBe("加载更多");
   await wrapper.get(".document-empty button").trigger("click");
+  await flushPromises();
   expect(wrapper.findAll("tbody tr")).toHaveLength(50);
   expect(API.get).toHaveBeenCalledTimes(1);
 });
@@ -177,6 +179,68 @@ test("preview pending state blocks duplicate operations and opens only the retri
   expect(API.get.mock.calls[1]).toEqual(["/api/v1/route-documents/document-a", null, false]);
   expect(API.post).not.toHaveBeenCalled();
   expect(API.delete).not.toHaveBeenCalled();
+});
+
+test("the URL owns the saved-route filter without extra reads or translating its content", async () => {
+  API.get.mockResolvedValueOnce([row("a", { title: "Acceptance docs" }), row("b", { title: "Other" })]);
+  const wrapper = await setup("/documents?query=Acceptance%20docs&other=keep");
+  expect(wrapper.get('.document-search').element.value).toBe("Acceptance docs");
+  expect(wrapper.findAll('tbody tr')).toHaveLength(1);
+  await wrapper.get('.document-search').setValue("Other"); await flushPromises();
+  expect(wrapper.vm.$router.currentRoute.value.query).toEqual({ query: "Other", other: "keep" });
+  expect(wrapper.findAll('tbody tr')).toHaveLength(1);
+  setLocale("en", { persist: false }); await flushPromises();
+  expect(wrapper.get('.document-search').element.value).toBe("Other");
+  expect(API.get).toHaveBeenCalledTimes(1);
+});
+
+test("changing the filter retires a pending preview and its late error cannot overwrite a newer read", async () => {
+  API.get.mockResolvedValueOnce([row("a", { title: "First" }), row("b", { title: "Second" })]);
+  const wrapper = await setup();
+  let rejectFirst, resolveSecond;
+  API.get.mockReturnValueOnce(new Promise((_, reject) => { rejectFirst = reject; }));
+  await wrapper.get('[aria-label="预览文档：First"]').trigger("click");
+  await wrapper.get('.document-search').setValue("Second"); await flushPromises();
+  expect(wrapper.get('[aria-label="预览文档：Second"]').element.disabled).toBe(false);
+  API.get.mockReturnValueOnce(new Promise(resolve => { resolveSecond = resolve; }));
+  await wrapper.get('[aria-label="预览文档：Second"]').trigger("click");
+  rejectFirst(new Error("old read")); await flushPromises();
+  expect(wrapper.get('[aria-label="预览文档：Second"]').element.disabled).toBe(true);
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  resolveSecond(savedDocument("b")); await flushPromises();
+  expect(wrapper.findComponent(DocumentPreview).props("document").id).toBe("b");
+});
+
+test("filter intent retires a preview before an asynchronous navigation guard commits the URL", async () => {
+  API.get.mockResolvedValueOnce([row("a", { title: "First" }), row("b", { title: "Second" })]);
+  const wrapper = await setup();
+  let finishPreview, finishNavigation;
+  wrapper.vm.$router.beforeEach(() => new Promise(resolve => { finishNavigation = resolve; }));
+  API.get.mockReturnValueOnce(new Promise(resolve => { finishPreview = resolve; }));
+  await wrapper.get('[aria-label="预览文档：First"]').trigger("click");
+  await wrapper.get('.document-search').setValue("Second"); await flushPromises();
+  expect(wrapper.vm.$router.currentRoute.value.query.query).toBeUndefined();
+  finishPreview(savedDocument("a")); await flushPromises();
+  expect(wrapper.findComponent(DocumentPreview).exists()).toBe(false);
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  finishNavigation(true); await flushPromises();
+  expect(wrapper.vm.$router.currentRoute.value.query.query).toBe("Second");
+  expect(wrapper.findAll('tbody tr')).toHaveLength(1);
+});
+
+test("normal preview close returns to the connected origin after the dialog leaves", async () => {
+  const wrapper = await setup();
+  const trigger = wrapper.get('[aria-label="预览文档：先导系列路线"]').element;
+  jest.spyOn(trigger, "getClientRects").mockReturnValue([{ width: 40, height: 40 }]);
+  trigger.focus();
+  API.get.mockResolvedValueOnce(savedDocument());
+  await wrapper.get('[aria-label="预览文档：先导系列路线"]').trigger("click"); await flushPromises();
+  const dialog = wrapper.findComponent(DocumentPreview);
+  const close = document.createElement("button"); document.body.append(close); close.focus();
+  dialog.vm.$emit("update:modelValue", false); await flushPromises();
+  close.remove();
+  dialog.vm.$emit("afterLeave", dialog.props("focusTicket")); await flushPromises();
+  expect(document.activeElement).toBe(trigger);
 });
 
 test("preview failure keeps loaded records and a direct retry remains possible", async () => {
