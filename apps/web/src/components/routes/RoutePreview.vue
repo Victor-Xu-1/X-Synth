@@ -1,9 +1,9 @@
 <template>
-  <v-dialog v-model="open" max-width="1280" scrollable>
+  <WorkbenchDialog v-model="open" max-width="1280" scrollable :aria-labelledby="titleId" @after-leave="leave">
     <v-card class="route-preview-dialog">
       <header>
         <div>
-          <strong>{{ title || $tr('路线预览') }}</strong
+          <h2 :id="titleId">{{ title || $tr('路线预览') }}</h2
           ><span class="workspace-muted">{{ $tr('{count} 条路线', { count: candidates.length }) }}</span>
         </div>
         <div class="page-actions">
@@ -11,7 +11,7 @@
             v-if="jobId"
             variant="text"
             :to="detailLocation"
-            @click="open = false"
+            @click="navigate"
             >{{ $tr('打开详情') }}</v-btn
           >
           <v-btn
@@ -35,20 +35,24 @@
         :original-indices="originalIndices"
         compact
         @edit="edit"
-        @navigate="open = false"
+        @navigate="navigate"
       />
       <p v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</p>
     </v-card>
-  </v-dialog>
+  </WorkbenchDialog>
 </template>
 <script setup>
-import { computed, ref, watch, onBeforeUnmount } from "vue";
+import { computed, ref, watch, onBeforeUnmount, useId } from "vue";
 import { useRouter } from "vue-router";
 import { API } from "@/common/api";
 import { originalRouteIndex, taskIdentifier } from "@/common/route-details";
 import { errorMessage } from "@/common/workspace-errors";
 import RouteReader from "./RouteReader.vue";
+import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
 const open = defineModel({ type: Boolean, default: false });
+const emit = defineEmits(["afterLeave", "navigate"]);
+const titleId = useId();
+function navigate() { emit("navigate"); open.value = false; }
 const props = defineProps({
   candidates: { type: Array, default: () => [] },
   jobId: String,
@@ -57,6 +61,7 @@ const props = defineProps({
   stockSnapshot: String,
   originalIndices: Array,
   detailQuery: Object,
+  focusTicket: { type: Number, default: null },
 });
 const router = useRouter(),
   selectedId = ref(""),
@@ -69,6 +74,8 @@ const detailLocation = computed(() => ({
 }));
 let generation = 0,
   disposed = false;
+const presentationTicket = props.focusTicket;
+function leave() { if (!disposed) emit("afterLeave", presentationTicket); }
 watch(
   () => [open.value, props.jobId],
   ([value]) => {
@@ -105,7 +112,7 @@ async function edit(routeId) {
       return;
     const id = taskIdentifier(value.id);
     if (!id) throw new Error("编辑副本文档标识无效。");
-    open.value = false;
+    navigate();
     await router.push("/editor/" + id);
   } catch (cause) {
     if (!disposed && current === generation)
@@ -138,9 +145,15 @@ header > div:first-child {
   gap: 12px;
   min-width: 0;
 }
-strong {
+h2 {
+  margin: 0;
+  min-width: 0;
   font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
   overflow-wrap: anywhere;
+  max-height: 25dvh;
+  overflow: auto;
 }
 header span {
   font-size: 12px;
@@ -160,7 +173,7 @@ header span {
     flex-wrap: wrap;
     gap: 4px;
   }
-  strong {
+  h2 {
     font-size: 12px;
   }
 }

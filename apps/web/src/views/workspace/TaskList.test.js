@@ -31,6 +31,7 @@ jest.mock("@/components/routes/RoutePreview.vue", () => ({
     "title",
     "stockSnapshot",
     "detailQuery",
+    "focusTicket",
   ],
   template: "<div />",
 }));
@@ -114,7 +115,7 @@ async function setup(url = "/results", { insideShell = false } = {}) {
   const component = insideShell
     ? { components: { TaskList }, template: '<main id="test-shell"><TaskList /></main>' }
     : TaskList;
-  const wrapper = mount(component, { global: { plugins: [router], stubs } });
+  const wrapper = mount(component, { attachTo: document.body, global: { plugins: [router], stubs } });
   wrappers.push(wrapper);
   await flushPromises();
   return { wrapper, router };
@@ -549,6 +550,32 @@ test("searching tasks with stored candidates can preview while filtered and keep
     "/api/results/retrieve",
     { result_id: "running" },
   ]);
+});
+
+test.each(["cards", "list"])("%s async preview restores its origin on normal leave only", async view => {
+  const { wrapper, router } = await setup(`/results?query=CCO&view=${view}`);
+  const control = wrapper.get('[aria-label="预览路线"]').element;
+  jest.spyOn(control, "getClientRects").mockReturnValue([{ width: 44, height: 44 }]);
+  control.focus();
+  API.get.mockResolvedValueOnce({ ...row(), result: { unified_route_pool: {
+    selected_routes: [{ route_id: "stored-route", target_smiles: "CCO", steps: [] }],
+  } } });
+  await wrapper.get('[aria-label="预览路线"]').trigger("click"); await flushPromises();
+  const preview = wrapper.findComponent(RoutePreview);
+  const close = document.createElement("button"); document.body.append(close); close.focus();
+  preview.vm.$emit("update:modelValue", false); await flushPromises(); close.remove();
+  preview.vm.$emit("afterLeave", preview.props("focusTicket")); await flushPromises();
+  expect(document.activeElement === control).toBe(true);
+  control.focus();
+  API.get.mockResolvedValueOnce({ ...row(), result: { unified_route_pool: {
+    selected_routes: [{ route_id: "stored-route", target_smiles: "CCO", steps: [] }],
+  } } });
+  await wrapper.get('[aria-label="预览路线"]').trigger("click"); await flushPromises();
+  await router.replace(`/results?query=other&view=${view}`); await flushPromises();
+  const other = document.createElement("button"); document.body.append(other); other.focus();
+  preview.vm.$emit("afterLeave", preview.props("focusTicket")); await flushPromises();
+  expect(document.activeElement === other).toBe(true); other.remove();
+  expect(API.post).not.toHaveBeenCalled();
 });
 
 test.each(["cards", "list"])(

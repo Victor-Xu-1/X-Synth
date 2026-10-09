@@ -1,5 +1,5 @@
 <template>
-  <WorkbenchDialog v-model="open" max-width="1100" :aria-labelledby="titleId">
+  <WorkbenchDialog v-model="open" max-width="1100" :aria-labelledby="titleId" @after-leave="leave">
     <v-card class="document-preview-dialog">
       <header class="document-preview-heading">
         <h2 :id="titleId">{{ document?.title }}</h2>
@@ -9,7 +9,7 @@
             color="primary"
             variant="flat"
             prepend-icon="mdi-pencil-outline"
-            @click="open = false"
+            @click="navigate"
             >{{ $tr('打开编辑') }}</v-btn
           ><v-btn
             icon="mdi-close"
@@ -36,7 +36,7 @@
           :score="document.prediction_scores?.[selected]"
           :target="selected === graph.target_id"
           @close="selected = null"
-          @navigate="open = false"
+          @navigate="navigate"
         />
       </div>
     </v-card>
@@ -46,10 +46,16 @@
 import RouteGraph from "./RouteGraph.vue";
 import RouteInspector from "./RouteInspector.vue";
 import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
-import { computed, ref, useId, watch } from "vue";
+import { computed, onBeforeUnmount, ref, useId, watch } from "vue";
 import { layoutGraph } from "@/common/route-graph";
 const open = defineModel({ type: Boolean, default: false });
-const props = defineProps({ document: Object });
+const props = defineProps({ document: Object, focusTicket: { type: Number, default: null } });
+const emit = defineEmits(["afterLeave", "navigate"]);
+const presentationTicket = props.focusTicket;
+let disposed = false;
+function leave() { if (!disposed) emit("afterLeave", presentationTicket); }
+function navigate() { emit("navigate"); open.value = false; }
+onBeforeUnmount(() => { disposed = true; });
 const titleId = useId();
 const selected = ref(null);
 const graph = computed(() =>
