@@ -9,7 +9,7 @@ import StockSearch from "./StockSearch.vue";
 
 let mockIntersection;
 jest.mock("@vueuse/core", () => ({ useIntersectionObserver: (_root, callback) => { mockIntersection = callback; return { stop() {} }; } }));
-jest.mock("vue-router", () => ({ useRoute: jest.fn() }));
+jest.mock("vue-router", () => ({ useRoute: jest.fn(), useRouter: jest.fn(() => ({ replace: jest.fn() })) }));
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 jest.mock("@/store/workspace", () => ({ useWorkspaceStore: jest.fn() }));
 jest.mock("@/components/workspace/StructurePreview.vue", () => ({ template: "<div />" }));

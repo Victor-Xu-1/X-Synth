@@ -3,6 +3,10 @@ import { initializeLocale, setLocale } from "@/i18n";
 import StockEvidence from "./StockEvidence.vue";
 import StockRecordList from "./StockRecordList.vue";
 
+jest.mock("@/components/workspace/StructurePreview.vue", () => ({
+  name: "StructurePreview", props: ["smiles", "label"], template: '<div class="evidence-structure"><span class="preview-label">{{ $tr(label) }}</span>{{ smiles }}</div>',
+}));
+
 const wrappers = [];
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
 const record = Object.freeze({ smiles: "[Na+].[Cl-]", source: "目录价格基准", catalog_id: "证据详情", cas: "7647-14-5", lead_time: "原始交期 7-21days", ppg: null, url: "https://example.org/catalogue" });
@@ -56,4 +60,15 @@ test("missing record identity and no exact match are controlled fallbacks, not a
   const list = render(StockRecordList, { result: { ...input, records: [{ smiles: input.smiles }] } });
   expect(list.get("button").attributes("aria-label")).toBe("View evidence details for Supplier not recorded Catalogue records");
   expect(list.find("a").exists()).toBe(false);
+});
+
+test("confirmed structure headings use the shared translated canonical identity in both matched and no-match evidence", async () => {
+  const selected = render(StockEvidence, { result: input, record, snapshotMatches: false });
+  const empty = render(StockEvidence, { result: { ...input, records: [] } });
+  expect(selected.get(".preview-label").text()).toBe("Canonical structure");
+  expect(empty.get(".preview-label").text()).toBe("Canonical structure");
+  setLocale("zh-CN", { persist: false });
+  await flushPromises();
+  expect(selected.get(".preview-label").text()).toBe("规范化结构");
+  expect(empty.get(".preview-label").text()).toBe("规范化结构");
 });

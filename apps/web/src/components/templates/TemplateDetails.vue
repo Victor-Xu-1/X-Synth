@@ -1,10 +1,15 @@
 <template>
   <article class="template-details" :aria-label="$tr('模板详情')">
     <header>
-      <h2>{{ template.template_id }}</h2>
+      <h2>{{ $tr(template.direction === 'retro' ? '逆合成模板' : '正向反应模板') }}</h2>
       <span class="workspace-muted">{{ $tr('{count} 例', { count: template.count }) }}</span>
+      <span class="template-source">{{ template.source }}</span>
     </header>
     <div v-if="$slots.preview" class="template-preview"><slot name="preview" /></div>
+    <WorkbenchTabs v-model="section" :items="sections" label="模板详情分区" v-slot="{ tabId, panelId }">
+    <section v-show="section === 'overview'" data-section="overview" class="template-detail-panel" role="tabpanel"
+      :id="panelId('overview')" :aria-labelledby="tabId('overview')" :inert="section !== 'overview' || undefined">
+    <h3>{{ $tr('试剂与限制') }}</h3>
     <dl class="template-metadata">
       <div>
         <dt>{{ $tr('来源') }}</dt>
@@ -15,33 +20,9 @@
         <dd>{{ template.template_set }}</dd>
       </div>
       <div>
-        <dt>{{ $tr('原生模板集') }}</dt>
-        <dd>{{ displayValue(template.raw?.template_set) }}</dd>
-      </div>
-      <div>
-        <dt>{{ $tr('原生 _id') }}</dt>
-        <dd>{{ displayValue(template.raw?._id) }}</dd>
-      </div>
-      <div>
-        <dt>{{ $tr('原生 index') }}</dt>
-        <dd>{{ displayValue(template.raw?.index) }}</dd>
-      </div>
-      <div>
         <dt>{{ $tr('方向') }}</dt>
         <dd>{{ $tr(template.direction === "retro" ? "逆合成" : "正向") }}</dd>
       </div>
-      <div>
-        <dt>{{ $tr('领域') }}</dt>
-        <dd>{{ template.domain }}</dd>
-      </div>
-    </dl>
-    <section>
-      <h3>{{ $tr('反应 SMARTS') }}</h3>
-      <pre>{{ template.reaction_smarts }}</pre>
-    </section>
-    <section>
-      <h3>{{ $tr('试剂与限制') }}</h3>
-      <dl class="template-metadata">
         <div>
           <dt>{{ $tr('必要试剂') }}</dt>
           <dd>{{ displayValue(template.necessary_reagent) }}</dd>
@@ -54,22 +35,10 @@
           <dt>{{ $tr('仅二聚反应') }}</dt>
           <dd>{{ $tr(template.dimer_only ? "是" : "否") }}</dd>
         </div>
-      </dl>
+    </dl>
     </section>
-    <section>
-      <h3>{{ $tr('属性') }}</h3>
-      <dl
-        v-if="Object.keys(template.attributes).length"
-        class="template-metadata"
-      >
-        <div v-for="(value, key) in template.attributes" :key="key">
-          <dt>{{ key }}</dt>
-          <dd>{{ displayValue(value) }}</dd>
-        </div>
-      </dl>
-      <p v-else class="workspace-muted">{{ $tr('未记录属性') }}</p>
-    </section>
-    <section>
+    <section v-show="section === 'references'" data-section="references" class="template-detail-panel" role="tabpanel"
+      :id="panelId('references')" :aria-labelledby="tabId('references')" :inert="section !== 'references' || undefined">
       <h3>
         {{ $tr('参考记录') }} <span class="workspace-muted">{{ references.length }}</span>
       </h3>
@@ -115,16 +84,38 @@
         </button>
       </nav>
     </section>
+    <section v-show="section === 'technical'" data-section="technical" class="template-detail-panel" role="tabpanel"
+      :id="panelId('technical')" :aria-labelledby="tabId('technical')" :inert="section !== 'technical' || undefined">
+      <h3>{{ $tr('反应 SMARTS') }}</h3>
+      <pre>{{ template.reaction_smarts }}</pre>
+      <dl class="template-metadata">
+        <div><dt>{{ $tr('模板标识') }}</dt><dd>{{ template.template_id }}</dd></div>
+        <div><dt>{{ $tr('原生模板集') }}</dt><dd>{{ displayValue(template.raw?.template_set) }}</dd></div>
+        <div><dt>{{ $tr('原生 _id') }}</dt><dd>{{ displayValue(template.raw?._id) }}</dd></div>
+        <div><dt>{{ $tr('原生 index') }}</dt><dd>{{ displayValue(template.raw?.index) }}</dd></div>
+        <div><dt>{{ $tr('领域') }}</dt><dd>{{ template.domain }}</dd></div>
+      </dl>
+      <h3 class="template-attributes-heading">{{ $tr('属性') }}</h3>
+      <dl v-if="Object.keys(template.attributes).length" class="template-metadata">
+        <div v-for="(value, key) in template.attributes" :key="key"><dt>{{ key }}</dt><dd>{{ displayValue(value) }}</dd></div>
+      </dl>
+      <p v-else class="workspace-muted">{{ $tr('未记录属性') }}</p>
+    </section>
+    </WorkbenchTabs>
   </article>
 </template>
 <script setup>
 import { computed, ref, watch } from "vue";
 import { templateReference, templateValue } from "@/common/template-references";
 import { uiText } from "@/i18n";
+import WorkbenchTabs from "@/components/WorkbenchTabs.vue";
 const displayValue = (value) => value === null || value === undefined || value === "" ? uiText("未记录") : templateValue(value);
 const props = defineProps({ template: { type: Object, required: true } });
 const pageSize = 50,
   page = ref(1);
+const section = ref("overview");
+const sections = [{ value: "overview", title: "试剂与限制" }, { value: "references", title: "参考记录" },
+  { value: "technical", title: "技术详情" }];
 const references = computed(() => props.template.references || []);
 const pages = computed(() => Math.ceil(references.value.length / pageSize));
 const visibleReferences = computed(() =>
@@ -133,9 +124,10 @@ const visibleReferences = computed(() =>
     .map(templateReference),
 );
 watch(
-  () => props.template.template_id,
+  () => [props.template.source, props.template.template_id],
   () => {
     page.value = 1;
+    section.value = "overview";
   },
   { flush: "sync" },
 );
@@ -159,6 +151,10 @@ watch(
 .template-preview {
   margin-top: 16px;
 }
+.template-source { font-size: 12px; color: var(--ws-muted); }
+.template-details :deep(.workspace-tabs) { margin-top: 16px; padding-inline: 0; gap: 24px; }
+.template-details :deep(.workspace-tabs button) { padding-inline: 0; }
+.template-attributes-heading { margin-top: 24px; }
 .template-details h3 {
   font-size: 13px;
   font-weight: 600;
@@ -223,8 +219,8 @@ pre {
   font-size: 12px;
 }
 .reference-pagination button {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   color: var(--ws-text);
   background: var(--ws-surface);
   border: 1px solid var(--ws-border);

@@ -2,6 +2,11 @@ import { mount } from "@vue/test-utils";
 import StockEvidence from "./StockEvidence.vue";
 import StockRecordList from "./StockRecordList.vue";
 import { priceContractRecord } from "@/common/route-price-test-data";
+import StructurePreview from "@/components/workspace/StructurePreview.vue";
+
+jest.mock("@/components/workspace/StructurePreview.vue", () => ({
+  name: "StructurePreview", props: ["smiles", "label"], template: '<div class="evidence-structure">{{ smiles }}</div>',
+}));
 
 const snapshot = "a".repeat(64), expectedSnapshot = "b".repeat(64);
 const result = (records = []) => ({ query: "OCC", smiles: "CCO", snapshot, expectedSnapshot, records });
@@ -50,5 +55,34 @@ test("vendor reading uses the same records and explicit origin selection without
   await button.trigger("click");
   expect(wrapper.emitted("select")[0][0]).toEqual({ index: 0, origin: button.element });
   expect(JSON.stringify(input)).toBe(before);
+  wrapper.unmount();
+});
+
+test("supplier evidence keeps the confirmed structure primary and discloses full snapshot identity after supplier fields", () => {
+  const record = Object.freeze({ smiles: "[13CH3][C@@H](O)C(=O)[O-].[Na+]", source: "原始供应商", catalog_id: "原始目录号", ppg: null });
+  const input = Object.freeze({ ...result([record]), query: "[Na+].[13CH3][C@@H](O)C(=O)[O-]", smiles: record.smiles });
+  const before = JSON.stringify(input);
+  const wrapper = mount(StockEvidence, { props: { result: input, record, snapshotMatches: false }, global: { stubs } });
+  const preview = wrapper.getComponent(StructurePreview);
+  expect(preview.props()).toMatchObject({ smiles: input.smiles, label: "规范化结构" });
+  const supplier = wrapper.get(".stock-supplier-evidence").element;
+  const identity = wrapper.get("details.stock-query-identity");
+  expect(supplier.compareDocumentPosition(identity.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(identity.element.open).toBe(false);
+  expect(identity.get("summary").text()).toBe("检索身份与快照");
+  expect(identity.text()).toContain(input.query);
+  expect(identity.text()).toContain(input.snapshot);
+  expect(identity.text()).toContain(input.expectedSnapshot);
+  expect(wrapper.text()).toContain(record.source);
+  expect(wrapper.text()).toContain(record.catalog_id);
+  expect(JSON.stringify(input)).toBe(before);
+  wrapper.unmount();
+});
+
+test("no-match evidence retains its confirmed query drawing without a supplier or price claim", () => {
+  const wrapper = mount(StockEvidence, { props: { result: result() }, global: { stubs } });
+  expect(wrapper.getComponent(StructurePreview).props()).toMatchObject({ smiles: "CCO", label: "规范化结构" });
+  expect(wrapper.find(".stock-supplier-evidence").exists()).toBe(false);
+  expect(wrapper.find(".supplier-price").exists()).toBe(false);
   wrapper.unmount();
 });

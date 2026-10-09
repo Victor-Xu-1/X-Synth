@@ -111,6 +111,7 @@ async function setup(query = {}) {
   const route = reactive({ path: "/references", query });
   useRoute.mockReturnValue(route);
   const wrapper = mount(ReferenceSearch, {
+    attachTo: document.body,
     global: { stubs: { ...uiStubs, VLazy: { template: '<div><slot /></div>' } } },
   });
   wrappers.push(wrapper);
@@ -314,6 +315,61 @@ test("unaccepted reference preview and cancellation keep the unchanged query evi
   await nextTick();
   expect(wrapper.findAll('[data-cy="reference-row"]')).toHaveLength(1);
   expect(wrapper.get('[data-cy="reference-search-submit"]').element.disabled).toBe(false);
+  expect(API.post).toHaveBeenCalledTimes(1);
+});
+
+test("cancelled reuse returns to the same retained record action and restores its keyboard focus", async () => {
+  const { wrapper } = await setup();
+  await setReactionDraft(wrapper, { product: "CC=O", reactants: ["CCO"] });
+  const response = packet(), before = JSON.stringify(response);
+  API.post.mockResolvedValue(response);
+  await wrapper.vm.search(); await flushPromises();
+  const draft = reactionDraft(wrapper), input = wrapper.getComponent(reactionInput).element;
+  draft.importRecords = jest.fn(async () => { draft.pending.value = true; return true; });
+  const action = wrapper.get('[data-cy="reference-load-reaction"]');
+  action.element.focus();
+  await action.trigger("click"); await flushPromises();
+  expect(wrapper.get('[data-cy="reference-query-panel"]').attributes("aria-hidden")).toBeUndefined();
+  draft.pending.value = false;
+  await flushPromises();
+  expect(wrapper.get('[data-cy="reference-reading"]').attributes("aria-hidden")).toBeUndefined();
+  expect(document.activeElement).toBe(action.element);
+  expect(wrapper.getComponent(reactionInput).element).toBe(input);
+  expect(JSON.stringify(response)).toBe(before);
+  expect(API.post).toHaveBeenCalledTimes(1);
+});
+
+test("returning from unchanged query editing restores the originating result position", async () => {
+  const { wrapper } = await setup();
+  await setReactionDraft(wrapper, { product: "CC=O", reactants: ["CCO"] });
+  API.post.mockResolvedValue(packet()); await wrapper.vm.search(); await flushPromises();
+  const action = wrapper.get('[data-cy="reference-load-reaction"]');
+  action.element.focus();
+  await wrapper.get('[data-cy="reference-edit-query"]').trigger("click");
+  await flushPromises();
+  expect(document.activeElement).toBe(wrapper.get(".reaction-text").element);
+  await wrapper.get('[data-cy="reference-open-results"]').trigger("click");
+  await flushPromises();
+  expect(document.activeElement).toBe(action.element);
+  expect(API.post).toHaveBeenCalledTimes(1);
+});
+
+test("a transfer can be cancelled while awaiting the real canvas contract without losing accepted query results", async () => {
+  const { wrapper } = await setup();
+  await setReactionDraft(wrapper, { product: "CC=O", reactants: ["CCO"] });
+  API.post.mockResolvedValue(packet()); await wrapper.vm.search(); await flushPromises();
+  const draft = reactionDraft(wrapper), held = deferred();
+  draft.importRecords = jest.fn(() => { draft.pending.value = true; return held.promise; });
+  const revision = draft.importRevision.value;
+  draft.cancelImport = () => { draft.importRevision.value++; draft.pending.value = false; };
+  await wrapper.get('[data-cy="reference-load-reaction"]').trigger("click");
+  await flushPromises();
+  await wrapper.get('[data-cy="reference-cancel-transfer"]').trigger("click");
+  draft.pending.value = false;
+  held.resolve(false); await flushPromises();
+  expect(draft.importRevision.value).toBe(revision + 1);
+  expect(wrapper.get('[data-cy="reference-reading"]').attributes("aria-hidden")).toBeUndefined();
+  expect(wrapper.findAll('[data-cy="reference-row"]')).toHaveLength(1);
   expect(API.post).toHaveBeenCalledTimes(1);
 });
 

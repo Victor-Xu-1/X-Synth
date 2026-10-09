@@ -37,6 +37,23 @@
         >
       </div>
     </section>
+    <section v-if="reuseRecord" class="reference-transfer" data-cy="reference-transfer"
+      :aria-label="$tr('载入参考反应')" :aria-busy="reusePhase === 'preparing'">
+      <div class="reference-transfer-identity">
+        <span>{{ reuseRecord.provenance.source }}</span>
+        <strong>{{ referenceRecordTitle(reuseRecord) }}</strong>
+        <p v-if="reusePhase === 'preparing'" role="status">{{ $tr('载入参考反应') }}</p>
+        <p v-if="reuseError" class="tool-error" role="alert">{{ $tr(reuseError) }}</p>
+      </div>
+      <v-btn v-if="reusePhase === 'preparing'" variant="text" prepend-icon="mdi-close"
+        data-cy="reference-cancel-transfer" @click="cancelReference">{{ $tr('取消') }}</v-btn>
+      <template v-if="reusePhase === 'error'">
+        <v-btn variant="text" prepend-icon="mdi-arrow-left" data-cy="reference-transfer-back"
+          :disabled="blocked" @click="cancelReference">{{ $tr('参考反应结果') }}</v-btn>
+        <v-btn variant="tonal" prepend-icon="mdi-refresh" data-cy="reference-transfer-retry"
+          :disabled="blocked" @click="retryReference">{{ $tr('重试') }}</v-btn>
+      </template>
+    </section>
     <WorkbenchForm
       class="reference-input-layout"
       :aria-label="$tr('参考反应检索输入')"
@@ -114,7 +131,7 @@
                   icon="mdi-refresh"
                   variant="text"
                   :aria-label="$tr('刷新参考来源状态')"
-                  :disabled="statusLoading"
+                  :disabled="statusLoading || referenceProposal"
                   @click="loadStatus"
                 />
               </template>
@@ -143,9 +160,10 @@
     <v-btn v-if="searched" variant="text" prepend-icon="mdi-arrow-right" data-cy="reference-open-results"
       :disabled="blocked" @click="openResults">{{ $tr('参考反应结果') }}</v-btn>
     </section>
-    <section :id="panelId('records')" class="reference-reading" data-cy="reference-reading" v-show="layer === 'records'"
+    <section :id="panelId('records')" ref="readingPanel" class="reference-reading" data-cy="reference-reading" v-show="layer === 'records'"
       role="tabpanel" :aria-labelledby="tabId('records')" :inert="layer !== 'records' || undefined"
-      :aria-hidden="layer !== 'records' || undefined" :aria-busy="loading">
+      :aria-hidden="layer !== 'records' || undefined" :aria-busy="loading"
+      @focusin="rememberRecordFocus" @click.capture="rememberRecordFocus">
       <header class="reference-reading-heading">
         <h2 ref="readingHeading" tabindex="-1">{{ $tr('参考反应结果') }}</h2>
         <div class="reference-reading-actions">
@@ -180,9 +198,12 @@ import { reactionInputPrefill } from "@/common/reaction-input";
 import {
   recordedValue,
   referenceFailure,
+  referenceReactionFileBody,
   referenceReason,
 } from "@/common/reaction-references";
 import { useReactionReferences } from "@/composables/useReactionReferences";
+import { referenceRecordTitle } from "@/components/references/reference-record";
+import { useReferenceReuse } from "./useReferenceReuse";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import ReactionInput from "@/components/workspace/ReactionInput.vue";
@@ -196,17 +217,18 @@ const route = useRoute();
 const reactionSmiles = ref(""),
   limit = ref(20);
 const canvas = ref(null);
-const layer = ref("query"), queryPanel = ref(null), readingHeading = ref(null);
+const layer = ref("query"), queryPanel = ref(null), readingHeading = ref(null), readingPanel = ref(null);
 let navigationGeneration = 0, disposed = false;
+let resultFocus = null;
 const product = computed(() => canvas.value?.product || "");
 const reactants = computed(() => canvas.value?.reactants || []);
 const prefill = ref(null),
   prefillError = ref("");
 const inputPending = computed(() => !!canvas.value?.pending);
 const referenceProposal = ref(false);
-let proposalGeneration = 0;
+const linkedInput = computed(() => !!prefill.value || !!prefillError.value);
 const blocked = computed(
-  () => inputPending.value || !!prefill.value || !!prefillError.value,
+  () => inputPending.value || linkedInput.value || referenceProposal.value,
 );
 const invalidationBlocked = computed(
   () =>
@@ -214,17 +236,6 @@ const invalidationBlocked = computed(
     !!prefill.value ||
     !!prefillError.value,
 );
-function resetProposal() {
-  proposalGeneration++;
-  referenceProposal.value = false;
-}
-watch(reactionSmiles, resetProposal, { flush: "sync" });
-watch(
-  inputPending,
-  (pending) => { if (!pending) referenceProposal.value = false; },
-  { flush: "sync" },
-);
-onBeforeUnmount(resetProposal);
 const {
   sourceStatus,
   ready,
@@ -248,6 +259,14 @@ const {
   invalidationBlocked,
   context: [reactionSmiles],
 });
+const {
+  phase: reusePhase, record: reuseRecord, error: reuseError,
+  load: stageReference, cancel: cancelReference, reset: resetProposal,
+} = useReferenceReuse({
+  canvas, reactionSmiles, response: result, loading, linkedInput,
+  proposal: referenceProposal, layer, returnToRecords: openResults,
+});
+watch(result, () => { resultFocus = null; }, { flush: "sync" });
 const layers = computed(() => [
   { value: "query", title: "查询", disabled: loading.value },
   { value: "records", title: "参考反应结果", disabled: !searched.value || blocked.value },
@@ -266,7 +285,23 @@ async function focusLayer(expected, target) {
 function openResults() {
   if (!searched.value || blocked.value) return;
   layer.value = "records";
-  focusLayer("records", () => readingHeading.value);
+  focusLayer("records", () => resultFocusTarget() || readingHeading.value);
+}
+function rememberRecordFocus(event) {
+  const target = event.target?.closest?.("button");
+  const owner = target?.closest("[data-reference-id]");
+  const id = owner?.dataset.referenceId;
+  if (!id || !result.value?.results.some(row => row.id === id)) return;
+  resultFocus = { id, action: target.dataset.cy, target };
+}
+function resultFocusTarget() {
+  if (!resultFocus) return null;
+  if (resultFocus.target?.isConnected && readingPanel.value?.contains(resultFocus.target)
+    && !resultFocus.target.disabled) return resultFocus.target;
+  const row = [...(readingPanel.value?.querySelectorAll('[data-cy="reference-row"]') || [])]
+    .find(element => element.dataset.referenceId === resultFocus.id);
+  return [...(row?.querySelectorAll("button[data-cy]") || [])]
+    .find(button => button.dataset.cy === resultFocus.action && !button.disabled) || null;
 }
 function editQuery() {
   if (loading.value) return;
@@ -277,8 +312,7 @@ onBeforeUnmount(() => { disposed = true; navigationGeneration++; });
 watch(
   () => route.query,
   () => {
-    canvas.value?.cancelImport();
-    resetProposal();
+    if (!resetProposal()) canvas.value?.cancelImport();
     invalidate();
     prefill.value = null;
     prefillError.value = "";
@@ -311,42 +345,27 @@ async function search() {
   await request;
 }
 async function loadReaction(records) {
-  const response = result.value,
-    original = reactionSmiles.value;
-  await nextTick();
-  if (
-    !response ||
-    response !== result.value ||
-    original !== reactionSmiles.value ||
-    inputPending.value ||
-    loading.value ||
-    prefill.value ||
-    prefillError.value ||
-    !canvas.value
-  )
-    return;
-  const generation = ++proposalGeneration;
-  // A staged reference does not revise chemistry until the existing canvas accepts it.
-  referenceProposal.value = true;
-  layer.value = "query";
-  await nextTick();
-  try {
-    if (generation !== proposalGeneration || response !== result.value || original !== reactionSmiles.value
-      || loading.value || prefill.value || prefillError.value || !canvas.value) return;
-    await canvas.value.importRecords(records);
-  } finally {
-    if (generation === proposalGeneration && !inputPending.value)
-      referenceProposal.value = false;
-  }
+  rememberRecordFocus({ target: document.activeElement });
+  return stageReference(records, resultFocus?.id);
+}
+function retryReference() {
+  if (reuseRecord.value) stageReference(referenceReactionFileBody(reuseRecord.value), reuseRecord.value.id);
 }
 </script>
 
 <style scoped>
+.reference-transfer { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 0 32px; padding: 16px 0; border-bottom: 1px solid var(--ws-border); }
+.reference-transfer-identity { flex: 1 1 220px; min-width: 0; }
+.reference-transfer-identity > span { display: block; color: var(--ws-muted); font-size: 12px; }
+.reference-transfer-identity > strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
+.reference-transfer-identity p { margin: 8px 0 0; font-size: 12px; }
+.reference-transfer :deep(.v-btn__content) { white-space: normal; }
 .reference-reading { min-width: 0; padding: 24px 32px; }
 .reference-reading-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .reference-reading-heading h2 { margin: 0; font-size: 18px; scroll-margin-top: calc(var(--ws-header-height) + 16px); }
 .reference-reading-actions { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 @media (max-width: 700px) {
+  .reference-transfer { margin: 0 16px; }
   .reference-reading { padding: 20px 16px; }
   .reference-reading-heading { flex-wrap: wrap; }
 }

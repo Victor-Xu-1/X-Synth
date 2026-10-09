@@ -1,4 +1,6 @@
 import { defineComponent } from "vue";
+import { randomUUID } from "node:crypto";
+Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID });
 import { flushPromises, mount } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
 import TemplateDetails from "@/components/templates/TemplateDetails.vue";
@@ -332,7 +334,7 @@ describe("isolated cursor state", () => {
   let client;
   beforeEach(() => {
     client = {
-      get: jest.fn().mockResolvedValue({ template_count: 100, directions: { retro: 100 }, sources: ["isolated"] }),
+      get: jest.fn().mockResolvedValue({ status: "ready", template_count: 100, source_count: 1, directions: { retro: 100 }, sources: ["isolated"] }),
       post: jest.fn().mockImplementation(async (_, body) => body.cursor ? lastPage : firstPage),
     };
   });
@@ -481,5 +483,101 @@ describe("isolated cursor state", () => {
     expect(state.error.value).toBe("new page unavailable");
     expect(state.rows.value).toEqual([]);
     expect(state.loading.value).toBe(false);
+  });
+});
+
+describe("index and detail response boundary", () => {
+  const health = { status: "ready", template_count: 1, source_count: 1, sources: ["isolated"], directions: { retro: 1 } };
+  const detail = { source: "isolated", template_id: "isolated:a", template_set: "isolated", count: 1,
+    reaction_smarts: "[C:1]=[O:2]>>[C:1]-[O:2]", direction: "retro", domain: "strict_synthesis",
+    necessary_reagent: "", intra_only: false, dimer_only: false, attributes: {}, references: [], raw: {} };
+  test.each([{}, { ...health, status: "unavailable" }, { ...health, source_count: 2 },
+    { ...health, directions: [] }, { ...health, directions: { retro: "1" } }])(
+    "invalid index %j cannot enable template queries", async value => {
+      const client = { get: jest.fn().mockResolvedValue(value), post: jest.fn() };
+      const { state } = await setup("/template?searched=1", client);
+      await flushPromises();
+      expect(state.canSearch.value).toBe(false);
+      expect(state.health.value).toBeNull();
+      expect(state.indexError.value).toBeTruthy();
+      expect(client.post).not.toHaveBeenCalled();
+    },
+  );
+  test("an explicit index retry restores the same idle input without posting a query", async () => {
+    const client = { get: jest.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(health), post: jest.fn() };
+    const { state, router } = await setup("/template?filter_source=isolated&min_count=7&limit=3", client);
+    const before = { ...state.filters };
+    expect(state.canSearch.value).toBe(false);
+    await state.loadHealth();
+    expect(state.canSearch.value).toBe(true);
+    expect(state.filters).toEqual(before);
+    expect(state.indexError.value).toBe("");
+    expect(router.currentRoute.value.query.min_count).toBe("7");
+    expect(client.post).not.toHaveBeenCalled();
+  });
+  test("refreshing index status never submits edited draft filters from an existing searched URL", async () => {
+    const client = { get: jest.fn().mockResolvedValue(health), post: jest.fn().mockRejectedValue(new Error("query unavailable")) };
+    const { state, router } = await setup("/template?filter_source=isolated&min_count=7&limit=3&searched=1", client);
+    await flushPromises();
+    expect(client.post).toHaveBeenCalledTimes(1);
+    state.filters.minCount = 8;
+    await state.loadHealth();
+    await flushPromises();
+    expect(client.post).toHaveBeenCalledTimes(1);
+    expect(state.filters.minCount).toBe(8);
+    expect(router.currentRoute.value.query.min_count).toBe("7");
+    await state.search();
+    expect(client.post).toHaveBeenCalledTimes(2);
+    expect(client.post.mock.calls.at(-1)[1].min_count).toBe(8);
+    expect(router.currentRoute.value.query.min_count).toBe("8");
+  });
+  test("registered empty sources show zero coverage without a format error or query", async () => {
+    const empty = { ...health, template_count: 0, directions: {} };
+    const client = { get: jest.fn().mockResolvedValue(empty), post: jest.fn() };
+    const { state } = await setup("/template?searched=1", client);
+    await flushPromises();
+    expect(state.health.value).toEqual(empty);
+    expect(state.indexError.value).toBe("");
+    expect(state.canSearch.value).toBe(false);
+    expect(state.coverageReason.value).toBe("当前索引未包含逆合成模板。");
+    expect(client.post).not.toHaveBeenCalled();
+  });
+  test("refresh cannot silently rewind a cursor after draft filters are edited then restored", async () => {
+    const client = { get: jest.fn().mockResolvedValue(health), post: jest.fn().mockRejectedValue(new Error("query unavailable")) };
+    const { state, router } = await setup("/template?min_count=7&limit=3&searched=1&cursor=opaque-page", client);
+    await flushPromises();
+    expect(client.post).toHaveBeenCalledTimes(1);
+    state.filters.minCount = 8;
+    state.filters.minCount = 7;
+    await state.loadHealth();
+    await flushPromises();
+    expect(client.post).toHaveBeenCalledTimes(1);
+    expect(router.currentRoute.value.query.cursor).toBe("opaque-page");
+    await state.search();
+    expect(client.post).toHaveBeenCalledTimes(2);
+    expect(client.post.mock.calls.at(-1)[1]).not.toHaveProperty("cursor");
+    expect(router.currentRoute.value.query).not.toHaveProperty("cursor");
+  });
+  test("disposed detail and index retries do not send requests or reopen loading state", async () => {
+    const client = { get: jest.fn().mockImplementation(async path => path.endsWith("/health") ? health : { template: detail }), post: jest.fn() };
+    const { state, wrapper } = await setup("/template?source=isolated&id=isolated:a", client);
+    await flushPromises();
+    expect(state.detail.value).toEqual(detail);
+    wrapper.unmount();
+    const requests = client.get.mock.calls.length;
+    await state.loadDetail();
+    await state.loadHealth();
+    expect(client.get).toHaveBeenCalledTimes(requests);
+    expect(state.detailLoading.value).toBe(false);
+    expect(state.healthLoading.value).toBe(false);
+  });
+  test.each(["attributes", "references", "raw"])("null %s cannot enter template rendering", async field => {
+    const client = { get: jest.fn().mockImplementation(async path => path.endsWith("/health") ? health : { template: { ...detail, [field]: null } }), post: jest.fn() };
+    const { state } = await setup("/template?source=isolated&id=isolated:a", client);
+    await flushPromises();
+    expect(state.detail.value).toBeNull();
+    expect(state.detailError.value).toBeTruthy();
+    expect(state.detailLoading.value).toBe(false);
+    expect(client.post).not.toHaveBeenCalled();
   });
 });
