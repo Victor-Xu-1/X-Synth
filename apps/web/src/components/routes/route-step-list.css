@@ -40,7 +40,7 @@
 }
 .step-heading {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 32px;
+  grid-template-columns: minmax(0, 1fr) auto 44px;
   align-items: center;
   gap: 6px 12px;
   font-size: 13px;
@@ -48,6 +48,9 @@
 .step-heading > .v-btn {
   grid-column: 3;
   grid-row: 1;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
 }
 .step-validation {
   grid-column: 1 / span 2;
@@ -59,7 +62,7 @@
   gap: 8px;
   text-align: left;
   color: var(--ws-text);
-  min-height: 32px;
+  min-height: 44px;
   font-size: 14px;
 }
 .step-confidence,
@@ -76,7 +79,7 @@
 }
 .step-structures {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px 214px;
+  grid-template-columns: minmax(0, 1fr) 28px minmax(0, 320px);
   align-items: center;
   gap: 12px;
   padding: 16px 0;
@@ -84,29 +87,9 @@
 }
 .step-precursors {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(194px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 12px;
   min-width: 0;
-}
-.step-molecule {
-  min-width: 0;
-  width: 100%;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 10px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--ws-text);
-  background: var(--ws-surface);
-  min-height: 142px;
-  gap: 8px;
-}
-.step-molecule > span {
-  align-self: flex-start;
-  font-size: 12px;
-  color: var(--ws-muted);
 }
 .step-record code {
   font:
@@ -115,14 +98,6 @@
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
-.step-molecule :deep(.smiles-image-container) {
-  max-width: 100%;
-}
-.step-molecule:hover:not(:disabled) {
-  border-color: var(--ws-border);
-  background: var(--ws-muted-surface);
-}
-.step-molecule:focus-visible,
 .step-select:focus-visible,
 summary:focus-visible {
   outline: 2px solid var(--ws-accent, #0b7163);
@@ -235,11 +210,6 @@ summary:focus-visible {
     transform: rotate(90deg);
     justify-self: center;
   }
-  .step-product {
-    width: 214px;
-    max-width: 100%;
-    justify-self: center;
-  }
 }
 @media (max-width: 900px) {
   .step-structures,
@@ -249,11 +219,6 @@ summary:focus-visible {
   .step-arrow,
   .overview-arrow {
     transform: rotate(90deg);
-    justify-self: center;
-  }
-  .step-product {
-    width: 214px;
-    max-width: 100%;
     justify-self: center;
   }
   .overview-structures .overview-target {

@@ -31,7 +31,17 @@ test("step selection is an inset marker and cannot change structural dimensions"
   expect(active["box-shadow"]).toContain("inset");
   for (const property of ["padding", "margin", "width", "border-left"])
     expect(active[property]).toBeUndefined();
-  expect(declarations(css, ".step-molecule")["border-radius"]).toBe("6px");
+  const { descriptor } = parse(readFileSync(resolve(directory, "RouteStepStructure.vue"), "utf8"));
+  expect(declarations(postcss.parse(descriptor.styles[0].content), ".step-molecule")["border-radius"]).toBe("6px");
+});
+
+test("compound reading allocates wide constrained drawings rather than a tiny fixed product", () => {
+  const css = stylesheet("route-step-list.css");
+  expect(declarations(css, ".step-structures")["grid-template-columns"]).toContain("320px");
+  expect(declarations(css, ".step-precursors")["grid-template-columns"]).toContain("320px");
+  const productRules = [];
+  css.walkRules(".step-product", rule => rule.walkDecls("width", decl => productRules.push(decl.value)));
+  expect(productRules).not.toContain("214px");
 });
 
 test("reader tabs have stable touch heights and do not consume a side canvas column", () => {
