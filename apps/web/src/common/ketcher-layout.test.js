@@ -20,6 +20,10 @@ function camera({ width = 207, height = 402, box = [0, 0, 42, 38], zoom = .04 } 
       (point.x * 40 + render.options.offset.x) * zoom - area.scrollLeft,
       (point.y * 40 + render.options.offset.y) * zoom - area.scrollTop,
     )),
+    view2obj: jest.fn(point => new Point(
+      ((point.x + area.scrollLeft) / zoom - render.options.offset.x) / 40,
+      ((point.y + area.scrollTop) / zoom - render.options.offset.y) / 40,
+    )),
     setPaperSize: jest.fn(),
     setOffset: jest.fn(offset => { render.options.offset = offset; }),
   };
@@ -107,10 +111,28 @@ test("empty and hidden drawings do not mutate the camera", () => {
   expect(fitKetcherCanvas(hidden)).toBe(false); expect(hidden.zoom).not.toHaveBeenCalled();
 });
 
-test.each(["setOffset", "setPaperSize", "obj2view"])("unsupported native %s fails before changing the view", method => {
+test.each(["setOffset", "setPaperSize", "obj2view", "view2obj"])("unsupported native %s fails before changing the view", method => {
   const editor = camera(); editor.render[method] = undefined;
   expect(() => fitKetcherCanvas(editor)).toThrow("Ketcher camera API is unavailable");
   expect(editor.zoom).not.toHaveBeenCalled();
+});
+
+test("a fully selected tall drawing fits the actual native rotation-control envelope", () => {
+  const editor = camera({ width: 689, height: 402 });
+  const { render } = editor;
+  editor.rotateController.boundingRect = { getBBox: () => ({
+    x: render.options.offset.x - 23, y: render.options.offset.y - 23,
+    width: 42 * 40 + 46, height: 38 * 40 + 46,
+  }) };
+  editor.rotateController.handle = { getBBox: () => ({
+    x: render.options.offset.x + 21 * 40 - 10, y: render.options.offset.y - 58,
+    width: 20, height: 20,
+  }) };
+  fitKetcherCanvas(editor);
+  expect(editor.zoom()).toBeCloseTo((402 - 24) / (38 * 40 + 81), 10);
+  const handle = editor.rotateController.handle.getBBox();
+  expect(handle.y * editor.zoom()).toBeGreaterThanOrEqual(11);
+  expect((handle.y + handle.height) * editor.zoom()).toBeLessThan(402 - 11);
 });
 
 test("invalid native geometry is not silently accepted", () => {
