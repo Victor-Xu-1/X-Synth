@@ -366,6 +366,17 @@ Preview, reader and editor allow fit-view zoom down to 0.01 so wide routes can
 fit narrow canvases instead of clipping terminal structures at a fixed 0.12
 floor. This is display scaling, not a change to chemical coordinates or search
 quality. Overview cards retain their existing whole-graph lazy mounting.
+Saved-document reading is projected by `common/document-step-details` from the
+original graph IDs and unique edges, not converted into planned candidate routes.
+The projection keeps equal-SMILES records distinct, preserves input occurrences,
+and exposes disconnected draft sides without inventing scientific evidence.
+`useDocumentReading` owns the document's Graph/Steps selection, first-ready
+location, responsive inspection and context-bound return focus. Its persistent
+Steps scroll container keeps a long route's reading position; structure previews
+remain visibility-lazy. Native graph/step activation events carry keyboard intent
+and the exact focus origin. Mobile details replace the reading layer, while
+desktop pointer inspection does not hijack focus. Locale/resize does not reset
+the user's explicit view or mutate the saved graph or prediction scores.
 The server repeats graph and RDKit validation rather than trusting UI checks.
 Topology preparation is distinct from display layout. Read-only inspection reuses
 prepared topology and incoming-edge indexes instead of rerunning Dagre on every

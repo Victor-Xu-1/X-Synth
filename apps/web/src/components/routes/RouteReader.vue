@@ -203,7 +203,7 @@
             :editable="false"
             reading
             generated-step-labels
-            @select="selectNode"
+            @select="selectStepNode"
           />
         </div>
         <RouteStepList
@@ -211,7 +211,7 @@
           :candidate="candidate"
           :graph="sourceGraph"
           :selected-node="selectedNode"
-          @select="selectNode"
+          @select="selectStepNode"
           @locate="locateNode"
         />
         <RouteConditions
@@ -389,6 +389,7 @@ const allSelected = computed(
 const graphId = `reader-${crypto.randomUUID()}`;
 let generation = 0,
   layerNavigation = 0,
+  inspectorNavigation = 0,
   overviewOrigin = null,
   selectionOrigin = null,
   disposed = false;
@@ -495,38 +496,52 @@ function moveViewTab(event) {
   moveTab(event, readerTools.map((tool) => tool.value), view.value,
     (value) => { view.value = value; });
 }
-async function selectNode(id, revealDetails = true) {
+function selectStepNode(id, event) {
+  return selectNode(id, true, event);
+}
+async function selectNode(id, revealDetails = true, event = null) {
+  const navigation = ++inspectorNavigation;
   selectionOrigin = null;
   selectedNode.value = sourceGraph.value.nodes.some((node) => node.id === id)
     ? id
     : null;
-  if (!selectedNode.value || !revealDetails || window.innerWidth > 1100) return;
-  const routeId = selectedId.value, focused = document.activeElement;
+  // Native keyboard and assistive activation dispatch clicks with zero detail.
+  if (!selectedNode.value || !revealDetails || (window.innerWidth > 1100 && event?.detail !== 0)) return;
+  const routeId = selectedId.value, readingView = view.value, source = sourceGraph.value;
+  const focused = event?.target?.closest?.('button, a[href], input, [tabindex]')
+    || event?.currentTarget || document.activeElement;
   await nextTick();
-  if (disposed || routeId !== selectedId.value || id !== selectedNode.value) return;
-  const selector = view.value === "graph" ? ".vue-flow__node[data-id]" : "[data-node-id]";
-  selectionOrigin = readerMain.value.contains(focused) && focused !== readerMain.value ? focused
-    : [...readerMain.value.querySelectorAll(selector)]
+  if (disposed || navigation !== inspectorNavigation || routeId !== selectedId.value ||
+    id !== selectedNode.value || readingView !== view.value || source !== sourceGraph.value) return;
+  const main = readerMain.value, inspector = inspectorView.value?.$el;
+  if (!main?.isConnected || !inspector?.isConnected) return;
+  const selector = readingView === "graph" ? ".vue-flow__node[data-id]" : "[data-node-id]";
+  const origin = main.contains(focused) && focused !== main ? focused
+    : [...main.querySelectorAll(selector)]
       .find((element) => (element.dataset.nodeId || element.dataset.id) === id) || null;
-  const inspector = inspectorView.value?.$el;
+  selectionOrigin = { element: origin, routeId, view: readingView, graph: source };
   inspector?.scrollIntoView?.({ block: "nearest" });
   inspector?.focus?.({ preventScroll: true });
 }
 async function closeInspector() {
-  const origin = selectionOrigin, routeId = selectedId.value;
+  const navigation = ++inspectorNavigation, point = selectionOrigin;
   selectionOrigin = null;
   selectedNode.value = null;
   await nextTick();
-  if (disposed || routeId !== selectedId.value || !origin?.isConnected || window.innerWidth > 1100) return;
+  const origin = point?.element;
+  if (disposed || navigation !== inspectorNavigation || selectedNode.value !== null ||
+    point?.routeId !== selectedId.value || point?.view !== view.value ||
+    point?.graph !== sourceGraph.value || !origin?.isConnected) return;
   origin.scrollIntoView?.({ block: "nearest" });
   origin.focus?.({ preventScroll: true });
 }
 async function locateNode(id) {
   selectNode(id, false);
-  const routeId = selectedId.value;
+  const routeId = selectedId.value, source = sourceGraph.value;
   view.value = "graph";
   await nextTick();
-  if (!disposed && routeId === selectedId.value && selectedNode.value === id)
+  if (!disposed && routeId === selectedId.value && selectedNode.value === id &&
+    view.value === "graph" && source === sourceGraph.value)
     await graphView.value?.focus([id], { padding: 0.45, maxZoom: 1, duration: 150 });
 }
 function exportJson() {
@@ -596,21 +611,25 @@ watch(
 watch(selectedId, () => {
   selectedNode.value = null;
   selectionOrigin = null;
+  inspectorNavigation++;
   exportError.value = "";
   exporting.value = false;
   generation++;
 });
 watch(view, async (value) => {
+  selectionOrigin = null;
+  inspectorNavigation++;
   if (value === "graph") {
     await nextTick();
-    if (!selectedNode.value) graphView.value?.fit();
+    if (!disposed && view.value === "graph" && !selectedNode.value) graphView.value?.fit();
   }
-});
+}, { flush: "sync" });
 onBeforeUnmount(() => {
   disposed = true;
   overviewOrigin = null;
   layerNavigation++;
   selectionOrigin = null;
+  inspectorNavigation++;
   generation++;
 });
 </script>
