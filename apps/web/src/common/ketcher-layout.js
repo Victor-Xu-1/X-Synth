@@ -52,7 +52,7 @@ function visualBounds(editor) {
 }
 
 // The bundled Ketcher 2.13 camera is separate from molecular layout/centerStruct.
-export function fitKetcherCanvas(editor) {
+export function fitKetcherCanvas(editor, { preserveZoom = false } = {}) {
   if (typeof editor?.struct !== "function") return false;
   const molecule = editor.struct();
   if (!molecule?.atoms?.size) return false;
@@ -82,7 +82,7 @@ export function fitKetcherCanvas(editor) {
     throw new Error("Ketcher view bounds are invalid");
   const width = (box.p1.x - box.p0.x) * scale, height = (box.p1.y - box.p0.y) * scale;
   const margin = Math.min(12, viewport.width / 4, viewport.height / 4);
-  const zoom = Math.min(1,
+  const zoom = preserveZoom ? editor.zoom() : Math.min(1,
     width > 0 ? (viewport.width - 2 * margin) / width : 1,
     height > 0 ? (viewport.height - 2 * margin) / height : 1);
   editor.zoom(zoom);

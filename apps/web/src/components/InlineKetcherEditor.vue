@@ -121,6 +121,8 @@ const ketcherIframe = ref(null);
 const ketcherFrame = ref(null);
 const editorRoot = ref(null);
 const activity = useWorkbenchActivity();
+const manualZoom = ref(false);
+let fittedZoom = null;
 const KETCHER_BASE_WIDTH = 808;
 const KETCHER_BASE_HEIGHT = 432;
 const KETCHER_MIN_VIEWPORT_WIDTH = 320;
@@ -150,8 +152,14 @@ const fitDrawing = async (context) => {
     !ketcherFrame.value?.clientWidth
   )
     return;
-  fitKetcherCanvas(ketcherIframe.value?.contentWindow?.ketcher?.editor);
+  const editor = ketcherIframe.value?.contentWindow?.ketcher?.editor;
+  if (context?.automatic && fittedZoom !== null && typeof editor?.zoom === "function"
+    && Math.abs(editor.zoom() - fittedZoom) > 1e-8) manualZoom.value = true;
+  const preserveZoom = !!context?.automatic && manualZoom.value;
+  if (!context?.automatic) manualZoom.value = false;
+  if (fitKetcherCanvas(editor, { preserveZoom }) && !preserveZoom) fittedZoom = editor.zoom();
 };
+const fitResizedDrawing = context => fitDrawing({ ...context, automatic: true });
 
 const clampNumber = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -181,7 +189,7 @@ const syncKetcherLayout = (options = {}) => {
     ketcherViewportWidth.value = width;
     ketcherViewportHeight.value = height;
     ketcherVisualHeight.value = height;
-    if (resized && options.fit !== false) void view.adjustView(fitDrawing);
+    if (resized && options.fit !== false) void view.adjustView(fitResizedDrawing);
     return;
   }
 
@@ -232,7 +240,7 @@ const syncKetcherLayout = (options = {}) => {
     ketcherViewportWidth.value = availableWidth;
     ketcherViewportHeight.value = visualHeightLimit;
     ketcherVisualHeight.value = visualHeightLimit;
-    if (resized && options.fit !== false) void view.adjustView(fitDrawing);
+    if (resized && options.fit !== false) void view.adjustView(fitResizedDrawing);
     return;
   }
 
@@ -328,7 +336,10 @@ const view = useKetcherView({ root: editorRoot, active: activity, ready,
     syncKetcherLayout({ fit: false }); await fitDrawing(context);
   },
 });
-const zoomDrawing = factor => view.run(() => zoomKetcherCanvas(ketcherIframe.value?.contentWindow?.ketcher?.editor, factor));
+const zoomDrawing = factor => view.run(() => {
+  zoomKetcherCanvas(ketcherIframe.value?.contentWindow?.ketcher?.editor, factor);
+  manualZoom.value = true;
+});
 
 async function retryEditor() {
   if (props.disabled || busy.value) return;

@@ -43,7 +43,7 @@ test("inline Ketcher editor scales the fixed-width Ketcher app to the available 
     "const KETCHER_COMPACT_VIEWPORT_HEIGHT_RESERVE = 300;",
   );
   expect(text).toContain("const syncKetcherLayout = (options = {}) => {");
-  expect(text).toContain("view.adjustView(fitDrawing)");
+  expect(text).toContain("view.adjustView(fitResizedDrawing)");
   expect(text).toContain("context?.current && !context.current()");
   expect(text).toContain(
     "if (!frame || !frame.getClientRects().length) return;",
@@ -102,7 +102,7 @@ test("inline Ketcher editor scales the fixed-width Ketcher app to the available 
   expect(text).toContain('@load="patchKetcherDocument"');
   expect(text).toContain("prepareKetcherDocument(doc)");
   expect(text).toContain(
-    "fitKetcherCanvas(ketcherIframe.value?.contentWindow?.ketcher?.editor)",
+    "fitKetcherCanvas(editor, { preserveZoom })",
   );
   const layout = fs.readFileSync(
     path.resolve(__dirname, "../common/ketcher-layout.js"),

@@ -152,3 +152,12 @@ test("explicit zoom validates native scale and bounds magnification", () => {
   const editor = camera({ zoom: 3.5 }); zoomKetcherCanvas(editor, 1.25); expect(editor.zoom()).toBe(4);
   expect(() => zoomKetcherCanvas(editor, Number.NaN)).toThrow("Ketcher view bounds are invalid");
 });
+
+test("a resized manually zoomed view centers without silently returning to full fit", () => {
+  const editor = camera({ zoom: .4 });
+  fitKetcherCanvas(editor, { preserveZoom: true });
+  expect(editor.zoom()).toBe(.4);
+  const b = editor.render.ctab.getVBoxObj(), a = editor.render.obj2view(b.p0), z = editor.render.obj2view(b.p1);
+  expect((a.x + z.x) / 2).toBeCloseTo(207 / 2, 8);
+  expect((a.y + z.y) / 2).toBeCloseTo(402 / 2, 8);
+});
