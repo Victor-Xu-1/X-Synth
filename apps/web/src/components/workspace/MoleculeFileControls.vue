@@ -213,6 +213,7 @@ let generation = 0,
   controller = null,
   focusOrigin = null,
   imported = null;
+let focusRequested = false;
 const readingBoard = ref(false);
 watch(busy, (value) => emit("busy", value), { flush: "sync" });
 function rememberFocus(event) {
@@ -224,11 +225,12 @@ function openFile(event) {
   fileInput.value.click();
 }
 function restoreFocus() {
-  if (disposed || !activity.value || hasPending.value || error.value) return;
+  if (!focusRequested || disposed || !activity.value || hasPending.value || error.value) return;
+  focusRequested = false;
   const target = focusOrigin || controls.value?.querySelector("button");
   if (target?.isConnected && !target.disabled && !target.closest("[inert]")) target.focus();
 }
-function cancel() {
+function cancel({ returnFocus = true } = {}) {
   generation++;
   controller?.abort();
   controller = null;
@@ -242,13 +244,15 @@ function cancel() {
   error.value = "";
   errorDetail.value = "";
   filename.value = "";
-  nextTick(restoreFocus);
+  focusRequested = returnFocus;
+  if (returnFocus) nextTick(restoreFocus);
 }
 watch(
   () => [props.smiles, props.disabled, props.name, props.readStructure],
   ([smiles, disabled, name, read], [previous, , previousName, previousRead]) => {
     if (disabled || name !== previousName || read !== previousRead ||
-      (!readingBoard.value && smiles !== previous)) cancel();
+      (!readingBoard.value && smiles !== previous)) cancel({ returnFocus: focusRequested && !disabled
+        && name === previousName && read === previousRead && imported?.record.smiles === smiles });
     if (imported && !readingBoard.value && smiles !== imported.record.smiles) imported = null;
   },
   { flush: "sync" },
@@ -257,7 +261,7 @@ function current(value) {
   return !disposed && value === generation && !props.disabled;
 }
 function begin() {
-  cancel();
+  cancel({ returnFocus: false });
   controller = new AbortController();
   busy.value = true;
   return generation;
@@ -270,6 +274,7 @@ function showError(failure, fallback) {
 function closeError() {
   error.value = "";
   errorDetail.value = "";
+  focusRequested = true;
   nextTick(restoreFocus);
 }
 async function importFile(event) {
@@ -301,7 +306,7 @@ async function readCurrent(requested) {
     const value = props.readStructure ? await props.readStructure() : props.smiles;
     await nextTick();
     // A reader may publish its own canonical value, but cannot export a newer field's predecessor.
-    if (current(requested) && props.smiles !== previous && props.smiles !== value) cancel();
+    if (current(requested) && props.smiles !== previous && props.smiles !== value) cancel({ returnFocus: false });
     if (!current(requested)) return null;
     if (typeof value !== "string") throw new ChemicalFileError("当前结构为空或无法读取，未导出文件。");
     return value.trim();
@@ -351,13 +356,14 @@ async function exportStructure(format) {
   } finally {
     if (current(requested)) {
       busy.value = false;
+      focusRequested = true;
       nextTick(restoreFocus);
     }
   }
 }
 onBeforeUnmount(() => {
   disposed = true;
-  cancel();
+  cancel({ returnFocus: false });
 });
 defineExpose({
   hasPending,

@@ -1,5 +1,5 @@
 <template>
-  <div ref="root" class="structure-field" :aria-busy="pending">
+  <div ref="root" class="structure-field" :aria-busy="working">
     <div class="structure-field-heading">
       <label :for="id">{{ $tr(label) }}</label>
       <div class="structure-field-actions">
@@ -113,6 +113,8 @@ const pending = computed(
     files.value?.hasPending === true ||
     (mountEditor.value && (!editor.value || editor.value.pending)),
 );
+const working = computed(() => !!(fileBusy.value || editor.value?.busy
+  || (mountEditor.value && !editor.value?.ready && !editor.value?.error)));
 defineExpose({
   pending,
   read,

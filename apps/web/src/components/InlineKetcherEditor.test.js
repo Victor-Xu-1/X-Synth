@@ -20,6 +20,7 @@ test("a failed structure remains blocked without displaying ongoing progress", (
   expect(visible(true, "")).toBe(true);
   expect(visible(false, "")).toBe(false);
   expect(visible(true, "结构同步失败")).toBe(false);
+  expect(readEditor().indexOf('v-if="editorError"')).toBeLessThan(readEditor().indexOf('class="inline-ketcher-frame"'));
 });
 
 test("inline Ketcher editor scales the fixed-width Ketcher app to the available frame", () => {

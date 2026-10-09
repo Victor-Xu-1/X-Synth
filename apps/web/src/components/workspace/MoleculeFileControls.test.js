@@ -129,6 +129,17 @@ test("late import response cannot overwrite a changed chemical input", async () 
   expect(wrapper.text()).not.toContain("选择化合物");
   expect(wrapper.emitted("import")).toBeUndefined();
 });
+
+test("ordinary input invalidation never moves focus into idle file commands", async () => {
+  const wrapper = make({ smiles: "CCO" });
+  const source = document.createElement("textarea"); document.body.append(source); source.focus();
+  try {
+    await wrapper.setProps({ smiles: "CCN" }); await nextTick();
+    expect(document.activeElement).toBe(source);
+    await wrapper.setProps({ smiles: "CCO" }); await nextTick();
+    expect(document.activeElement).toBe(source);
+  } finally { source.remove(); }
+});
 test("export reads the current drawing, not a stale SMILES field", async () => {
   const read = jest.fn();
   const wrapper = make({ smiles: "CCO", readStructure: read });

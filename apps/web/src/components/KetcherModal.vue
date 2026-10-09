@@ -58,6 +58,7 @@ import {
   prepareKetcherDocument,
   fitKetcherCanvas,
 } from "@/common/ketcher-layout";
+import { runKetcherOperation } from "@/common/ketcher-native-operations";
 
 export default {
   name: "KetcherModal",
@@ -107,6 +108,7 @@ export default {
     };
     const writeMolecule = createKetcherWriter(getEditor, {
       signal: editorLifetime.signal,
+      getWindow: () => ketcherIframe.value?.contentWindow,
     });
     watch(
       () => [propShow.value, props.smiles],
@@ -146,7 +148,8 @@ export default {
       try {
         await writeMolecule.flush();
         const ketcher = await getEditor();
-        const value = String(await ketcher.getSmiles()).trim();
+        const value = String(await runKetcherOperation(ketcher, () => ketcher.getSmiles(),
+          () => current === generation && !editorLifetime.signal.aborted && propShow.value)).trim();
         if (
           current !== generation ||
           editorLifetime.signal.aborted ||

@@ -6,9 +6,21 @@
       { 'fill-height-mode': fillHeight, 'compact-mode': compact },
     ]"
   >
-    <DrawingViewTools :expanded="view.expanded.value" :supported="view.supported.value" :title="title"
+    <DrawingViewTools ref="viewTools" :expanded="view.expanded.value" :supported="view.supported.value" :title="title"
       :disabled="disabled || busy || !ready || view.pending.value"
       @zoom-out="zoomDrawing(.8)" @zoom-in="zoomDrawing(1.25)" @fit="view.run(fitDrawing)" @expand="view.toggle" />
+    <div v-if="editorError" class="editor-error" role="alert">
+      <span>{{ $tr(editorError) }}</span>
+      <v-tooltip :text="$tr(retryLabel)"><template #activator="{ props: activator }">
+        <v-btn v-bind="activator" icon="mdi-refresh" variant="text" size="small"
+          :aria-label="$tr(retryLabel)" :disabled="disabled || busy" @click="retryEditor" />
+      </template></v-tooltip>
+    </div>
+    <div v-if="view.error.value" class="editor-error" role="alert">
+      <span>{{ $tr(view.error.value) }}</span>
+      <v-btn type="button" icon="mdi-refresh" variant="text" size="small" :aria-label="$tr('重试视图操作')"
+        :disabled="disabled || busy || !ready || view.pending.value" @click="view.retry" />
+    </div>
     <div
       ref="ketcherFrame"
       class="inline-ketcher-frame"
@@ -23,6 +35,7 @@
         :aria-label="$tr('正在同步结构')"
       />
       <iframe
+        :key="frameKey"
         ref="ketcherIframe"
         data-cy="home-inline-ketcher"
         :src="KETCHER_URL"
@@ -31,18 +44,6 @@
         :inert="disabled || !ready || busy || undefined"
         @load="patchKetcherDocument"
       ></iframe>
-    </div>
-    <div v-if="editorError" class="editor-error" role="alert">
-      <span>{{ $tr(editorError) }}</span>
-      <v-tooltip :text="$tr('重试结构同步')"><template #activator="{ props: activator }">
-        <v-btn v-bind="activator" icon="mdi-refresh" variant="text" size="small"
-          :aria-label="$tr('重试结构同步')" :disabled="disabled || busy" @click="retryEditor" />
-      </template></v-tooltip>
-    </div>
-    <div v-if="view.error.value" class="editor-error" role="alert">
-      <span>{{ $tr(view.error.value) }}</span>
-      <v-btn type="button" icon="mdi-refresh" variant="text" size="small" :aria-label="$tr('重试视图操作')"
-        :disabled="disabled || busy || !ready || view.pending.value" @click="view.retry" />
     </div>
     <div v-if="showActions" class="inline-ketcher-actions">
       <span class="editor-status">{{ $tr(editorStatus) }}</span>
@@ -81,6 +82,9 @@ import { useKetcherView } from "@/composables/useKetcherView";
 import { useWorkbenchActivity } from "@/components/workspace/workbench-activity";
 import DrawingViewTools from "@/components/workspace/DrawingViewTools.vue";
 import { createKetcherFocusGuard } from "@/common/ketcher-focus";
+import { createKetcherFrameLifecycle } from "@/common/ketcher-frame";
+import { captureKetcherRecoveryFocus } from "@/common/ketcher-recovery-focus";
+import { runKetcherOperation } from "@/common/ketcher-native-operations";
 import {
   ReactionCanvasError,
   readReactionCanvas,
@@ -115,11 +119,14 @@ const props = defineProps({
   readContent: { type: Function, default: null },
   contentApplied: { type: Function, default: null },
   contentPublished: { type: Function, default: null },
+  contentChanged: { type: Function, default: null },
 });
 
 const ketcherIframe = ref(null);
+const frameKey = ref(0);
 const ketcherFrame = ref(null);
 const editorRoot = ref(null);
+const viewTools = ref(null);
 const activity = useWorkbenchActivity();
 const manualZoom = ref(false);
 let fittedZoom = null;
@@ -263,6 +270,7 @@ const patchKetcherDocument = () => {
   const doc = ketcherIframe.value?.contentDocument;
   prepareKetcherDocument(doc);
   focusGuard.observe();
+  frameLifecycle.observe();
   view.observeFrame();
   scheduleKetcherLayoutSync();
 };
@@ -290,6 +298,7 @@ const {
   busy,
   ready,
   pending,
+  reloadRequired,
   error: editorError,
   status: editorStatus,
   initialize,
@@ -298,21 +307,31 @@ const {
   setSmilesToEditor,
   readSnapshot,
   retryFailedOperation,
+  interruptEditor,
 } = useKetcherMolecule({
   smiles,
   getEditor: waitForKetcher,
+  getWindow: () => ketcherIframe.value?.contentWindow,
+  reloadEditor: async () => {
+    frameKey.value++;
+    fittedZoom = null;
+    manualZoom.value = false;
+    await nextTick();
+    return waitForKetcher();
+  },
   signal: editorLifetime.signal,
   autoSync: () => props.autoSync,
   disabled: () => props.disabled,
   fitDrawing,
   captureFocus: focusGuard.capture,
   commit: (value) => emit("commit", value),
-  readStructure: (editor) =>
+  onChanged: props.contentChanged ? () => props.contentChanged() : null,
+  readStructure: (editor, context) =>
     props.readContent
-      ? props.readContent(editor)
+      ? props.readContent(editor, context)
       : props.reaction
-        ? readReactionCanvas(editor)
-        : editor.getSmiles(),
+        ? readReactionCanvas(editor, undefined, undefined, false, context)
+        : runKetcherOperation(editor, () => editor.getSmiles(), context.current),
   editorContent: (value) =>
     value && props.prepareContent
       ? props.prepareContent(value)
@@ -327,6 +346,8 @@ const {
         : errorMessage(failure, fallback)
       : fallback,
 });
+const retryLabel = computed(() => reloadRequired.value ? "重新加载画板" : "重试结构同步");
+const frameLifecycle = createKetcherFrameLifecycle(() => ketcherIframe.value, interruptEditor);
 
 const view = useKetcherView({ root: editorRoot, active: activity, ready,
   getFrame: () => ketcherIframe.value,
@@ -341,11 +362,17 @@ const zoomDrawing = factor => view.run(() => {
   manualZoom.value = true;
 });
 
-async function retryEditor() {
+async function retryEditor(event) {
   if (props.disabled || busy.value) return;
+  const source = smiles.value;
+  const finishFocus = captureKetcherRecoveryFocus(event,
+    () => !editorLifetime.signal.aborted && activity.value && !props.disabled && ready.value
+      && !busy.value && !editorError.value && source === smiles.value,
+    () => viewTools.value?.focusFit());
   try {
     await retryFailedOperation();
   } catch { /* The existing write owner keeps its current error visible. */ }
+  finally { await nextTick(); finishFocus(); }
 }
 
 onMounted(() => {
@@ -367,6 +394,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   focusGuard.dispose();
+  frameLifecycle.dispose();
   editorLifetime.abort();
   resizeObserver?.disconnect();
   window.removeEventListener("resize", syncKetcherLayout);
@@ -385,7 +413,8 @@ defineExpose({
   clearEditor,
   setSmilesToEditor,
   retryEditor,
-  exportRxn: () => readSnapshot((editor) => editor.getRxn("v3000")),
+  exportRxn: () => readSnapshot((editor, context) => runKetcherOperation(editor, () => editor.getRxn("v3000"), context.current)),
+  exportKet: () => readSnapshot((editor, context) => runKetcherOperation(editor, () => editor.getKet(), context.current)),
 });
 </script>
 

@@ -1,5 +1,6 @@
 import { API } from "./api";
 import { checkedReactionDraft, REACTION_DRAFT_PATH } from "./reaction-input";
+import { runKetcherOperation } from "./ketcher-native-operations";
 
 export const EMPTY_REACTION_CANVAS = JSON.stringify({
   root: {
@@ -45,8 +46,11 @@ export async function readReactionCanvas(
   compoundGroups,
   api = API,
   requiresArrow = false,
+  { current = () => true } = {},
 ) {
-  const document = JSON.parse(await ketcher.getKet());
+  const content = await runKetcherOperation(ketcher, () => ketcher.getKet(), current);
+  if (!current()) return null;
+  const document = JSON.parse(content);
   if (!Array.isArray(document?.root?.nodes))
     throw new ReactionCanvasError("无法读取反应画板。");
   const arrows = document.root.nodes.filter((node) => node.type === "arrow");
@@ -56,11 +60,13 @@ export async function readReactionCanvas(
   if (!arrows.length) {
     if (requiresArrow)
       throw new ReactionCanvasError("反应箭头已删除，尚未确认反应角色。");
-    return { text: await ketcher.getSmiles(true), kind: "molecule" };
+    return { text: await runKetcherOperation(ketcher, () => ketcher.getSmiles(true), current), kind: "molecule" };
   }
   // Ketcher 2.13 splits disconnected compounds. Restore only explicit, exact groups.
+  const rxn = await runKetcherOperation(ketcher, () => ketcher.getRxn("v3000"), current);
+  if (!current()) return null;
   const value = await parseCanvasReaction(
-    await ketcher.getRxn("v3000"),
+    rxn,
     compoundGroups,
     api,
   );
