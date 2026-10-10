@@ -202,7 +202,7 @@ describe("reference-source metadata", () => {
     await wrapper.vm.search();
     expect(API.post).not.toHaveBeenCalled();
     expect(API.get).toHaveBeenCalledTimes(1);
-    const retry = inspector.get('button[aria-label="刷新参考来源状态"]');
+    const retry = wrapper.get('.workbench-actions button[aria-label="刷新参考来源状态"]');
     retry.element.focus();
     await retry.trigger("click"); await flushPromises();
     expect(inspector.find('[role="alert"]').exists()).toBe(false);

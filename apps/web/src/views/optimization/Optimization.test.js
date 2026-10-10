@@ -58,6 +58,142 @@ test("input-only view has no empty recommendation panel or automatic calculation
   expect(API.post).not.toHaveBeenCalled();
 });
 
+test("cancelling the sole chooser preserves an already verified saved table and confirmations", async () => {
+  API.post.mockResolvedValue(table);
+  const { wrapper } = await setup({ record: "a".repeat(32) });
+  expect(wrapper.vm.table).toEqual(table);
+  expect(wrapper.vm.disabled).toBe(false);
+  const original = JSON.stringify(wrapper.vm.table), selected = [...wrapper.vm.selectedRows];
+  wrapper.vm.confirmedMeasurements = true;
+  const posts = API.post.mock.calls.length;
+  const file = wrapper.get('input[type="file"]');
+  Object.defineProperty(file.element, "files", { configurable: true, value: [] });
+  await file.trigger("change"); await flushPromises();
+  expect(JSON.stringify(wrapper.vm.table)).toBe(original);
+  expect(wrapper.vm.selectedRows).toEqual(selected);
+  expect(wrapper.vm.confirmedMeasurements).toBe(true);
+  expect(API.post.mock.calls.length).toBe(posts);
+});
+
+test("fresh measured workspace makes its sole native CSV chooser primary with linked file context", async () => {
+  const { wrapper } = await setup();
+  const entry = wrapper.get(".opt-file-entry.opt-empty");
+  const file = entry.get('input[type="file"]');
+  expect(wrapper.findAll('input[type="file"]')).toHaveLength(1);
+  expect(entry.get("h2").text()).toBe("实测记录");
+  expect(entry.get(".opt-file span").text()).toBe("选择实测 CSV");
+  expect(file.attributes("accept")).toBe(".csv,text/csv");
+  expect(file.attributes("aria-label")).toBe("选择实测 CSV");
+  expect(file.attributes("aria-describedby")).toBeTruthy();
+  expect(file.attributes("aria-describedby")).toBe(entry.get(".opt-file-name").attributes("id"));
+  expect(file.element.disabled).toBe(false);
+  file.element.focus();
+  expect(document.activeElement).toBe(file.element);
+  expect(wrapper.find('[to="/analyses?kind=optimization"]').exists()).toBe(true);
+  expect(wrapper.find("table").exists()).toBe(false);
+  setLocale(DEFAULT_LOCALE, { persist: false }); await flushPromises();
+  expect(entry.get("h2").text()).toBe("Measured records");
+  expect(entry.get(".opt-file span").text()).toBe("Select measured CSV");
+  expect(entry.get(".opt-file-name").text()).toBe("No measured table selected");
+  expect(entry.get('input[type="file"]').element).toBe(file.element);
+  expect(document.activeElement).toBe(file.element);
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test("CSV loading and loaded context retain one chooser without fabricating measured rows", async () => {
+  const { wrapper } = await setup();
+  const file = wrapper.get('input[type="file"]');
+  const name = "研究者实测 [Na+].收率.csv";
+  let finish;
+  API.post.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  Object.defineProperty(file.element, "files", { configurable: true, value: [{ name, size: CSV.length,
+    arrayBuffer: async () => new TextEncoder().encode(CSV).buffer }] });
+  await file.trigger("change"); await flushPromises();
+  expect(file.element.disabled).toBe(true);
+  expect(wrapper.get(".optimization-workspace").attributes("aria-busy")).toBe("true");
+  expect(wrapper.find(".opt-empty").exists()).toBe(false);
+  expect(wrapper.get('.opt-loading[role="status"]').text()).toBe("读取当前实测表");
+  expect(wrapper.find("table").exists()).toBe(false);
+  finish(table); await flushPromises();
+  expect(wrapper.get('input[type="file"]').element).toBe(file.element);
+  expect(wrapper.findAll('input[type="file"]')).toHaveLength(1);
+  expect(file.element.disabled).toBe(false);
+  expect(wrapper.find(".opt-empty").exists()).toBe(false);
+  expect(wrapper.get(".opt-file-name").text()).toBe(name);
+  expect(wrapper.findAll('tbody input:checked')).toHaveLength(0);
+  setLocale(DEFAULT_LOCALE, { persist: false }); await flushPromises();
+  expect(wrapper.get(".opt-file-name").text()).toBe(name);
+  expect(file.attributes("aria-describedby")).toBe(wrapper.get(".opt-file-name").attributes("id"));
+  expect(API.post.mock.calls).toEqual([["/api/v1/optimization/inspect", { content: CSV }]]);
+});
+
+test("failed CSV inspection keeps the primary entry available without a loaded filename or fake table", async () => {
+  API.post.mockRejectedValue(new Error("isolated invalid measured CSV"));
+  const { wrapper } = await setup();
+  const file = wrapper.get('input[type="file"]');
+  Object.defineProperty(file.element, "files", { configurable: true, value: [{ name: "invalid.csv", size: CSV.length,
+    arrayBuffer: async () => new TextEncoder().encode(CSV).buffer }] });
+  await file.trigger("change"); await flushPromises();
+  expect(wrapper.get('[role="alert"]').text()).toBe("isolated invalid measured CSV");
+  expect(wrapper.get(".opt-file-entry.opt-empty input").element).toBe(file.element);
+  expect(file.element.disabled).toBe(false);
+  expect(wrapper.get(".opt-file-name").text()).toBe("未选择实测表");
+  expect(wrapper.find("table").exists()).toBe(false);
+  expect(wrapper.find('[role="tablist"]').exists()).toBe(false);
+  expect(API.post).toHaveBeenCalledTimes(1);
+});
+
+test("an oversized CSV returns to the primary entry without reading or inspecting its bytes", async () => {
+  const { wrapper } = await setup();
+  const file = wrapper.get('input[type="file"]');
+  const arrayBuffer = jest.fn();
+  Object.defineProperty(file.element, "files", { configurable: true, value: [{ name: "too-large.csv",
+    size: 2 * 1024 * 1024 + 1, arrayBuffer }] });
+  await file.trigger("change"); await flushPromises();
+  expect(wrapper.get('[role="alert"]').text()).toContain("CSV 超过 2 MiB");
+  expect(wrapper.get(".opt-file-entry.opt-empty input").element).toBe(file.element);
+  expect(file.element.disabled).toBe(false);
+  expect(arrayBuffer).not.toHaveBeenCalled();
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test("health loading and failure preserve CSV entry while recommendation remains unavailable", async () => {
+  let fail;
+  API.get.mockImplementation(() => new Promise((resolve, reject) => { fail = reject; }));
+  const { wrapper } = await setup();
+  const file = wrapper.get('input[type="file"]');
+  expect(wrapper.get('.opt-runtime[role="status"]').text()).toBe("核对 BayBE 环境");
+  expect(file.element.disabled).toBe(false);
+  expect(wrapper.vm.canRecommend).toBe(false);
+  fail(new Error("isolated runtime unavailable")); await flushPromises();
+  expect(wrapper.get('.opt-notice[role="status"]').text()).toBe("isolated runtime unavailable");
+  expect(wrapper.get(".opt-file-entry.opt-empty input").element).toBe(file.element);
+  expect(file.element.disabled).toBe(false);
+  expect(wrapper.vm.canRecommend).toBe(false);
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test("pending saved inputs suppress fresh entry styling and lock the same chooser until verification", async () => {
+  let finish;
+  API.get.mockImplementation(url => url.endsWith("/health")
+    ? Promise.resolve({ ready: true, versions: { baybe: "0.15.0" } })
+    : new Promise(resolve => { finish = resolve; }));
+  API.post.mockResolvedValue(table);
+  const { wrapper } = await setup({ record: "a".repeat(32) });
+  const file = wrapper.get('input[type="file"]');
+  expect(file.element.disabled).toBe(true);
+  expect(wrapper.get(".opt-file").classes()).toContain("disabled");
+  expect(wrapper.find(".opt-empty").exists()).toBe(false);
+  expect(wrapper.get('.opt-loading[role="status"]').text()).toBe("读取已保存输入并核验 CSV");
+  expect(API.post).not.toHaveBeenCalled();
+  finish(record()); await flushPromises();
+  expect(wrapper.get('input[type="file"]').element).toBe(file.element);
+  expect(file.element.disabled).toBe(false);
+  expect(wrapper.get(".opt-file-name").text()).toBe("已保存的实测 CSV");
+  expect(wrapper.findAll('tbody input:checked')).toHaveLength(3);
+  expect(API.post.mock.calls).toEqual([["/api/v1/optimization/inspect", { content: CSV }]]);
+});
+
 test("factor-level validation follows the locale without changing user column names or draft values", async () => {
   const name = "研究者列 [Na+].CC(=O)[O-]";
   const factors = [{ name, kind: "numerical", levels: "0\n0" }];
@@ -123,7 +259,7 @@ test("same-URL New Optimization clears a history-restored form and its recovery 
   expect(wrapper.find(".opt-layout").exists()).toBe(true);
   await wrapper.findAll("button").find((button) => button.text() === "新建优化").trigger("click");
   expect(wrapper.find(".opt-layout").exists()).toBe(false);
-  expect(wrapper.text()).toContain("尚无已选实验数据");
+  expect(wrapper.get(".opt-file-entry.opt-empty .opt-file span").text()).toBe("选择实测 CSV");
   expect(window.history.state.xSynthSubmittedInput).toBeNull();
 });
 
@@ -142,6 +278,7 @@ test("a mismatched saved CSV inspection locks editing and exposes retry", async 
   const { wrapper } = await setup({ record: "a".repeat(32) });
   expect(wrapper.get('[role="alert"]').text()).toContain("CSV 核验不一致");
   expect(wrapper.get('input[type="file"]').element.disabled).toBe(true);
+  expect(wrapper.find(".opt-empty").exists()).toBe(false);
   expect(wrapper.find("table").exists()).toBe(false);
   API.post.mockResolvedValue(table);
   await wrapper.get('[role="alert"] button').trigger("click"); await flushPromises();
@@ -255,6 +392,8 @@ test("an isolated pending recommendation locks layer and selection controls with
   expect(wrapper.get("fieldset.opt-parameter-fields").element.disabled).toBe(true);
   expect(wrapper.get('[aria-label="选择实测记录 1"]').element.disabled).toBe(true);
   expect(wrapper.get('[data-layer-previous]').element.disabled).toBe(true);
+  expect(wrapper.get('input[type="file"]').element.disabled).toBe(true);
+  expect(wrapper.get(".opt-file").classes()).toContain("disabled");
   await wrapper.get("form").trigger("submit");
   expect(API.post).toHaveBeenCalledTimes(2);
   finish(new Error("isolated runtime rejection")); await flushPromises();

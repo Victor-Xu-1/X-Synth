@@ -13,11 +13,13 @@
             <template #parameters>
               <div class="tool-fields">
                 <h2 class="tool-section-title">{{ $tr('检索条件') }}</h2>
-                <v-btn color="primary" variant="flat" prepend-icon="mdi-magnify" type="submit"
-                  data-cy="stock-search-submit" :disabled="!smiles.trim() || loading || inputPending" :loading="loading">{{ $tr('精确检索') }}</v-btn>
-                <p class="workspace-muted">{{ $tr('{value} 个目录结构', { value: workspace.health?.stock_snapshot?.unique_structures?.toLocaleString() || "—" }) }}</p>
                 <p v-if="expectedSnapshot" class="workspace-muted stock-task-context">{{ $tr('关联任务目录快照') }}</p>
               </div>
+            </template>
+            <template #action-context><span>{{ $tr('{value} 个目录结构', { value: workspace.health?.stock_snapshot?.unique_structures?.toLocaleString() || "—" }) }}</span></template>
+            <template #actions>
+              <v-btn color="primary" variant="flat" prepend-icon="mdi-magnify" type="submit"
+                data-cy="stock-search-submit" :disabled="!smiles.trim() || loading || inputPending" :loading="loading">{{ $tr('精确检索') }}</v-btn>
             </template>
           </WorkbenchForm>
         </WorkbenchScope>

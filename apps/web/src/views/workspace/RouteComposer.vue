@@ -108,7 +108,9 @@
               @click="workspace.refresh(true)"
             />
           </div>
-          <div class="workbench-submit">
+        </div>
+      </template>
+      <template #actions>
             <v-btn
               variant="text"
               type="button"
@@ -126,8 +128,6 @@
               data-cy="home-build-tree"
               >{{ mode === "manual" ? $tr('生成候选') : $tr('生成路线') }}</v-btn
             >
-          </div>
-        </div>
       </template>
     </WorkbenchForm>
     <RouteImportPanel v-if="mode === 'import'" />
@@ -263,25 +263,6 @@ const comparisonVisible = computed(() =>
   font-size: 16px;
   font-weight: 600;
   line-height: 1.35;
-}
-.workbench-submit {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 10px;
-  padding-top: 24px;
-  border-top: 1px solid var(--ws-border);
-}
-.workbench-submit .v-btn {
-  height: 44px;
-  font-size: 14px;
-}
-.workbench-submit .v-btn[type="submit"] {
-  min-width: min(140px, 100%);
-  max-width: 100%;
-}
-.workbench-submit .v-btn[type="button"] {
-  padding: 0 10px;
 }
 .workbench-readiness {
   display: flex;

@@ -69,5 +69,28 @@ test("optional heading and mode slots do not leave empty layout regions", () => 
   const wrapper = mount(WorkbenchForm);
   expect(wrapper.find(".workbench-page-heading").exists()).toBe(false);
   expect(wrapper.find(".workbench-page-modes").exists()).toBe(false);
+  expect(wrapper.find(".workbench-actions").exists()).toBe(false);
+  wrapper.unmount();
+});
+
+test("one form-owned action surface follows inputs and parameters without duplicating commands", async () => {
+  const wrapper = mount(WorkbenchForm, {
+    props: { parameterLabel: "检索条件" },
+    slots: { default: '<input name="structure" />', parameters: '<input name="limit" />',
+      actions: '<button type="submit">Search</button>', 'action-context': '<span>309477 structures</span>' },
+  });
+  const command = wrapper.get('button[type="submit"]'), footer = wrapper.get("footer");
+  expect(wrapper.findAll('button[type="submit"]')).toHaveLength(1);
+  expect(command.element.closest("form")).toBe(wrapper.element);
+  expect(footer.attributes("aria-label")).toBe("检索条件");
+  expect(footer.get(".workbench-action-context").text()).toBe("309477 structures");
+  expect(wrapper.get("aside").element.compareDocumentPosition(footer.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await wrapper.setProps({ inspectorVisible: false });
+  expect(footer.isVisible()).toBe(false);
+  await wrapper.setProps({ inspectorVisible: true });
+  expect(wrapper.get('button[type="submit"]').element).toBe(command.element);
+  const event = new Event("submit", { bubbles: true, cancelable: true });
+  wrapper.element.dispatchEvent(event);
+  expect(wrapper.emitted("submit")).toEqual([[event]]);
   wrapper.unmount();
 });

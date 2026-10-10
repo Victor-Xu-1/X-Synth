@@ -105,6 +105,20 @@ governance. See [version operations](operations.md#版本管理).
   global Escape/back ownership without clearing the selection; active widget-specific
   disabled and empty states are never overridden by a default `disabled: false`.
 - Browser requests terminate at the product API, never a second direct gateway.
+- Scientific input forms keep one form-owned command surface. The shared action
+  component follows input and parameters in reading order and stays reachable
+  within that form on narrow screens; it does not teleport commands, duplicate
+  submission handlers or introduce a scroll/resize timer. Hidden comparison and
+  result layers retain their original admission and mounted-draft gates.
+  Its exact form-local focus listener reveals a native field only when that
+  active field is actually covered by the action surface; replacing or unmounting
+  the surface releases that listener. It does not listen to global scrolling or
+  change the router's independent navigation/scroll ownership.
+  Process section controls use the same surface without changing quantities,
+  units or calculation delivery. Experimental optimization retains one native
+  measured-CSV chooser: cancellation preserves the verified table, and clearing
+  only the native file selection permits reselecting the same file. CSV parsing,
+  saved-data verification and explicit measurement confirmations remain separate.
 - Drawing zoom has one read-only binding to the native editor's selection-change
   events, separate from structural change synchronization. The workbench numeric
   selector reports that actual camera value and uses the existing view-command

@@ -85,7 +85,9 @@
             :error-messages="$tr(countError)"
             data-cy="reference-limit"
           />
-          <div class="reference-submit-actions">
+        </div>
+      </template>
+      <template #actions>
             <v-btn
               type="submit"
               color="primary"
@@ -108,8 +110,6 @@
                 />
               </template>
             </v-tooltip>
-          </div>
-        </div>
       </template>
       <section
         class="reference-inputs"
@@ -356,18 +356,15 @@ function retryReference() {
   overflow-wrap: anywhere;
   margin: 12px 0;
 }
-.reference-submit-actions,
 .reference-prefill-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
-.reference-submit-actions :deep(.v-btn),
 .reference-prefill-actions :deep(.v-btn) {
   max-width: 100%;
 }
-.reference-submit-actions :deep(.v-btn__content),
 .reference-prefill-actions :deep(.v-btn__content) {
   white-space: normal;
 }

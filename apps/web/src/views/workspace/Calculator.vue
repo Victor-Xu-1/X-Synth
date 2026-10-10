@@ -21,6 +21,9 @@
           <p v-if="displayError" class="tool-error" role="alert">
             {{ $tr(displayError) }}
           </p>
+        </div>
+      </template>
+      <template #actions>
           <v-btn
             color="primary"
             variant="flat"
@@ -31,7 +34,6 @@
             data-cy="calculator-submit"
             >{{ $tr('计算') }}</v-btn
           >
-        </div>
       </template>
       <section
         ref="inputLayer"

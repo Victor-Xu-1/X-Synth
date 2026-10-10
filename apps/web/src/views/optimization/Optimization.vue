@@ -6,12 +6,15 @@
     </template>
     <div ref="workspace" class="optimization-workspace" :aria-busy="disabled">
       <div class="opt-input-bar">
-        <label class="opt-file" :class="{ disabled }">
-          <v-icon icon="mdi-file-delimited-outline" size="20" /><span>{{ $tr('实测 CSV') }}</span>
-          <input type="file" accept=".csv,text/csv" :aria-label="$tr('选择实测 CSV')" :disabled="disabled"
-            @change="chooseFile($event.target.files?.[0])" />
-        </label>
-        <span class="opt-file-name">{{ fileName || (saved.source.value ? $tr('已保存的实测 CSV') : $tr('未选择实测表')) }}</span>
+        <div class="opt-file-entry" :class="{ 'opt-empty': empty }">
+          <h2 v-if="empty" class="opt-input-heading">{{ $tr('实测记录') }}</h2>
+          <label class="opt-file" :class="{ disabled }">
+            <v-icon icon="mdi-file-delimited-outline" size="20" /><span>{{ $tr('选择实测 CSV') }}</span>
+            <input type="file" accept=".csv,text/csv" :aria-label="$tr('选择实测 CSV')"
+              :aria-describedby="fileContextId" :disabled="disabled" @change="chooseCsv" />
+          </label>
+          <span :id="fileContextId" class="opt-file-name">{{ fileName || (saved.source.value ? $tr('已保存的实测 CSV') : $tr('未选择实测表')) }}</span>
+        </div>
         <span v-if="healthLoading" class="opt-runtime" role="status">{{ $tr('核对 BayBE 环境') }}</span>
         <span v-else class="opt-runtime" :class="{ ready: health?.ready }">
           BayBE {{ health?.versions?.baybe || $tr('版本未确认') }} · {{ health?.ready ? $tr('已就绪') : $tr('未就绪') }}
@@ -25,9 +28,6 @@
       <div v-if="error" class="opt-error" role="alert">{{ optimizationMessage(error) }}</div>
       <router-link v-if="error && recordPath(result?.record_id)" :to="recordPath(result.record_id)">{{ $tr('打开已保存的结果') }}</router-link>
       <div v-if="fileLoading" class="opt-loading" role="status"><v-progress-circular indeterminate size="22" />{{ $tr('读取当前实测表') }}</div>
-      <div v-if="!table && !fileLoading && !saved.loading.value && !saved.error.value" class="opt-empty">
-        <v-icon icon="mdi-table-large" size="30" /><h2>{{ $tr('实测记录') }}</h2><span>{{ $tr('尚无已选实验数据') }}</span>
-      </div>
       <div v-if="table" class="opt-layout">
         <dl class="opt-input-context">
           <div><dt>{{ $tr('已选实测记录') }}</dt><dd>{{ selectedRows.length }} / {{ table.row_count }}</dd></div>
@@ -67,7 +67,7 @@
   </ModuleWorkbench>
 </template>
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue";
 import { optimizationMessage } from "./ui-copy";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import WorkbenchTabs from "@/components/WorkbenchTabs.vue";
@@ -79,6 +79,7 @@ import { useAnalysisInput } from "@/composables/useAnalysisInput";
 import { recordPath } from "@/common/analysis-records";
 import { LIMITS } from "./model";
 const workspace = ref(null), section = ref("measurements");
+const fileContextId = useId();
 let navigationEpoch = 0;
 watch(section, () => { navigationEpoch++; }, { flush: "sync" });
 onBeforeUnmount(() => { navigationEpoch++; });
@@ -100,6 +101,13 @@ watch(() => table.value?.table_sha256, resetSection, { flush: "sync" });
 const saved = useAnalysisInput({ kind: "optimization", querySeeds: ["smiles"],
   clear: resetInput, apply: optimizer.restoreInput, prefill: () => {} });
 const disabled = computed(() => running.value || fileLoading.value || saved.loading.value || !!saved.error.value);
+const empty = computed(() => !table.value && !fileLoading.value && !saved.loading.value && !saved.error.value);
+function chooseCsv(event) {
+  const input = event.target, file = input.files?.[0];
+  if (disabled.value || !file) return;
+  input.value = "";
+  return chooseFile(file);
+}
 function resetSection() {
   navigationEpoch++;
   section.value = "measurements";

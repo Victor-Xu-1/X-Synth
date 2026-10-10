@@ -8,49 +8,68 @@
   letter-spacing: 0;
 }
 .opt-input-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 32px;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px 16px;
   padding: 12px 0;
   border-bottom: 1px solid var(--ws-border, #ddd);
 }
-.opt-file {
+.opt-file-entry {
   display: flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  min-width: 0;
+}
+.opt-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   position: relative;
-  padding: 7px 9px;
+  min-height: 40px;
+  max-width: 100%;
+  padding: 8px 12px;
   border: 1px solid var(--ws-border, #ccc);
   border-radius: 4px;
-  flex-shrink: 0;
+  background: var(--ws-surface);
+  line-height: 1.5;
   cursor: pointer;
 }
+.opt-file .v-icon { flex-shrink: 0; }
+.opt-file span { min-width: 0; overflow-wrap: anywhere; }
+.opt-file:not(.disabled):hover { border-color: var(--ws-accent); background: var(--ws-hover); }
 .opt-file input {
   position: absolute;
   inset: 0;
   opacity: 0;
   cursor: pointer;
   width: 100%;
+  height: 100%;
 }
-.opt-file:focus-within {
+.opt-file:has(input:focus-visible) {
   outline: 2px solid var(--ws-info);
   outline-offset: 2px;
 }
 .opt-file.disabled { opacity: 0.55; cursor: default; }
+.opt-file input:disabled { cursor: default; }
 .opt-parameter-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
 .opt-seed-setting { margin-bottom: 16px; font-size: 12px; }
 .opt-seed-setting summary { cursor: pointer; margin-bottom: 10px; }
 .opt-measurement-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 18px 0 8px; flex-wrap: wrap; }
 .opt-measurement-heading span { font-size: 12px; color: var(--ws-muted); }
 .opt-file-name {
+  min-width: 0;
+  flex: 1 1 200px;
   overflow-wrap: anywhere;
-  max-width: 320px;
+  color: var(--ws-muted);
+  line-height: 1.6;
 }
 .opt-runtime {
-  margin-left: auto;
   font-size: 12px;
   color: var(--ws-muted, #666);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 .opt-runtime.ready {
   color: var(--ws-accent);
@@ -304,15 +323,21 @@
   color: var(--ws-muted, #666);
 }
 .opt-empty {
-  display: grid;
-  justify-items: center;
-  align-content: center;
-  min-height: 360px;
-  gap: 12px;
-  color: var(--ws-muted, #777);
+  padding: 12px 0;
+  row-gap: 14px;
 }
-.opt-empty h2 {
+.opt-empty .opt-input-heading {
+  flex-basis: 100%;
   margin: 0;
+}
+.opt-empty .opt-file {
+  min-height: 44px;
+  padding: 10px 16px;
+  border-color: var(--ws-accent);
+  background: var(--ws-accent-soft);
+  color: var(--ws-accent);
+  font-size: 14px;
+  font-weight: 600;
 }
 .opt-input-context {
   display: grid;
@@ -400,11 +425,12 @@
 .opt-data-identity dl { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 12px; padding-top: 12px; }
 .opt-data-identity dd { margin: 0; font-family: monospace; overflow-wrap: anywhere; }
 @media (max-width: 800px) {
-  .opt-input-bar { display: grid; grid-template-columns: auto minmax(0, 1fr) 32px; gap: 6px 8px; }
-  .opt-file { grid-column: 1; grid-row: 1; font-size: 12px; }
-  .opt-runtime { grid-column: 2; grid-row: 1; line-height: 1.6; font-size: 11px; overflow-wrap: anywhere; }
-  .opt-input-bar > .v-btn { grid-column: 3; grid-row: 1; }
-  .opt-file-name { grid-column: 1 / -1; grid-row: 2; font-size: 12px; }
+  .opt-input-bar { grid-template-columns: minmax(0, 1fr) 32px; gap: 10px 8px; }
+  .opt-file-entry { grid-column: 1 / -1; grid-row: 1; }
+  .opt-empty { padding: 8px 0; }
+  .opt-runtime { grid-column: 1; grid-row: 2; }
+  .opt-input-bar > .v-btn { grid-column: 2; grid-row: 2; }
+  .opt-file-name { font-size: 12px; flex-basis: 100%; }
   .opt-layout > .workspace-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: visible; gap: 0; }
   .opt-layout > .workspace-tabs button { min-width: 0; padding: 10px 6px; font-size: 12px; white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
   .opt-input-context { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
@@ -418,12 +444,5 @@
   .opt-data-identity dl { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .opt-rail-section {
     padding: 14px 0;
-  }
-  .opt-runtime {
-    margin-left: 0;
-  }
-  .opt-file-name {
-    max-width: 100%;
-    flex-basis: 100%;
   }
 }

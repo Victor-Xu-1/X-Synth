@@ -87,6 +87,9 @@
               :disabled="locked"
           /></label>
           <p class="workspace-muted"> {{ $tr('每条记录最多 80 个原子；全部输入最多 160 个原子。已知主产物仅作为用户基准。') }} </p>
+        </div>
+      </template>
+      <template #actions>
           <v-btn
             type="submit"
             color="primary"
@@ -96,7 +99,6 @@
             :disabled="locked || pending || !hasStructures"
             >{{ $tr('预测可能杂质') }}</v-btn
           >
-        </div>
       </template>
       <div class="impurity-canvas">
         <ImpurityStructureEditor
