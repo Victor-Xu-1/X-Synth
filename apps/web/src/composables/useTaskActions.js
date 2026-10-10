@@ -5,6 +5,7 @@ import { uiText } from "@/i18n";
 import { activeTaskStates } from "@/common/task-state";
 import { unifiedRouteStatusEndpoint } from "@/common/unified-route";
 import { readSelectedRoutes } from "@/common/route-details";
+import { readTaskParameters } from "@/common/task-parameters";
 import {
   buildHistoryBatch,
   canArchiveTask,
@@ -83,14 +84,9 @@ export function useTaskActions({
     showInfo.value = true;
     infoLoading.value = true;
     try {
-      const response = await retrieve(task);
+      const response = await readTaskParameters(api, task.result_id);
       if (!currentRead(current)) return false;
       infoTask.value = normalizeTaskInfo(infoTask.value, response);
-      if (
-        !infoTask.value.settings ||
-        !Object.keys(infoTask.value.settings).length
-      )
-        infoError.value = "此记录未返回原始搜索参数。";
     } catch (e) {
       if (!currentRead(current)) return false;
       infoError.value = errorMessage(e, "任务参数加载失败。");
@@ -209,7 +205,7 @@ export function useTaskActions({
       task,
       "rerun",
       async (current) => {
-        const response = await retrieve(task);
+        const response = await readTaskParameters(api, task.result_id);
         if (!currentRead(current)) return false;
         await router.push(buildTaskSearchLocation(normalizeTaskInfo(currentTask(task), response)));
       },

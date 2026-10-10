@@ -58,6 +58,35 @@ def test_client_cannot_read_other_tasks_or_bypass_product_search(tmp_path):
     )
 
 
+def test_owned_original_parameters_are_explicit_lightweight_and_read_only(tmp_path):
+    application = create_app(jobs_root=tmp_path)
+    repository = application.state.repository
+    # Stored-input/security fixture only; this does not run or simulate chemistry.
+    source = {
+        "smiles": "[Na+].CC(=O)[O-]", "description": "Original input / %", "backend": "askcos",
+        "search_policy_version": 1, "strategies": ["retro_star"], "expansion_time": 127,
+        "max_paths": 80, "min_routes": 4, "max_routes": 8, "repair_attempts": 0, "public": False,
+        "tuning": {"max_depth": 15, "minimum_plausibility": 0, "private_token": "not-public"},
+        "private_token": "not-public", "run_dir": "/private/example",
+    }
+    job = repository.create("local_workspace", source)
+    browser = client(application)
+    endpoint = f"/api/v1/unified-route/jobs/{job['id']}"
+    assert "settings" not in browser.get(endpoint).json()
+    response = browser.get(endpoint, params={"include_settings": "true"})
+    assert response.status_code == 200
+    expected = {key: value for key, value in source.items() if key not in {"private_token", "run_dir"}}
+    expected["tuning"] = {"max_depth": 15, "minimum_plausibility": 0}
+    assert response.json()["settings"] == expected
+    assert response.json()["settings"]["description"] == source["description"]
+    assert "settings" not in browser.get("/api/v1/unified-route/jobs").json()["jobs"][0]
+    assert repository.get(job["id"])["request"] == source
+    assert repository.get(job["id"])["revision"] == job["revision"]
+    foreign = repository.create("other_user", source)
+    assert browser.get(f"/api/v1/unified-route/jobs/{foreign['id']}?include_settings=true").status_code == 404
+    assert browser.get(endpoint + "?include_settings=true", headers={"Origin": "https://attacker.example"}).status_code == 403
+
+
 def test_session_and_template_routes_share_the_server_security_boundary(tmp_path):
     browser = client(create_app(jobs_root=tmp_path))
     assert browser.get("/api/v1/session").json() == {

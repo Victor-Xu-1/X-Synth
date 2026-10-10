@@ -1,4 +1,5 @@
 export default [
+  ["原始搜索参数响应无效，未预填任务。", "Invalid original search parameters; the task was not prefilled."],
   ["路线含有循环或重复产物，无法确定合成步骤顺序。", "The route contains a cycle or duplicate products; synthesis-step order cannot be determined."],
   ["导入文档标识无效。", "Invalid imported document identity."],
   ["每轮搜索时长必须为有效数字。", "Search time per round must be a valid number."],

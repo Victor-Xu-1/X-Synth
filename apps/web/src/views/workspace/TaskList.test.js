@@ -331,7 +331,7 @@ test("card rerun only prefills the original search parameters and never submits 
     expansion_time: 120,
     strategies: ["mcts", "retro_star"],
   };
-  API.get.mockResolvedValueOnce({ ...row(), settings });
+  API.get.mockResolvedValueOnce({ ...row(), job_id: "task-a", target_smiles: settings.smiles, settings });
   await wrapper
     .get('.task-card-footer [aria-label="重新搜索"]')
     .trigger("click");

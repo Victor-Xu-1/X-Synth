@@ -213,6 +213,9 @@ export function buildTaskSearchLocation(task) {
     );
   return {
     path: "/",
+    force: true,
+    // Only an opaque user-intent marker is added to browser history state.
+    state: { xSynthSearchIntent: Array.from(crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2, "0")).join("") },
     query: {
       smiles,
       task_name: task.settings.description ?? task.description ?? "",

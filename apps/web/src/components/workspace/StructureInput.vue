@@ -48,6 +48,7 @@
         :show-actions="false"
         :title="$tr('{label}绘图板', { label: $tr(label) })"
         :disabled="disabled || drawing"
+        :content-changed="nativeContentChanged"
         auto-sync
         :compact="!canvasHeight"
         :canvas-height="canvasHeight"
@@ -68,7 +69,7 @@
   </div>
 </template>
 <script setup>
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useIntersectionObserver } from "@vueuse/core";
 import KetcherModal from "@/components/KetcherModal.vue";
 import InlineKetcherEditor from "@/components/InlineKetcherEditor.vue";
@@ -83,7 +84,9 @@ const props = defineProps({
   id: { type: String, default: () => `structure-${crypto.randomUUID()}` },
 });
 const drawing = ref(false),
-  fileBusy = ref(false);
+  fileBusy = ref(false),
+  nativeDraft = ref(false),
+  draftRevision = ref(0);
 const files = ref(null),
   editor = ref(null),
   root = ref(null),
@@ -115,8 +118,23 @@ const pending = computed(
 );
 const working = computed(() => !!(fileBusy.value || editor.value?.busy
   || (mountEditor.value && !editor.value?.ready && !editor.value?.error)));
+// Readiness includes initial loading; only user-owned work is a draft.
+const hasUnconfirmedDraft = computed(() => !!(nativeDraft.value || drawing.value
+  || fileBusy.value || files.value?.hasPending));
+function nativeContentChanged() {
+  nativeDraft.value = true;
+  draftRevision.value++;
+}
+watch(() => editor.value?.pending, value => {
+  if (value === false) nativeDraft.value = false;
+}, { flush: "sync" });
+watch([drawing, fileBusy, () => files.value?.hasPending], values => {
+  if (values.some(Boolean)) draftRevision.value++;
+}, { flush: "sync" });
 defineExpose({
   pending,
+  hasUnconfirmedDraft,
+  draftRevision,
   read,
 });
 async function read() {

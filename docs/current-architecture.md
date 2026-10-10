@@ -386,6 +386,14 @@ existing request/ownership contracts.
 Research calculations use one owned analysis repository,
 separate from route jobs and editable route documents. Editing and step-wise design remain actions
 inside the route workflow; task detail and editor retain their immersive canvas.
+Original task inputs are requested explicitly with `include_settings=true` on the
+owned task-detail endpoint. Default status/list responses remain compact. The
+projection preserves stored search values without default injection, excludes
+provider/diagnostic fields and is independent of route artifacts. One bounded
+parameter reader binds ID/target and retires closed or superseded requests.
+The session route-workbench store owns validated seed application. Same-context
+re-entry retains edits; explicit rerun supplies a new opaque history intent, not
+chemical payloads. An outgoing composer cannot consume another page's query.
 The workspace publishes core health and session as one replacing snapshot before independent
 optional probes settle. Full refresh and core-only callers share the same requests and deadline;
 native account entry awaits the core pair rather than unrelated knowledge/optimization latency.
@@ -394,6 +402,10 @@ hidden/inert overlay and focus gate. Feature/path changes dispose the prior scop
 or authority changes immediately clear private account state and invalidate late continuations.
 Scoped dialog presentation follows the current activity without cancelling its owning draft. Suspended
 dialogs leave the global active overlay stack while retaining input; ordinary close releases the subtree.
+Route-editor new-molecule proposals share the existing document unsaved guard.
+StructureInput exposes user-owned unconfirmed intent/revision separately from
+initial readiness; confirmed cancellation releases that input owner, and native
+pending work cannot be mistaken for a committed molecule.
 Standalone dialogs retain their original attachment. Native solubility/screening errors remain inside
 their originating panel rather than mounting an application-root confirmation dialog.
 One shared tab component binds keyboard selection, panel IDs and roving focus. Process input uses

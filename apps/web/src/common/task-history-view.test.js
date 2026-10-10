@@ -241,6 +241,10 @@ test("rerun is local query prefill with the exact typed settings and no manufact
     "task_name",
   ]);
   expect(settings.strategies).toEqual(["retro_star"]);
+  expect(location.force).toBe(true);
+  expect(Object.keys(location.state)).toEqual(["xSynthSearchIntent"]);
+  expect(location.state.xSynthSearchIntent).toMatch(/^[a-f0-9]{32}$/);
+  expect(buildTaskSearchLocation(normalizeTaskInfo(row, { settings })).state.xSynthSearchIntent).not.toBe(location.state.xSynthSearchIntent);
   expect(() => buildTaskSearchLocation(row)).toThrow(/参数/);
   expect(() => buildTaskSearchLocation({ ...row, settings: {} })).toThrow(
     /参数/,

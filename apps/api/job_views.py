@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 
 from fastapi import HTTPException
 
@@ -44,6 +45,37 @@ def job_response(job: dict) -> dict:
         "origin": summary.get("origin", "x_synth"),
         "stored_route_count": summary.get("stored_route_count", 0),
     }
+
+
+SEARCH_INPUT_FIELDS = frozenset({
+    "smiles", "description", "backend", "search_policy_version", "strategies",
+    "expansion_time", "max_paths", "min_routes", "max_routes", "repair_attempts", "public",
+})
+SEARCH_TUNING_FIELDS = frozenset({
+    "max_depth", "max_branching", "template_count", "cumulative_probability", "minimum_plausibility",
+})
+
+
+def original_search_settings(job: dict) -> dict:
+    # Export stored scientific inputs only, not provider configuration or diagnostics.
+    request = job["request"]
+
+    def scalar(value):
+        return value is None or isinstance(value, (str, int, float, bool))
+
+    settings = {
+        key: deepcopy(value) for key, value in request.items()
+        if key in SEARCH_INPUT_FIELDS and (
+            scalar(value) or key == "strategies" and isinstance(value, list)
+            and all(isinstance(item, str) for item in value)
+        )
+    }
+    if isinstance(request.get("tuning"), dict):
+        settings["tuning"] = {
+            key: value for key, value in request["tuning"].items()
+            if key in SEARCH_TUNING_FIELDS and scalar(value)
+        }
+    return settings
 
 
 def result_record(job: dict) -> dict:

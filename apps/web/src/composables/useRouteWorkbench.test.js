@@ -21,9 +21,9 @@ jest.mock("@/common/one-step", () => ({ expandMolecule: jest.fn() }));
 jest.mock("@/store/workspace", () => ({ useWorkspaceStore: jest.fn() }));
 globalThis.structuredClone = (value) => deserialize(serialize(value));
 const wrappers = [];
-function setup(query = {}) {
-  setActivePinia(createPinia());
-  const route = reactive({ query });
+function setup(query = {}, pinia = createPinia()) {
+  setActivePinia(pinia);
+  const route = reactive({ path: "/", query });
   const router = { push: jest.fn(), replace: jest.fn() };
   useRoute.mockReturnValue(route);
   useRouter.mockReturnValue(router);
@@ -43,9 +43,10 @@ function setup(query = {}) {
     clear: jest.fn().mockResolvedValue(undefined),
   };
   wrappers.push(wrapper);
-  return { ...state, route, router, wrapper };
+  return { ...state, route, router, wrapper, pinia };
 }
 beforeEach(() => {
+  window.history.replaceState({}, "");
   jest.clearAllMocks();
   API.post.mockReset();
   expandMolecule.mockReset();
@@ -160,6 +161,44 @@ test("mode-only switches preserve current edits rather than reseeding the replay
   await nextTick();
   expect(state.draft.settings.minutes).toBe(7);
   expect(expandMolecule).not.toHaveBeenCalled();
+});
+
+test.each([{}, seed()])("returning to the same input context retains the entire session draft", query => {
+  const first = setup(query);
+  first.draft.smiles = "CCN"; first.draft.name = "Unsubmitted name / %";
+  first.draft.settings.minutes = 7.5; first.draft.settings.maxRoutes = 7;
+  first.draft.settings.tuning.max_depth = 14;
+  const expected = { ...first.draft.settings, strategies: [...first.draft.settings.strategies], tuning: { ...first.draft.settings.tuning } };
+  first.wrapper.unmount();
+  const returned = setup(query, first.pinia);
+  expect(returned.draft.smiles).toBe("CCN"); expect(returned.draft.name).toBe("Unsubmitted name / %");
+  expect(returned.draft.settings).toEqual(expected);
+  expect(API.post).not.toHaveBeenCalled(); expect(expandMolecule).not.toHaveBeenCalled();
+});
+
+test("returning with a genuinely new seed replaces only through the validated seed transaction", () => {
+  const first = setup(seed()); first.draft.settings.minutes = 7.5;
+  first.wrapper.unmount();
+  const returned = setup({ smiles: "CCN", task_name: "New target" }, first.pinia);
+  expect(returned.draft.smiles).toBe("CCN"); expect(returned.draft.name).toBe("New target");
+  expect(returned.draft.settings).toEqual(defaultSearchSettings());
+});
+
+test("an outgoing composer cannot consume another page's query as a fresh input context", async () => {
+  const first = setup(seed()); first.draft.settings.minutes = 7.5; first.draft.settings.maxRoutes = 7;
+  first.route.path = "/results"; first.route.query = { status: "completed" }; await nextTick();
+  expect(first.draft.settings.minutes).toBe(7.5); expect(first.draft.settings.maxRoutes).toBe(7);
+  first.wrapper.unmount();
+  const returned = setup(seed(), first.pinia); expect(returned.draft.settings.minutes).toBe(7.5);
+});
+
+test("an explicit new rerun intent replaces the seed, while Back to the same intent retains edits", () => {
+  window.history.replaceState({ xSynthSearchIntent: "first" }, "");
+  const first = setup(seed()); first.draft.settings.minutes = 7.5; first.wrapper.unmount();
+  const same = setup(seed(), first.pinia); expect(same.draft.settings.minutes).toBe(7.5); same.wrapper.unmount();
+  window.history.replaceState({ xSynthSearchIntent: "second" }, "");
+  const next = setup(seed(), first.pinia); expect(next.draft.settings.minutes).toBe(settings.expansion_time / 60);
+  expect(API.post).not.toHaveBeenCalled();
 });
 test("a new URL seed invalidates pending structure reads without submitting the old task", async () => {
   const state = setup(seed());

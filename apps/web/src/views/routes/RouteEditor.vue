@@ -186,11 +186,12 @@
       :disabled="loading || saving || importing"
       @add="insertManualReaction"
     />
-    <v-dialog v-model="moleculeDialog" max-width="560"
+    <v-dialog v-model="moleculeDialogModel" :persistent="moleculeDraftPending" :aria-labelledby="moleculeTitleId" max-width="560"
       ><v-card
-        ><v-card-title>{{ $tr('添加中间体或原料') }}</v-card-title
+        ><v-card-title :id="moleculeTitleId" tag="h2">{{ $tr('添加中间体或原料') }}</v-card-title
         ><v-card-text>
           <StructureInput
+            v-if="moleculeDialog"
             ref="moleculeStructure"
             v-model="moleculeSmiles"
             label="中间体或原料结构"
@@ -200,7 +201,7 @@
             {{ $tr(error) }}
           </div> </v-card-text
         ><v-card-actions
-          ><v-spacer /><v-btn variant="text" @click="moleculeDialog = false"
+          ><v-spacer /><v-btn variant="text" :disabled="moleculeDraftPending" @click="closeMoleculeDialog"
             >{{ $tr('取消') }}</v-btn
           ><v-btn
             color="primary"
@@ -217,7 +218,7 @@
   </section>
 </template>
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, useId, watch } from "vue";
 import {
   onBeforeRouteLeave,
   onBeforeRouteUpdate,
@@ -260,6 +261,7 @@ const route = useRoute(),
   router = useRouter();
 const newStructure = ref(null),
   moleculeStructure = ref(null);
+const moleculeTitleId = useId();
 const workspace = useWorkspaceStore(),
   expandDialog = ref(false);
 const {
@@ -329,15 +331,26 @@ const stepError = computed(() => stepProjection.value.error);
 const DOCUMENT_REVISION_CONFLICT = "文档已被其他页面修改，请重新载入或另存副本。";
 const revisionConflict = computed(() => !!document.value && error.value === DOCUMENT_REVISION_CONFLICT);
 let expansionContext = null;
+const moleculeDraft = computed(() => moleculeDialog.value && Boolean(
+  moleculeSmiles.value.trim() || moleculeStructure.value?.hasUnconfirmedDraft,
+));
+const moleculeDraftPending = computed(() => !!(moleculeStructure.value?.hasUnconfirmedDraft
+  && moleculeStructure.value?.pending));
+const moleculeDialogModel = computed({
+  get: () => moleculeDialog.value,
+  set: open => { if (!open) closeMoleculeDialog(); },
+});
 const hasUnsavedChanges = computed(
   () =>
     dirty.value ||
     draftGuard.dirty.value ||
     applying.value ||
+    moleculeDraft.value ||
     (!document.value &&
       !loading.value &&
       Boolean(
         newSmiles.value.trim() ||
+        newStructure.value?.hasUnconfirmedDraft ||
         (newTitle.value.trim() && newTitle.value !== initialDraftTitle.value),
       )),
 );
@@ -349,14 +362,23 @@ const documentNavigation = createDocumentNavigation({
       title: title.value,
       graph: cleanGraph(graph.value),
       inspectorDraftRevision: draftGuard.revision.value,
+      molecule: moleculeDialog.value ? {
+        smiles: moleculeSmiles.value,
+        unconfirmed: !!moleculeStructure.value?.hasUnconfirmedDraft,
+        revision: moleculeStructure.value?.draftRevision ?? 0,
+      } : null,
       form: document.value
         ? null
-        : { title: newTitle.value, smiles: newSmiles.value },
+        : {
+            title: newTitle.value, smiles: newSmiles.value,
+            unconfirmed: !!newStructure.value?.hasUnconfirmedDraft,
+            revision: newStructure.value?.draftRevision ?? 0,
+          },
     }),
   confirm: (message) => window.confirm(message),
 });
 const persistenceLabel = computed(() =>
-  draftGuard.dirty.value && !dirty.value && !saving.value && !importing.value
+  (draftGuard.dirty.value || moleculeDraft.value) && !dirty.value && !saving.value && !importing.value
     ? "未应用修改" : documentPersistenceLabel(document.value, {
     dirty: hasUnsavedChanges.value,
     saving: saving.value,
@@ -504,8 +526,14 @@ async function reloadConflict() {
   if (!window.confirm(uiText("重新载入文档？当前未保存及未应用修改将丢失。"))) return;
   await reload();
 }
+function closeMoleculeDialog() {
+  if (!moleculeDialog.value) return;
+  if (moleculeDraftPending.value) return;
+  if (moleculeDraft.value && !window.confirm(uiText("存在未应用的结构或反应修改，仍要放弃？"))) return;
+  moleculeDialog.value = false;
+}
 async function insertMolecule() {
-  if (moleculeStructure.value?.pending) return;
+  if (!moleculeDialog.value || moleculeStructure.value?.pending) return;
   if (await addMolecule(moleculeSmiles.value)) {
     moleculeDialog.value = false;
     moleculeSmiles.value = "";
