@@ -39,6 +39,7 @@
       />
       <div class="workspace-main" :inert="mobileOpen ? true : undefined">
         <div v-if="!online" class="workspace-connection-message" role="status"> {{ $tr('网络已断开') }} </div>
+        <WorkspaceNavigationNotice />
         <WorkspaceUpdateNotice />
         <WorkspaceSectionNav />
         <main id="workspace-content" class="workspace-page" tabindex="-1">
@@ -62,6 +63,7 @@ import Sidebar from "./Sidebar.vue";
 import AppBar from "./AppBar.vue";
 import WorkspaceSectionNav from "@/components/workspace/WorkspaceSectionNav.vue";
 import WorkspaceUpdateNotice from "@/components/workspace/WorkspaceUpdateNotice.vue";
+import WorkspaceNavigationNotice from "@/components/workspace/WorkspaceNavigationNotice.vue";
 import { useWorkspaceStore } from "@/store/workspace";
 const workspace = useWorkspaceStore();
 const online = useOnline();

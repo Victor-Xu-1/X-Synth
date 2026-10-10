@@ -547,6 +547,8 @@ describe("reference records", () => {
       [
         "/api/v1/structure/reaction-export",
         { reactants: ["CCO"], products: ["CC=O"], agents: [] },
+        false,
+        { signal: expect.any(AbortSignal), timeoutMs: 15000 },
       ],
     ]);
     expect(downloadChemicalFile).toHaveBeenCalledWith(

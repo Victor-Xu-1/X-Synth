@@ -7,6 +7,7 @@ import { referenceReactionDrawing } from "@/common/reaction-references";
 import { deferred, uiStubs } from "@/views/workspace/reaction-canvas.test-support";
 import { referenceDialogStub } from "./reference-dialog.test-support";
 import ReferenceResults from "./ReferenceResults.vue";
+import ReferenceRecordActions from "./ReferenceRecordActions.vue";
 import { initializeLocale, setLocale } from "@/i18n";
 import { randomUUID } from "node:crypto";
 Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID, configurable: true });
@@ -95,6 +96,194 @@ beforeEach(() => {
   });
 });
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
+
+function isolatedRecords() {
+  const records = [clone(deposited), clone(deposited)];
+  records[1].id += "-second";
+  records[1].provenance.record_id = records[1].id;
+  records[1].agents.reverse();
+  return records;
+}
+const recordBody = (record) => ({
+  reactants: record.reactants, products: record.products, agents: record.agents,
+});
+
+test("unsupported operation kinds preserve record feedback without allocating an operation", async () => {
+  const wrapper = setup(packet(isolatedRecords()));
+  const row = wrapper.get('[data-cy="reference-row"]');
+  await row.get('[data-cy="reference-copy"]').trigger("click");
+  await flushPromises();
+  const notice = row.get('[role="status"]').text();
+  const controls = row.getComponent(ReferenceRecordActions);
+  controls.vm.$emit("operate", controls.props("record"), "unknown");
+  await flushPromises();
+  expect(API.post).not.toHaveBeenCalled();
+  expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1);
+  expect(row.get('[role="status"]').text()).toBe(notice);
+  expect(row.find('[role="alert"]').exists()).toBe(false);
+  expect(row.get('[data-cy="reference-export"]').element.disabled).toBe(false);
+});
+
+test.each(["export", "copy"])("an active %s lease blocks only its own record and rejects duplicate commands", async (kind) => {
+  const records = isolatedRecords(), wrapper = setup(packet(records)), held = deferred();
+  API.post.mockReturnValue(held.promise);
+  navigator.clipboard.writeText.mockReturnValue(held.promise);
+  const [first, second] = wrapper.findAll('[data-cy="reference-row"]');
+  await first.get(`[data-cy="reference-${kind}"]`).trigger("click");
+  for (const action of ["copy", "export", "load-reaction"]) {
+    expect(first.get(`[data-cy="reference-${action}"]`).element.disabled).toBe(true);
+    expect(second.get(`[data-cy="reference-${action}"]`).element.disabled).toBe(false);
+  }
+  const controls = first.getComponent(ReferenceRecordActions);
+  controls.vm.$emit("operate", controls.props("record"), "copy");
+  controls.vm.$emit("operate", controls.props("record"), "export");
+  controls.vm.$emit("load-reaction", controls.props("record"));
+  await flushPromises();
+  expect(API.post).toHaveBeenCalledTimes(kind === "export" ? 1 : 0);
+  expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(kind === "copy" ? 1 : 0);
+  expect(wrapper.emitted("load-reaction")).toBeUndefined();
+  held.resolve({ format: "rxn", content: "isolated export response" });
+  await flushPromises();
+});
+
+test("record B can copy and load every original role during record A export without retiring A", async () => {
+  const records = isolatedRecords(), response = packet(records), before = JSON.stringify(response);
+  const wrapper = setup(response), held = deferred();
+  API.post.mockReturnValueOnce(held.promise);
+  const [first, second] = wrapper.findAll('[data-cy="reference-row"]');
+  await first.get('[data-cy="reference-export"]').trigger("click");
+  await second.get('[data-cy="reference-copy"]').trigger("click");
+  await flushPromises();
+  expect(navigator.clipboard.writeText).toHaveBeenCalledWith(records[1].reaction_smiles);
+  expect(second.get('[role="status"]').text()).toBe("已复制原始反应 SMILES。");
+  await second.get('[data-cy="reference-load-reaction"]').trigger("click");
+  expect(wrapper.emitted("load-reaction")).toEqual([[recordBody(records[1])]]);
+  const output = { format: "rxn", content: "isolated record-A export" };
+  held.resolve(output);
+  await flushPromises();
+  expect(downloadChemicalFile).toHaveBeenCalledWith(output, "reference-reaction");
+  expect(first.get('[role="status"]').text()).toBe("RXN 已生成。");
+  expect(second.get('[role="status"]').text()).toBe("已复制原始反应 SMILES。");
+  expect(JSON.stringify(response)).toBe(before);
+});
+
+test.each(["first", "second"])("concurrent exports keep independent leases and feedback when %s completes first", async (order) => {
+  const records = isolatedRecords(), wrapper = setup(packet(records));
+  const exports = [deferred(), deferred()];
+  API.post.mockReturnValueOnce(exports[0].promise).mockReturnValueOnce(exports[1].promise);
+  const rows = wrapper.findAll('[data-cy="reference-row"]');
+  await rows[0].get('[data-cy="reference-export"]').trigger("click");
+  await rows[1].get('[data-cy="reference-export"]').trigger("click");
+  expect(API.post).toHaveBeenCalledTimes(2);
+  const options = API.post.mock.calls.map((call) => call[3]);
+  options.forEach((value) => expect(value).toEqual({ signal: expect.any(AbortSignal), timeoutMs: 15000 }));
+  expect(options[0].signal).not.toBe(options[1].signal);
+  records.forEach((record, index) => expect(API.post.mock.calls[index].slice(0, 3)).toEqual([
+    "/api/v1/structure/reaction-export", recordBody(record), false,
+  ]));
+  const completed = order === "first" ? 0 : 1, waiting = 1 - completed;
+  exports[completed].resolve({ format: "rxn", content: `isolated export ${completed}` });
+  await flushPromises();
+  expect(rows[completed].get('[data-cy="reference-export"]').element.disabled).toBe(false);
+  expect(rows[completed].get('[role="status"]').text()).toBe("RXN 已生成。");
+  expect(rows[waiting].get('[data-cy="reference-export"]').element.disabled).toBe(true);
+  expect(rows[waiting].find('[role="status"]').exists()).toBe(false);
+  expect(options[waiting].signal.aborted).toBe(false);
+  exports[waiting].reject(new Error("isolated other-record failure"));
+  await flushPromises();
+  expect(rows[waiting].get('[role="alert"]').text()).toBe("记录操作失败，请重试。");
+  expect(rows[completed].find('[role="alert"]').exists()).toBe(false);
+  await openDetail(wrapper, waiting);
+  expect(wrapper.get('[data-cy="reference-record-detail"] [role="alert"]').text()).toBe("记录操作失败，请重试。");
+  await wrapper.get('[data-cy="reference-detail-close"]').trigger("click");
+  await openDetail(wrapper, completed);
+  expect(wrapper.get('[data-cy="reference-record-detail"] [role="status"]').text()).toBe("RXN 已生成。");
+  expect(wrapper.get('[data-cy="reference-record-detail"]').find('[role="alert"]').exists()).toBe(false);
+});
+
+test.each(["response", "actualInput", "pending", "blocked", "error", "unmount"])(
+  "%s invalidation aborts every active export read and retires late downloads and feedback", async (field) => {
+    const records = isolatedRecords(), wrapper = setup(packet(records)), reads = [deferred(), deferred()];
+    API.post.mockReturnValueOnce(reads[0].promise).mockReturnValueOnce(reads[1].promise);
+    const rows = wrapper.findAll('[data-cy="reference-row"]');
+    await rows[0].get('[data-cy="reference-export"]').trigger("click");
+    await rows[1].get('[data-cy="reference-export"]').trigger("click");
+    expect(API.post).toHaveBeenCalledTimes(2);
+    const signals = API.post.mock.calls.map((call) => call[3]?.signal);
+    signals.forEach((signal) => expect(signal).toBeInstanceOf(AbortSignal));
+    const aborted = signals.map(() => jest.fn());
+    signals.forEach((signal, index) => signal.addEventListener("abort", aborted[index], { once: true }));
+    if (field === "unmount") wrapper.unmount();
+    else await wrapper.setProps({ [field]: {
+      response: packet([]), actualInput: { product: "CCO", reactants: [] },
+      pending: true, blocked: true, error: "来源不可用",
+    }[field] });
+    signals.forEach((signal, index) => {
+      expect(signal.aborted).toBe(true);
+      expect(aborted[index]).toHaveBeenCalledTimes(1);
+    });
+    if (field !== "unmount") await wrapper.setProps({
+      response: packet(records), actualInput: packet(records).requested, pending: false, blocked: false, error: "",
+    });
+    reads[0].resolve({ format: "rxn", content: "retired source response" });
+    reads[1].reject(new Error("retired source failure"));
+    await flushPromises();
+    expect(downloadChemicalFile).not.toHaveBeenCalled();
+    if (field !== "unmount") {
+      expect(wrapper.find('[data-cy="reference-row"] [role="status"]').exists()).toBe(false);
+      expect(wrapper.find('[data-cy="reference-row"] [role="alert"]').exists()).toBe(false);
+    }
+  },
+);
+
+test("retired export and clipboard completions cannot overwrite replacement leases for the same record", async () => {
+  const records = isolatedRecords(), wrapper = setup(packet(records)), oldExport = deferred(), oldCopy = deferred();
+  API.post.mockReturnValueOnce(oldExport.promise);
+  navigator.clipboard.writeText.mockReturnValueOnce(oldCopy.promise);
+  let rows = wrapper.findAll('[data-cy="reference-row"]');
+  await rows[0].get('[data-cy="reference-export"]').trigger("click");
+  await rows[1].get('[data-cy="reference-copy"]').trigger("click");
+  expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1);
+  await wrapper.setProps({ blocked: true });
+  await wrapper.setProps({ blocked: false });
+  const replacement = [deferred(), deferred()];
+  API.post.mockReturnValueOnce(replacement[0].promise).mockReturnValueOnce(replacement[1].promise);
+  rows = wrapper.findAll('[data-cy="reference-row"]');
+  await rows[0].get('[data-cy="reference-export"]').trigger("click");
+  await rows[1].get('[data-cy="reference-export"]').trigger("click");
+  oldExport.resolve({ format: "rxn", content: "retired same-record export" });
+  oldCopy.resolve();
+  await flushPromises();
+  expect(downloadChemicalFile).not.toHaveBeenCalled();
+  rows.forEach((row) => {
+    expect(row.get('[data-cy="reference-export"]').element.disabled).toBe(true);
+    expect(row.find('[role="status"]').exists()).toBe(false);
+  });
+  replacement.forEach((read, index) => read.resolve({ format: "rxn", content: `replacement ${index}` }));
+  await flushPromises();
+  expect(downloadChemicalFile).toHaveBeenCalledTimes(2);
+});
+
+test("a current bounded export failure remains owned, releases only its lease and permits retry", async () => {
+  const records = isolatedRecords(), wrapper = setup(packet(records)), waiting = deferred();
+  API.post.mockRejectedValueOnce(new DOMException("isolated export deadline", "TimeoutError"))
+    .mockReturnValueOnce(waiting.promise);
+  const rows = wrapper.findAll('[data-cy="reference-row"]');
+  await rows[0].get('[data-cy="reference-export"]').trigger("click");
+  await rows[1].get('[data-cy="reference-export"]').trigger("click");
+  await flushPromises();
+  expect(API.post.mock.calls[0][3]).toEqual({ signal: expect.any(AbortSignal), timeoutMs: 15000 });
+  expect(rows[0].get('[role="alert"]').text()).toBe("记录操作失败，请重试。");
+  expect(rows[1].get('[data-cy="reference-export"]').element.disabled).toBe(true);
+  API.post.mockResolvedValueOnce({ format: "rxn", content: "retry response" });
+  await rows[0].get('[data-cy="reference-export"]').trigger("click");
+  await flushPromises();
+  expect(rows[0].find('[role="alert"]').exists()).toBe(false);
+  expect(rows[0].get('[role="status"]').text()).toBe("RXN 已生成。");
+  expect(rows[1].get('[data-cy="reference-export"]').element.disabled).toBe(true);
+  waiting.resolve({ format: "rxn", content: "other response" });
+  await flushPromises();
+});
 
 test("English pending and record controls switch without replacing the selected record, raw experiment or focus origin", async () => {
   initializeLocale(null);
@@ -268,7 +457,9 @@ test("reuse and RXN export forward all verified compounds unchanged, never the f
   API.post.mockResolvedValue({ format: "rxn", content: "full-rxn" });
   await wrapper.get('[data-cy="reference-export"]').trigger("click");
   await flushPromises();
-  expect(API.post).toHaveBeenCalledWith("/api/v1/structure/reaction-export", body);
+  expect(API.post).toHaveBeenCalledWith("/api/v1/structure/reaction-export", body, false, {
+    signal: expect.any(AbortSignal), timeoutMs: 15000,
+  });
   expect(downloadChemicalFile).toHaveBeenCalledWith({ format: "rxn", content: "full-rxn" }, "reference-reaction");
   await wrapper.get('[data-cy="reference-copy"]').trigger("click");
   await flushPromises();
