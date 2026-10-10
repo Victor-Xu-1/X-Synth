@@ -84,6 +84,7 @@ function deferred() {
 }
 const wrappers = [];
 const stubs = {
+  VDefaultsProvider: { template: "<slot />" },
   VDialog: referenceDialogStub,
   VBtn: {
     props: ["disabled", "loading", "type"],

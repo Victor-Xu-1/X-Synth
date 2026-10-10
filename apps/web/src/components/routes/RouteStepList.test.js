@@ -25,6 +25,7 @@ const candidate = {
 const graph = topologyFromCandidate(candidate);
 function setup(props = {}) {
   const wrapper = mount(RouteStepList, { props: { candidate, graph, ...props }, global: { stubs: {
+    VDefaultsProvider: { template: "<slot />" },
     VBtn: { props: ["disabled"], template: '<button :disabled="disabled" />' },
     VTooltip: { template: '<div><slot name="activator" :props="{}" /></div>' },
     VLazy: { template: '<div><slot /></div>' },

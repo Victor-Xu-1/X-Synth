@@ -13,7 +13,7 @@ const Draft = defineComponent({ setup() {
   onUnmounted(() => unmounts++);
   return () => h("div", [h("input", { type: "file" }), h("input", { type: "radio", checked: true }), h("iframe", { title: "editor lifetime fixture" })]);
 } });
-async function setup(state = reactive({ active: true, open: true }), attrs = {}, scoped = true) {
+async function setup(state = reactive({ active: true, open: true }), attrs = {}, scoped = true, content = () => h(Draft)) {
   const host = document.createElement("div");
   document.body.appendChild(host);
   hosts.push(host);
@@ -22,10 +22,10 @@ async function setup(state = reactive({ active: true, open: true }), attrs = {},
     const dialog = () => h(WorkbenchDialog,
       { modelValue: state.open, transition: { css: false }, scrim: false, maxWidth: 720, "aria-label": "chemical picker", ...attrs,
         "onUpdate:modelValue": (value) => { updates(value); state.open = value; }, onAfterLeave: left, onAfterEnter: entered },
-      { default: () => h(Draft) });
+      { default: content });
     return () => scoped ? h(WorkbenchScope, { active: state.active }, { default: dialog }) : dialog();
   } }), { attachTo: host, global: { stubs: { transition: false },
-    plugins: [createVuetify({ components: { VDialog: components.VDialog }, theme: false })] } });
+    plugins: [createVuetify({ components: { VDialog: components.VDialog, VDefaultsProvider: components.VDefaultsProvider }, theme: false })] } });
   wrappers.push(wrapper);
   await flushPromises();
   return { wrapper, state, updates, left, entered };
@@ -49,6 +49,8 @@ test("suspension changes only public presentation state, retaining file/radio/if
   state.active = false;
   await flushPromises();
   expect(overlay.props("modelValue")).toBe(false);
+  expect(wrapper.get('[role="dialog"]').attributes('aria-hidden')).toBe('true');
+  expect(wrapper.get('[role="dialog"]').attributes('inert')).toBeDefined();
   expect(state.open).toBe(true);
   expect(nodes.every((node) => node.isConnected)).toBe(true);
   expect(wrapper.findAll("input, iframe").map((node) => node.element)).toEqual(nodes);
@@ -60,6 +62,7 @@ test("suspension changes only public presentation state, retaining file/radio/if
   state.active = true;
   await flushPromises();
   expect(overlay.props("modelValue")).toBe(true);
+  expect(wrapper.get('[role="dialog"]').attributes('aria-hidden')).toBeUndefined();
   expect(wrapper.findAll("input, iframe").map((node) => node.element)).toEqual(nodes);
   expect(mounts).toBe(1);
   expect(unmounts).toBe(0);
@@ -161,6 +164,30 @@ test("a scoped dialog forces gate-local attachment even when a consumer requeste
   const { wrapper } = await setup(undefined, { attach: "body" });
   expect(wrapper.getComponent(components.VDialog).props("attach")).toBe(true);
   expect(wrapper.get("iframe").element.isConnected).toBe(true);
+});
+
+test("a nested selector uses its registered dialog owner and releases presentation on suspension", async () => {
+  const { wrapper, state } = await setup(undefined, {}, true, () => h(components.VSelect, {
+    label: "Selected product", items: ["CC=O", "C"], modelValue: "CC=O", menu: true, transition: false,
+  }));
+  const select = wrapper.getComponent(components.VSelect);
+  const input = select.get('input[role="combobox"]').element;
+  const owner = wrapper.getComponent(components.VDialog).vm.contentEl;
+  expect(owner.matches('.v-overlay__content')).toBe(true);
+  const overlay = select.getComponent(components.VMenu).getComponent(components.VOverlay);
+  expect(overlay.props("attach") === owner).toBe(true);
+  expect(owner.querySelector('.v-overlay-container [role="listbox"]')).not.toBeNull();
+  expect(document.body.querySelector(':scope > .v-overlay-container [role="listbox"]')).toBeNull();
+  state.active = false;
+  await flushPromises();
+  expect(overlay.props("modelValue")).toBe(false);
+  expect(select.props("modelValue")).toBe("CC=O");
+  expect(input.isConnected).toBe(true);
+  expect(state.open).toBe(true);
+  state.active = true;
+  await flushPromises();
+  expect(wrapper.getComponent(components.VSelect).get('input[role="combobox"]').element).toBe(input);
+  expect(overlay.props("attach") === owner).toBe(true);
 });
 
 test("a delayed suspend after-leave stays suppressed after rapid resume", async () => {

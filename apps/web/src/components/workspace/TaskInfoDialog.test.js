@@ -9,6 +9,7 @@ const button = {
   template: '<button :disabled="disabled || loading"><slot /></button>',
 };
 const stubs = {
+  VDefaultsProvider: { template: "<slot />" },
   VBtn: button,
   VProgressLinear: true,
   VTooltip: { template: '<div><slot name="activator" :props="{}" /></div>' },

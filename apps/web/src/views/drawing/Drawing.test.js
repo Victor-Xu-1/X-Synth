@@ -56,10 +56,10 @@ beforeEach(() => { mockAllowed.value = true; mockWorkspace.loading = false; mock
   mockClearDrawing.mockReset().mockResolvedValue(undefined);
   API.toErrorObject.mockReturnValue({ string_error: "read error" }); crypto.randomUUID = jest.fn(() => "drawing-instance"); });
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; });
-function setup() { wrapper = mount(Drawing, { global: { stubs } }); }
+async function setup() { wrapper = mount(Drawing, { global: { stubs } });  await nextTick(); }
 
 test("English-default drawing copy preserves the mounted editor and pending file state when returning to Chinese", async () => {
-  setup(); const editorUid = wrapper.getComponent(editor).vm.$.uid, pickerUid = wrapper.getComponent(picker).vm.$.uid;
+  await setup(); const editorUid = wrapper.getComponent(editor).vm.$.uid, pickerUid = wrapper.getComponent(picker).vm.$.uid;
   await wrapper.get('[aria-label="Test-only retained drawing state"]').setValue("[13CH3][C@H]([NH3+])CO.[Cl-]");
   setLocale(DEFAULT_LOCALE, { persist: false }); await nextTick();
   expect(wrapper.text()).toContain("Structure drawing"); expect(wrapper.text()).toContain("Canonicalize");
@@ -71,7 +71,7 @@ test("English-default drawing copy preserves the mounted editor and pending file
 });
 
 test("drawing status and read failure translate at display time without changing the applied chemical identity", async () => {
-  setup();
+  await setup();
   const smiles = "[13CH3][C@H]([NH3+])CO.[Cl-]";
   wrapper.getComponent(editor).vm.$emit("commit", smiles); await nextTick();
   setLocale(DEFAULT_LOCALE, { persist: false }); await nextTick();
@@ -86,7 +86,7 @@ test("drawing status and read failure translate at display time without changing
 });
 
 test("a recoverable gateway outage keeps the same pending file and drawing children behind the shared gate", async () => {
-  setup();
+  await setup();
   const oldPicker = wrapper.getComponent(picker).vm.$.uid, oldEditor = wrapper.getComponent(editor).vm.$.uid;
   await wrapper.get('[aria-label="Test-only retained file choice"]').setValue("chosen_full_salt");
   await wrapper.get('[aria-label="Test-only retained drawing state"]').setValue("unconfirmed_chiral_drawing");
@@ -100,7 +100,7 @@ test("a recoverable gateway outage keeps the same pending file and drawing child
 });
 
 test("unrelated background loading preserves the initialized drawing and never adds a competing status pane", async () => {
-  setup(); const oldEditor = wrapper.getComponent(editor).vm.$.uid;
+  await setup(); const oldEditor = wrapper.getComponent(editor).vm.$.uid;
   mockWorkspace.loading = true; await nextTick();
   expect(wrapper.getComponent(editor).vm.$.uid).toBe(oldEditor);
   expect(wrapper.get(".drawing-layout").isVisible()).toBe(true);
@@ -108,7 +108,7 @@ test("unrelated background loading preserves the initialized drawing and never a
 });
 
 test("an unconfirmed file record cannot apply or standardize the older displayed structure", async () => {
-  setup(); await wrapper.get('[aria-label="Test-only file confirmation pending"]').setValue(true);
+  await setup(); await wrapper.get('[aria-label="Test-only file confirmation pending"]').setValue(true);
   await wrapper.get('[data-cy="draw-apply-btn"]').trigger("click");
   await wrapper.get('[data-cy="draw-canonicalize-btn"]').trigger("click");
   expect(mockReadDrawing).not.toHaveBeenCalled(); expect(API.post).not.toHaveBeenCalled();
@@ -122,7 +122,7 @@ function failedEditor() {
 }
 
 test("an ordinary import failure allows text correction but still blocks unconfirmed reads and execution", async () => {
-  setup(); failedEditor(); await nextTick();
+  await setup(); failedEditor(); await nextTick();
   expect(wrapper.get('[data-cy="draw-enter-smiles"]').element.disabled).toBe(false);
   expect(wrapper.get('[aria-label="清空画板"]').element.disabled).toBe(false);
   expect(wrapper.get('[data-cy="draw-apply-btn"]').element.disabled).toBe(true);
@@ -136,7 +136,7 @@ test("an ordinary import failure allows text correction but still blocks unconfi
 });
 
 test("clear recovers an ordinary failed import through the owned native writer, not a text fallback", async () => {
-  setup(); seedAppliedStructure(); failedEditor(); await nextTick();
+  await setup(); seedAppliedStructure(); failedEditor(); await nextTick();
   await wrapper.vm.$.setupState.clearEditor(); await flushPromises();
   expect(mockClearDrawing).toHaveBeenCalledTimes(1);
   expect(wrapper.get('[data-cy="draw-enter-smiles"]').element.value).toBe("");
@@ -147,7 +147,7 @@ test("clear recovers an ordinary failed import through the owned native writer, 
 });
 
 test("an unconfirmed file selection blocks correction and clear even when the editor also has an error", async () => {
-  setup(); failedEditor();
+  await setup(); failedEditor();
   await wrapper.get('[aria-label="Test-only file confirmation pending"]').setValue(true);
   expect(wrapper.get('[data-cy="draw-enter-smiles"]').element.disabled).toBe(true);
   expect(wrapper.get('[aria-label="清空画板"]').element.disabled).toBe(true);
@@ -159,7 +159,7 @@ test.each([
   { ready: true, busy: true, error: "Structure import failed" },
   { ready: false, busy: false, error: "" },
 ])("unsafe editor state %p keeps text, clear and execution blocked", async state => {
-  setup(); const exposed = failedEditor();
+  await setup(); const exposed = failedEditor();
   Object.entries(state).forEach(([key, value]) => { exposed[key].value = value; });
   await nextTick();
   expect(wrapper.get('[data-cy="draw-enter-smiles"]').element.disabled).toBe(true);
@@ -173,7 +173,7 @@ test.each([
 });
 
 test("an interrupted editor permits correcting reload text but cannot clear or read its quarantined canvas", async () => {
-  setup(); const exposed = failedEditor(); exposed.ready.value = false; await nextTick();
+  await setup(); const exposed = failedEditor(); exposed.ready.value = false; await nextTick();
   expect(wrapper.get('[data-cy="draw-enter-smiles"]').element.disabled).toBe(false);
   expect(wrapper.get('[aria-label="清空画板"]').element.disabled).toBe(true);
   await wrapper.vm.$.setupState.clearEditor();
@@ -198,7 +198,7 @@ test("standardization reads the live canvas and publishes only after a confirmed
   mockReadDrawing.mockResolvedValueOnce(source).mockResolvedValueOnce(normalized);
   API.post.mockResolvedValue({ smiles: normalized });
   mockWriteDrawing.mockReturnValue(writing.promise);
-  setup();
+  await setup();
   await nextTick();
   await wrapper.get('[data-cy="draw-canonicalize-btn"]').trigger("click");
   await flushPromises();
@@ -228,7 +228,7 @@ function seedAppliedStructure() {
 test("a fresh nonempty canvas can be standardized while the raw text is empty", async () => {
   mockReadDrawing.mockResolvedValue("CCN");
   API.post.mockResolvedValue({ smiles: "CCN" });
-  setup();
+  await setup();
   wrapper.getComponent(editor).vm.$emit("update:smiles", "");
   await nextTick();
   expect(wrapper.get('[data-cy="draw-canonicalize-btn"]').element.disabled).toBe(false);
@@ -239,7 +239,7 @@ test("a fresh nonempty canvas can be standardized while the raw text is empty", 
 
 test.each([null, undefined, "", " \n", 7])("an invalid canvas snapshot %p never falls back to text", async snapshot => {
   mockReadDrawing.mockResolvedValue(snapshot);
-  setup(); seedAppliedStructure();
+  await setup(); seedAppliedStructure();
   await standardize();
   expect(API.post).not.toHaveBeenCalled();
   expect(mockWriteDrawing).not.toHaveBeenCalled();
@@ -250,7 +250,7 @@ test.each([null, undefined, "", " \n", 7])("an invalid canvas snapshot %p never 
 
 test("a rejected canvas read preserves the last applied structure and prevents the request", async () => {
   mockReadDrawing.mockRejectedValue(new Error("native read failed"));
-  setup(); seedAppliedStructure();
+  await setup(); seedAppliedStructure();
   await standardize();
   expect(API.post).not.toHaveBeenCalled();
   expect(mockWriteDrawing).not.toHaveBeenCalled();
@@ -261,7 +261,7 @@ test("a rejected canvas read preserves the last applied structure and prevents t
 test.each([{}, { smiles: "" }, { smiles: " " }, { smiles: 7 }])(
   "an invalid normalized response %p is not imported or claimed as applied", async response => {
     API.post.mockResolvedValue(response);
-    setup(); seedAppliedStructure();
+    await setup(); seedAppliedStructure();
     await standardize();
     expect(mockWriteDrawing).not.toHaveBeenCalled();
     expect(wrapper.get('[role="alert"]').text()).toBe("read error");
@@ -272,7 +272,7 @@ test.each([{}, { smiles: "" }, { smiles: " " }, { smiles: 7 }])(
 
 test.each([false, undefined])("an unconfirmed native write %p cannot publish normalized success", async applied => {
   mockWriteDrawing.mockResolvedValue(applied);
-  setup(); seedAppliedStructure();
+  await setup(); seedAppliedStructure();
   await standardize();
   expect(mockReadDrawing).toHaveBeenCalledTimes(1);
   expect(wrapper.get('[role="alert"]').text()).toBe("read error");
@@ -283,7 +283,7 @@ test.each([false, undefined])("an unconfirmed native write %p cannot publish nor
 test("a failed native write retains the source snapshot and the prior applied preview", async () => {
   mockReadDrawing.mockResolvedValue("CCN");
   mockWriteDrawing.mockRejectedValue(new Error("native import failed"));
-  setup(); seedAppliedStructure();
+  await setup(); seedAppliedStructure();
   await standardize();
   expect(mockReadDrawing).toHaveBeenCalledTimes(1);
   expect(wrapper.get('[data-cy="draw-enter-smiles"]').element.value).toBe("CCN");
@@ -293,7 +293,7 @@ test("a failed native write retains the source snapshot and the prior applied pr
 
 test("a failed readback does not mark a completed write as an applied normalized structure", async () => {
   mockReadDrawing.mockResolvedValueOnce("CCN").mockResolvedValueOnce(null);
-  setup(); seedAppliedStructure();
+  await setup(); seedAppliedStructure();
   await standardize();
   expect(mockWriteDrawing).toHaveBeenCalledTimes(1);
   expect(mockReadDrawing).toHaveBeenCalledTimes(2);
@@ -305,7 +305,7 @@ test("a failed readback does not mark a completed write as an applied normalized
 test("a request failure retains the live snapshot without rewriting the canvas", async () => {
   mockReadDrawing.mockResolvedValue("CCN");
   API.post.mockRejectedValue(new Error("canonicalize unavailable"));
-  setup(); seedAppliedStructure();
+  await setup(); seedAppliedStructure();
   await standardize();
   expect(mockWriteDrawing).not.toHaveBeenCalled();
   expect(wrapper.get('[data-cy="draw-enter-smiles"]').element.value).toBe("CCN");
@@ -314,7 +314,7 @@ test("a request failure retains the live snapshot without rewriting the canvas",
 });
 
 test("pending native input blocks both the control and its handler", async () => {
-  setup();
+  await setup();
   wrapper.getComponent(editor).vm.$.exposed.pending.value = true;
   await nextTick();
   expect(wrapper.get('[data-cy="draw-canonicalize-btn"]').element.disabled).toBe(true);
@@ -326,7 +326,7 @@ test("pending native input blocks both the control and its handler", async () =>
 test("repeated clicks cannot start a competing normalization while the write is pending", async () => {
   const writing = deferred();
   mockWriteDrawing.mockReturnValue(writing.promise);
-  setup();
+  await setup();
   await standardize();
   expect(wrapper.get('[data-cy="draw-canonicalize-btn"]').element.disabled).toBe(true);
   await wrapper.vm.$.setupState.canonicalize();
@@ -339,7 +339,7 @@ test("repeated clicks cannot start a competing normalization while the write is 
 test("a response for a superseded snapshot cannot write over a newer field", async () => {
   const response = deferred();
   API.post.mockReturnValue(response.promise);
-  setup(); seedAppliedStructure();
+  await setup(); seedAppliedStructure();
   await standardize();
   wrapper.getComponent(editor).vm.$emit("update:smiles", "CCN");
   await nextTick();
@@ -353,7 +353,7 @@ test("a response for a superseded snapshot cannot write over a newer field", asy
 test("leaving while the live read is pending prevents any subsequent request or write", async () => {
   const reading = deferred();
   mockReadDrawing.mockReturnValue(reading.promise);
-  setup();
+  await setup();
   await standardize();
   wrapper.unmount(); wrapper = undefined;
   reading.resolve("CCN"); await flushPromises();
@@ -364,7 +364,7 @@ test("leaving while the live read is pending prevents any subsequent request or 
 test("leaving cancels the bounded request and ignores its late result", async () => {
   const response = deferred();
   API.post.mockReturnValue(response.promise);
-  setup();
+  await setup();
   await standardize();
   const options = API.post.mock.calls[0][3];
   expect(options.timeoutMs).toBe(15000);
@@ -378,7 +378,7 @@ test("leaving cancels the bounded request and ignores its late result", async ()
 test("lost drawing authority retires a request even if the workbench recovers before its response", async () => {
   const response = deferred();
   API.post.mockReturnValue(response.promise);
-  setup(); seedAppliedStructure();
+  await setup(); seedAppliedStructure();
   await standardize();
   const options = API.post.mock.calls[0][3];
   mockAllowed.value = false; await nextTick();
@@ -393,7 +393,7 @@ test("lost drawing authority retires a request even if the workbench recovers be
 test("a write retired by newer input cannot read back or claim the old normalized result", async () => {
   const writing = deferred();
   mockWriteDrawing.mockReturnValue(writing.promise);
-  setup(); seedAppliedStructure();
+  await setup(); seedAppliedStructure();
   await standardize();
   wrapper.getComponent(editor).vm.$emit("update:smiles", "CCN");
   await nextTick();
@@ -408,7 +408,7 @@ test("a write retired by newer input cannot read back or claim the old normalize
 test("a write that settles after disposal cannot read back or publish normalized success", async () => {
   const writing = deferred();
   mockWriteDrawing.mockReturnValue(writing.promise);
-  setup(); seedAppliedStructure();
+  await setup(); seedAppliedStructure();
   await standardize();
   const state = wrapper.vm.$.setupState;
   wrapper.unmount(); wrapper = undefined;

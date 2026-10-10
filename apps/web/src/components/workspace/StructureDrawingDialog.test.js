@@ -9,12 +9,16 @@ import StructureDrawingDialog from "./StructureDrawingDialog.vue";
 import WorkbenchDialog from "./WorkbenchDialog.vue";
 import { provideWorkbenchActivity } from "./workbench-activity";
 
+global.CSS = { supports: () => false };
+const { createVuetify, components } = require("vuetify/dist/vuetify.js");
+
 jest.mock("@vueuse/core", () => ({ useResizeObserver: jest.fn() }));
 jest.mock("@/components/SmilesImage.vue", () => ({
   name: "SmilesImage", props: ["smiles", "inputType", "width", "height", "showErrorImage", "eager"],
   emits: ["load"], template: '<div><img :alt="smiles" /></div>',
 }));
 const stubs = {
+  VDefaultsProvider: { template: '<slot />' },
   VDialog: { props: ["modelValue"], template: '<div v-if="modelValue" role="dialog"><slot /></div>' },
   VTooltip: { template: '<span><slot name="activator" :props="{}" /></span>' },
   VBtn: { props: ["disabled"], template: '<button :disabled="disabled"><slot /></button>' },
@@ -45,6 +49,11 @@ async function close(wrapper) {
   return dialog;
 }
 beforeEach(() => { jest.clearAllMocks(); });
+beforeAll(() => {
+  window.matchMedia = jest.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  global.visualViewport = undefined;
+});
 afterEach(() => { wrappers.splice(0).forEach(wrapper => wrapper.unmount()); jest.restoreAllMocks(); });
 
 test("one read-only renderer preserves exact reaction input and bounded zoom/fit", async () => {
@@ -113,7 +122,11 @@ test("workbench suspension blocks stale focus and new opening without losing the
   const active = ref(true);
   const parent = mount({ components: { StructureDrawingDialog }, setup() { provideWorkbenchActivity(active); },
     template: '<StructureDrawingDialog smiles="CCO"><template #activator="{ showPreview }"><button class="open-drawing" @click="showPreview" /></template></StructureDrawingDialog>',
-  }, { attachTo: document.body, global: { stubs } });
+  }, { attachTo: document.body, global: {
+    stubs: { ...stubs, VDialog: false, VDefaultsProvider: false, transition: false },
+    plugins: [createVuetify({ components: { VDialog: components.VDialog, VDefaultsProvider: components.VDefaultsProvider },
+      defaults: { VDialog: { transition: false } }, theme: false })],
+  } });
   wrappers.push(parent);
   const origin = parent.get(".open-drawing").element;
   origin.focus(); origin.click(); await flushPromises();
@@ -121,10 +134,14 @@ test("workbench suspension blocks stale focus and new opening without losing the
   await parent.get('[aria-label="放大结构"]').trigger("click");
   expect(parent.get("output").text()).toBe("125%");
   active.value = false; await flushPromises();
-  expect(parent.find('[role="dialog"]').exists()).toBe(false);
+  expect(parent.get('[role="dialog"]').attributes('aria-hidden')).toBe('true');
+  expect(parent.get('[role="dialog"]').attributes('inert')).toBeDefined();
+  expect(parent.get('.structure-viewer').isVisible()).toBe(false);
   origin.click(); await flushPromises();
-  expect(parent.find('[role="dialog"]').exists()).toBe(false);
+  expect(parent.get('.structure-viewer').isVisible()).toBe(false);
   active.value = true; await flushPromises();
+  expect(parent.get('[role="dialog"]').attributes('aria-hidden')).toBeUndefined();
+  expect(parent.get('[role="dialog"]').attributes('inert')).toBeUndefined();
   expect(parent.get("output").text()).toBe("125%");
   const dialog = parent.getComponent(WorkbenchDialog);
   parent.get('[aria-label="关闭结构预览"]').element.click(); await flushPromises();

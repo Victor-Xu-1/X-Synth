@@ -278,7 +278,11 @@ CHEMICAL_FILE_TESTS = {
     "tests/unit/test_reaction_input.py",
     "tests/unit/test_reaction_compounds.py",
 }
-WEB_BUILD_FILES = {WEB + name for name in ("index.html", "vite.config.js")}
+WEB_BUILD_FILES = {WEB + name for name in (
+    "index.html", "vite.config.js", "tooling/vuetify-control-semantics.js",
+    "tooling/vuetify-control-plugin.js",
+)}
+WEB_BUILD_DEPENDENCIES = {"magic-string"}
 WEB_TEST_TOOLING = {WEB + "jest.config.js"}
 FRONTEND_API_TESTS = {
     SOURCE + "composables/useTemplateSearch.test.js",
@@ -634,11 +638,15 @@ def npm_dependency_changes(before, after, paths: set[str]) -> set[str]:
     direct = analysis.differing(
         old.get("dependencies", {}), new.get("dependencies", {})
     )
+    dev_changes = analysis.differing(old.get("devDependencies", {}), new.get("devDependencies", {}))
+    if dev_changes - WEB_BUILD_DEPENDENCIES:
+        raise analysis.ScopeError("Unmapped npm dev dependency changes; extend the scope mapping.")
+    direct.update(dev_changes)
     metadata = [
         {
             key: value
             for key, value in package.items()
-            if key not in {"dependencies", "version"}
+            if key not in {"dependencies", "devDependencies", "version"}
         }
         for package in (old, new)
     ]
@@ -669,7 +677,7 @@ def npm_dependency_changes(before, after, paths: set[str]) -> set[str]:
         {
             key: value
             for key, value in lock["packages"][""].items()
-            if key not in {"dependencies", "version"}
+            if key not in {"dependencies", "devDependencies", "version"}
         }
         for lock in locks
     ]
@@ -695,6 +703,11 @@ def npm_dependency_changes(before, after, paths: set[str]) -> set[str]:
         if reachable & changed:
             direct.add(name)
             covered.update(reachable & changed)
+    for name in WEB_BUILD_DEPENDENCIES & (old.get("devDependencies", {}).keys() | new.get("devDependencies", {}).keys()):
+        reachable = analysis.lock_closure(entries[0], name) | analysis.lock_closure(entries[1], name)
+        if reachable & changed:
+            direct.add(name)
+            covered.update(reachable & changed)
     if changed - covered:
         raise analysis.ScopeError(
             "Unmapped dev-only npm lock entries; add a focused tooling scope: "
@@ -705,7 +718,7 @@ def npm_dependency_changes(before, after, paths: set[str]) -> set[str]:
 
 def frontend_tests(before, after, paths: set[str]) -> tuple[list[str], dict]:
     dependencies = npm_dependency_changes(before, after, paths)
-    roots = {path for path in paths if path.startswith(SOURCE)}
+    roots = {path for path in paths if path.startswith(SOURCE) or path in WEB_BUILD_FILES}
     if not roots and not dependencies:
         return [], {}
     graph = defaultdict(set)

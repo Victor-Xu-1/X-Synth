@@ -5,7 +5,7 @@
       <div v-if="initialized" :key="scope" ref="actions" v-show="available" class="page-actions"
         :hidden="!available" :inert="!available || undefined" :aria-hidden="!available || undefined">
         <WorkbenchScope :active="available">
-          <v-defaults-provider :defaults="overlayDefaults"><slot name="actions" /></v-defaults-provider>
+          <v-defaults-provider :defaults="defaultsFor(available, actions)"><slot v-if="actions" name="actions" /></v-defaults-provider>
         </WorkbenchScope>
       </div>
     </header>
@@ -33,19 +33,20 @@
             <v-defaults-provider :defaults="overlayDefaults">
             <template v-if="$slots.module">
               <section v-for="module in modules" :id="panelId(module.value)" :key="module.value"
+                :ref="element => setModuleSurface(module.value, element)"
                 v-show="module.value === activeModule && !module.disabled" role="tabpanel"
                 :aria-labelledby="tabId(module.value)" tabindex="0"
                 :hidden="module.value !== activeModule || module.disabled"
                 :inert="module.value !== activeModule || module.disabled || undefined"
                 :aria-hidden="module.value !== activeModule || module.disabled || undefined">
                 <WorkbenchScope :active="module.value === activeModule && !module.disabled">
-                  <v-defaults-provider :defaults="defaultsFor(available && module.value === activeModule && !module.disabled)">
-                    <slot v-if="initialized && visited.includes(module.value)" name="module" :value="module.value" />
+                  <v-defaults-provider :defaults="defaultsFor(available && module.value === activeModule && !module.disabled, moduleSurfaces.get(module.value))">
+                    <slot v-if="initialized && visited.includes(module.value) && moduleSurfaces.get(module.value)" name="module" :value="module.value" />
                   </v-defaults-provider>
                 </WorkbenchScope>
               </section>
             </template>
-            <slot v-else-if="initialized" />
+            <slot v-else-if="initialized && content" />
             </v-defaults-provider>
           </WorkbenchScope>
         </div>
@@ -61,6 +62,7 @@ import { useWorkspaceStore } from "@/store/workspace";
 import { pageFeature } from "@/common/workspace-navigation";
 import WorkbenchTabs from "./WorkbenchTabs.vue";
 import WorkbenchScope from "./workspace/WorkbenchScope.vue";
+import { workbenchOverlayDefaults as defaultsFor } from "./workspace/workbench-overlays";
 
 const props = defineProps({
   title: { type: String, required: true },
@@ -74,6 +76,7 @@ const scope = computed(() => JSON.stringify([route.path, feature.value]));
 const available = computed(() => !feature.value || workspace.can(feature.value));
 const checking = computed(() => !!feature.value && !workspace.error && workspace.checking(feature.value));
 const initialized = ref(false), visited = ref([]), content = ref(null), actions = ref(null), status = ref(null);
+const moduleSurfaces = ref(new Map());
 const contentId = `workbench-${crypto.randomUUID()}-panel`;
 let previousScope, focusGeneration = 0, disposed = false, blockedFocus = null;
 
@@ -90,13 +93,11 @@ watch([scope, available, () => props.activeModule, () => props.modules], ([curre
       !visited.value.includes(props.activeModule)) visited.value.push(props.activeModule);
 }, { immediate: true, flush: "sync", deep: true });
 
-function defaultsFor(enabled) {
-  return {
-    VMenu: { attach: true, disabled: !enabled },
-    VTooltip: { attach: true, disabled: !enabled },
-  };
+function setModuleSurface(value, element) {
+  if (element) moduleSurfaces.value.set(value, element);
+  else moduleSurfaces.value.delete(value);
 }
-const overlayDefaults = computed(() => defaultsFor(available.value));
+const overlayDefaults = computed(() => defaultsFor(available.value, content.value));
 watch(available, async (enabled) => {
   const current = ++focusGeneration, originScope = scope.value, focused = document.activeElement;
   if (enabled) {
@@ -118,3 +119,10 @@ watch(available, async (enabled) => {
 });
 onBeforeUnmount(() => { disposed = true; blockedFocus = null; focusGeneration++; });
 </script>
+<style scoped>
+.workbench-content,
+.page-actions,
+.workbench-content > section {
+  position: relative;
+}
+</style>

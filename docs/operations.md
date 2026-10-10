@@ -195,6 +195,12 @@ python -m scripts.operations.serve_platform \
 启动前选空闲端口。监督器只管理自己创建的进程，故障服务最多重启三次，不使用全局
 pkill。每模型一个 worker、统一 CPU 线程预算。WSL 长任务应留在持久终端或管理服务中。
 
+选择框语义适配由 `apps/web/tooling/vuetify-control-plugin.js` 注册，
+`vuetify-control-semantics.js` 保存已审查的版本和原始源码校验值。升级 Vuetify 时必须先
+检查其原生输入、标签、错误反馈和菜单行为，再更新对应回归；不得只改校验值让构建通过。
+上游完整修复后应删除对应适配与不再需要的构建依赖，保留真实组件和浏览器回归。
+开发服务和缓存重建同样应用该检查，不使用安装后补丁或运行时 DOM 修改。
+
 升级涉及前端依赖时，先按已核验提交的 `apps/web/package-lock.json` 在独立 Node 环境
 执行 `npm ci` 并构建，不在正式服务或其他任务共用的 `node_modules` 上直接安装。
 核对新环境的锁文件与目标提交一致后，等待任务队列空闲、备份私有库，保留旧依赖目录

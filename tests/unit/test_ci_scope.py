@@ -55,6 +55,8 @@ def npm_snapshot(tmp_path, package, entries=None):
                 **entries,
             },
         }
+        if "devDependencies" in package:
+            lock["packages"][""]["devDependencies"] = package["devDependencies"]
         content[profile.WEB + "package-lock.json"] = json.dumps(lock)
     return snapshot(tmp_path, content)
 
@@ -719,6 +721,65 @@ def test_npm_test_tooling_requires_explicit_scope(tmp_path, extra):
             npm_snapshot(tmp_path, manifest(**extra)),
             {profile.WEB + "package.json"},
         )
+
+
+def test_reviewed_build_dependency_selects_its_actual_tooling_and_consumer_test(
+    tmp_path, monkeypatch
+):
+    tool = profile.WEB + "tooling/vuetify-control-semantics.js"
+    test = profile.SOURCE + "plugins/control-semantics.test.js"
+    before = npm_snapshot(tmp_path, manifest())
+    after = npm_snapshot(tmp_path, manifest(devDependencies={"magic-string": "0.30.21"}))
+    before.files.update({tool, test})
+    after.files.update({tool, test})
+    records = {tool: record(["magic-string"]), test: record(["../../tooling/vuetify-control-semantics.js"])}
+    monkeypatch.setattr(dependencies, "parse_frontend", lambda item: records)
+    selected, imports = profile.frontend_tests(before, after, {profile.WEB + "package.json"})
+    assert selected == [test]
+    assert imports == {"magic-string": [tool]}
+
+
+@pytest.mark.parametrize("name", ["vuetify-control-semantics", "vuetify-control-plugin"])
+def test_changed_build_source_reaches_the_shared_runtime_regression(tmp_path, monkeypatch, name):
+    tool = profile.WEB + f"tooling/{name}.js"
+    test = profile.SOURCE + "plugins/control-semantics.test.js"
+    files = {tool: "tool", test: "test"}
+    before, after = snapshot(tmp_path, files), snapshot(tmp_path, files)
+    records = {tool: record(), test: record([f"../../tooling/{name}.js"])}
+    monkeypatch.setattr(dependencies, "parse_frontend", lambda item: records)
+    assert profile.frontend_tests(before, after, {tool})[0] == [test]
+
+
+def test_reviewed_dev_dependency_still_requires_a_real_importer(tmp_path, monkeypatch):
+    before = npm_snapshot(tmp_path, manifest())
+    after = npm_snapshot(tmp_path, manifest(devDependencies={"magic-string": "0.30.21"}))
+    monkeypatch.setattr(dependencies, "parse_frontend", lambda item: {})
+    with pytest.raises(dependencies.ScopeError, match="No production imports"):
+        profile.frontend_tests(before, after, {profile.WEB + "package.json"})
+
+
+def test_reviewed_build_lock_transitives_retain_their_exact_consumer_scope(tmp_path):
+    package = manifest(devDependencies={"magic-string": "0.30.21"})
+    entries = {"node_modules/magic-string": {"version": "0.30.21", "dev": True,
+        "dependencies": {"@jridgewell/sourcemap-codec": "1"}},
+        "node_modules/@jridgewell/sourcemap-codec": {"version": "1", "dev": True}}
+    before = npm_snapshot(tmp_path, package, entries)
+    after = npm_snapshot(tmp_path, package, {**entries,
+        "node_modules/@jridgewell/sourcemap-codec": {"version": "2", "dev": True}})
+    assert profile.npm_dependency_changes(before, after, {profile.WEB + "package-lock.json"}) == {"magic-string"}
+
+
+def test_real_frontend_parser_includes_reviewed_tooling_and_config(tmp_path, monkeypatch):
+    paths = {profile.WEB + "tooling/vuetify-control-semantics.js": 'import x from "magic-string"',
+        profile.WEB + "vite.config.js": 'import { plugin } from "./tooling/vuetify-control-plugin.js"'}
+    item = snapshot(tmp_path, paths)
+    calls = []
+    def run(args, **kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(stdout=json.dumps({path: record() for path in paths}))
+    monkeypatch.setattr(scope.subprocess, "run", run)
+    dependencies.parse_frontend(item)
+    assert json.loads(calls[0]["input"]) == paths
 
 
 @pytest.mark.parametrize("dynamic", [False, True])

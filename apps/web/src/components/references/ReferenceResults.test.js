@@ -74,6 +74,7 @@ function setup(response = packet(), extra = {}) {
     props: { response, actualInput: response?.requested || null, searched: true, allowCanvasReuse: true, ...extra },
     attachTo: document.body,
     global: { stubs: {
+      VDefaultsProvider: { template: "<slot />" },
       ...uiStubs,
       VLazy: { template: "<div><slot /></div>" },
       VDialog: referenceDialogStub,

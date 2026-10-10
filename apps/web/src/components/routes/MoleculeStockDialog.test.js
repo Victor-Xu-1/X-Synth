@@ -6,6 +6,7 @@ import MoleculeStockDialog from "./MoleculeStockDialog.vue";
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 jest.mock("@/components/SmilesImage.vue", () => ({ template: "<span />" }));
 const stubs = {
+  VDefaultsProvider: { template: "<slot />" },
   VDialog: { props: ["modelValue"], template: '<div v-if="modelValue"><slot /></div>' },
   VCard: { template: "<div><slot /></div>" },
   VBtn: { template: "<button><slot /></button>" }, VIcon: true,

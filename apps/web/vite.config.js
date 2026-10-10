@@ -3,6 +3,7 @@ import { fileURLToPath, URL } from "node:url";
 import { readFileSync } from "node:fs";
 import vue from "@vitejs/plugin-vue";
 import vuetify, { transformAssetUrls } from "vite-plugin-vuetify";
+import { vuetifyControlSemantics } from "./tooling/vuetify-control-plugin.js";
 
 // Utilities
 import { defineConfig } from "vite";
@@ -23,6 +24,7 @@ export default defineConfig({
     __X_SYNTH_VERSION__: JSON.stringify(readFileSync(new URL("../../VERSION", import.meta.url), "utf8").trim()),
   },
   plugins: [
+    vuetifyControlSemantics(import.meta.url),
     vue({
       template: { transformAssetUrls },
     }),

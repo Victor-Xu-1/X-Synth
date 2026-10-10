@@ -23,6 +23,7 @@ export const structureStub = defineComponent({
   template: `<textarea :value="modelValue" :disabled="disabled" :aria-label="label" @input="$emit('update:modelValue', $event.target.value)" />`,
 });
 export const calculationStubs = {
+  VDefaultsProvider: { template: "<slot />" },
   ModuleWorkbench: { template: "<section><slot /></section>" }, StructureInput: structureStub,
   SmilesImage: { props: ["smiles"], template: '<span class="structure-identity">{{ smiles }}</span>' },
   VBtn: { props: ["disabled"], template: '<button :disabled="disabled"><slot /></button>' },

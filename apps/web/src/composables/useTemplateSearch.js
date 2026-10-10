@@ -37,7 +37,10 @@ export function useTemplateSearch({ route = useRoute(), router = useRouter(), ap
   };
   const directionItems = computed(() => [
     { title: "逆合成", value: "retro" }, { title: "正向", value: "forward" },
-  ].map((item) => ({ ...item, props: { disabled: directionCount(item.value) === 0 } })));
+  ].map((item) => {
+    const disabled = directionCount(item.value) === 0;
+    return { ...item, props: { disabled, "aria-disabled": disabled || undefined } };
+  }));
   const coverageReason = computed(() => directionCount(filters.direction) === 0
     ? `当前索引未包含${filters.direction === "forward" ? "正向" : "逆合成"}模板。` : "");
   const canSearch = computed(() => !isDetail.value && !busy.value && !healthLoading.value

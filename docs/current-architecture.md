@@ -86,6 +86,24 @@ governance. See [version operations](operations.md#版本管理).
   MDI path catalog. Static and dynamic source choices are covered by AST and real
   component-render checks. Framework aliases retain the official SVG set; native
   Ketcher assets remain independent. There is no font or unknown-glyph fallback.
+- Native selection-field semantics have one build-time authority under
+  `apps/web/tooling`: the Vite pre-transform retains the input combobox and its
+  labels, removes the duplicate field-wrapper role, and exposes native validation
+  state without overriding explicit caller attributes. Development, fresh builds
+  and cached rebuilds use the same source-map-preserving adaptation. The installed
+  Vuetify version, exact resolved module and original SHA-256 must all match the
+  reviewed constants; drift or an unapplied production transform fails the build.
+  It does not modify installed dependencies or the live DOM. Real component SSR,
+  Rollup cache and browser interactions cover the adapter and its consumers.
+- Workbench menus and tooltips attach to their owned content, header-action or
+  named-subpanel surface, never a field's isolated layout box or an unowned body
+  portal. Hidden/inert gates therefore also contain their overlays. Availability
+  and active-panel state remain separate from mounted scientific drafts; recovery
+  and language changes do not remount or rewrite those drafts.
+  Children mount only after their owner surface is registered. One shared menu
+  policy suspends hidden selector presentation through native `menuProps`, releasing
+  global Escape/back ownership without clearing the selection; active widget-specific
+  disabled and empty states are never overridden by a default `disabled: false`.
 - Browser requests terminate at the product API, never a second direct gateway.
 - Reaction reference search, NN conditions and FF share one reaction canvas,
   one draft API and separate draft/file lifecycle controllers. Ketcher renders

@@ -57,6 +57,7 @@ function setup(props = {}) {
     },
     global: {
       stubs: {
+        VDefaultsProvider: { template: "<slot />" },
         VDialog: { props: ["modelValue"], template: '<div v-if="modelValue"><slot /></div>' },
         VTooltip: { template: '<span><slot name="activator" :props="{}" /></span>' },
         VBtn: {

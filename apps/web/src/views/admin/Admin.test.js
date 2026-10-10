@@ -29,6 +29,7 @@ const Dialog = defineComponent({
 const wrappers = [];
 async function setup({ realDialog = false, realTimeago = false } = {}) {
   const wrapper = mount(Admin, { global: { plugins: realTimeago ? [[TimeagoPlugin, { locale: zhCN }]] : [], stubs: {
+    VDefaultsProvider: { template: "<slot />" },
     ModuleWorkbench: { template: '<section><slot name="actions" /><slot /></section>' },
     AccountUserDialog: realDialog ? false : Dialog, RouterLink: true, VIcon: true, VProgressLinear: true,
     VBtn: { props: ["disabled", "loading"], template: '<button :disabled="disabled || loading"><slot /></button>' },

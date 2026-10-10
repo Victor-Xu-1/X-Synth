@@ -89,7 +89,7 @@
         v-if="parsed.products.length > 1"
         v-model="selected"
         :items="productOptions"
-        :menu-props="{ attach: inputRoot }"
+        :menu-props="productMenu"
         :label="$tr('选择产物')"
         density="compact"
         variant="outlined"
@@ -181,6 +181,8 @@ import { useReactionFiles } from "@/composables/useReactionFiles";
 import InlineKetcherEditor from "@/components/InlineKetcherEditor.vue";
 import ReactionRecordPreview from "./ReactionRecordPreview.vue";
 import { uiText } from "@/i18n";
+import { useWorkbenchActivity } from "./workbench-activity";
+import { workbenchMenuProps } from "./workbench-overlays";
 
 const text = defineModel({ type: String, default: "" });
 const props = defineProps({
@@ -194,6 +196,8 @@ const board = ref(null),
   fileInput = ref(null),
   rolesOpen = ref(false);
 const boardPending = computed(() => !board.value || board.value.pending);
+const workbenchActive = useWorkbenchActivity();
+const productMenu = computed(() => workbenchMenuProps(workbenchActive.value, inputRoot.value));
 const draft = useReactionDraft({
   text,
   boardPending,
