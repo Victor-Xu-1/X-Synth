@@ -6,7 +6,7 @@
         <h2 :id="titleId">{{ referenceRecordTitle(record) }}</h2>
         <span>{{ record.match_scope === 'reaction_identity' ? $tr('全反应一致') : $tr('仅产物一致') }}</span>
       </div>
-      <v-btn icon="mdi-close" variant="text" size="small" :aria-label="$tr('关闭参考记录详情')" data-cy="reference-detail-close" @click="$emit('close')" />
+      <v-btn class="reference-close-action" icon="mdi-close" variant="text" size="small" :aria-label="$tr('关闭参考记录详情')" data-cy="reference-detail-close" @click="$emit('close')" />
     </header>
     <WorkbenchTabs v-model="panel" :items="panels" label="参考反应结果" v-slot="{ tabId, panelId }">
     <div class="reference-detail-body">
@@ -92,6 +92,7 @@ watch(() => props.record.id, () => { panel.value = "reaction"; });
 .reference-detail-identity { min-width: 0; }
 .reference-detail-heading h2 { margin: 4px 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
 .reference-detail-heading p, .reference-detail-heading span { font-size: 12px; color: var(--ws-muted); margin: 0; }
+.reference-close-action { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
 .reference-detail-body { height: min(520px, calc(100dvh - 220px)); min-height: 0; overflow-y: auto; padding: 12px 20px; overscroll-behavior: contain; }
 .reference-record-detail > :deep(.workspace-tabs) { flex-shrink: 0; padding: 0 20px; border-bottom: 1px solid var(--ws-border); }
 .reference-detail-body > .reference-detail-section { border-top: 0; padding-top: 4px; }

@@ -52,7 +52,6 @@ h3 span,
   margin-bottom: 16px;
 }
 .reaction-compound :deep(.preview-heading) { font-size: 12px; }
-.reaction-compound :deep(.preview-heading .v-btn) { min-width: 44px; min-height: 44px; }
 @media (max-width: 600px) {
   .reaction-record-preview {
     grid-template-columns: minmax(0, 1fr);

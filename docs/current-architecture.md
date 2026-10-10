@@ -105,6 +105,15 @@ governance. See [version operations](operations.md#版本管理).
   global Escape/back ownership without clearing the selection; active widget-specific
   disabled and empty states are never overridden by a default `disabled: false`.
 - Browser requests terminate at the product API, never a second direct gateway.
+- Read-only structure inspection has one shared action and viewport owner. The
+  normal and compact previews retain the same chemical dimensions, zoom bounds,
+  keyed dialog and focus lifecycle; named inspection actions use stable 44px
+  hit areas. Reference-record details/close and template navigation apply the
+  same target dimensions locally without changing source values or query state.
+  Fixed application-owned optimization warnings use the shared language catalog;
+  unknown source text, immutable result JSON, measured factor names and numerical
+  values remain verbatim. Research-result toolbar actions keep the same stable
+  dimensions and spacing on narrow screens.
 - The saved-route library keeps one URL owner for its text filter and loaded-row
   sort. A pure projection validates consumed summary fields without rewriting
   titles or chemical identity; malformed pages remain explicit read failures.

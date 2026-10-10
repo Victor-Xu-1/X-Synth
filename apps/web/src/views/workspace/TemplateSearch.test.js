@@ -411,6 +411,15 @@ test("a detail-only layout removes the old fixed filter track at every viewport"
   expect(rule?.nodes.find((node) => node.prop === "grid-template-columns")?.value).toBe("minmax(0, 1fr)");
 });
 
+test("template search, paging, detail navigation and retry controls have stable touch dimensions", () => {
+  const { descriptor } = parse(readFileSync(resolve(__dirname, "TemplateSearch.vue"), "utf8"));
+  const css = postcss.parse(descriptor.styles[0].content);
+  const values = selector => Object.fromEntries((css.nodes.find(rule => rule.selector === selector)?.nodes || [])
+    .filter(node => node.type === "decl").map(node => [node.prop, node.value]));
+  expect(values(".tool-layout :deep(.v-btn)")).toMatchObject({ "min-height": "44px", height: "44px" });
+  expect(values(".tool-layout :deep(.v-btn--icon)")).toMatchObject({ width: "44px", "min-width": "44px" });
+});
+
 test("a direct detail error still hides disabled filters and retains the existing back/retry layer", async () => {
   API.get.mockImplementation(async (path) => path.endsWith("/health")
     ? { status: "ready", template_count: 252029, source_count: 1, sources: ["isolated"], directions: { retro: 252029 } }

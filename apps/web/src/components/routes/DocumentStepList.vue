@@ -52,7 +52,6 @@ defineEmits(["select", "locate"]);
 .document-step-note { margin-top: 12px; }
 .document-step-scheme { display: grid; grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr); align-items: center; gap: 14px; }
 .document-step-scheme > * { min-width: 0; }
-.document-step-scheme :deep(.preview-heading .v-btn) { width: 44px; height: 44px; min-width: 44px; }
 .document-step-inputs { display: grid; gap: 12px; }
 figure { margin: 0; min-width: 0; }
 figcaption { margin-top: 4px; font-size: 12px; color: var(--ws-muted); }

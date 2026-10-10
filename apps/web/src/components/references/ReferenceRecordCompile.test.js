@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { compileScript, compileStyle, compileTemplate, parse } from "@vue/compiler-sfc";
+import postcss from "postcss";
 
 test.each([
   "ReferenceResults.vue",
@@ -38,4 +39,16 @@ test("reference detail body can shrink while header and actions remain reachable
   expect(body).toMatch(/overflow-y:\s*auto\s*;/);
   expect(heading).toMatch(/flex-shrink:\s*0\s*;/);
   expect(footer).toMatch(/flex-shrink:\s*0\s*;/);
+});
+
+test.each([
+  ["ReferenceRecordSummary.vue", ".reference-details-action", { "min-height": "44px", height: "44px" }],
+  ["ReferenceRecordDetail.vue", ".reference-close-action", { "min-width": "44px", width: "44px", "min-height": "44px", height: "44px" }],
+])("%s retains one explicitly sized record action", (file, selector, expected) => {
+  const { descriptor } = parse(readFileSync(resolve(__dirname, file), "utf8"));
+  const css = postcss.parse(descriptor.styles[0].content);
+  const values = Object.fromEntries((css.nodes.find(rule => rule.selector === selector)?.nodes || [])
+    .filter(node => node.type === "decl").map(node => [node.prop, node.value]));
+  expect(values).toMatchObject(expected);
+  expect(descriptor.template.content).toContain(`class="${selector.slice(1)}"`);
 });

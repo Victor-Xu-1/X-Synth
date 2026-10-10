@@ -149,9 +149,9 @@ onBeforeUnmount(() => {
 });
 </script>
 <style scoped>
-.analysis-navigation { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: -8px 0 18px; }
+.analysis-navigation { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin: -8px 0 18px; }
 .analysis-record-actions { display: flex; align-items: center; flex-shrink: 0; gap: 4px; }
-.analysis-record-actions :deep(.v-btn) { width: 40px; height: 40px; }
+.analysis-record-actions :deep(.v-btn) { width: 44px; height: 44px; min-width: 44px; flex-shrink: 0; }
 .analysis-navigation > :deep(.v-btn) { margin-left: -12px; }
 .analysis-heading { align-items: flex-start; margin-bottom: 20px; }
 .analysis-title { min-width: 0; }
@@ -185,7 +185,6 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 16px; padding:
 }
 @media (max-width: 600px) {
   .analysis-navigation { gap: 4px; margin-bottom: 16px; }
-  .analysis-record-actions { gap: 0; }
   .analysis-heading { gap: 16px; }
   .analysis-heading .page-actions { width: 100%; gap: 4px; }
   .analysis-record-meta { gap: 14px 20px; }

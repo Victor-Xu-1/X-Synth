@@ -38,3 +38,10 @@ test("application-owned document conflicts and unapplied edits use complete bili
   expect(uiText("未应用修改")).toBe("未应用修改");
   expect(uiText("TEST ONLY 原文标签")).toBe("TEST ONLY 原文标签");
 });
+
+test("reference record counts retain source identity without singular/plural grammar drift", () => {
+  initializeLocale(null);
+  for (const count of [0, 1, 2]) expect(uiText("{name} · {count} 条", { name: "ORD", count })).toBe(`ORD · Records: ${count}`);
+  setLocale("zh-CN", { persist: false });
+  expect(uiText("{name} · {count} 条", { name: "ORD", count: 1 })).toBe("ORD · 1 条");
+});

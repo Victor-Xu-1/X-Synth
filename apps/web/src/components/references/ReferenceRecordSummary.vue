@@ -50,6 +50,7 @@
     <footer class="reference-row-actions">
       <slot name="actions" />
       <v-btn
+        class="reference-details-action"
         variant="text"
         size="small"
         prepend-icon="mdi-text-box-search-outline"
@@ -97,6 +98,7 @@ h4, dt { font-size: 11px; font-weight: 400; color: var(--ws-muted); }
 dd { display: flex; flex-wrap: wrap; gap: 3px 10px; margin: 3px 0 0; font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 dd small { font-size: 11px; color: var(--ws-muted); }
 .reference-row-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.reference-details-action { min-height: 44px; height: 44px; }
 @media (max-width: 850px) {
   .reference-record-layout { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .reference-record-facts { border-left: 0; padding-left: 0; }

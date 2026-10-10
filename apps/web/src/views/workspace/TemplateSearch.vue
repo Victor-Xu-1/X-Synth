@@ -318,6 +318,8 @@ const sources = computed(() => [
 ]);
 </script>
 <style scoped>
+.tool-layout :deep(.v-btn) { min-height: 44px; height: 44px; }
+.tool-layout :deep(.v-btn--icon) { width: 44px; min-width: 44px; }
 .tool-layout.template-detail-layout {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -326,7 +328,6 @@ const sources = computed(() => [
   position: static;
 }
 .template-index-state, .template-index-error { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
-.template-index-state :deep(.v-btn) { width: 44px; height: 44px; min-width: 44px; }
 @media (min-width: 1200px) and (min-height: 800px) {
   .template-controls {
     position: sticky;

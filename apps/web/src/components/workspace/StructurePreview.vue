@@ -6,7 +6,7 @@
         <template #activator="{ showPreview }">
           <v-tooltip :text="$tr('放大{label}', { label: $tr(label) })">
             <template #activator="{ props }">
-              <v-btn v-bind="props" icon="mdi-magnify-plus-outline" size="x-small" variant="text"
+              <v-btn v-bind="props" class="preview-expand" icon="mdi-magnify-plus-outline" variant="text"
                 :aria-label="$tr('放大{label}', { label: $tr(label) })" :disabled="!smiles.trim()" @click="showPreview" />
             </template>
           </v-tooltip>
@@ -30,10 +30,10 @@ defineProps({
 </script>
 <style scoped>
 .structure-preview { min-width: 0; }
-.preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; margin-bottom: 6px; font-size: 14px; font-weight: 500; }
+.preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; margin-bottom: 6px; font-size: 14px; font-weight: 500; }
+.preview-expand { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
 .compact-preview { display: flex; align-items: center; gap: 4px; }
 .compact-preview .preview-heading { order: 1; flex: none; margin: 0; }
 .compact-preview .preview-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.compact-preview .preview-heading :deep(.v-btn) { width: 44px; height: 44px; min-width: 44px; }
 .compact-preview :deep(.smiles-image-container) { min-width: 0; flex: 1; }
 </style>

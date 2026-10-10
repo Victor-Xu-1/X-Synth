@@ -1,4 +1,12 @@
+export const optimizationWarningMessages = [
+  ["建议条件尚未实验确认；后验标准差是模型对潜在响应的不确定性，不是实验误差或成功概率。", "Suggested conditions have not been experimentally confirmed. Posterior standard deviation describes model uncertainty about the latent response, not experimental error or a probability of success."],
+  ["分类因子使用独热编码；没有结构描述符、机理或文献约束。候选组合的安全性与可操作性需专业核验。", "Categorical factors use one-hot encoding; no molecular descriptors, mechanistic constraints or literature constraints are included. Candidate combinations require professional checks for safety and practical feasibility."],
+  ["当前实测记录少于 10 条，模型预测与不确定性可能不稳定。", "Fewer than 10 measured records are available; model predictions and uncertainty estimates may be unstable."],
+  ["部分后验均值超出收率物理范围；未裁剪预测，不能作为实验收率。", "Some posterior means fall outside the physical range of yield. Predictions have not been clipped and must not be treated as experimental yields."],
+];
+
 export default [
+  ...optimizationWarningMessages,
   ["反应优化", "Reaction optimization"], ["实测 CSV", "Measured CSV"], ["选择实测 CSV", "Select measured CSV"],
   ["已有计算输入", "Existing calculation inputs"], ["新建优化", "New optimization"],
   ["读取已保存输入并核验 CSV", "Reading saved inputs and verifying CSV"], ["尚无已选实验数据", "No experimental data selected"],

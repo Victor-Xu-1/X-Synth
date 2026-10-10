@@ -32,7 +32,7 @@
       </table>
     </div>
     <div class="opt-scientific-notes" role="note">
-      <p v-for="warning in result.warnings" :key="warning">{{ warning }}</p>
+      <p v-for="warning in result.warnings" :key="warning">{{ systemWarnings.has(warning) ? $tr(warning) : warning }}</p>
     </div>
     <details class="opt-provenance">
       <summary>{{ $tr('计算来源') }}</summary>
@@ -64,9 +64,11 @@
 </template>
 <script setup>
 import { computed } from "vue";
+import { optimizationWarningMessages } from "@/i18n/catalog-research-optimization";
 import { formatResponse } from "./model";
 import "./optimization.css";
 const props = defineProps({ result: { type: Object, required: true } });
+const systemWarnings = new Set(optimizationWarningMessages.map(([message]) => message));
 const names = computed(() =>
   Object.keys(props.result.recommendations[0].conditions),
 );
