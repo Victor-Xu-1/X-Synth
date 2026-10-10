@@ -48,6 +48,19 @@ test("inline and modal editors share one responsive compatibility adapter", () =
   document.querySelector("#x-synth-ketcher-responsive-style").remove();
 });
 
+test("narrow native toolbars remain reachable without scaling or suppressing their controls", () => {
+  prepareKetcherDocument(document);
+  const css = document.querySelector("#x-synth-ketcher-responsive-style").textContent;
+  expect(css).toContain("@media (max-width: 360px)");
+  expect(css).toContain('[class*="App-module_top"]');
+  expect(css).toContain('[class*="BottomToolbar-module_root"]');
+  expect(css).toContain("overflow-x: auto");
+  expect(css).toContain("overscroll-behavior-x: contain");
+  expect(css).not.toContain("transform: scale");
+  expect(css).not.toContain("display: none");
+  document.querySelector("#x-synth-ketcher-responsive-style").remove();
+});
+
 test("the complete visual box is fitted once without native double-shrinking", () => {
   const editor = camera();
   expect(fitKetcherCanvas(editor)).toBe(true);
