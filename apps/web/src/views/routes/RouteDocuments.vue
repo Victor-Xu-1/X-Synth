@@ -17,10 +17,15 @@
       </div>
     </header>
     <div v-if="rows.length" class="document-toolbar" role="search" :aria-label="$tr('筛选保存的路线')">
-      <v-text-field v-model="query" class="document-search" :label="$tr('搜索名称或结构')"
+      <v-text-field v-model="query" class="document-search" :label="$tr('搜索路线名称或 SMILES')"
         :aria-label="$tr('搜索保存的路线')" prepend-inner-icon="mdi-magnify" variant="outlined"
         density="compact" hide-details clearable />
-      <p role="status">{{ more ? $tr('已加载 {count} 条路线', { count: rows.length }) : $tr('共 {count} 条路线', { count: rows.length }) }}</p>
+      <label class="document-sort">{{ $tr('排序') }}
+        <select class="workspace-input" :value="sort" :aria-label="$tr('排序已加载的路线')" @change="changeSort">
+          <option v-for="option in documentSortOptions" :key="option.value" :value="option.value">{{ $tr(option.title) }}</option>
+        </select>
+      </label>
+      <p role="status">{{ query ? (more ? $tr('已加载 {total} 条，匹配 {visible} 条', { total: rows.length, visible: filtered.length }) : $tr('显示 {visible} / {total} 条路线', { total: rows.length, visible: filtered.length })) : more ? $tr('已加载 {count} 条路线', { count: rows.length }) : $tr('共 {count} 条路线', { count: rows.length }) }}</p>
     </div>
     <div v-if="error" class="tool-error document-error" role="alert">
       <span>{{ $tr(error) }}</span>
@@ -48,6 +53,7 @@
       <table class="data-table document-table">
         <thead>
           <tr>
+            <th scope="col">{{ $tr('目标化合物') }}</th>
             <th scope="col">{{ $tr('路线') }}</th>
             <th scope="col">{{ $tr('反应') }}</th>
             <th scope="col">{{ $tr('更新时间') }}</th>
@@ -56,21 +62,22 @@
         </thead>
         <tbody>
           <tr v-for="row in filtered" :key="row.id" :data-document-id="row.id">
-            <td class="document-identity-cell">
-              <div class="document-identity">
+            <td class="document-structure-cell">
                 <StructurePreview
                   class="document-thumbnail"
                   :smiles="row.target_smiles"
                   label="目标化合物"
                   :width="180"
                   :height="96"
+                  compact
                 />
+            </td>
+            <td class="document-identity-cell">
                 <router-link :to="`/editor/${row.id}`" class="document-title-cell"
                   :aria-label="$tr('打开编辑：{name}', { name: row.title })">
                   <strong :title="row.title">{{ row.title }}</strong
                   ><span class="workspace-code" :title="row.target_smiles">{{ row.target_smiles }}</span>
                 </router-link>
-              </div>
             </td>
             <td class="document-count-cell"><span class="document-mobile-label" aria-hidden="true">{{ $tr('反应') }}</span>{{ row.reaction_count }}</td>
             <td class="workspace-muted document-time-cell"><time :datetime="row.modified" :title="taskTimestampLabel(row.modified)">{{ displayTime(row.modified) }}</time></td>
@@ -118,7 +125,8 @@
 import { computed, mergeProps, onMounted, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { API } from "@/common/api";
-import { uiText } from "@/i18n";
+import { uiText, useUiLanguage } from "@/i18n";
+import { documentSort, documentSortOptions, readDocumentSummaries, mergeDocumentSummaries, documentLibraryRows } from "@/common/document-library-view";
 import { readRouteDocument, RouteDocumentResponseError } from "@/common/route-document-response";
 import { errorMessage } from "@/common/workspace-errors";
 import { displayTime } from "@/common/task-state";
@@ -128,6 +136,14 @@ import DocumentPreview from "@/components/routes/DocumentPreview.vue";
 import { useDialogReturnFocus } from "@/composables/useDialogReturnFocus";
 
 const route = useRoute(), router = useRouter();
+const { locale } = useUiLanguage();
+const sort = computed(() => documentSort(route.query.sort));
+function changeSort(event) {
+  const next = documentSort(event.target.value);
+  event.target.value = sort.value;
+  retirePreview();
+  return router.replace({ path: "/documents", query: { ...route.query, sort: next === "updated" ? undefined : next } });
+}
 const query = computed({
   get: () => typeof route.query.query === "string" ? route.query.query : "",
   set: (value) => {
@@ -143,35 +159,32 @@ const showPreview = ref(false),
   previewDocument = ref(null),
   previewTicket = ref(0);
 const previewing = ref(""), removing = ref(""), actionError = ref("");
-const previewFocus = useDialogReturnFocus(showPreview, () => JSON.stringify([route.path, query.value]));
+const previewFocus = useDialogReturnFocus(showPreview, () => JSON.stringify([route.path, query.value, sort.value]));
 const actionBusy = computed(() => Boolean(previewing.value || removing.value));
-let generation = 0, previewGeneration = 0;
+let generation = 0, previewGeneration = 0, nextOffset = 0;
 let disposed = false;
 let failedAppend = false;
-const filtered = computed(() =>
-  rows.value.filter((row) =>
-    `${row.title} ${row.target_smiles}`
-      .toLowerCase()
-      .includes((query.value || "").toLowerCase()),
-  ),
-);
+const filtered = computed(() => documentLibraryRows(rows.value, query.value, sort.value, locale.value));
 async function read(append) {
   if (disposed || loading.value) return;
   const current = ++generation;
   loading.value = true;
   error.value = "";
   failedAppend = append;
+  const offset = append ? nextOffset : 0;
   try {
     const result = await API.get("/api/v1/route-documents", {
       limit: 50,
-      offset: append ? rows.value.length : 0,
+      offset,
     });
     if (current !== generation) return;
-    rows.value = append ? [...rows.value, ...result] : result;
+    const page = readDocumentSummaries(result);
+    rows.value = append ? mergeDocumentSummaries(rows.value, page) : page;
+    nextOffset = offset + page.length;
     more.value = result.length === 50;
   } catch (e) {
     if (current === generation)
-      error.value = errorMessage(e, "路线文档加载失败。");
+      error.value = e instanceof RouteDocumentResponseError ? e.message : errorMessage(e, "路线文档加载失败。");
   } finally {
     if (current === generation) loading.value = false;
   }
@@ -212,7 +225,7 @@ function retirePreview() {
   actionError.value = "";
   previewFocus.cancel();
 }
-watch(query, retirePreview, { flush: "sync" });
+watch([query, sort], retirePreview, { flush: "sync" });
 async function remove(row) {
   if (disposed || actionBusy.value || loading.value) return;
   if (!window.confirm(uiText("永久删除“{name}”？此操作不可撤销。", { name: row.title }))) return;
@@ -244,9 +257,11 @@ onBeforeUnmount(() => { disposed = true; generation++; previewGeneration++; });
 .document-heading .page-actions { gap: 6px; }
 .document-heading :deep(.v-btn) { height: 44px; border-radius: 6px; }
 .document-heading :deep(.v-btn--icon) { width: 44px; min-width: 44px; color: var(--ws-muted); }
-.document-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.document-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px 20px; margin-bottom: 12px; }
 .document-toolbar p { margin: 0; color: var(--ws-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-.document-search { flex: 0 1 430px; min-width: 0; }
+.document-search { max-width: 430px; min-width: 0; }
+.document-sort { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; }
+.document-sort select { width: 140px; min-width: 0; font-size: 13px; min-height: 40px; padding: 6px 8px; }
 .document-search :deep(.v-field) { border-radius: 6px; background: var(--ws-surface); }
 .document-progress { height: 2px; margin-bottom: 12px; color: var(--ws-accent, #0b7163); }
 .document-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -266,22 +281,16 @@ onBeforeUnmount(() => { disposed = true; generation++; previewGeneration++; });
 .document-table-scroll:focus-visible { outline: 2px solid var(--ws-accent, #0b7163); outline-offset: 2px; }
 .document-table { width: 100%; table-layout: fixed; }
 .document-table th { white-space: nowrap; background: var(--ws-muted-surface); }
-.document-table th:first-child { width: 60%; }
-.document-table th:nth-child(2) { width: 64px; }
+.document-table th:first-child { width: 248px; }
+.document-table th:nth-child(3) { width: 96px; }
+.document-table th:nth-child(4) { width: 144px; }
 .document-table th:last-child { width: 108px; }
-.document-table td { padding: 12px; }
+.document-table td { padding: 10px; }
 .document-table tbody tr:last-child td { border-bottom: 0; }
 .document-count-cell { font-variant-numeric: tabular-nums; }
 .document-time-cell { font-size: 12px; font-variant-numeric: tabular-nums; }
 .document-mobile-label { display: none; }
-.document-identity {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-.document-thumbnail { width: 180px; flex: 0 0 180px; }
-.document-thumbnail :deep(.preview-heading) { font-size: 12px; }
+.document-thumbnail { width: 228px; max-width: 100%; }
 .document-title-cell {
   display: flex;
   flex-direction: column;
@@ -321,7 +330,8 @@ onBeforeUnmount(() => { disposed = true; generation++; previewGeneration++; });
 @media (max-width: 760px) {
   .document-history { padding: 18px 16px; }
   .document-heading { gap: 12px; }
-  .document-search { flex: 1 1 100%; }
+  .document-toolbar { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; }
+  .document-search { grid-column: 1 / -1; max-width: none; }
 }
 @container (max-width: 680px) {
   .document-table,
@@ -331,11 +341,11 @@ onBeforeUnmount(() => { disposed = true; generation++; previewGeneration++; });
   .document-table tbody tr:last-child { border-bottom: 0; }
   .document-table td { padding: 0; border: 0; min-width: 0; }
   .document-identity-cell { grid-column: 1 / -1; grid-row: 1; }
-  .document-count-cell { grid-column: 1; grid-row: 2; font-size: 12px; }
-  .document-time-cell { grid-column: 1; grid-row: 3; }
-  .document-action-cell { grid-column: 2; grid-row: 2 / 4; align-self: start; }
+  .document-structure-cell { grid-column: 1 / -1; grid-row: 2; }
+  .document-count-cell { grid-column: 1; grid-row: 3; font-size: 12px; }
+  .document-time-cell { grid-column: 1; grid-row: 4; }
+  .document-action-cell { grid-column: 2; grid-row: 3 / 5; align-self: start; }
   .document-mobile-label { display: inline; margin-right: 8px; color: var(--ws-muted); }
-  .document-identity { flex-direction: column; align-items: stretch; gap: 12px; }
-  .document-thumbnail { width: 100%; flex: none; }
+  .document-thumbnail { margin-inline: auto; }
 }
 </style>

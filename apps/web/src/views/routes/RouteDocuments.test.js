@@ -6,6 +6,7 @@ import { parse, compileScript, compileStyle, compileTemplate } from "@vue/compil
 import { API } from "@/common/api";
 import RouteDocuments from "./RouteDocuments.vue";
 import DocumentPreview from "@/components/routes/DocumentPreview.vue";
+import StructurePreview from "@/components/workspace/StructurePreview.vue";
 import { setLocale } from "@/i18n";
 
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn(), delete: jest.fn() } }));
@@ -82,6 +83,65 @@ test("one page reads once; long names, chemical identity and all operations rema
   expect(menuItem(wrapper, "删除文档").exists()).toBe(true);
   expect(API.post).not.toHaveBeenCalled();
   expect(API.delete).not.toHaveBeenCalled();
+  expect(wrapper.findAll('thead th').map(cell => cell.text())).toEqual(["目标化合物", "路线", "反应", "更新时间", "操作"]);
+  expect(wrapper.getComponent(StructurePreview).props()).toMatchObject({ compact: true, width: 180, height: 96 });
+});
+
+test("sorting is URL-owned, scoped to loaded rows and preserves the original title and chemical data", async () => {
+  const documents = [row("a", { title: "Beta", reaction_count: 3 }), row("b", { title: "Alpha", reaction_count: 0 })];
+  const original = JSON.stringify(documents); API.get.mockResolvedValueOnce(documents);
+  const wrapper = await setup("/documents?query=a&other=keep");
+  await wrapper.get('.document-sort select').setValue("reactions"); await flushPromises();
+  expect(wrapper.vm.$router.currentRoute.value.query).toEqual({ query: "a", other: "keep", sort: "reactions" });
+  expect(wrapper.findAll('tbody tr').map(row => row.attributes('data-document-id'))).toEqual(["b", "a"]);
+  expect(wrapper.get('.document-toolbar [role="status"]').text()).toBe("显示 2 / 2 条路线");
+  await wrapper.get('.document-search').setValue("Alpha"); await flushPromises();
+  expect(wrapper.get('.document-toolbar [role="status"]').text()).toBe("显示 1 / 2 条路线");
+  expect(JSON.stringify(documents)).toBe(original); expect(API.get).toHaveBeenCalledTimes(1);
+});
+
+test("overlapping pages advance by consumed server rows instead of unique rendered records", async () => {
+  API.get.mockResolvedValueOnce(Array.from({ length: 50 }, (_, index) => row(`document-${index}`)));
+  const wrapper = await setup();
+  API.get.mockResolvedValueOnce(Array.from({ length: 50 }, (_, index) => row(`document-${index + 49}`)));
+  await wrapper.get('.document-pagination button').trigger("click"); await flushPromises();
+  expect(wrapper.findAll('tbody tr')).toHaveLength(99);
+  API.get.mockResolvedValueOnce([]);
+  await wrapper.get('.document-pagination button').trigger("click"); await flushPromises();
+  expect(API.get.mock.calls.at(-1)).toEqual(["/api/v1/route-documents", { limit: 50, offset: 100 }]);
+  expect(wrapper.find('.document-pagination').exists()).toBe(false);
+});
+
+test("an aborted sort navigation keeps the native control and URL on the same committed mode", async () => {
+  const wrapper = await setup("/documents?sort=title");
+  wrapper.vm.$router.beforeEach(() => false);
+  await wrapper.get('.document-sort select').setValue("reactions"); await flushPromises();
+  expect(wrapper.vm.$router.currentRoute.value.query.sort).toBe("title");
+  expect(wrapper.get('.document-sort select').element.value).toBe("title");
+  expect(API.get).toHaveBeenCalledTimes(1);
+});
+
+test("a sort intent retires a pending preview before a navigation guard completes", async () => {
+  const wrapper = await setup();
+  let finishPreview, finishNavigation;
+  wrapper.vm.$router.beforeEach(() => new Promise(resolve => { finishNavigation = resolve; }));
+  API.get.mockReturnValueOnce(new Promise(resolve => { finishPreview = resolve; }));
+  await wrapper.get('[aria-label="预览文档：先导系列路线"]').trigger("click");
+  await wrapper.get('.document-sort select').setValue("title"); await flushPromises();
+  expect(wrapper.vm.$router.currentRoute.value.query.sort).toBeUndefined();
+  expect(wrapper.get('.document-sort select').element.value).toBe("updated");
+  finishPreview(savedDocument()); await flushPromises();
+  expect(wrapper.findComponent(DocumentPreview).exists()).toBe(false);
+  finishNavigation(true); await flushPromises();
+  expect(wrapper.get('.document-sort select').element.value).toBe("title");
+});
+
+test("an invalid summary response remains an explicit error and does not replace readable records", async () => {
+  const wrapper = await setup(); API.get.mockResolvedValueOnce({ invalid: true });
+  await wrapper.get('[aria-label="刷新文档"]').trigger("click"); await flushPromises();
+  expect(wrapper.get('[role="alert"]').text()).toContain("路线文档列表响应无效。");
+  expect(wrapper.findAll('tbody tr')).toHaveLength(1);
+  expect(API.post).not.toHaveBeenCalled(); expect(API.delete).not.toHaveBeenCalled();
 });
 
 test("structure inspection and drawing retry are separate from the editor navigation", async () => {

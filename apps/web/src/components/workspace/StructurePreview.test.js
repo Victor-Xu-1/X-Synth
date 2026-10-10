@@ -46,6 +46,19 @@ test("an empty structure cannot open a misleading viewer", () => {
   wrapper.unmount();
 });
 
+test("compact list presentation retains the full thumbnail identity and the same inspection owner", async () => {
+  const smiles = "[13CH3][C@@H](O)C(=O)[O-].[Na+]";
+  const wrapper = mount(StructurePreview, { props: { compact: true, smiles, label: "目标化合物", width: 180, height: 96 }, global: { stubs } });
+  expect(wrapper.classes()).toContain("compact-preview");
+  expect(wrapper.get(".preview-label").text()).toBe("目标化合物");
+  expect(wrapper.getComponent({ name: "SmilesImage" }).props()).toMatchObject({ smiles, width: 180, height: 96 });
+  expect(wrapper.findAll('[aria-label="放大目标化合物"]')).toHaveLength(1);
+  await wrapper.get('[aria-label="放大目标化合物"]').trigger("click");
+  expect(wrapper.get('[role="dialog"]').exists()).toBe(true);
+  expect(wrapper.emitted("update:smiles")).toBeUndefined();
+  wrapper.unmount();
+});
+
 test("normal close returns focus only after the dialog leaves, not on its model update", async () => {
   const wrapper = mount(StructurePreview, { attachTo: document.body, props: { smiles: "CCO" }, global: { stubs } });
   try {
