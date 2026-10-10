@@ -29,12 +29,12 @@ const row = {
 };
 
 test("the owned search-policy caption is localized without rewriting its parameter key or value", () => {
-  const source = { settings: { search_policy_version: 2 } };
+  const source = { search_policy_version: 2 };
   for (const [locale, label] of [["en", "Search policy version"], ["zh-CN", "搜索策略版本"]]) {
     setLocale(locale, { persist: false });
     const field = taskParameterGroups(source)[0].fields[0];
     expect(field.key).toBe("search_policy_version"); expect(field.label).toBe(label);
-    expect(String(field.value)).toBe("2"); expect(source.settings.search_policy_version).toBe(2);
+    expect(String(field.value)).toBe("2"); expect(source.search_policy_version).toBe(2);
   }
 });
 const settings = {
