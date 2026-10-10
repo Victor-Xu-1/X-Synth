@@ -5,10 +5,10 @@
     <form ref="inputForm" class="process-input" novalidate :aria-busy="disabled" @submit.prevent="calculate">
       <header class="batch-heading">
         <div><span class="batch-stage">{{ $tr('批次录入 · {current} / {total}', { current: sectionIndex + 1, total: sections.length }) }}</span><h2>{{ $tr(sections[sectionIndex].heading) }}</h2></div>
-        <div class="batch-source" v-if="saved.source.value"><span>{{ $tr('已有批次') }}</span><v-btn variant="text" size="small" to="/process" :disabled="loading" @click="saved.startNew">{{ $tr('新建批次') }}</v-btn></div>
+        <div class="batch-source" v-if="saved.source.value"><span>{{ $tr('已有批次') }}</span><v-btn variant="text" size="small" to="/process" :disabled="loading" @click.capture="saved.startNew">{{ $tr('新建批次') }}</v-btn></div>
       </header>
       <div v-if="saved.loading.value" class="workspace-loading" role="status">{{ $tr('正在读取批次输入') }}</div>
-      <div v-if="saved.error.value" class="tool-error" role="alert">{{ $tr(saved.error.value) }}<v-btn variant="text" size="small" @click="saved.reload">{{ $tr('重新读取') }}</v-btn><v-btn variant="text" size="small" to="/process" @click="saved.startNew">{{ $tr('新建批次') }}</v-btn></div>
+      <div v-if="saved.error.value" class="tool-error" role="alert">{{ $tr(saved.error.value) }}<v-btn variant="text" size="small" @click="saved.reload">{{ $tr('重新读取') }}</v-btn><v-btn variant="text" size="small" to="/process" @click.capture="saved.startNew">{{ $tr('新建批次') }}</v-btn></div>
       <div v-if="error" ref="errorSummary" class="tool-error" role="alert" tabindex="-1">{{ processMessage(error) }}</div>
       <router-link v-if="error && recordPath(result?.record_id)" :to="recordPath(result.record_id)">{{ $tr('打开已保存的结果') }}</router-link>
       <WorkbenchTabs v-model="section" :items="sections" :label="$tr('批次录入分区')" :disabled="disabled || pending" v-slot="{ tabId, panelId }">
@@ -71,11 +71,12 @@ const pending = computed(() => !!(productInput.value?.pending || materialInputs.
 const { result, loading, error, calculate: runCalculation, reset } = useCalculation({
   input: form, pending, endpoint: "/api/v1/process/metrics", body: () => processBody(form),
   accepts: acceptsProcess, fallback: "批次核算失败，请核对结构、质量、单位与服务。",
-  onResult: useAnalysisDelivery("process"),
+  onResult: useAnalysisDelivery("process", { onCommitted: () => saved.accept() }),
 });
 let navigation = 0;
 const saved = useAnalysisInput({
-  kind: "process", clear: () => { navigation++; reset(); Object.assign(form, freshProcessForm()); section.value = "product"; },
+  kind: "process", snapshot: () => form,
+  clear: () => { navigation++; reset(); Object.assign(form, freshProcessForm()); section.value = "product"; },
   apply: (input) => Object.assign(form, restoreProcessForm(input)), prefill: (smiles) => { form.product.smiles = smiles; },
 });
 const disabled = computed(() => loading.value || saved.loading.value || !!saved.error.value);

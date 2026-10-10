@@ -7,7 +7,7 @@ import { API } from "@/common/api";
 import Optimization from "./Optimization.vue";
 import ParameterRail from "./ParameterRail.vue";
 import { DEFAULT_LOCALE, setLocale } from "@/i18n";
-jest.mock("vue-router", () => ({ useRoute: jest.fn(), useRouter: jest.fn() }));
+jest.mock("vue-router", () => ({ useRoute: jest.fn(), useRouter: jest.fn(), onBeforeRouteLeave: jest.fn(), onBeforeRouteUpdate: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn(), toErrorObject: (error) => ({ string_error: error.message }) } }));
 jest.mock("file-saver", () => ({ saveAs: jest.fn() }));
 jest.mock("./optimization.css", () => ({}));
@@ -351,7 +351,9 @@ test("adjacent navigation focuses its retained panel and pending CSV prevents sw
   Object.defineProperty(file.element, "files", { configurable: true, value: [{ name: "protocol.csv", size: CSV.length,
     arrayBuffer: async () => new TextEncoder().encode(CSV).buffer }] });
   await file.trigger("change"); await flushPromises();
-  expect(wrapper.find('[role="tablist"]').exists()).toBe(false);
+  expect(wrapper.find('[role="tablist"]').exists()).toBe(true);
+  expect(wrapper.findAll('[role="tab"]').every(tab => tab.element.disabled)).toBe(true);
+  expect(wrapper.vm.table).toEqual(table);
   expect(file.element.disabled).toBe(true);
   finish(table); await flushPromises();
   expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toBe("实测记录");

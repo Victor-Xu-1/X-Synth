@@ -399,6 +399,18 @@ their originating panel rather than mounting an application-root confirmation di
 One shared tab component binds keyboard selection, panel IDs and roving focus. Process input uses
 three retained sections with adjacent navigation; calculations still publish only owned immutable
 analysis records and open their distinct result page, never a second empty output surface.
+`useAnalysisInput` owns one in-memory draft snapshot and navigation/unload guard across
+process, assessment, conditions, forward, impurity and optimization input pages.
+Explicit discard is required before replacing a dirty input context; hash-only focus,
+language and layer changes never reload it. `useAnalysisDelivery` acknowledges the
+snapshot only for a usable returned result pointer before navigation. History retains
+only the existing record pointer, not chemical payloads.
+Synchronous link seeds establish their baseline before parser continuations. Only a current
+initializer may acknowledge its declared resolved snapshot, preserving settings edited during
+that read. Automatic single-product selection is derived state; explicit multi-product
+choices remain protected input, including saved selection replay and deselection.
+Optimization stages and verifies replacement CSV before publishing it; failed replacement retains the verified table and
+requires explicit acknowledgement, with both experimental confirmations reset.
 `horizontal-selection` is the shared local-scroll geometry for tabs and tool navigation.
 Selection, resize and language reflow reveal the current control without changing outer scroll or
 passive focus. The three route-design modes use a bounded mobile layout with complete labels.
@@ -420,7 +432,11 @@ The product menu stays attached to that reaction owner outside the field's conta
 context so the native drawing cannot intercept option clicks.
 Only current text-parse errors mark the text invalid; external file errors preserve the accepted
 reaction. Explicit RXN cancellation uses the existing file controller and context-bound focus return,
-while reference transfer retains its parent cancellation owner. One file-operation discriminator
+while reference transfer retains its parent cancellation owner.
+The RXN confirmation has a unique labelled heading and a presentation-bound close ticket.
+Ordinary cancel/apply returns focus after leave when still appropriate; suspension retires
+pending work and focus intent but preserves the staged proposal and explicit product choice.
+One file-operation discriminator
 derives busy state; export has its own feedback and cannot be cancelled as import. Assessment errors and persisted-result
 recovery stay next to submission rather than above the whole mobile input layout.
 The version notice consumes the existing health version and VERSION-derived frontend value, not

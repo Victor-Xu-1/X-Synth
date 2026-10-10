@@ -8,7 +8,7 @@ import { freshProcessForm } from "./process-draft";
 import { processBody } from "./process-form";
 import { DEFAULT_LOCALE, setLocale } from "@/i18n";
 
-jest.mock("vue-router", () => ({ useRoute: jest.fn(), useRouter: jest.fn() }));
+jest.mock("vue-router", () => ({ useRoute: jest.fn(), useRouter: jest.fn(), onBeforeRouteLeave: jest.fn(), onBeforeRouteUpdate: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { post: jest.fn(), get: jest.fn() } }));
 jest.mock("@/components/workspace/StructureInput.vue", () => ({ name: "StructureInput", template: "<div />" }));
 jest.mock("@/components/ModuleWorkbench.vue", () => ({ name: "ModuleWorkbench", template: "<slot />" }));

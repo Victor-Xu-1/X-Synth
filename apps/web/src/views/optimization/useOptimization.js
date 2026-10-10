@@ -30,7 +30,7 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
     healthLoading = ref(true),
     fileLoading = ref(false),
     running = ref(false);
-  const result = ref(null), error = ref("");
+  const result = ref(null), error = ref(""), fileError = ref(false);
   let revision = 0,
     fileRevision = 0,
     disposed = false;
@@ -59,6 +59,7 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
       !blocked() &&
       !running.value &&
       !fileLoading.value &&
+      !fileError.value &&
       selectedRows.value.length >= 3 &&
       selectedRows.value.length <= LIMITS.measurements &&
       !!target.name &&
@@ -101,6 +102,7 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
     Object.assign(target, { name: "", kind: "yield_percent", direction: "maximize", unit: "%" });
     batchSize.value = 3; seed.value = 42;
     fileLoading.value = false;
+    fileError.value = false;
   }
   async function restoreInput(input) {
     const ticket = ++fileRevision;
@@ -114,16 +116,13 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
     confirmedMeasurements.value = false; confirmedCandidates.value = false;
   }
   async function chooseFile(file) {
-    if (disposed || running.value || blocked()) return;
-    clear();
+    if (disposed || running.value || blocked() || !file) return;
+    invalidate();
     const ticket = ++fileRevision;
-    if (!file) return;
-    if (file.size > LIMITS.bytes) {
-      error.value = "CSV 超过 2 MiB，未导入。";
-      return;
-    }
+    fileError.value = false;
     fileLoading.value = true;
     try {
+      if (file.size > LIMITS.bytes) throw new Error("CSV 超过 2 MiB，未导入。");
       const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
         await file.arrayBuffer(),
       );
@@ -132,18 +131,26 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
         content: text,
       });
       if (disposed || ticket !== fileRevision) return;
+      clear();
       content.value = text;
       fileName.value = file.name;
       table.value = response;
     } catch (failure) {
-      if (!disposed && ticket === fileRevision)
+      if (!disposed && ticket === fileRevision) {
+        fileError.value = true;
         error.value = API.toErrorObject(
           failure,
           "实测 CSV 读取失败，请核对 UTF-8 文件与表头。",
         ).string_error;
+      }
     } finally {
       if (!disposed && ticket === fileRevision) fileLoading.value = false;
     }
+  }
+
+  function retainTable() {
+    if (disposed || running.value || fileLoading.value || blocked() || !table.value || !fileError.value) return;
+    fileError.value = false; error.value = "";
   }
 
   function toggleRow(index) {
@@ -265,6 +272,8 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
     running,
     result,
     error,
+    fileError,
+    retainTable,
     count,
     canRecommend,
     chooseFile,

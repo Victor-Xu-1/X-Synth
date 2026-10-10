@@ -2,7 +2,7 @@
   <ModuleWorkbench :title="$tr('反应优化')">
     <template #actions>
       <v-btn to="/analyses?kind=optimization" variant="text" prepend-icon="mdi-history">{{ $tr('研究记录') }}</v-btn>
-      <v-btn v-if="saved.source.value || saved.error.value" to="/optimization" variant="text" prepend-icon="mdi-plus" :disabled="running" @click="saved.startNew">{{ $tr('新建优化') }}</v-btn>
+      <v-btn v-if="saved.source.value || saved.error.value" to="/optimization" variant="text" prepend-icon="mdi-plus" :disabled="running" @click.capture="saved.startNew">{{ $tr('新建优化') }}</v-btn>
     </template>
     <div ref="workspace" class="optimization-workspace" :aria-busy="disabled">
       <div class="opt-input-bar">
@@ -25,7 +25,9 @@
       <div v-if="health && !health.ready" class="opt-notice" role="status">{{ $tr(health.reason) }}</div>
       <div v-if="saved.loading.value" class="opt-loading" role="status"><v-progress-circular indeterminate size="22" />{{ $tr('读取已保存输入并核验 CSV') }}</div>
       <div v-if="saved.error.value" class="opt-error" role="alert">{{ $tr(saved.error.value) }}<v-btn variant="text" @click="saved.reload">{{ $tr('重新读取') }}</v-btn></div>
-      <div v-if="error" class="opt-error" role="alert">{{ optimizationMessage(error) }}</div>
+      <div v-if="error || fileError" class="opt-error" role="alert">{{ optimizationMessage(error || '新的 CSV 未载入。') }}
+        <v-btn v-if="fileError && table" variant="text" prepend-icon="mdi-undo" :disabled="disabled"
+          @click="retainTable">{{ $tr('继续使用当前实测表') }}</v-btn></div>
       <router-link v-if="error && recordPath(result?.record_id)" :to="recordPath(result.record_id)">{{ $tr('打开已保存的结果') }}</router-link>
       <div v-if="fileLoading" class="opt-loading" role="status"><v-progress-circular indeterminate size="22" />{{ $tr('读取当前实测表') }}</div>
       <div v-if="table" class="opt-layout">
@@ -89,16 +91,18 @@ const sections = [
   { value: "batch", title: "下一批实验" },
 ];
 const sectionIndex = computed(() => sections.findIndex(item => item.value === section.value));
-const optimizer = useOptimization({ onResult: useAnalysisDelivery("optimization"),
+const optimizer = useOptimization({ onResult: useAnalysisDelivery("optimization", { onCommitted: () => saved.accept() }),
   blocked: () => saved.loading.value || !!saved.error.value });
 const {
   fileName, table, selectedRows, factors, target, batchSize, seed, confirmedMeasurements,
-  confirmedCandidates, health, healthLoading, fileLoading, running, result, error,
+  confirmedCandidates, health, healthLoading, fileLoading, running, result, error, fileError, retainTable,
   count, canRecommend, chooseFile, toggleRow, selectPage, toggleFactor, updateTarget,
   updateFactor, refreshHealth, recommend,
 } = optimizer;
 watch(() => table.value?.table_sha256, resetSection, { flush: "sync" });
 const saved = useAnalysisInput({ kind: "optimization", querySeeds: ["smiles"],
+  snapshot: () => [table.value?.table_sha256, selectedRows.value, factors.value, target, batchSize.value, seed.value,
+    confirmedMeasurements.value, confirmedCandidates.value],
   clear: resetInput, apply: optimizer.restoreInput, prefill: () => {} });
 const disabled = computed(() => running.value || fileLoading.value || saved.loading.value || !!saved.error.value);
 const empty = computed(() => !table.value && !fileLoading.value && !saved.loading.value && !saved.error.value);

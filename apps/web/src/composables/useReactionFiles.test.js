@@ -9,6 +9,8 @@ import { TextDecoder, TextEncoder } from "node:util";
 globalThis.TextDecoder ||= TextDecoder;
 
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
+const mockActivity = ref(true);
+jest.mock("@/components/workspace/workbench-activity", () => ({ useWorkbenchActivity: () => mockActivity }));
 jest.mock("@/common/chemical-files", () => ({
   ...jest.requireActual("@/common/chemical-files"),
   downloadChemicalFile: jest.fn(),
@@ -33,6 +35,7 @@ afterEach(() => {
   API.post.mockReset();
   downloadChemicalFile.mockReset();
 });
+beforeEach(() => { mockActivity.value = true; });
 
 // Transport fixtures exercise lifecycle and role identity, not chemical parsing.
 const source = "CCO>([Na+].[Cl-])>CC=O", rxn = "$RXN\ntransport fixture";
@@ -195,13 +198,14 @@ test("retired export settlement cannot release a newer import or download stale 
   expect(text.value).toBe("CCN");
 });
 
-test.each(["input", "disabled", "unmount"])("%s retires an export and ignores its late native result", async kind => {
+test.each(["input", "disabled", "unmount", "inactive"])("%s retires an export and ignores its late native result", async kind => {
   const native = deferred(), { state, text, disabled, wrapper, exportRxn } = setupExport();
   exportRxn.mockReturnValue(native.promise);
   const operation = state.exportFile();
   expect(state.fileOperation.value).toBe("export");
   if (kind === "input") text.value = "CCN";
   else if (kind === "disabled") disabled.value = true;
+  else if (kind === "inactive") mockActivity.value = false;
   else wrapper.unmount();
   expect(state.fileOperation.value).toBeNull();
   expect(state.fileBusy.value).toBe(false);
@@ -242,4 +246,45 @@ test("a failed parser request releases file controls so the same file can be ret
   expect(await state.importFile(event())).toBe(false); expect(state.fileBusy.value).toBe(false);
   expect(state.fileDraft.value).toBeNull(); expect(state.fileError.value).toBe("服务请求超时，请刷新或重试。"); expect(text.value).toBe("");
   expect(await state.importFile(event())).toBe(false); expect(API.post).toHaveBeenCalledTimes(2);
+});
+
+test("hiding the workbench cancels staging and prevents a late response from publishing after resume", async () => {
+  const pending = deferred(); let body;
+  API.post.mockImplementation((_, requested) => { body = requested; return pending.promise; });
+  const { state, text } = setup(), operation = state.importFile(event()); await flushPromises();
+  const options = API.post.mock.calls[0][3];
+  mockActivity.value = false;
+  expect(options.signal.aborted).toBe(true); expect(state.fileBusy.value).toBe(false);
+  mockActivity.value = true;
+  pending.resolve(response(body)); expect(await operation).toBe(false);
+  expect(state.fileDraft.value).toBeNull(); expect(text.value).toBe("");
+});
+
+test.each(["inactive", "unmounted"])("an %s owner cannot start or apply another file import", async reason => {
+  API.post.mockImplementation((_, body) => Promise.resolve(response(body)));
+  const { state, text, wrapper } = setup();
+  expect(await state.importFile(event())).toBe(true);
+  if (reason === "inactive") mockActivity.value = false;
+  else wrapper.unmount();
+  state.applyFile(); expect(text.value).toBe("");
+  if (reason === "inactive") expect(state.fileDraft.value).not.toBeNull();
+  else expect(state.fileDraft.value).toBeNull();
+  API.post.mockClear();
+  expect(await state.importFile(event())).toBe(false); expect(API.post).not.toHaveBeenCalled();
+});
+
+test("temporary hiding preserves staged roles and product selection until explicit confirmation after resume", async () => {
+  API.post.mockImplementation((_, body) => Promise.resolve(response(body)));
+  const { state, text } = setup();
+  expect(await state.importFile(event())).toBe(true);
+  const staged = state.fileDraft.value;
+  state.fileProduct.value = staged.products[0].smiles;
+  mockActivity.value = false;
+  state.applyFile();
+  expect(text.value).toBe(""); expect(state.fileDraft.value).toBe(staged);
+  mockActivity.value = true;
+  expect(state.fileDraft.value).toBe(staged);
+  expect(state.fileProduct.value).toBe(staged.products[0].smiles);
+  state.applyFile();
+  expect(text.value).toBe(staged.reaction_smiles); expect(state.fileDraft.value).toBeNull();
 });

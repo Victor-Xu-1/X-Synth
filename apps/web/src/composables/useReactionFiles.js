@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, readonly, ref, watch } from "vue";
 import { API } from "@/common/api";
+import { useWorkbenchActivity } from "@/components/workspace/workbench-activity";
 import {
   checkedReactionDraft,
   REACTION_DRAFT_PATH,
@@ -15,6 +16,7 @@ import {
 } from "@/common/reaction-records";
 
 export function useReactionFiles({ text, disabled, board, draft }) {
+  const activity = useWorkbenchActivity();
   const fileOperation = ref(null),
     fileBusy = computed(() => fileOperation.value !== null),
     fileDraft = ref(null),
@@ -42,6 +44,10 @@ export function useReactionFiles({ text, disabled, board, draft }) {
     },
     { flush: "sync" },
   );
+  watch(activity, (active) => {
+    // Suspend a presented proposal, but retire work that has not been published.
+    if (!active && fileBusy.value) discardFile();
+  }, { flush: "sync" });
 
   async function importFile(event) {
     const file = event.target.files?.[0];
@@ -64,10 +70,10 @@ export function useReactionFiles({ text, disabled, board, draft }) {
     );
   }
   async function stageImport(load, origin) {
-    if (disabled() || fileBusy.value || fileDraft.value) return false;
+    if (disposed || !activity.value || disabled() || fileBusy.value || fileDraft.value) return false;
     discardFile();
     const requested = revision;
-    const current = () => !disposed && requested === revision && !disabled();
+    const current = () => !disposed && activity.value && requested === revision && !disabled();
     const controller = new AbortController();
     stagingController = controller;
     fileOrigin.value = origin;
@@ -99,6 +105,8 @@ export function useReactionFiles({ text, disabled, board, draft }) {
   }
   function applyFile() {
     if (
+      disposed ||
+      !activity.value ||
       disabled() ||
       !fileDraft.value ||
       (fileDraft.value.products.length && !fileProduct.value)
@@ -116,6 +124,8 @@ export function useReactionFiles({ text, disabled, board, draft }) {
   }
   async function exportFile() {
     if (
+      disposed ||
+      !activity.value ||
       disabled() ||
       fileBusy.value ||
       fileDraft.value ||
@@ -141,6 +151,7 @@ export function useReactionFiles({ text, disabled, board, draft }) {
           throw new Error("该反应不能保持结构身份导出为 RXN。");
       if (
         disposed ||
+        !activity.value ||
         current !== revision ||
         disabled() ||
         original !== text.value
@@ -155,7 +166,7 @@ export function useReactionFiles({ text, disabled, board, draft }) {
         "reaction",
       );
     } catch (failure) {
-      if (!disposed && current === revision)
+      if (!disposed && activity.value && current === revision)
         fileError.value = errorMessage(failure, "完整反应未导出。");
     } finally {
       if (current === revision) fileOperation.value = null;

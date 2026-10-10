@@ -7,6 +7,9 @@ export const optimizationWarningMessages = [
 
 export default [
   ...optimizationWarningMessages,
+  ["新的 CSV 未载入。", "The new CSV was not loaded."],
+  ["CSV 必须包含 2-24 列。", "CSV must contain 2-24 columns."],
+  ["继续使用当前实测表", "Keep current measured table"],
   ["反应优化", "Reaction optimization"], ["实测 CSV", "Measured CSV"], ["选择实测 CSV", "Select measured CSV"],
   ["已有计算输入", "Existing calculation inputs"], ["新建优化", "New optimization"],
   ["读取已保存输入并核验 CSV", "Reading saved inputs and verifying CSV"], ["尚无已选实验数据", "No experimental data selected"],

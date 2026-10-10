@@ -8,7 +8,7 @@ import WorkbenchForm from "@/components/workspace/WorkbenchForm.vue";
 import Impurity from "./Impurity.vue";
 import { acceptsImpurities, createForm, impurityBody } from "./impurity-form";
 
-jest.mock("vue-router", () => ({ useRoute: jest.fn(), useRouter: jest.fn() }));
+jest.mock("vue-router", () => ({ useRoute: jest.fn(), useRouter: jest.fn(), onBeforeRouteLeave: jest.fn(), onBeforeRouteUpdate: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { post: jest.fn(), get: jest.fn() } }));
 jest.mock("@/components/SmilesImage.vue", () => ({
   name: "SmilesImage",
