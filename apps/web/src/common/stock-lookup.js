@@ -1,5 +1,6 @@
 const SHA256 = /^[a-f0-9]{64}$/i;
 const MAX_SMILES_LENGTH = 20000;
+export const STOCK_REQUEST_TIMEOUT_MS = 15000;
 
 export function stockQueryPrefill(query = {}) {
   const rawSmiles = query.smiles ?? query.q ?? "";
@@ -21,10 +22,10 @@ export function stockQueryPrefill(query = {}) {
   };
 }
 
-export async function lookupStock(api, canonicalSmiles) {
+export async function lookupStock(api, canonicalSmiles, requestOptions) {
   const response = await api.post("/api/v1/stock/lookup", {
     smiles: [canonicalSmiles],
-  });
+  }, false, requestOptions);
   const records = response?.results?.[canonicalSmiles];
   if (
     typeof response?.snapshot !== "string" ||

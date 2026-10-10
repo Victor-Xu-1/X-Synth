@@ -107,6 +107,7 @@ export default [
   ["FF 筛选阈值", "FF screening threshold"],
   ["研究类型参数无效。", "Invalid analysis kind."], ["研究记录页码无效。", "Invalid analysis page number."],
   ["研究记录列表格式无效。", "Invalid analysis-history response."],
+  ["研究记录不存在。", "Analysis record not found."],
   ["研究记录内容格式无效或与当前记录不符。", "The analysis record is invalid or does not match the current record."],
   ["研究记录的结果格式无效，无法展示。", "The saved analysis result is invalid and cannot be displayed."],
   ["语言", "Language"], ["语言 / Language", "Language / 语言"],

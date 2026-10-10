@@ -39,8 +39,15 @@ test("lookup retains the response structure, snapshot and original records witho
   });
   expect(api.post).toHaveBeenCalledWith("/api/v1/stock/lookup", {
     smiles: ["CCO"],
-  });
+  }, false, undefined);
   expect(Object.keys(records[0])).toEqual(["smiles", "ppg"]);
+});
+test("lookup forwards the owner's cancellation and request deadline unchanged", async () => {
+  const controller = new AbortController();
+  const options = { signal: controller.signal, timeoutMs: 15000 };
+  const api = { post: jest.fn().mockResolvedValue({ snapshot, results: { O: [] } }) };
+  await lookupStock(api, "O", options);
+  expect(api.post).toHaveBeenCalledWith("/api/v1/stock/lookup", { smiles: ["O"] }, false, options);
 });
 test("a reported exact empty result is not an invalid response", async () => {
   const api = {

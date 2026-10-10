@@ -24,9 +24,9 @@ beforeEach(() => {
   let id = 0; crypto.randomUUID = () => `material-${++id}`;
 });
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
-function setup(query = { smiles: "CCO" }) {
+function setup(query = { smiles: "CCO" }, stubs = {}) {
   const route = reactive({ query }); useRoute.mockReturnValue(route);
-  const wrapper = mount(Process, { attachTo: document.body, global: { stubs: { ...calculationStubs, ...tabs } } });
+  const wrapper = mount(Process, { attachTo: document.body, global: { stubs: { ...calculationStubs, ...tabs, ...stubs } } });
   wrappers.push(wrapper); return { wrapper, route };
 }
 async function fillMasses(wrapper) {
@@ -216,4 +216,42 @@ test("return/edit restores the complete saved batch, not only SMILES, and never 
   expect(labeledInput(wrapper, "录入实验收率").element.value).toBe("0");
   expect(wrapper.get(".boundary-label input").element.checked).toBe(true);
   expect(JSON.stringify(inputs)).toBe(original); expect(API.post).not.toHaveBeenCalled();
+});
+
+test.each([
+  ["en", "Analysis record not found."],
+  ["zh-CN", "研究记录不存在。"],
+])("a missing saved batch is localized in %s and New batch restores empty enabled inputs", async (locale, expected) => {
+  const missingId = "0".repeat(32);
+  const response = { detail: "研究记录不存在。" }, original = JSON.stringify(response);
+  setLocale(locale, { persist: false });
+  API.get.mockRejectedValue(new Error(original));
+  const { wrapper, route } = setup({ record: missingId }, {
+    // Match Vuetify's default so New batch cannot submit the form.
+    VBtn: {
+      props: ["disabled", "type"],
+      template: '<button :type="type || \'button\'" :disabled="disabled"><slot /></button>',
+    },
+  });
+  await flushPromises();
+
+  const alert = wrapper.get('[role="alert"]');
+  expect(alert.text()).toContain(expected);
+  expect(API.get).toHaveBeenCalledWith(`/api/v1/analyses/${missingId}`, null, false);
+  expect(wrapper.findAll("form input, form select, form textarea").every((field) => field.element.disabled)).toBe(true);
+  expect(wrapper.get('button[type="submit"]').element.disabled).toBe(true);
+  expect(API.post).not.toHaveBeenCalled();
+
+  await alert.get('button[to="/process"]').trigger("click");
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  expect(wrapper.vm.form.product.smiles).toBe("");
+  expect(wrapper.get(".quantity-field input").element.value).toBe("");
+  expect(wrapper.get(".quantity-field select").element.value).toBe("g");
+  expect(wrapper.findAll("form input, form select, form textarea").every((field) => !field.element.disabled)).toBe(true);
+  expect(wrapper.get('button[type="submit"]').element.disabled).toBe(true);
+  route.query = {};
+  await flushPromises();
+  expect(API.get).toHaveBeenCalledTimes(1);
+  expect(API.post).not.toHaveBeenCalled();
+  expect(JSON.stringify(response)).toBe(original);
 });

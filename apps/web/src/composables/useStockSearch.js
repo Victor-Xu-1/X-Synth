@@ -1,6 +1,6 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { API } from "@/common/api";
-import { lookupStock } from "@/common/stock-lookup";
+import { lookupStock, STOCK_REQUEST_TIMEOUT_MS } from "@/common/stock-lookup";
 import { errorMessage } from "@/common/workspace-errors";
 
 export function useStockSearch({ smiles, expectedSnapshot, api = API }) {
@@ -8,7 +8,8 @@ export function useStockSearch({ smiles, expectedSnapshot, api = API }) {
     loading = ref(false),
     error = ref("");
   let generation = 0,
-    alive = true;
+    alive = true,
+    activeRequest = null;
   const input = () => smiles.value.trim();
   const expected = () => expectedSnapshot.value || null;
   const matchedResult = computed(() =>
@@ -24,6 +25,8 @@ export function useStockSearch({ smiles, expectedSnapshot, api = API }) {
   );
   function reset() {
     generation++;
+    activeRequest?.abort();
+    activeRequest = null;
     result.value = null;
     loading.value = false;
     error.value = "";
@@ -36,27 +39,33 @@ export function useStockSearch({ smiles, expectedSnapshot, api = API }) {
       expectedValue = expected(),
       current = generation;
     if (!query) return;
+    const controller = new AbortController();
+    activeRequest = controller;
+    const options = { signal: controller.signal, timeoutMs: STOCK_REQUEST_TIMEOUT_MS };
     loading.value = true;
-    const isCurrent = () => alive && current === generation;
+    const isCurrent = () => alive && current === generation && !controller.signal.aborted;
     try {
       const structure = await api.post("/api/v1/structure/validate", {
         smiles: query,
-      });
+      }, false, options);
       if (!isCurrent()) return;
       if (typeof structure?.smiles !== "string" || !structure.smiles.trim())
         throw new Error("结构校验未返回有效 SMILES。");
-      const value = await lookupStock(api, structure.smiles);
+      const value = await lookupStock(api, structure.smiles, options);
       if (isCurrent())
         result.value = { ...value, query, expectedSnapshot: expectedValue };
     } catch (e) {
       if (isCurrent()) error.value = errorMessage(e, "库存检索失败。");
     } finally {
+      if (activeRequest === controller) activeRequest = null;
       if (isCurrent()) loading.value = false;
     }
   }
   onBeforeUnmount(() => {
     alive = false;
     generation++;
+    activeRequest?.abort();
+    activeRequest = null;
   });
   return { matchedResult, snapshotMatches, loading, error, search, reset };
 }

@@ -44,3 +44,13 @@ test("named chemical-data parameters retain zero, complete structures and user t
   setLocale("zh-CN", { persist: false });
   expect(uiText("产物 {count}", { count: 0 })).toBe("产物 0");
 });
+
+test.each([
+  ["en", "Analysis record not found."],
+  ["zh-CN", "研究记录不存在。"],
+])("the application-owned missing-record message is registered and localized in %s", (locale, expected) => {
+  const source = "研究记录不存在。";
+  expect(messages[locale][source]).toBe(expected);
+  setLocale(locale, { persist: false });
+  expect(uiText(source)).toBe(expected);
+});

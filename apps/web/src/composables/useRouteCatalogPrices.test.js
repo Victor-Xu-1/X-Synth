@@ -83,3 +83,27 @@ test("route reading batches leaf structures only and discards late results for a
   expect(state.prices.value).toEqual({ CCN: null });
   wrapper.unmount();
 });
+
+test("hidden, replaced and disposed route price reads retire their connection", async () => {
+  const graph = ref({ nodes: [{ id: "leaf", type: "molecule", smiles: "CCO" }], edges: [] });
+  const enabled = ref(true), expectedSnapshot = ref(snapshot), pending = [];
+  const api = { post: jest.fn((path, body, query, options) =>
+    new Promise(resolve => pending.push({ path, body, query, options, resolve }))) };
+  let state;
+  const wrapper = mount(defineComponent({ setup() {
+    state = useRouteCatalogPrices({ graph, enabled, expectedSnapshot, api });
+    return () => null;
+  } }));
+  expect(pending[0].options).toEqual({ signal: expect.any(AbortSignal), timeoutMs: 15000 });
+  graph.value = { nodes: [{ id: "other", type: "molecule", smiles: "CCN" }], edges: [] };
+  expect(pending[0].options.signal.aborted).toBe(true);
+  expect(pending[1].options.signal.aborted).toBe(false);
+  enabled.value = false;
+  expect(pending[1].options.signal.aborted).toBe(true);
+  expect(state.loading.value).toBe(false);
+  enabled.value = true;
+  wrapper.unmount(); expect(pending[2].options.signal.aborted).toBe(true);
+  pending.forEach(item => item.resolve(response(item.body.smiles[0])));
+  await flushPromises(); expect(state.prices.value).toEqual({});
+  await state.refresh(); expect(api.post).toHaveBeenCalledTimes(3);
+});

@@ -100,7 +100,8 @@ test("recycled confirmed iframe never clears source query or its task snapshot, 
   await wrapper.findAll('[role="tab"]').find((tab) => tab.text() === "证据详情").trigger("click");
   expect(wrapper.text()).toContain("任务快照 SHA256");
   expect(wrapper.text()).toContain("与任务快照一致");
-  expect(API.post.mock.calls[2]).toEqual(["/api/v1/structure/validate", { smiles: "CCO" }]);
+  expect(API.post.mock.calls[2]).toEqual(["/api/v1/structure/validate", { smiles: "CCO" }, false,
+    { signal: expect.any(AbortSignal), timeoutMs: 15000 }]);
 });
 
 test("an unfinished native edit stays mounted offscreen and cannot submit its old source text", async () => {
