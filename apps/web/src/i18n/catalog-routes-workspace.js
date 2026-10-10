@@ -149,6 +149,7 @@ export default [
   ["路线数量", "Route count"], ["任务 ID", "Task ID"], ["创建时间", "Created"], ["开始时间", "Started"],
   ["结束时间", "Finished"], ["错误代码", "Error code"], ["目标 SMILES", "Target SMILES"],
   ["正在读取搜索参数", "Reading search parameters"], ["原始请求参数", "Original request parameters"],
+  ["搜索策略版本", "Search policy version"],
   ["路线结果", "Route results"], ["任务进度", "Task progress"], ["目标与搜索进度", "Target and search progress"],
   ["第 {value} 轮搜索", "Search round {value}"], ["搜索断点已保留", "Search checkpoint retained"],
   ["未获得符合原料闭合与反应核验要求的完整路线", "No complete route met the starting-material closure and reaction-verification requirements"],

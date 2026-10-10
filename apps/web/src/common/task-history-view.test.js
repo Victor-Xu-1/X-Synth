@@ -16,6 +16,7 @@ import {
 } from "./task-history-view";
 import { querySeed } from "./workbench-model";
 import { buildUnifiedRouteRequestBody } from "./unified-route";
+import { setLocale } from "@/i18n";
 
 const row = {
   result_id: "history-task",
@@ -26,6 +27,16 @@ const row = {
   created: "2026-10-03T10:00:00+00:00",
   modified: "2026-10-03T10:01:00+00:00",
 };
+
+test("the owned search-policy caption is localized without rewriting its parameter key or value", () => {
+  const source = { settings: { search_policy_version: 2 } };
+  for (const [locale, label] of [["en", "Search policy version"], ["zh-CN", "搜索策略版本"]]) {
+    setLocale(locale, { persist: false });
+    const field = taskParameterGroups(source)[0].fields[0];
+    expect(field.key).toBe("search_policy_version"); expect(field.label).toBe(label);
+    expect(String(field.value)).toBe("2"); expect(source.settings.search_policy_version).toBe(2);
+  }
+});
 const settings = {
   smiles: "CCO",
   description: "History task",
