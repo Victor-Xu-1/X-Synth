@@ -1,6 +1,11 @@
 <template>
   <div ref="root" class="editor-view-tools" role="group" :aria-label="$tr('绘图视图工具')" @keydown.esc="dismissed = true">
     <span v-if="expanded" class="editor-view-title">{{ $tr(title) }}</span>
+    <select v-if="validZoom" class="editor-zoom" :value="zoom" :aria-label="$tr('画板缩放')"
+      :disabled="disabled || !activity" @change="selectZoom">
+      <option v-if="currentPreset === undefined" :value="zoom">{{ zoomLabel(zoom) }}</option>
+      <option v-for="value in presets" :key="value" :value="value === currentPreset ? zoom : value">{{ zoomLabel(value) }}</option>
+    </select>
     <v-tooltip v-for="tool in tools" :key="tool.label" :text="$tr(tool.label)" :model-value="current === tool.event"
       :open-on-hover="false" :open-on-focus="false" :transition="false" @update:model-value="value => changed(tool.event, value)">
       <template #activator="{ props: activator }"><v-btn v-bind="activator" type="button"
@@ -22,9 +27,19 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import { useWorkbenchActivity } from "./workbench-activity";
-const props = defineProps({ expanded: Boolean, supported: Boolean, disabled: Boolean, title: String });
-defineEmits(['zoomOut', 'zoomIn', 'fit', 'expand']);
+const props = defineProps({ expanded: Boolean, supported: Boolean, disabled: Boolean, title: String, zoom: { type: Number, default: null } });
+const emit = defineEmits(['zoomOut', 'zoomIn', 'fit', 'expand', 'zoom']);
 const activity = useWorkbenchActivity();
+const presets = [.25, .5, .75, 1, 1.25, 1.5, 2, 3, 4];
+const validZoom = computed(() => Number.isFinite(props.zoom) && props.zoom > 0);
+const zoomLabel = value => `${Number((value * 100).toFixed(1))}%`;
+const currentPreset = computed(() => validZoom.value
+  ? presets.find(value => zoomLabel(value) === zoomLabel(props.zoom)) : undefined);
+function selectZoom(event) {
+  const value = Number(event.target.value);
+  const preset = presets.includes(value) ? value : value === props.zoom ? currentPreset.value : undefined;
+  if (!props.disabled && activity.value && preset !== undefined) emit('zoom', preset);
+}
 const root = ref(null);
 defineExpose({ focusFit() {
   if (!props.disabled && activity.value) root.value?.querySelector('[data-view-action="fit"]')?.focus({ preventScroll: true });
@@ -46,7 +61,12 @@ const tools = [
 ];
 </script>
 <style scoped>
-.editor-view-tools { display: flex; align-items: center; justify-content: flex-end; gap: 2px; min-height: 44px; flex: none; }
+.editor-view-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 2px; min-height: 44px; flex: none; }
+.editor-zoom { width: 68px; height: 36px; flex: 0 0 68px; padding: 0 4px; border: 1px solid var(--ws-border); border-radius: 4px; background: var(--ws-surface); color: var(--ws-text); font: inherit; font-size: 13px; letter-spacing: 0; }
+.editor-zoom:focus-visible { outline: 2px solid var(--ws-accent); outline-offset: 2px; }
+.editor-zoom option { color: var(--ws-text); background: var(--ws-surface); }
+.editor-zoom:disabled { opacity: .5; }
 .editor-view-tools :deep(.v-btn) { width: 44px; height: 44px; flex: 0 0 44px; }
 .editor-view-title { margin-right: auto; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+@media (max-width: 560px) { .editor-view-title { flex-basis: 100%; } }
 </style>

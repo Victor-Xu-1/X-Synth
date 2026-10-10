@@ -8,6 +8,8 @@ import DrawingViewTools from "./workspace/DrawingViewTools.vue";
 // Native API doubles exercise host layout ownership, not chemistry parsing.
 function nativeEditor() {
   const eventBus = new EventEmitter();
+  const events = new EventEmitter();
+  let zoom = 1;
   return {
     eventBus,
     setMolecule: jest.fn(() => queueMicrotask(() => eventBus.emit("SUCCESS"))),
@@ -15,7 +17,11 @@ function nativeEditor() {
     editor: {
       clear: jest.fn(),
       struct: () => ({ atoms: { size: 0 } }),
-      zoom: jest.fn(),
+      zoom: jest.fn(value => { if (value !== undefined) zoom = value; return zoom; }),
+      subscribe: jest.fn((name, handler) => { events.on(name, handler); return { handler }; }),
+      unsubscribe: jest.fn((name, token) => events.removeListener(name, token.handler)),
+      selection: () => ({}),
+      event: { selectionChange: { dispatch: () => events.emit("selectionChange") } },
       zoomAccordingContent: jest.fn(),
       render: { update: jest.fn() },
     },
@@ -215,7 +221,7 @@ describe("inline Ketcher viewport lifecycle", () => {
     await jest.advanceTimersByTimeAsync(18100);
     expect(wrapper.find(".editor-error").exists()).toBe(true);
     expect(wrapper.emitted("commit")).toBeUndefined();
-    first.editor.subscribe.mock.calls[0][1]();
+    first.editor.subscribe.mock.calls.find(([name]) => name === "change")[1]();
     first.eventBus.emit("SUCCESS");
     await jest.advanceTimersByTimeAsync(300);
     expect(wrapper.find(".editor-error").exists()).toBe(true);
@@ -226,7 +232,7 @@ describe("inline Ketcher viewport lifecycle", () => {
     expect(freshFrame).not.toBe(iframe);
     let changed;
     const fresh = nativeEditor();
-    fresh.editor.subscribe = jest.fn((event, callback) => { changed = callback; return "fresh-subscription"; });
+    fresh.editor.subscribe = jest.fn((event, callback) => { if (event === "change") changed = callback; return "fresh-subscription"; });
     fresh.editor.unsubscribe = jest.fn();
     fresh.getSmiles.mockResolvedValue("CCCl");
     freshFrame.contentWindow.ketcher = fresh;
@@ -234,7 +240,8 @@ describe("inline Ketcher viewport lifecycle", () => {
     await retry;
     expect(first.editor.unsubscribe).toHaveBeenCalledWith("change", "first-subscription");
     expect(fresh.setMolecule).toHaveBeenCalledWith("CCN");
-    expect(fresh.editor.subscribe).toHaveBeenCalledTimes(1);
+    expect(fresh.editor.subscribe.mock.calls.filter(([name]) => name === "change")).toHaveLength(1);
+    expect(fresh.editor.subscribe.mock.calls.filter(([name]) => name === "selectionChange")).toHaveLength(1);
     expect(wrapper.find(".editor-error").exists()).toBe(false);
     changed();
     await jest.advanceTimersByTimeAsync(300);
@@ -350,6 +357,56 @@ describe("inline Ketcher viewport lifecycle", () => {
     expect(ketcher.editor.clear).not.toHaveBeenCalled();
     expect(ketcher.setMolecule).not.toHaveBeenCalled();
     expect(observer.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  test("numeric zoom uses the native camera and releases its own live readout subscription", async () => {
+    const { iframe } = createEditor();
+    const native = nativeEditor(); iframe.contentWindow.ketcher = native;
+    await jest.advanceTimersByTimeAsync(160);
+    expect(wrapper.find("select.editor-zoom").element.value).toBe("1");
+    await wrapper.find("select.editor-zoom").setValue("0.5");
+    await jest.advanceTimersByTimeAsync(16);
+    expect(native.editor.zoom()).toBe(.5);
+    expect(wrapper.find("select.editor-zoom").element.value).toBe("0.5");
+    native.editor.zoom(.75); native.editor.event.selectionChange.dispatch(); await nextTick();
+    expect(wrapper.find("select.editor-zoom").element.value).toBe("0.75");
+    const token = native.editor.subscribe.mock.results.find((_, index) =>
+      native.editor.subscribe.mock.calls[index][0] === "selectionChange").value;
+    wrapper.unmount(); wrapper = null;
+    expect(native.editor.unsubscribe).toHaveBeenCalledWith("selectionChange", token);
+  });
+
+  test("frame interruption clears stale zoom instead of keeping an enabled percentage", async () => {
+    const { iframe } = createEditor();
+    const native = nativeEditor(); iframe.contentWindow.ketcher = native;
+    await jest.advanceTimersByTimeAsync(160);
+    expect(wrapper.find("select.editor-zoom").exists()).toBe(true);
+    iframe.contentWindow.dispatchEvent(new Event("pagehide")); await nextTick();
+    expect(wrapper.find("select.editor-zoom").exists()).toBe(false);
+    expect(wrapper.find(".editor-error").exists()).toBe(true);
+  });
+
+  test("an acquisition interrupted before its await continuation cannot rebind the retired zoom owner", async () => {
+    const { iframe } = createEditor();
+    const native = nativeEditor(); iframe.contentWindow.ketcher = native;
+    await jest.advanceTimersByTimeAsync(160);
+    const editor = native.editor;
+    native.getSmiles.mockClear();
+    let interrupted = false;
+    Object.defineProperty(native, "editor", { get() {
+      if (!interrupted) {
+        interrupted = true;
+        Promise.resolve().then(() => iframe.contentWindow.dispatchEvent(new Event("pagehide")));
+      }
+      return editor;
+    } });
+    await wrapper.vm.$.exposed.readSmilesFromEditor();
+    await jest.advanceTimersByTimeAsync(32);
+    expect(wrapper.vm.$.exposed.ready.value).toBe(false);
+    expect(wrapper.find("select.editor-zoom").exists()).toBe(false);
+    expect(editor.subscribe.mock.calls.filter(([name]) => name === "selectionChange")).toHaveLength(1);
+    expect(editor.unsubscribe.mock.calls.filter(([name]) => name === "selectionChange")).toHaveLength(1);
+    expect(native.getSmiles).not.toHaveBeenCalled();
   });
 
   test("a fit queued before scope deactivation cannot paint after reactivation", async () => {
