@@ -32,6 +32,10 @@
             <ReferenceRecordActions v-bind="recordActions(row)" @operate="operate" @load-reaction="loadReaction" />
           </template>
         </ReferenceRecordSummary>
+        <template v-if="!detailRecord">
+          <p v-if="recordMessage(row).error" class="tool-error" role="alert">{{ $tr(recordMessage(row).error) }}</p>
+          <p v-if="recordMessage(row).notice" class="reference-state" role="status">{{ $tr(recordMessage(row).notice) }}</p>
+        </template>
       </article>
       <footer class="reference-retrieval">
         <span>{{ $tr('检索时间：{value}', { value: checked.retrieved_at }) }}</span>
@@ -49,8 +53,8 @@
         v-if="detailRecord"
         :record="detailRecord"
         :title-id="detailTitleId"
-        :action-error="messageRecord === detailRecord.id ? actionError : ''"
-        :notice="messageRecord === detailRecord.id ? notice : ''"
+        :action-error="recordMessage(detailRecord).error"
+        :notice="recordMessage(detailRecord).notice"
         @close="closeDetail"
       >
         <template #actions>
@@ -58,16 +62,15 @@
         </template>
       </ReferenceRecordDetail>
     </v-dialog>
-    <p v-if="actionError && !detailRecord" class="tool-error" role="alert">{{ $tr(actionError) }}</p>
-    <p v-if="notice && !detailRecord" class="reference-state" role="status">{{ $tr(notice) }}</p>
   </section>
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, shallowReactive, useId, watch } from "vue";
 import { API } from "@/common/api";
 import { downloadChemicalFile } from "@/common/chemical-files";
 import { referenceSourceLabel } from "./reference-record";
+import { REACTION_REQUEST_TIMEOUT_MS } from "@/common/reaction-input";
 import {
   referenceFailure,
   referenceReactionFileBody,
@@ -99,8 +102,8 @@ const checked = computed(() => {
 });
 const visibleError = computed(() => props.error || (props.response && !checked.value
   ? "参考反应返回格式无效，未展示结果。" : ""));
-const action = ref(null), actionError = ref(""), notice = ref("");
-const messageRecord = ref(null);
+const operations = shallowReactive(new Map()), messages = shallowReactive(new Map());
+const emptyMessage = { error: "", notice: "" };
 const selectedId = ref(null);
 const detailId = "reference-detail-" + useId();
 const detailTitleId = detailId + "-title";
@@ -109,15 +112,18 @@ const detailRecord = computed(() => props.pending || visibleError.value ? null
 let returnFocus = null;
 let generation = 0, alive = true;
 
+function retireOperations() {
+  generation++;
+  for (const lease of operations.values()) lease.controller?.abort();
+  operations.clear();
+  messages.clear();
+}
+function recordMessage(row) {
+  return messages.get(row.id) || emptyMessage;
+}
 watch(
   () => [props.response, props.actualInput, props.pending, props.blocked, props.error],
-  () => {
-    generation++;
-    action.value = null;
-    actionError.value = "";
-    notice.value = "";
-    messageRecord.value = null;
-  },
+  retireOperations,
   { deep: true, flush: "sync" },
 );
 watch(
@@ -150,49 +156,56 @@ function canExport(row) {
   }
 }
 function recordActions(row) {
+  const lease = operations.get(row.id);
   return {
     record: row,
     allowCanvasReuse: props.allowCanvasReuse,
-    disabled: props.blocked || props.pending || Boolean(action.value),
+    disabled: props.blocked || props.pending || Boolean(lease),
     exportable: canExport(row),
-    exporting: action.value?.id === row.id && action.value.kind === "export",
+    exporting: lease?.kind === "export",
   };
 }
 function loadReaction(row) {
-  if (!alive || !props.allowCanvasReuse || action.value || props.pending || props.blocked
+  if (!alive || !props.allowCanvasReuse || operations.has(row.id) || props.pending || props.blocked
     || visibleError.value || !checked.value?.results.includes(row) || !canExport(row)) return;
   const body = referenceReactionFileBody(row);
   if (detailRecord.value) closeDetail(false);
   emit("load-reaction", body);
 }
 async function operate(row, kind) {
-  if (!alive || action.value || props.pending || props.blocked || visibleError.value
+  if ((kind !== "copy" && kind !== "export") || !alive || operations.has(row.id) || props.pending || props.blocked || visibleError.value
     || !checked.value?.results.includes(row)) return;
-  const current = ++generation;
-  action.value = { id: row.id, kind };
-  actionError.value = "";
-  notice.value = "";
-  messageRecord.value = row.id;
+  const lease = { generation, kind, controller: kind === "export" ? new AbortController() : null };
+  // Other records share query validity, not this operation's lifetime.
+  const current = () => alive && generation === lease.generation && operations.get(row.id) === lease;
+  operations.set(row.id, lease);
+  messages.delete(row.id);
+  let error = "", notice = "";
   try {
     if (kind === "copy") {
       if (!navigator.clipboard?.writeText) throw new ReferenceContractError("当前环境无法使用剪贴板。");
       await navigator.clipboard.writeText(row.reaction_smiles);
     } else {
-      const output = await API.post("/api/v1/structure/reaction-export", referenceReactionFileBody(row));
-      if (!alive || current !== generation) return;
+      const output = await API.post("/api/v1/structure/reaction-export", referenceReactionFileBody(row), false, {
+        signal: lease.controller.signal, timeoutMs: REACTION_REQUEST_TIMEOUT_MS,
+      });
+      if (!current()) return;
       if (output?.format !== "rxn") throw new ReferenceContractError("RXN 导出响应格式无效。");
       downloadChemicalFile(output, "reference-reaction");
     }
-    if (alive && current === generation) notice.value = kind === "copy" ? "已复制原始反应 SMILES。" : "RXN 已生成。";
+    if (current()) notice = kind === "copy" ? "已复制原始反应 SMILES。" : "RXN 已生成。";
   } catch (failure) {
-    if (alive && current === generation) actionError.value = referenceFailure(failure, "记录操作失败，请重试。");
+    if (current()) error = referenceFailure(failure, "记录操作失败，请重试。");
   } finally {
-    if (alive && current === generation) action.value = null;
+    if (current()) {
+      operations.delete(row.id);
+      messages.set(row.id, { error, notice });
+    }
   }
 }
 onBeforeUnmount(() => {
   alive = false;
-  generation++;
+  retireOperations();
   returnFocus = null;
 });
 </script>

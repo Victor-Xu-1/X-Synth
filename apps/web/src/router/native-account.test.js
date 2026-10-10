@@ -1,22 +1,25 @@
 import { reactive } from "vue";
 import router from "./index";
 import { sectionNavigation } from "@/common/workspace-navigation";
+import { readWorkspaceAccess } from "@/common/workspace-session";
 
 const mockWorkspace = reactive({ session: null, error: "", refreshCore: jest.fn(), can: jest.fn() });
 jest.mock("@/store/workspace", () => ({ useWorkspaceStore: () => mockWorkspace }));
-jest.mock("@/common/workspace-session", () => ({ hasWorkspaceAccess: jest.fn().mockResolvedValue(true) }));
+jest.mock("@/common/workspace-session", () => ({ readWorkspaceAccess: jest.fn().mockResolvedValue("allowed") }));
 jest.mock("vue-router", () => ({
   createWebHistory: jest.fn(() => ({ state: { position: 0 } })),
   createRouter: (options) => ({ options, beforeEach: jest.fn(), afterEach: jest.fn(), onError: jest.fn() }),
 }));
 const adminRoute = () => router.options.routes.find((route) => route.path === "/").children.find((route) => route.path === "admin");
 const destination = () => ({ path: "/admin", fullPath: "/admin", query: {}, meta: { workspace: true, ...adminRoute().meta } });
-const guard = (to) => router.beforeEach.mock.calls[0][0](to);
+const guard = (to) => router.beforeEach.mock.calls[0][0](to, { fullPath: "/buyables", matched: [{}] });
 const session = (updates = {}) => ({ mode: "askcos", owner: "researcher", administrator: false, workspace_access: true, ...updates });
 beforeEach(() => {
   mockWorkspace.session = session(); mockWorkspace.error = "";
   mockWorkspace.refreshCore.mockReset().mockResolvedValue(undefined);
   mockWorkspace.can.mockReset().mockReturnValue(true);
+  readWorkspaceAccess.mockReset().mockResolvedValue("allowed");
+  mockWorkspace.navigationFailure = null;
   localStorage.clear();
 });
 
@@ -46,4 +49,21 @@ test("a failed authoritative refresh cannot reuse an old native account role", a
 test("only the existing account-specific navigation item is enabled for native ordinary users", () => {
   const navigation = sectionNavigation({ path: "/admin", query: {} }, { native_account: true, administrator: false });
   expect(navigation.items.find((item) => item.to === "/admin")).toMatchObject({ feature: "native_account" });
+});
+
+test("ordinary connection failure remains on the current page; a confirmed denial redirects to login", async () => {
+  const target = { path: "/references", fullPath: "/references", query: {}, meta: { workspace: true } };
+  readWorkspaceAccess.mockResolvedValueOnce("unavailable");
+  expect(await guard(target)).toBe(false);
+  expect(mockWorkspace.navigationFailure).toEqual({ from: "/buyables", target: "/references" });
+  readWorkspaceAccess.mockResolvedValueOnce("denied");
+  expect(await guard(target)).toEqual({ name: "登录", query: { redirect: "/references" } });
+  expect(mockWorkspace.navigationFailure).toBeNull();
+});
+
+test("successful committed navigation clears recovery, but an aborted navigation preserves it", async () => {
+  mockWorkspace.navigationFailure = { from: "/buyables", target: "/references" };
+  const complete = router.afterEach.mock.calls[1][0];
+  complete({}, {}, { type: 4 }); expect(mockWorkspace.navigationFailure).not.toBeNull();
+  complete({}, {}, undefined); expect(mockWorkspace.navigationFailure).toBeNull();
 });

@@ -1,18 +1,25 @@
 <template>
-  <v-locale-provider :locale="widgetLocale"><router-view /></v-locale-provider>
+  <v-locale-provider :locale="widgetLocale">
+    <v-app v-if="entryFailure"><main class="workspace-entry-error"><WorkspaceNavigationNotice standalone /></main></v-app>
+    <router-view v-else />
+  </v-locale-provider>
 </template>
 
 <script setup>
-import { onBeforeMount, onMounted, ref } from "vue";
+import { computed, onBeforeMount, onMounted, ref } from "vue";
 import { useConfigStore } from "@/store/config";
 import { configure, addGtag } from "vue-gtag";
 import { useTheme } from "@/composables/useTheme";
 import { useRoute } from "vue-router";
 import { useUiLanguage, useUiPageTitle } from "@/i18n";
+import { useWorkspaceStore } from "@/store/workspace";
+import WorkspaceNavigationNotice from "@/components/workspace/WorkspaceNavigationNotice.vue";
 
 const { init: initTheme } = useTheme();
 const { widgetLocale } = useUiLanguage();
-useUiPageTitle(useRoute());
+const route = useRoute(), workspace = useWorkspaceStore();
+useUiPageTitle(route);
+const entryFailure = computed(() => route.matched?.length === 0 && !!workspace.navigationFailure);
 const configStore = useConfigStore();
 const gtagId = ref(null);
 

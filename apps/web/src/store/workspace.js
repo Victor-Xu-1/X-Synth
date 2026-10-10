@@ -9,6 +9,7 @@ export const useWorkspaceStore = defineStore("workspace", {
     references: null,
     loading: false,
     error: "",
+    navigationFailure: null,
     refreshed: 0,
     probing: emptyProbeState(),
   }),

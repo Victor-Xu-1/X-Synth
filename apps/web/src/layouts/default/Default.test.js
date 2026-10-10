@@ -38,6 +38,7 @@ const stubs = {
   },
   WorkspaceSectionNav: { template: "<nav />" },
   WorkspaceUpdateNotice: { template: "<div />" },
+  WorkspaceNavigationNotice: { template: "<div />" },
   RouterView: { template: '<button class="page-action">Page</button>' },
 };
 beforeEach(() => {

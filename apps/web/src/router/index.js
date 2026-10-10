@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from "vue-router";
-import { hasWorkspaceAccess } from "@/common/workspace-session";
+import { createWorkspaceNavigationAccess } from "@/common/workspace-navigation-access";
 import { reactionWorkspaceRedirect } from "@/common/workspace-navigation";
 import { useWorkspaceStore } from "@/store/workspace";
 import { nativeAccountAuthority } from "@/views/admin/account-access";
@@ -224,7 +224,9 @@ const router = createRouter({
   ],
 });
 
-router.beforeEach(async (to) => {
+const workspaceAccess = createWorkspaceNavigationAccess({ getWorkspace: () => useWorkspaceStore() });
+router.beforeEach(async (to, from) => {
+  const navigation = workspaceAccess.begin(to, from);
   if (to.meta.accountSelfService) {
     try {
       const workspace = useWorkspaceStore();
@@ -242,10 +244,10 @@ router.beforeEach(async (to) => {
     to.meta.workspace &&
     !to.meta.accountSelfService &&
     !to.meta.public &&
-    !authenticated &&
-    !(await hasWorkspaceAccess())
+    !authenticated
   ) {
-    return { name: "登录", query: { redirect: to.fullPath } };
+    const decision = await workspaceAccess.check(to, from, navigation);
+    if (decision !== undefined) return decision;
   }
   const reactionRedirect = reactionWorkspaceRedirect(to);
   if (reactionRedirect) return reactionRedirect;
@@ -262,6 +264,7 @@ router.beforeEach(async (to) => {
   workspaceScroll.capture();
 });
 router.afterEach(workspaceScroll.committed);
+router.afterEach(workspaceAccess.committed);
 router.onError((error, to) => {
   if (
     !/Failed to fetch dynamically imported module|Importing a module script failed/.test(

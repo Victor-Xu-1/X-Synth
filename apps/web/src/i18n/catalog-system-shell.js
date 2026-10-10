@@ -9,6 +9,8 @@ export default [
   ["{section}其他工具", "Other tools in {section}"],
   ["系统", "System"], ["环境管理", "Environment management"],
   ["工作台已更新 · v{version}", "Workspace updated · v{version}"], ["打开新版", "Open new version"],
+  ["暂时无法打开工作区", "Workspace temporarily unavailable"],
+  ["暂时无法打开页面，请检查连接后重试。", "Could not open this page. Check the connection and retry."],
   ["可行性评估", "Feasibility assessment"], ["复杂度评估", "Complexity assessment"],
   ["溶解度", "Solubility"], ["溶剂筛选", "Solvent screening"], ["QM 描述符", "QM descriptors"],
   ["保存的路线", "Saved routes"], ["页面未找到", "Page not found"],
