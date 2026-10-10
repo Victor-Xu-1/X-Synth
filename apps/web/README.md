@@ -1,6 +1,6 @@
 # X-Synth 工作台
 
-当前版本由仓库根 VERSION 定义，为 0.1.0。这里延续 ASKCOS Vue UI，不创建第二个前端。
+当前版本由仓库根 VERSION 唯一定义。这里延续 ASKCOS Vue UI，不创建第二个前端。
 上游 MIT 协议和版权保留在 LICENSE，Ketcher/JSME 等资源保留各自的协议。
 
 唯一依赖管理器为 npm，锁文件为 package-lock.json，需要 Node.js 24。

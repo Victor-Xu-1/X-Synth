@@ -44,11 +44,13 @@ test("API or response errors do not open a result; failed navigation can reopen 
   const { wrapper } = setup(); API.post.mockRejectedValueOnce(new Error(JSON.stringify({ detail: "SA 片段数据不可用。" })));
   await wrapper.get("form").trigger("submit"); await flushPromises();
   expect(wrapper.get('[role="alert"]').text()).toBe("SA 片段数据不可用。");
+  expect(wrapper.get(".workbench-inspector").find('[role="alert"]').exists()).toBe(true);
   API.post.mockResolvedValue({ ...result, descriptors: {} }); await wrapper.get("form").trigger("submit"); await flushPromises();
   expect(push).not.toHaveBeenCalled(); API.post.mockResolvedValue(result); push.mockRejectedValue(new Error("navigation_failed"));
   await wrapper.get("form").trigger("submit"); await flushPromises();
   expect(wrapper.get('[role="alert"]').text()).toContain("结果已保存");
   expect(wrapper.get("a").attributes("href")).toBe(`/analyses/${recordId}`);
+  expect(wrapper.get(".workbench-inspector").get("a").attributes("href")).toBe(`/analyses/${recordId}`);
 });
 test("return/edit restores the exact salt structure without automatically recalculating", async () => {
   API.get.mockResolvedValue({ id: recordId, kind: "assessment", status: "completed", created: "2026-10-08T00:00:00Z", inputs: { smiles: "[Na+].CC(=O)[O-]" }, result: {}, error: null });

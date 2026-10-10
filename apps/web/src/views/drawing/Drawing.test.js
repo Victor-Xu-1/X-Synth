@@ -16,12 +16,14 @@ jest.mock("@/components/workspace/MoleculeFileControls.vue", () => ({ name: "Mol
 let wrapper;
 const mockReadDrawing = jest.fn();
 const mockWriteDrawing = jest.fn();
+const mockClearDrawing = jest.fn();
 const picker = defineComponent({ name: "MoleculeFileControls", emits: ["busy", "import"],
   setup(_, { expose }) { const hasPending = ref(false); expose({ hasPending }); return { selected: ref("unconfirmed_salt"), hasPending }; },
   template: '<div><input v-model="selected" aria-label="Test-only retained file choice" /><input v-model="hasPending" type="checkbox" aria-label="Test-only file confirmation pending" /></div>' });
 const editor = defineComponent({ name: "InlineKetcherEditor", props: ["smiles"],
   emits: ["update:smiles", "commit"],
   setup(_, { expose, emit }) {
+    const ready = ref(true), busy = ref(false), error = ref(""), pending = ref(false);
     const readSmilesFromEditor = async () => {
       const value = await mockReadDrawing();
       if (typeof value === "string") {
@@ -31,12 +33,19 @@ const editor = defineComponent({ name: "InlineKetcherEditor", props: ["smiles"],
       }
       return value;
     };
-    expose({ readSmilesFromEditor, setSmilesToEditor: mockWriteDrawing, pending: ref(false) });
+    const clearEditor = async () => {
+      await mockClearDrawing();
+      error.value = ""; pending.value = false;
+      emit("update:smiles", ""); emit("commit", "");
+    };
+    expose({ readSmilesFromEditor, setSmilesToEditor: mockWriteDrawing, clearEditor,
+      ready, busy, error, pending });
     return { marker: ref("unconfirmed_editor_state") };
   }, template: '<input v-model="marker" aria-label="Test-only retained drawing state" />' });
 const stubs = {
   VDefaultsProvider: { props: ["defaults"], template: "<slot />" }, VForm: { template: "<form><slot /></form>" },
-  VTextField: { props: ["modelValue"], template: '<input :value="modelValue" />' },
+  VTextField: { props: ["modelValue"], emits: ["update:modelValue"],
+    template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' },
   VBtn: { template: '<button><slot /></button>' }, VTooltip: { inheritAttrs: false, template: '<slot name="activator" :props="{}" />' },
   VIcon: true, VProgressLinear: true, RouterLink: true, InlineKetcherEditor: editor,
   SmilesImage: true, MoleculeFileControls: picker,
@@ -44,6 +53,7 @@ const stubs = {
 beforeEach(() => { mockAllowed.value = true; mockWorkspace.loading = false; mockWorkspace.error = "";
   mockReadDrawing.mockReset().mockResolvedValue("CCO"); API.post.mockReset().mockResolvedValue({ smiles: "CCO" });
   mockWriteDrawing.mockReset().mockResolvedValue(true);
+  mockClearDrawing.mockReset().mockResolvedValue(undefined);
   API.toErrorObject.mockReturnValue({ string_error: "read error" }); crypto.randomUUID = jest.fn(() => "drawing-instance"); });
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; });
 function setup() { wrapper = mount(Drawing, { global: { stubs } }); }
@@ -104,6 +114,76 @@ test("an unconfirmed file record cannot apply or standardize the older displayed
   expect(mockReadDrawing).not.toHaveBeenCalled(); expect(API.post).not.toHaveBeenCalled();
 });
 
+function failedEditor() {
+  const state = wrapper.getComponent(editor).vm.$.exposed;
+  state.pending.value = true;
+  state.error.value = "Structure import failed";
+  return state;
+}
+
+test("an ordinary import failure allows text correction but still blocks unconfirmed reads and execution", async () => {
+  setup(); failedEditor(); await nextTick();
+  expect(wrapper.get('[data-cy="draw-enter-smiles"]').element.disabled).toBe(false);
+  expect(wrapper.get('[aria-label="清空画板"]').element.disabled).toBe(false);
+  expect(wrapper.get('[data-cy="draw-apply-btn"]').element.disabled).toBe(true);
+  expect(wrapper.get('[data-cy="draw-canonicalize-btn"]').element.disabled).toBe(true);
+  await wrapper.get('[data-cy="draw-enter-smiles"]').setValue("CCN");
+  expect(wrapper.vm.$.setupState.smiles).toBe("CCN");
+  await wrapper.vm.$.setupState.applyStructure();
+  await wrapper.vm.$.setupState.canonicalize();
+  expect(mockReadDrawing).not.toHaveBeenCalled();
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test("clear recovers an ordinary failed import through the owned native writer, not a text fallback", async () => {
+  setup(); seedAppliedStructure(); failedEditor(); await nextTick();
+  await wrapper.vm.$.setupState.clearEditor(); await flushPromises();
+  expect(mockClearDrawing).toHaveBeenCalledTimes(1);
+  expect(wrapper.get('[data-cy="draw-enter-smiles"]').element.value).toBe("");
+  expect(wrapper.find('[data-cy="draw-committed-smiles"]').exists()).toBe(false);
+  expect(wrapper.get('[role="status"]').text()).toBe("画板已清空。");
+  expect(mockReadDrawing).not.toHaveBeenCalled();
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test("an unconfirmed file selection blocks correction and clear even when the editor also has an error", async () => {
+  setup(); failedEditor();
+  await wrapper.get('[aria-label="Test-only file confirmation pending"]').setValue(true);
+  expect(wrapper.get('[data-cy="draw-enter-smiles"]').element.disabled).toBe(true);
+  expect(wrapper.get('[aria-label="清空画板"]').element.disabled).toBe(true);
+  await wrapper.vm.$.setupState.clearEditor();
+  expect(mockClearDrawing).not.toHaveBeenCalled();
+});
+
+test.each([
+  { ready: true, busy: true, error: "Structure import failed" },
+  { ready: false, busy: false, error: "" },
+])("unsafe editor state %p keeps text, clear and execution blocked", async state => {
+  setup(); const exposed = failedEditor();
+  Object.entries(state).forEach(([key, value]) => { exposed[key].value = value; });
+  await nextTick();
+  expect(wrapper.get('[data-cy="draw-enter-smiles"]').element.disabled).toBe(true);
+  expect(wrapper.get('[aria-label="清空画板"]').element.disabled).toBe(true);
+  await wrapper.vm.$.setupState.clearEditor();
+  await wrapper.vm.$.setupState.applyStructure();
+  await wrapper.vm.$.setupState.canonicalize();
+  expect(mockClearDrawing).not.toHaveBeenCalled();
+  expect(mockReadDrawing).not.toHaveBeenCalled();
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test("an interrupted editor permits correcting reload text but cannot clear or read its quarantined canvas", async () => {
+  setup(); const exposed = failedEditor(); exposed.ready.value = false; await nextTick();
+  expect(wrapper.get('[data-cy="draw-enter-smiles"]').element.disabled).toBe(false);
+  expect(wrapper.get('[aria-label="清空画板"]').element.disabled).toBe(true);
+  await wrapper.vm.$.setupState.clearEditor();
+  await wrapper.vm.$.setupState.applyStructure();
+  await wrapper.vm.$.setupState.canonicalize();
+  expect(mockClearDrawing).not.toHaveBeenCalled();
+  expect(mockReadDrawing).not.toHaveBeenCalled();
+  expect(API.post).not.toHaveBeenCalled();
+});
+
 function deferred() {
   let resolve, reject;
   const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
@@ -119,6 +199,7 @@ test("standardization reads the live canvas and publishes only after a confirmed
   API.post.mockResolvedValue({ smiles: normalized });
   mockWriteDrawing.mockReturnValue(writing.promise);
   setup();
+  await nextTick();
   await wrapper.get('[data-cy="draw-canonicalize-btn"]').trigger("click");
   await flushPromises();
   expect(mockReadDrawing).toHaveBeenCalledTimes(1);
@@ -135,6 +216,7 @@ test("standardization reads the live canvas and publishes only after a confirmed
 });
 
 async function standardize() {
+  await nextTick();
   await wrapper.get('[data-cy="draw-canonicalize-btn"]').trigger("click");
   await flushPromises();
 }

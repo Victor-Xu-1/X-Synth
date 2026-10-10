@@ -20,12 +20,12 @@
             :placeholder="$tr('分子 / 反应 SMILES')"
             variant="outlined"
             density="comfortable"
-            :disabled="busy || inputPending"
+            :disabled="textBlocked"
             clearable
             data-cy="draw-enter-smiles"
           />
         </v-form>
-        <div :inert="files?.hasPending || busy || undefined">
+        <div :inert="filePending || busy || undefined">
           <inline-ketcher-editor
             ref="editor"
             v-model:smiles="smiles"
@@ -42,7 +42,7 @@
                 icon="mdi-eraser"
                 :aria-label="$tr('清空画板')"
                 variant="text"
-                :disabled="busy || inputPending"
+                :disabled="clearBlocked"
                 @click="clearEditor"
               />
             </template>
@@ -112,7 +112,11 @@ const route = useRoute();
 const editor = ref(null);
 const files = ref(null);
 const fileBusy = ref(false);
-const inputPending = computed(() => fileBusy.value || files.value?.hasPending === true || editor.value?.pending === true);
+const filePending = computed(() => fileBusy.value || files.value?.hasPending === true);
+const editorReady = computed(() => editor.value?.ready === true);
+const editorBusy = computed(() => editor.value?.busy === true);
+const editorError = computed(() => !!editor.value?.error);
+const inputPending = computed(() => filePending.value || !editorReady.value || editor.value?.pending === true);
 const readDrawing = () => editor.value?.readSmilesFromEditor();
 const smiles = ref(
   typeof route.query.smiles === "string" ? route.query.smiles : "",
@@ -121,6 +125,9 @@ const committedSmiles = ref("");
 const applying = ref(false);
 const canonicalizing = ref(false);
 const busy = computed(() => applying.value || canonicalizing.value);
+const textBlocked = computed(() => busy.value || filePending.value || editorBusy.value
+  || (!editorReady.value && !editorError.value));
+const clearBlocked = computed(() => busy.value || filePending.value || editorBusy.value || !editorReady.value);
 const errorMessage = ref("");
 const notice = ref("");
 let disposed = false, normalizationController = null;
@@ -160,7 +167,7 @@ const applyStructure = async () => {
 };
 
 const clearEditor = async () => {
-  if (busy.value || inputPending.value || !workspace.can("drawing")) return;
+  if (clearBlocked.value || !workspace.can("drawing")) return;
   applying.value = true;
   errorMessage.value = "";
   notice.value = "";
