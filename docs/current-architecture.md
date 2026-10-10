@@ -308,6 +308,22 @@ distinct from model/job budgets. Draft/file controllers cancel superseded or dis
 late data; native imports remain serialized and all exact role/group checks remain intact.
 Standalone drawing normalization reads the current native snapshot and only publishes success after
 confirmed native write/readback. It cannot silently substitute old field text for newer canvas input.
+An ordinary import error permits text correction or an explicit native clear, not execution against
+an unconfirmed canvas. A fresh native edit may retire only the same editor's settled failed write
+barriers after a successful current read; newer writes, interrupted imports and owner changes cannot
+use this recovery. Interrupted imports and post-native-write verification failures still require
+reload; a changed canvas cannot reuse the previous reaction's role/group declarations.
+Unverified context belongs to the editor across superseded writes, not just the latest request.
+Cold/reloaded frame acquisition consumes the latest text once; input revisions do not hide its
+failure or remove its retry feedback.
+Reaction feedback and explicit product confirmation live before the canvas beside their input.
+The product menu stays attached to that reaction owner outside the field's contained stacking
+context so the native drawing cannot intercept option clicks.
+Only current text-parse errors mark the text invalid; external file errors preserve the accepted
+reaction. Explicit RXN cancellation uses the existing file controller and context-bound focus return,
+while reference transfer retains its parent cancellation owner. One file-operation discriminator
+derives busy state; export has its own feedback and cannot be cancelled as import. Assessment errors and persisted-result
+recovery stay next to submission rather than above the whole mobile input layout.
 The version notice consumes the existing health version and VERSION-derived frontend value, not
 another polling service. A newer confirmed release opens the current same-origin route separately;
 it never automatically reloads or copies an unsubmitted chemical draft.

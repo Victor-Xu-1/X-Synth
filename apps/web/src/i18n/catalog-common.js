@@ -54,6 +54,8 @@ export default [
   ["导入 RXN 反应", "Import RXN reaction"], ["导出完整 RXN 反应", "Export complete RXN reaction"],
   ["清空反应", "Clear reaction"], ["反应物 > 试剂 / 溶剂 > 产物", "Reactants > agents / solvents > products"],
   ["载入参考反应", "Loading reference reaction"], ["处理 RXN 反应", "Processing RXN reaction"],
+  ["取消 RXN 导入", "Cancel RXN import"],
+  ["正在导出 RXN 反应", "Exporting RXN reaction"],
   ["反应物 {count}", "Reactants {count}"], ["产物 {count}", "Products {count}"],
   ["试剂 / 溶剂记录 {count}", "Agent / solvent records {count}"], ["选择产物", "Select product"],
   ["尚未选择产物", "Product not selected"], ["缺少产物结构", "Product structure missing"],

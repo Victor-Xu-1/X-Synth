@@ -80,6 +80,17 @@ describe("inline Ketcher viewport lifecycle", () => {
     };
   }
 
+  async function retryInFreshFrame(previous) {
+    const retry = wrapper.vm.$.exposed.retryEditor();
+    await nextTick();
+    const freshFrame = wrapper.get("iframe").element, native = nativeEditor();
+    expect(freshFrame).not.toBe(previous);
+    freshFrame.contentWindow.ketcher = native;
+    await jest.advanceTimersByTimeAsync(160);
+    await retry;
+    return native;
+  }
+
   test("initial layout and verification remain in the owned write transaction", async () => {
     let release;
     const afterImport = jest.fn(() => new Promise(resolve => { release = resolve; }));
@@ -159,7 +170,7 @@ describe("inline Ketcher viewport lifecycle", () => {
     expect(frame.getAttribute("aria-busy")).toBe("false");
   });
 
-  test("explicit same-input retry clears a failed verification only after a successful owned write", async () => {
+  test("explicit same-input retry clears a failed verification only after a fresh owned write", async () => {
     const afterImport = jest.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(undefined);
     const contentApplied = jest.fn();
     const { frame, iframe } = createEditor({ smiles: "CCO", afterImport, contentApplied });
@@ -167,9 +178,9 @@ describe("inline Ketcher viewport lifecycle", () => {
     await jest.advanceTimersByTimeAsync(160);
     expect(wrapper.find(".editor-error").exists()).toBe(true);
     expect(contentApplied).not.toHaveBeenCalled();
-    const retry = wrapper.vm.$.exposed.retryEditor();
-    await jest.advanceTimersByTimeAsync(32);
-    await retry;
+    expect(wrapper.vm.$.exposed.ready.value).toBe(false);
+    const fresh = await retryInFreshFrame(iframe);
+    expect(fresh.setMolecule).toHaveBeenCalledWith("CCO");
     expect(afterImport).toHaveBeenCalledTimes(2);
     expect(contentApplied).toHaveBeenCalledWith("CCO");
     expect(wrapper.find(".editor-error").exists()).toBe(false);
@@ -285,8 +296,9 @@ describe("inline Ketcher viewport lifecycle", () => {
     const reading = wrapper.vm.$.exposed.readSmilesFromEditor();
     rejectInitial(new Error("initial verification offline"));
     await jest.advanceTimersByTimeAsync(32); await reading;
-    const retry = wrapper.vm.$.exposed.retryEditor();
-    await jest.advanceTimersByTimeAsync(32); await retry;
+    expect(native.getSmiles).not.toHaveBeenCalled();
+    const fresh = await retryInFreshFrame(iframe);
+    expect(fresh.setMolecule).toHaveBeenCalledWith("CCO");
     expect(afterImport).toHaveBeenCalledTimes(2);
     expect(contentApplied).toHaveBeenCalledWith("CCO");
     expect(wrapper.find(".editor-error").exists()).toBe(false);

@@ -1,5 +1,5 @@
 <template>
-  <section class="reaction-input" :aria-label="$tr(label)" :aria-busy="working">
+  <section ref="inputRoot" class="reaction-input" :aria-label="$tr(label)" :aria-busy="working">
     <header class="reaction-input-heading">
       <label class="reaction-code-label" :for="id">{{ $tr('反应 SMILES') }}</label>
       <div class="reaction-input-actions">
@@ -7,6 +7,7 @@
           <template #activator="{ props: activator }">
             <v-btn
               v-bind="activator"
+              data-cy="reaction-import-file"
               icon="mdi-file-import-outline"
               variant="text"
               size="small"
@@ -60,18 +61,47 @@
       :aria-label="`${$tr(label)} SMILES`"
       :placeholder="$tr('反应物 > 试剂 / 溶剂 > 产物')"
       :disabled="disabled || fileBusy"
+      :aria-invalid="parseError ? 'true' : undefined"
+      :aria-describedby="feedbackPresent ? feedbackId : undefined"
       spellcheck="false"
     />
-    <div class="reaction-board" :inert="disabled || fileBusy || undefined">
-      <v-progress-linear
-        v-if="fileBusy"
-        indeterminate
-        color="primary"
-        class="reaction-transfer-progress"
-        :aria-label="
-          $tr(fileOrigin === 'reference' ? '载入参考反应' : '处理 RXN 反应')
-        "
+    <div v-if="feedbackPresent" :id="feedbackId" class="reaction-feedback" :class="{ 'reaction-processing': fileBusy }">
+      <p v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</p>
+      <p v-else-if="fileBusy || parseLoading" class="reaction-feedback-status" role="status">
+        {{ $tr(fileBusy ? processingMessage : '正在同步结构') }}
+      </p>
+      <p v-else-if="incompleteMessage" class="reaction-incomplete" role="status">{{ $tr(incompleteMessage) }}</p>
+      <v-tooltip v-if="fileOperation === 'import' && fileOrigin === 'file'" :text="$tr('取消 RXN 导入')">
+        <template #activator="{ props: activator }">
+          <v-btn v-bind="activator" type="button" icon="mdi-close" variant="text" size="small"
+            :aria-label="$tr('取消 RXN 导入')" :disabled="disabled" data-cy="reaction-cancel-file" @click="cancelFileImport" />
+        </template>
+      </v-tooltip>
+    </div>
+    <div v-if="parsed" class="reaction-role-summary">
+      <span>{{ $tr('反应物 {count}', { count: reactants.length }) }}</span>
+      <v-icon icon="mdi-arrow-right" size="16" aria-hidden="true" />
+      <span>{{ $tr('产物 {count}', { count: parsed.products.length }) }}</span>
+      <span class="reaction-agent-count"
+        >{{ $tr('试剂 / 溶剂记录 {count}', { count: agents.length }) }}</span
+      >
+      <v-select
+        v-if="parsed.products.length > 1"
+        v-model="selected"
+        :items="productOptions"
+        :menu-props="{ attach: inputRoot }"
+        :label="$tr('选择产物')"
+        density="compact"
+        variant="outlined"
+        hide-details
+        :disabled="disabled || fileBusy"
+        class="reaction-product-select"
+        data-cy="reaction-product-choice"
       />
+    </div>
+    <div class="reaction-board" :inert="disabled || fileBusy || undefined">
+      <v-progress-linear v-if="fileBusy" indeterminate color="primary" class="reaction-transfer-progress"
+        :aria-label="$tr(processingMessage)" />
       <InlineKetcherEditor
         ref="board"
         v-model:smiles="text"
@@ -90,37 +120,6 @@
         fill-height
       />
     </div>
-    <div v-if="parsed" class="reaction-role-summary">
-      <span>{{ $tr('反应物 {count}', { count: reactants.length }) }}</span>
-      <v-icon icon="mdi-arrow-right" size="16" aria-hidden="true" />
-      <span>{{ $tr('产物 {count}', { count: parsed.products.length }) }}</span>
-      <span class="reaction-agent-count"
-        >{{ $tr('试剂 / 溶剂记录 {count}', { count: agents.length }) }}</span
-      >
-      <v-select
-        v-if="parsed.products.length > 1"
-        v-model="selected"
-        :items="productOptions"
-        :label="$tr('选择产物')"
-        density="compact"
-        variant="outlined"
-        hide-details
-        :disabled="disabled || fileBusy"
-        class="reaction-product-select"
-        data-cy="reaction-product-choice"
-      />
-    </div>
-    <p v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</p>
-    <p v-else-if="parsed && !product" class="reaction-incomplete" role="status">
-      {{ $tr(parsed.products.length ? "尚未选择产物" : "缺少产物结构") }}
-    </p>
-    <p
-      v-else-if="parsed && requireReactants && !reactants.length"
-      class="reaction-incomplete"
-      role="status"
-    >
-      {{ $tr('缺少反应物结构') }}
-    </p>
     <details
       v-if="parsed"
       class="reaction-roles-detail"
@@ -173,7 +172,7 @@
   </section>
 </template>
 <script setup>
-import { computed, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import WorkbenchDialog from "./WorkbenchDialog.vue";
 import { EMPTY_REACTION_CANVAS } from "@/common/ketcher-reaction";
 import { MAX_REACTION_TEXT } from "@/common/reaction-input";
@@ -191,6 +190,7 @@ const props = defineProps({
   id: { type: String, default: () => `reaction-${crypto.randomUUID()}` },
 });
 const board = ref(null),
+  inputRoot = ref(null),
   fileInput = ref(null),
   rolesOpen = ref(false);
 const boardPending = computed(() => !board.value || board.value.pending);
@@ -212,6 +212,7 @@ const {
 } = draft;
 const {
   fileBusy,
+  fileOperation,
   fileDraft,
   fileProduct,
   fileError,
@@ -222,7 +223,15 @@ const {
   applyFile,
   exportFile,
 } = useReactionFiles({ text, disabled: () => props.disabled, board, draft });
+const processingMessage = computed(() => fileOperation.value === "export" ? "正在导出 RXN 反应"
+  : fileOrigin.value === "reference" ? "载入参考反应" : "处理 RXN 反应");
 const error = computed(() => fileError.value || parseError.value);
+const feedbackId = computed(() => `${props.id}-feedback`);
+const incompleteMessage = computed(() => {
+  if (parsed.value && !product.value) return parsed.value.products.length ? "尚未选择产物" : "缺少产物结构";
+  return parsed.value && props.requireReactants && !reactants.value.length ? "缺少反应物结构" : "";
+});
+const feedbackPresent = computed(() => !!(error.value || fileBusy.value || parseLoading.value || incompleteMessage.value));
 const pending = computed(
   () => !!(fileBusy.value || fileDraft.value || parsePending.value),
 );
@@ -245,8 +254,20 @@ async function clear() {
   else text.value = "";
 }
 function cancelImport() {
+  if (fileOperation.value === "export") return;
   discardFile();
   fileError.value = "";
+}
+function cancelFileImport(event) {
+  if (props.disabled || fileOperation.value !== "import" || fileOrigin.value !== "file") return;
+  const origin = event.currentTarget, context = props.id, original = text.value;
+  cancelImport();
+  nextTick(() => {
+    const target = inputRoot.value?.querySelector('[data-cy="reaction-import-file"]');
+    if (context === props.id && original === text.value && !props.disabled && !fileBusy.value && target?.isConnected
+      && !target.disabled && !target.closest('[hidden], [inert], [aria-hidden="true"]')
+      && (document.activeElement === origin || document.activeElement === document.body)) target.focus({ preventScroll: true });
+  });
 }
 defineExpose({
   parsed,
@@ -262,6 +283,7 @@ defineExpose({
 </script>
 <style scoped>
 .reaction-input {
+  position: relative;
   min-width: 0;
 }
 .reaction-input-heading,
@@ -289,6 +311,12 @@ defineExpose({
   font-size: 12px;
   margin-top: 4px;
 }
+.reaction-feedback { display: flex; align-items: center; gap: 12px; margin-top: 12px; min-width: 0; }
+.reaction-feedback p { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.reaction-feedback .tool-error { width: 100%; }
+.reaction-feedback-status { color: var(--ws-muted); font-size: 12px; line-height: 1.5; }
+.reaction-processing { border-left: 2px solid var(--ws-info); padding-left: 12px; }
+.reaction-feedback :deep(.v-btn) { width: 44px; height: 44px; flex-shrink: 0; }
 .reaction-board {
   position: relative;
   min-width: 0;

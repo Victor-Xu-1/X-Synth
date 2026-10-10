@@ -102,6 +102,7 @@ def mock_frontend(monkeypatch, before, after, old_records, new_records):
         "apps/web/src/styles/workbench.css",
         "apps/web/src/assets/logo.png",
         "README.md",
+        "apps/web/README.md",
         "NOTICE",
         "requirements/orchestrator-linux-py312.lock",
         "scripts/operations/serve_platform.py",

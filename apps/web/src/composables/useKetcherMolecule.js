@@ -48,6 +48,7 @@ export function useKetcherMolecule({
   let failedRead;
   let failedWrite, drawingRecovery;
   let initializing = false;
+  const unverifiedCanvases = new WeakSet();
   const binding = createKetcherBinding(() => autoSync() || !!onChanged, changed);
   function bindEditor(editor) {
     const replaced = editor !== binding.current;
@@ -105,6 +106,8 @@ export function useKetcherMolecule({
         const content = await editorContent(value);
         if (!current(requested)) return false;
         const applied = await writeMolecule(content);
+        // Superseded writes can change native content before their context is confirmed.
+        if (applied && binding.current) unverifiedCanvases.add(binding.current);
         if (!applied || !current(requested)) return false;
         if (afterImport) {
           const editor = await getEditor();
@@ -117,13 +120,15 @@ export function useKetcherMolecule({
         await fitDrawing();
         if (!current(requested)) return false;
         onApplied(value);
+        unverifiedCanvases.delete(binding.current);
         reloadRequired.value = false;
         dirty.value = false;
         status.value = options.statusMessage || "画板就绪";
         return true;
       } catch (failure) {
         if (current(requested)) {
-          reloadRequired.value = failure instanceof KetcherImportInterruptedError;
+          // A changed canvas without confirmed role/group context cannot be read safely.
+          reloadRequired.value = unverifiedCanvases.has(binding.current) || failure instanceof KetcherImportInterruptedError;
           if (reloadRequired.value) {
             invalidate();
             ready.value = false;
@@ -169,7 +174,7 @@ export function useKetcherMolecule({
       try {
         // Preparation, native import and accepted context are one owned write transaction.
         const recovering = await waitForWrites(canRead);
-        if (!canRead() || reloadRequired.value || (error.value && !recovering)) return null;
+        if (!canRead() || reloadRequired.value || unverifiedCanvases.has(binding.current) || (error.value && !recovering)) return null;
         readingCanvas = true;
         const editor = await getEditor();
         if (editor !== binding.current) throw new KetcherImportInterruptedError("Ketcher owner changed during read");
@@ -244,7 +249,6 @@ export function useKetcherMolecule({
       status.value = "正在重新加载画板";
       binding.release();
     }
-    const requested = revision;
     writes.value++;
     let handedToWriter = false;
     try {
@@ -255,7 +259,8 @@ export function useKetcherMolecule({
       await setSmilesToEditor();
     } catch (failure) {
       // The write queue alone publishes current write errors, including initial writes.
-      if (!handedToWriter && current(requested)) {
+      // Text revisions supersede input, not this single owned frame acquisition.
+      if (!handedToWriter && !signal.aborted && !ready.value) {
         error.value = formatError(
           failure,
           "结构绘制器未就绪，请检查输入或重新打开画板。",
@@ -278,8 +283,14 @@ export function useKetcherMolecule({
   watch(
     smiles,
     (value, previous) => {
-      if (!publishing && value !== previous)
-        setSmilesToEditor(value).catch(() => {});
+      if (publishing || value === previous) return;
+      if (initializing && !ready.value) {
+        // Fresh-frame acquisition imports the latest text once, after readiness.
+        invalidate();
+        dirty.value = true;
+        return;
+      }
+      setSmilesToEditor(value).catch(() => {});
     },
     { flush: "sync" },
   );

@@ -109,22 +109,34 @@ test("manual recovery keeps an explicit error until the fresh read succeeds and 
   expect(state.native.setMolecule).toHaveBeenCalledTimes(2);
 });
 
-test("a settled failed verification is retired only by a fresh drawing and its current reader", async () => {
+test("post-write verification failure quarantines the canvas until its context is confirmed after reload", async () => {
   const afterImport = jest.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("verification failed"));
-  const published = jest.fn();
-  const state = await setup({ afterImport, onPublished: published });
+  const published = jest.fn(), applied = jest.fn(), reader = jest.fn(async editor => ({ text: await editor.getSmiles(), kind: "reaction" }));
+  const state = await setup({ afterImport, onPublished: published, onApplied: applied, readStructure: reader });
   const writing = state.control.setSmilesToEditor("CCC");
   const failure = expect(writing).rejects.toThrow("verification failed");
   await jest.advanceTimersByTimeAsync(0);
   await failure;
   expect(state.control.error.value).not.toBe("");
+  const error = state.control.error.value;
+  expect(state.control.reloadRequired.value).toBe(true);
+  expect(state.control.ready.value).toBe(false);
   state.native.draw("CCN");
   await jest.advanceTimersByTimeAsync(250);
-  expect(state.smiles.value).toBe("CCN");
-  expect(published).toHaveBeenCalledWith({ text: "CCN" });
-  expect(state.control.pending.value).toBe(false);
+  expect(state.smiles.value).toBe("CCO");
+  expect(state.control.error.value).toBe(error);
+  expect(reader).not.toHaveBeenCalled();
+  expect(published).not.toHaveBeenCalled();
+  expect(applied.mock.calls).toEqual([["CCO"]]);
+  expect(state.control.pending.value).toBe(true);
   expect(afterImport).toHaveBeenCalledTimes(2);
   expect(state.native.setMolecule).toHaveBeenCalledTimes(2);
+  const retry = state.control.retryFailedOperation();
+  await jest.advanceTimersByTimeAsync(0);
+  await retry;
+  expect(state.reloadEditor).toHaveBeenCalledTimes(1);
+  expect(applied.mock.calls).toEqual([["CCO"], ["CCO"]]);
+  expect(state.control.pending.value).toBe(false);
 });
 
 test("reads without a genuine drawing change keep the failed import visible and cannot confirm the old canvas", async () => {
@@ -241,4 +253,111 @@ test("disposing manual recovery retires its scheduled read without publishing", 
   await nextTick();
   expect(state.commit).not.toHaveBeenCalled();
   expect(state.native.getSmiles).not.toHaveBeenCalled();
+});
+
+test("disabling a deferred recovery read prevents publication until a current read after re-enabling", async () => {
+  const state = await setup(), old = deferred();
+  await failImport(state);
+  state.native.getSmiles.mockReturnValueOnce(old.promise);
+  state.native.draw("CCN");
+  await jest.advanceTimersByTimeAsync(250);
+  state.disabled.value = true;
+  old.resolve("CCN");
+  await jest.advanceTimersByTimeAsync(0);
+  expect(state.commit).not.toHaveBeenCalled();
+  expect(state.control.pending.value).toBe(true);
+  state.disabled.value = false;
+  await jest.advanceTimersByTimeAsync(0);
+  expect(state.commit.mock.calls).toEqual([["CCN"]]);
+  expect(state.control.pending.value).toBe(false);
+});
+
+test("text replaced while a fresh editor is loading is the only confirmed input after reload", async () => {
+  const replacement = deferred();
+  const afterImport = jest.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("unverified context")).mockResolvedValue(undefined);
+  const state = await setup({ afterImport });
+  state.smiles.value = "CCN";
+  const writing = state.control.setSmilesToEditor();
+  const failed = expect(writing).rejects.toThrow("unverified context");
+  await jest.advanceTimersByTimeAsync(10);
+  await failed;
+  expect(state.control.reloadRequired.value).toBe(true);
+  state.reloadEditor.mockReturnValueOnce(replacement.promise);
+  // During a real frame reload both acquisition paths wait for that new owner.
+  state.getEditor.mockImplementation(() => replacement.promise);
+  const retry = state.control.retryFailedOperation();
+  state.smiles.value = "CCCl";
+  await jest.advanceTimersByTimeAsync(0);
+  replacement.resolve(state.fresh);
+  state.getEditor.mockResolvedValue(state.fresh);
+  await jest.advanceTimersByTimeAsync(32);
+  await retry;
+  expect(state.fresh.setMolecule).toHaveBeenLastCalledWith("CCCl");
+  expect(state.fresh.setMolecule).toHaveBeenCalledTimes(1);
+  expect(state.smiles.value).toBe("CCCl");
+  expect(state.control.pending.value).toBe(false);
+  expect(state.commit).not.toHaveBeenCalled();
+});
+
+test("a superseded native write remains unverified if replacement preparation fails", async () => {
+  const verification = deferred(), applied = jest.fn();
+  const afterImport = jest.fn().mockResolvedValueOnce(undefined).mockImplementationOnce(() => verification.promise);
+  const state = await setup({ afterImport, onApplied: applied,
+    editorContent: value => { if (value === "bad-preparation") throw new Error("preparation failed"); return value; } });
+  const writing = state.control.setSmilesToEditor("CCC");
+  await jest.advanceTimersByTimeAsync(32);
+  expect(afterImport).toHaveBeenCalledTimes(2);
+  state.smiles.value = "bad-preparation";
+  verification.resolve();
+  await jest.advanceTimersByTimeAsync(32);
+  expect(await writing).toBe(false);
+  expect(state.control.reloadRequired.value).toBe(true);
+  expect(state.control.ready.value).toBe(false);
+  state.native.draw("CCN");
+  await jest.advanceTimersByTimeAsync(300);
+  expect(state.native.getSmiles).not.toHaveBeenCalled();
+  expect(state.commit).not.toHaveBeenCalled();
+  expect(applied.mock.calls).toEqual([["CCO"]]);
+  expect(state.smiles.value).toBe("bad-preparation");
+});
+
+test("text revisions during cold acquisition do not hide acquisition failure or its retry", async () => {
+  const acquisition = deferred(), smiles = ref("CCO"), native = nativeEditor();
+  const getEditor = jest.fn(() => acquisition.promise);
+  const control = scope.run(() => useKetcherMolecule({ smiles, getEditor, signal: lifetime.signal,
+    autoSync: () => true, disabled: () => false, getWindow: () => window,
+    fitDrawing: jest.fn(async () => {}), captureFocus: jest.fn(), commit: jest.fn() }));
+  const initial = control.initialize();
+  smiles.value = "CCN";
+  acquisition.reject(new Error("editor unavailable"));
+  await initial;
+  expect(control.error.value).not.toBe("");
+  expect(control.ready.value).toBe(false);
+  expect(control.busy.value).toBe(false);
+  getEditor.mockResolvedValue(native);
+  const retry = control.retryFailedOperation();
+  await jest.advanceTimersByTimeAsync(32);
+  await retry;
+  expect(native.setMolecule).toHaveBeenCalledWith("CCN");
+  expect(control.pending.value).toBe(false);
+});
+
+test("text revisions during reload acquisition keep failure visible and retry the latest input", async () => {
+  const state = await setup(), acquisition = deferred();
+  state.native.setMolecule.mockImplementation(() => Promise.resolve());
+  state.smiles.value = "CCN";
+  await jest.advanceTimersByTimeAsync(18000);
+  state.reloadEditor.mockReturnValueOnce(acquisition.promise);
+  const loading = state.control.retryFailedOperation();
+  state.smiles.value = "CCCl";
+  acquisition.reject(new Error("fresh editor unavailable"));
+  await loading;
+  expect(state.control.error.value).not.toBe("");
+  expect(state.control.ready.value).toBe(false);
+  expect(state.control.busy.value).toBe(false);
+  const retry = state.control.retryFailedOperation();
+  await jest.advanceTimersByTimeAsync(32);
+  await retry;
+  expect(state.fresh.setMolecule).toHaveBeenCalledWith("CCCl");
+  expect(state.control.pending.value).toBe(false);
 });
