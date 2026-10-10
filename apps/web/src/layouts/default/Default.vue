@@ -40,8 +40,9 @@
       <div class="workspace-main" :inert="mobileOpen ? true : undefined">
         <div v-if="!online" class="workspace-connection-message" role="status"> {{ $tr('网络已断开') }} </div>
         <WorkspaceUpdateNotice />
+        <WorkspaceSectionNav />
         <main id="workspace-content" class="workspace-page" tabindex="-1">
-          <WorkspaceSectionNav /><router-view />
+          <router-view />
         </main>
       </div>
     </div>

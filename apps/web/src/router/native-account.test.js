@@ -6,7 +6,7 @@ const mockWorkspace = reactive({ session: null, error: "", refreshCore: jest.fn(
 jest.mock("@/store/workspace", () => ({ useWorkspaceStore: () => mockWorkspace }));
 jest.mock("@/common/workspace-session", () => ({ hasWorkspaceAccess: jest.fn().mockResolvedValue(true) }));
 jest.mock("vue-router", () => ({
-  createWebHistory: jest.fn(),
+  createWebHistory: jest.fn(() => ({ state: { position: 0 } })),
   createRouter: (options) => ({ options, beforeEach: jest.fn(), afterEach: jest.fn(), onError: jest.fn() }),
 }));
 const adminRoute = () => router.options.routes.find((route) => route.path === "/").children.find((route) => route.path === "admin");

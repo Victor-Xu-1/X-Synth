@@ -156,6 +156,145 @@ beforeEach(() => {
 });
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
 
+describe("reference-source metadata", () => {
+  const parameters = (wrapper) => wrapper.get(".reference-parameters");
+  const libraryStatus = () => ({
+    ...ready,
+    source: "OPEN_REACTIONS",
+    record_count: null,
+    sources: [
+      { ...ready, record_count: null },
+      { ...ready, source: "ORD", record_count: 7, conditions_count: 6,
+        yields_count: 0, license: "CC-BY-SA-4.0", snapshot: "a".repeat(64) },
+    ],
+  });
+
+  test.each(["en", "zh-CN"])("pending metadata makes no source/count claim in %s", async (locale) => {
+    const held = deferred();
+    API.get.mockReturnValueOnce(held.promise);
+    const { wrapper } = await setup();
+    setLocale(locale, { persist: false }); await nextTick();
+    const inspector = parameters(wrapper);
+    expect(inspector.findAll("dl")).toHaveLength(0);
+    expect(inspector.find("details").exists()).toBe(false);
+    expect(inspector.get('[role="status"]').text()).toBe(
+      locale === "en" ? "Checking reference sources." : "正在核对参考来源。",
+    );
+    expect(inspector.find('[aria-busy="true"]').exists()).toBe(true);
+    expect(wrapper.get('[data-cy="reference-search-submit"]').element.disabled).toBe(true);
+    expect(API.get.mock.calls).toEqual([[REFERENCE_STATUS_PATH, null, false]]);
+    expect(API.post).not.toHaveBeenCalled();
+    held.resolve(ready); await flushPromises();
+  });
+
+  test.each([
+    ["network", new Error("network unavailable")],
+    ["null", null],
+    ["invalid", { ...ready, record_count: -1 }],
+  ])("%s status failure hides unverified metadata until an explicit retry", async (_kind, failure) => {
+    if (failure instanceof Error) API.get.mockRejectedValueOnce(failure);
+    else API.get.mockResolvedValueOnce(failure);
+    const { wrapper } = await setup();
+    const inspector = parameters(wrapper), input = wrapper.getComponent(reactionInput).element;
+    await setReactionDraft(wrapper, { product: "CC=O", reactants: ["CCO"] });
+    expect(inspector.findAll("dl")).toHaveLength(0);
+    expect(inspector.get('[role="alert"]').text()).not.toBe("");
+    await wrapper.vm.search();
+    expect(API.post).not.toHaveBeenCalled();
+    expect(API.get).toHaveBeenCalledTimes(1);
+    const retry = inspector.get('button[aria-label="刷新参考来源状态"]');
+    retry.element.focus();
+    await retry.trigger("click"); await flushPromises();
+    expect(inspector.find('[role="alert"]').exists()).toBe(false);
+    expect(inspector.findAll("dl").length).toBeGreaterThan(0);
+    expect(wrapper.get('[data-cy="reference-search-submit"]').element.disabled).toBe(false);
+    expect(wrapper.getComponent(reactionInput).element).toBe(input);
+    expect(document.activeElement).toBe(retry.element);
+    expect(API.get).toHaveBeenCalledTimes(2);
+    expect(API.post).not.toHaveBeenCalled();
+  });
+
+  test("verified metadata preserves source IDs and counts without inventing a total or translating data", async () => {
+    const status = libraryStatus(), before = JSON.stringify(status);
+    API.get.mockResolvedValueOnce(status);
+    const { wrapper } = await setup();
+    const inspector = parameters(wrapper);
+    for (const [locale, unknown, verified] of [
+      ["en", "Count not provided", "Reference-source status checked."],
+      ["zh-CN", "数量未提供", "参考来源状态已核对。"],
+    ]) {
+      setLocale(locale, { persist: false }); await nextTick();
+      expect(inspector.get('[role="status"]').text()).toBe(verified);
+      expect(inspector.get("dl.reference-source dd").text()).toBe("USPTO_FULL + ORD");
+      expect(inspector.findAll("dl.reference-source dd").at(-1).text()).toBe(unknown);
+      expect(inspector.text()).not.toMatch(/Not recorded|未记录/);
+      const coverage = inspector.get("details");
+      expect(coverage.text()).toContain("USPTO_FULL");
+      expect(coverage.text()).toContain("ORD");
+      expect(coverage.findAll("dd").map(item => item.text())).toEqual(expect.arrayContaining([
+        unknown, "7", "6", "0", "CC-BY-SA-4.0",
+      ]));
+      expect(JSON.stringify(status)).toBe(before);
+    }
+    expect(API.get).toHaveBeenCalledTimes(1);
+    expect(API.post).not.toHaveBeenCalled();
+  });
+
+  test.each([null, undefined])("a verified legacy source with %s count reports missing metadata, not missing records", async (count) => {
+    API.get.mockResolvedValueOnce({ ...ready, record_count: count });
+    const { wrapper } = await setup();
+    setLocale("en", { persist: false }); await nextTick();
+    const inspector = parameters(wrapper);
+    expect(inspector.text()).toContain("USPTO_FULL");
+    expect(inspector.text()).toContain("Count not provided");
+    expect(inspector.text()).not.toContain("Not recorded");
+    await setReactionDraft(wrapper, { product: "CC=O" });
+    expect(wrapper.get('[data-cy="reference-search-submit"]').element.disabled).toBe(false);
+  });
+
+  test("a structured 503 remains verified unavailable metadata and retains explicit zero counts", async () => {
+    const status = libraryStatus();
+    Object.assign(status, { ready: false, record_count: 0, product_index_available: false,
+      reason: "reference_product_index_unavailable" });
+    status.sources = status.sources.map(source => ({ ...source, ready: false, record_count: 0,
+      product_index_available: false, reason: "reference_product_index_unavailable" }));
+    const before = JSON.stringify(status);
+    API.get.mockRejectedValueOnce(new Error(JSON.stringify(status)));
+    const { wrapper } = await setup();
+    const inspector = parameters(wrapper);
+    expect(inspector.findAll("dl.reference-source dd").at(-1).text()).toBe("0");
+    expect(inspector.get('[role="status"]').text()).toContain("索引未就绪");
+    expect(inspector.find('[role="alert"]').exists()).toBe(false);
+    expect(inspector.get("details").text()).toContain("USPTO_FULL");
+    expect(inspector.get("details").text()).toContain("ORD");
+    expect(JSON.stringify(status)).toBe(before);
+    await wrapper.vm.search();
+    expect(API.post).not.toHaveBeenCalled();
+  });
+
+  test("refresh hides old metadata, disables search and rejects obsolete replies without replacing input", async () => {
+    const { wrapper } = await setup();
+    await setReactionDraft(wrapper, { product: "CC=O", reactants: ["CCO"] });
+    const input = wrapper.getComponent(reactionInput).element;
+    const old = deferred(), current = deferred();
+    API.get.mockReturnValueOnce(old.promise).mockReturnValueOnce(current.promise);
+    const first = wrapper.vm.loadStatus();
+    const second = wrapper.vm.loadStatus();
+    await nextTick();
+    expect(parameters(wrapper).findAll("dl")).toHaveLength(0);
+    expect(wrapper.get('[data-cy="reference-search-submit"]').element.disabled).toBe(true);
+    old.resolve({ ...ready, record_count: 99 }); await first; await flushPromises();
+    expect(parameters(wrapper).findAll("dl")).toHaveLength(0);
+    current.resolve(libraryStatus()); await second; await flushPromises();
+    expect(parameters(wrapper).text()).not.toContain("99");
+    expect(parameters(wrapper).text()).toContain("USPTO_FULL + ORD");
+    expect(wrapper.getComponent(reactionInput).element).toBe(input);
+    expect(wrapper.get('[data-cy="reference-search-submit"]').element.disabled).toBe(false);
+    expect(API.get).toHaveBeenCalledTimes(3);
+    expect(API.post).not.toHaveBeenCalled();
+  });
+});
+
 test("shared form owns the parameter inspector and prevents native navigation once", async () => {
   const { wrapper } = await setup();
   const form = wrapper.getComponent(WorkbenchForm);

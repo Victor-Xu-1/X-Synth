@@ -70,6 +70,15 @@ test("header spans the shell rather than living inside the page column", () => {
   expect(wrapper.findAll("main")).toHaveLength(1);
 });
 
+test("module navigation remains outside the primary content scroller", () => {
+  setup();
+  const navigation = wrapper.findComponent(stubs.WorkspaceSectionNav).element;
+  const content = wrapper.get("#workspace-content").element;
+  expect(navigation.parentElement === wrapper.get(".workspace-main").element).toBe(true);
+  expect(content.contains(navigation)).toBe(false);
+  expect(navigation.nextElementSibling === content).toBe(true);
+});
+
 test("desktop starts with readable labeled navigation and can compact it", async () => {
   setup(1024);
   expect(wrapper.findComponent(stubs.Sidebar).props("compact")).toBe(false);

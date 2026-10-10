@@ -306,7 +306,24 @@ has its own capability-filtered navigation; single-tool workspaces have no redun
 tab strip. Ready forward/context tools are direct reaction tabs; optional solubility/QM
 tools remain secondary. A research workspace with no ready tools is hidden. Active
 workspace links preserve chemical prefill. There is no additional portal, result
-portal or bypass execution path. Research calculations use one owned analysis repository,
+portal or bypass execution path.
+
+Module navigation is a non-scrolling sibling of the main workspace viewport,
+inside the same mobile-drawer inert boundary. The existing router owns inner
+scroll capture/restoration by browser history entry: new tool paths open at the
+input, same-path query changes preserve reading, and history restores saved
+coordinates or the closest reachable extent. One temporary viewport owner handles
+initial async growth; it retires on settled content, capture-phase user intent,
+navigation, disconnect or a five-second UI deadline. This does not time-limit any
+scientific request or change native editor lifecycle.
+
+Reference-source presentation consumes only the composable's validated snapshot.
+Pending/error phases hide unverified source/count claims; checked missing counts
+are distinguished from zero. Source identifiers, available counts and licenses
+remain untranslated. Status refresh/retry and search availability keep their
+existing request/ownership contracts.
+
+Research calculations use one owned analysis repository,
 separate from route jobs and editable route documents. Editing and step-wise design remain actions
 inside the route workflow; task detail and editor retain their immersive canvas.
 The workspace publishes core health and session as one replacing snapshot before independent

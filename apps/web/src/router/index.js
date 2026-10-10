@@ -3,6 +3,7 @@ import { hasWorkspaceAccess } from "@/common/workspace-session";
 import { reactionWorkspaceRedirect } from "@/common/workspace-navigation";
 import { useWorkspaceStore } from "@/store/workspace";
 import { nativeAccountAuthority } from "@/views/admin/account-access";
+import { createWorkspaceScroll } from "@/common/workspace-scroll";
 
 const account = (path, name, component) => ({
   path,
@@ -185,8 +186,11 @@ export function legacyNetworkLocation(to) {
   };
 }
 
+const history = createWebHistory();
+const workspaceScroll = createWorkspaceScroll(history);
 const router = createRouter({
-  history: createWebHistory(),
+  history,
+  scrollBehavior: workspaceScroll.scrollBehavior,
   routes: [
     { path: "/network", redirect: legacyNetworkLocation },
     { path: "/commands", redirect: "/" },
@@ -255,7 +259,9 @@ router.beforeEach(async (to) => {
       query: { ...to.query, tab: tabs[0] },
       replace: true,
     };
+  workspaceScroll.capture();
 });
+router.afterEach(workspaceScroll.committed);
 router.onError((error, to) => {
   if (
     !/Failed to fetch dynamically imported module|Importing a module script failed/.test(

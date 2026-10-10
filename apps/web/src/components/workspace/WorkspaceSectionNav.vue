@@ -83,6 +83,8 @@ onBeforeUnmount(() => { disposed = true; });
 <style scoped>
 .workspace-section-nav {
   display: flex;
+  flex-shrink: 0;
+  background: var(--ws-surface);
   align-items: center;
   flex-wrap: nowrap;
   gap: 4px;
@@ -115,6 +117,10 @@ onBeforeUnmount(() => { disposed = true; });
 .section-more {
   max-width: 100%;
   flex-shrink: 0;
+  border-radius: 6px;
+  text-transform: none;
+  font-size: 14px;
+  font-weight: 500;
 }
 .section-more :deep(.v-btn__content) {
   white-space: normal;
