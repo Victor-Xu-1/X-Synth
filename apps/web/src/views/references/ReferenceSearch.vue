@@ -70,34 +70,7 @@
           <h2 id="reference-parameters-heading" class="tool-section-title">
             {{ $tr('检索参数') }}
           </h2>
-          <dl class="reference-source">
-            <dt>{{ $tr('来源') }}</dt>
-            <dd>{{ evidenceSourceLabel(sourceStatus) }}</dd>
-            <dt>{{ $tr('匹配方式') }}</dt>
-            <dd>{{ $tr('产物结构精确匹配') }}</dd>
-            <dt>{{ $tr('参考记录') }}</dt>
-            <dd>{{ $tr(recordedValue(sourceStatus?.record_count)) }}</dd>
-          </dl>
-          <details
-            v-if="sourceStatus?.sources?.length"
-            class="reference-source"
-          >
-            <summary>{{ $tr('来源与数据覆盖') }}</summary>
-            <dl v-for="source in sourceStatus.sources" :key="source.source">
-              <dt>{{ source.source }}</dt>
-              <dd>{{ $tr(source.ready ? "已就绪" : referenceReason(source)) }}</dd>
-              <dt>{{ $tr('参考记录') }}</dt>
-              <dd>{{ $tr(recordedValue(source.record_count)) }}</dd>
-              <template v-if="source.source === 'ORD'">
-                <dt>{{ $tr('含收率记录') }}</dt>
-                <dd>{{ $tr(recordedValue(source.yields_count)) }}</dd>
-                <dt>{{ $tr('含条件/投料记录') }}</dt>
-                <dd>{{ $tr(recordedValue(source.conditions_count)) }}</dd>
-                <dt>{{ $tr('数据许可') }}</dt>
-                <dd>{{ source.license || $tr("未记录") }}</dd>
-              </template>
-            </dl>
-          </details>
+          <ReferenceSourceStatus :status="sourceStatus" :pending="statusLoading" :error="statusError" />
           <v-text-field
             v-model="limit"
             :label="$tr('结果数量')"
@@ -112,9 +85,6 @@
             :error-messages="$tr(countError)"
             data-cy="reference-limit"
           />
-          <p v-if="!ready" class="reference-source-state" role="status">
-            {{ $tr(unavailableReason) }}
-          </p>
           <div class="reference-submit-actions">
             <v-btn
               type="submit"
@@ -195,13 +165,10 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { evidenceSourceLabel } from "@/common/reference-evidence";
 import { reactionInputPrefill } from "@/common/reaction-input";
 import {
-  recordedValue,
   referenceFailure,
   referenceReactionFileBody,
-  referenceReason,
 } from "@/common/reaction-references";
 import { useReactionReferences } from "@/composables/useReactionReferences";
 import { referenceRecordTitle } from "@/components/references/reference-record";
@@ -212,6 +179,7 @@ import ReactionInput from "@/components/workspace/ReactionInput.vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import ReferenceResults from "@/components/references/ReferenceResults.vue";
 import ReferenceQuerySummary from "@/components/references/ReferenceQuerySummary.vue";
+import ReferenceSourceStatus from "@/components/references/ReferenceSourceStatus.vue";
 import WorkbenchTabs from "@/components/WorkbenchTabs.vue";
 import WorkbenchScope from "@/components/workspace/WorkbenchScope.vue";
 
@@ -241,9 +209,8 @@ const invalidationBlocked = computed(
 );
 const {
   sourceStatus,
-  ready,
   statusLoading,
-  unavailableReason,
+  statusError,
   countError,
   loading,
   canSearch,
@@ -384,30 +351,6 @@ function retryReference() {
   .reference-reading { padding: 20px 16px; }
   .reference-reading-heading { flex-wrap: wrap; }
 }
-.reference-source {
-  font-size: 12px;
-  margin: 14px 0 24px;
-}
-dl.reference-source,
-.reference-source > dl {
-  display: grid;
-  grid-template-columns: 66px minmax(0, 1fr);
-  gap: 10px;
-}
-details.reference-source summary {
-  cursor: pointer;
-  margin-bottom: 12px;
-  font-size: 14px;
-}
-.reference-source dt,
-.reference-source-state {
-  color: var(--ws-muted);
-}
-.reference-source dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.reference-source-state,
 .tool-error {
   font-size: 12px;
   overflow-wrap: anywhere;
