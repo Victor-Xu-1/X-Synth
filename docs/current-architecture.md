@@ -105,6 +105,17 @@ governance. See [version operations](operations.md#版本管理).
   global Escape/back ownership without clearing the selection; active widget-specific
   disabled and empty states are never overridden by a default `disabled: false`.
 - Browser requests terminate at the product API, never a second direct gateway.
+- Drawing zoom has one read-only binding to the native editor's selection-change
+  events, separate from structural change synchronization. The workbench numeric
+  selector reports that actual camera value and uses the existing view-command
+  owner to change scale; it does not parse/export structures or poll a new timer.
+  Replacement, interruption and disposal remove only its exact subscription.
+  The native functional event's incoming selection is returned unchanged to
+  later peers. Interruption invalidates pending frame acquisitions before their
+  continuation can reinstall presentation or structural ownership.
+  Fullscreen and responsive layout changes retain an explicit inspection scale;
+  Fit remains the deliberate whole-structure overview command. Native chemistry,
+  reaction roles, undo history and scientific validation are not view settings.
 - Reaction reference search, NN conditions and FF share one reaction canvas,
   one draft API and separate draft/file lifecycle controllers. Ketcher renders
   validated RXN; it does not replace RDKit role parsing or source identity checks.

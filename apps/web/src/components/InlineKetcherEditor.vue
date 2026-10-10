@@ -6,9 +6,9 @@
       { 'fill-height-mode': fillHeight, 'compact-mode': compact },
     ]"
   >
-    <DrawingViewTools ref="viewTools" :expanded="view.expanded.value" :supported="view.supported.value" :title="title"
+    <DrawingViewTools ref="viewTools" :expanded="view.expanded.value" :supported="view.supported.value" :title="title" :zoom="cameraZoom"
       :disabled="disabled || busy || !ready || view.pending.value"
-      @zoom-out="zoomDrawing(.8)" @zoom-in="zoomDrawing(1.25)" @fit="view.run(fitDrawing)" @expand="view.toggle" />
+      @zoom-out="zoomDrawing(.8)" @zoom-in="zoomDrawing(1.25)" @zoom="setDrawingZoom" @fit="view.run(fitDrawing)" @expand="view.toggle" />
     <div v-if="editorError" class="editor-error" role="alert">
       <span>{{ $tr(editorError) }}</span>
       <v-tooltip :text="$tr(retryLabel)"><template #activator="{ props: activator }">
@@ -75,13 +75,14 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
-import { KETCHER_URL, waitForKetcher as waitForEditor } from "@/common/ketcher";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { KETCHER_URL, KetcherImportInterruptedError, waitForKetcher as waitForEditor } from "@/common/ketcher";
 import { useKetcherMolecule } from "@/composables/useKetcherMolecule";
 import { useKetcherView } from "@/composables/useKetcherView";
 import { useWorkbenchActivity } from "@/components/workspace/workbench-activity";
 import DrawingViewTools from "@/components/workspace/DrawingViewTools.vue";
 import { createKetcherFocusGuard } from "@/common/ketcher-focus";
+import { createKetcherZoomBinding } from "@/common/ketcher-zoom-binding";
 import { createKetcherFrameLifecycle } from "@/common/ketcher-frame";
 import { captureKetcherRecoveryFocus } from "@/common/ketcher-recovery-focus";
 import { runKetcherOperation } from "@/common/ketcher-native-operations";
@@ -127,6 +128,8 @@ const frameKey = ref(0);
 const ketcherFrame = ref(null);
 const editorRoot = ref(null);
 const viewTools = ref(null);
+const cameraZoom = ref(null);
+const zoomBinding = createKetcherZoomBinding(value => { cameraZoom.value = value; });
 const activity = useWorkbenchActivity();
 const manualZoom = ref(false);
 let fittedZoom = null;
@@ -146,6 +149,7 @@ const ketcherViewportWidth = ref(KETCHER_BASE_WIDTH);
 const ketcherViewportHeight = ref(KETCHER_BASE_HEIGHT);
 let resizeObserver = null;
 let fitRevision = 0;
+let frameGeneration = 0;
 const editorLifetime = new AbortController();
 const fitDrawing = async (context) => {
   const current = ++fitRevision;
@@ -272,6 +276,8 @@ const patchKetcherDocument = () => {
   focusGuard.observe();
   frameLifecycle.observe();
   view.observeFrame();
+  const editor = ketcherIframe.value?.contentWindow?.ketcher?.editor;
+  if (editor) zoomBinding.bind(editor);
   scheduleKetcherLayoutSync();
 };
 
@@ -284,9 +290,12 @@ const scheduleKetcherLayoutSync = () => {
 };
 
 const waitForKetcher = async () => {
+  const requested = frameGeneration, frame = ketcherIframe.value;
   const ketcher = await waitForEditor(() => ketcherIframe.value, {
     signal: editorLifetime.signal,
   });
+  if (editorLifetime.signal.aborted || requested !== frameGeneration || frame !== ketcherIframe.value)
+    throw new KetcherImportInterruptedError("Ketcher owner changed during acquisition");
   patchKetcherDocument();
   return ketcher;
 };
@@ -313,6 +322,8 @@ const {
   getEditor: waitForKetcher,
   getWindow: () => ketcherIframe.value?.contentWindow,
   reloadEditor: async () => {
+    frameGeneration++;
+    zoomBinding.release();
     frameKey.value++;
     fittedZoom = null;
     manualZoom.value = false;
@@ -347,18 +358,29 @@ const {
       : fallback,
 });
 const retryLabel = computed(() => reloadRequired.value ? "重新加载画板" : "重试结构同步");
-const frameLifecycle = createKetcherFrameLifecycle(() => ketcherIframe.value, interruptEditor);
+const frameLifecycle = createKetcherFrameLifecycle(() => ketcherIframe.value, () => {
+  frameGeneration++;
+  zoomBinding.release();
+  interruptEditor();
+});
+watch(ready, value => { if (!value) zoomBinding.release(); }, { flush: "sync" });
 
 const view = useKetcherView({ root: editorRoot, active: activity, ready,
   getFrame: () => ketcherIframe.value,
   blocked: computed(() => props.disabled || busy.value),
   onChange: async context => {
     await nextTick(); if (!context.current()) return;
-    syncKetcherLayout({ fit: false }); await fitDrawing(context);
+    syncKetcherLayout({ fit: false }); await fitResizedDrawing(context);
   },
 });
 const zoomDrawing = factor => view.run(() => {
   zoomKetcherCanvas(ketcherIframe.value?.contentWindow?.ketcher?.editor, factor);
+  manualZoom.value = true;
+});
+const setDrawingZoom = value => view.run(() => {
+  const editor = ketcherIframe.value?.contentWindow?.ketcher?.editor;
+  if (!Number.isFinite(value) || value < .25 || value > 4) return;
+  zoomKetcherCanvas(editor, value / editor.zoom());
   manualZoom.value = true;
 });
 
@@ -393,6 +415,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  zoomBinding.release();
   focusGuard.dispose();
   frameLifecycle.dispose();
   editorLifetime.abort();

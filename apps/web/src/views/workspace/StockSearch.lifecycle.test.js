@@ -24,7 +24,14 @@ function editorFixture() {
     eventBus,
     setMolecule: jest.fn(() => queueMicrotask(() => eventBus.emit("SUCCESS"))),
     getSmiles: jest.fn(async () => "CCO"),
-    editor: { clear: jest.fn(), subscribe: jest.fn((_event, change) => { fixture.change = change; return "change-token"; }), unsubscribe: jest.fn() },
+    editor: {
+      clear: jest.fn(), zoom: () => 1,
+      subscribe: jest.fn((event, handler) => {
+        if (event === "change") { fixture.change = handler; return "change-token"; }
+        return { handler };
+      }),
+      unsubscribe: jest.fn(),
+    },
   };
   return fixture;
 }

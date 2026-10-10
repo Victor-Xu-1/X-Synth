@@ -27,6 +27,38 @@ test("an expanded view has a named return command and no duplicate editable sour
   expect(wrapper.findAll("button").at(-1).attributes("aria-label")).toBe("Return to drawing");
   expect(wrapper.find("iframe").exists()).toBe(false); wrapper.unmount();
 });
+
+test.each(["en", "zh-CN"])("the numeric zoom selector shows the native value and accepts one-step 100%% in %s", async locale => {
+  const wrapper = create({ supported: true, zoom: .2925543857 }, locale);
+  const select = wrapper.find("select");
+  expect(select.attributes("aria-label")).toBe(locale === "en" ? "Canvas zoom" : "画板缩放");
+  expect(Number(select.element.value)).toBe(.2925543857);
+  expect(select.findAll("option").map(option => option.text())).toContain("100%");
+  await select.setValue("1");
+  expect(wrapper.emitted("zoom")).toEqual([[1]]);
+  await wrapper.setProps({ zoom: 1.25 });
+  expect(select.element.value).toBe("1.25");
+  wrapper.unmount();
+});
+
+test("unknown zoom has no fabricated percentage and disabled numeric controls cannot emit", async () => {
+  const wrapper = create({ zoom: null });
+  expect(wrapper.find("select").exists()).toBe(false);
+  await wrapper.setProps({ zoom: .5, disabled: true });
+  expect(wrapper.find("select").element.disabled).toBe(true);
+  await wrapper.find("select").setValue("1");
+  expect(wrapper.emitted("zoom")).toBeUndefined();
+  wrapper.unmount();
+});
+
+test("floating-point zoom round trips have one preset label while retaining the native value", () => {
+  const actual = 1 * .8 * .8 * 1.25 * 1.25;
+  expect(actual).not.toBe(1);
+  const wrapper = create({ zoom: actual });
+  expect(wrapper.findAll("option").filter(option => option.text() === "100%")).toHaveLength(1);
+  expect(Number(wrapper.find("select").element.value)).toBe(actual);
+  wrapper.unmount();
+});
 test("unsupported expansion is absent and disabled camera controls do not emit", () => {
   const wrapper = create({ supported: false, disabled: true });
   expect(wrapper.findAll("button")).toHaveLength(3);
