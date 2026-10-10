@@ -5,7 +5,7 @@ import postcss from "postcss";
 import vuetify from "@/plugins/vuetify";
 import { DEFAULT_LOCALE, LOCALES } from "@/i18n";
 
-jest.mock("@mdi/font/css/materialdesignicons.css", () => ({}));
+jest.mock("@/plugins/icons", () => ({ workspaceIcons: { defaultSet: "mdi" } }));
 jest.mock("vuetify/styles", () => ({}));
 jest.mock("vuetify/locale", () => ({ zhHans: {} }));
 jest.mock("vuetify", () => ({ createVuetify: (options) => options }));
@@ -137,6 +137,7 @@ test.each([
     expect(DEFAULT_LOCALE).toBe("en");
     expect(vuetify.locale.locale).toBe(LOCALES.find((item) => item.value === DEFAULT_LOCALE).widgetLocale);
     expect(vuetify.locale.fallback).toBe("en");
+    expect(vuetify.icons.defaultSet).toBe("mdi");
   },
 );
 
@@ -148,4 +149,10 @@ test("saturated accent fills only the selected marker, not broad page surfaces",
   expect(filled).toEqual([".nav-item.active::before"]);
   expect(declarations(".workspace-nav").flex).toBe("1 0 auto");
   expect(declarations(".workspace-sidebar-footer")["flex-shrink"]).toBe("0");
+});
+
+test("enabled selection icons retain full contrast without changing disabled control semantics", () => {
+  const selector = ".workspace-shell .v-selection-control:not(.v-selection-control--disabled) .v-selection-control__input > .v-icon";
+  expect(declarations(selector).opacity).toBe("1");
+  expect(selector).toContain(":not(.v-selection-control--disabled)");
 });

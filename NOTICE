@@ -39,6 +39,10 @@ The workspace's multilingual interface uses Vue I18n (Intlify), MIT License:
 Copyright (c) 2020 kazuya kawaguchi. It remains an external npm dependency;
 its license notice is retained in the installed dependency and distribution.
 
+The workspace's Material Design Icons paths use @mdi/js 7.4.47, maintained by
+Pictogrammers / Austin Andrews under Apache-2.0. Only explicitly registered
+library paths are bundled; the installed package retains its license notice.
+
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights

@@ -107,6 +107,9 @@
 .workspace-page .v-btn:not(.v-btn--icon) {
   font-weight: 500;
 }
+.workspace-shell .v-selection-control:not(.v-selection-control--disabled) .v-selection-control__input > .v-icon {
+  opacity: 1;
+}
 .workspace-page .v-btn:not(:disabled):focus-visible {
   outline: 2px solid var(--ws-accent);
   outline-offset: 3px;

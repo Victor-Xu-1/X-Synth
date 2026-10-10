@@ -98,8 +98,4 @@ const label = computed(() => hasReadingNumber.value ? uiText("步骤 {index}", {
 .numbered > strong { line-height: 1.25; }
 .numbered > small { line-height: 1.2; }
 .reaction-source-label { max-width: calc(var(--route-reaction-width) - 4px); }
-.reaction-direction-icon {
-  /* html-to-image discovers fonts on elements, not on ::before. */
-  font-family: "Material Design Icons";
-}
 </style>

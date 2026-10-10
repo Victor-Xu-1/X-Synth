@@ -12,7 +12,7 @@ test("template labels are bilingual while all original template and reference va
     reaction_smarts: "[C:1]>>[C:1]", necessary_reagent: "水", intra_only: false, dimer_only: false,
     attributes: { 名称: "状态" }, references: [{ title: "工艺核算", url: "https://example.org/reference" }] };
   const original = JSON.stringify(template);
-  const wrapper = mount(TemplateDetails, { props: { template } });
+  const wrapper = mount(TemplateDetails, { props: { template }, global: { stubs: { VIcon: true } } });
   try {
     expect(wrapper.text()).toContain("Reagents and constraints");
     expect(wrapper.text()).toContain("1 example");
@@ -37,7 +37,7 @@ test("source metadata is an inspectable layer rather than the default heading", 
     raw: { _id: "long-native-identifier", index: 0 }, direction: "retro", domain: "strict_synthesis",
     reaction_smarts: "[C:1]>>[C:1]", necessary_reagent: "", intra_only: false, dimer_only: false,
     attributes: {}, references: [100, 101] };
-  const wrapper = mount(TemplateDetails, { props: { template } });
+  const wrapper = mount(TemplateDetails, { props: { template }, global: { stubs: { VIcon: true } } });
   try {
     expect(wrapper.get('[data-section="overview"]').isVisible()).toBe(true);
     expect(wrapper.get('[data-section="technical"]').isVisible()).toBe(false);

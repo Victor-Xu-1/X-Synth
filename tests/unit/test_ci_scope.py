@@ -605,6 +605,22 @@ def test_source_reader_literals_cover_auxiliary_views_and_nonpaired_store_tests(
     assert graph[store_test] == {store}
 
 
+@pytest.mark.parametrize("changed", ["views/assessment/Assessment.vue", "styles/surfaces.css"])
+def test_icon_policy_source_guard_is_selected_for_nonimporting_consumers(
+    tmp_path, monkeypatch, changed
+):
+    consumer = profile.SOURCE + changed
+    guard = profile.SOURCE + "plugins/icon-source-policy.test.js"
+    unrelated = profile.SOURCE + "common/route-graph.test.js"
+    files = {consumer: "source", guard: "guard", unrelated: "unrelated"}
+    before, after = snapshot(tmp_path, files), snapshot(tmp_path, files)
+    monkeypatch.setattr(
+        dependencies, "parse_frontend", lambda item: {path: record() for path in item.files}
+    )
+    selected, _ = profile.frontend_tests(before, after, {consumer})
+    assert selected == [guard]
+
+
 def test_unresolved_frontend_import_fails_before_test_execution():
     with pytest.raises(dependencies.ScopeError, match="Unresolved local import"):
         dependencies.frontend_graph(

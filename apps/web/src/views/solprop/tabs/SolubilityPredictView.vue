@@ -34,7 +34,7 @@
                       :text="selectedModel ? $tr('当前模型：{model}', { model: selectedModel === 'solprop' ? 'Fusion Cycle' : selectedModel === 'fastsolv' ? 'FastSolv' : selectedModel === 'legacy' ? 'SolProp' : selectedModel }) : $tr('请选择模型')"
                       :model-value="!selectedModel || undefined">
                       <template v-slot:activator="{ props: tprops }">
-                        <v-btn color="primary" append-icon="mdi mdi-menu-down" variant="flat" data-cy="model-selection"
+                        <v-btn color="primary" append-icon="mdi-menu-down" variant="flat" data-cy="model-selection"
                           v-bind="Object.assign({}, props, tprops)" class="mr-5" :disabled="loading"> {{ $tr('模型') }} </v-btn>
                       </template>
                     </v-tooltip>
@@ -101,7 +101,7 @@
             <v-col md="5">
               <v-menu location="bottom">
                 <template v-slot:activator="{ props }">
-                  <v-btn v-show="!!results.length" color="primary" v-bind="props" prepend-icon="mdi mdi-download"
+                  <v-btn v-show="!!results.length" color="primary" v-bind="props" prepend-icon="mdi-download"
                     variant="flat" data-cy="solpred-download"> {{ $tr('下载') }} </v-btn>
                 </template>
                 <v-list>

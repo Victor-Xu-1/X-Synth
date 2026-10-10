@@ -5,16 +5,17 @@
  */
 
 // Styles
-import "@mdi/font/css/materialdesignicons.css";
 import "vuetify/styles";
 
 // Composables
 import { createVuetify } from "vuetify";
 import { zhHans } from "vuetify/locale";
 import { DEFAULT_LOCALE, LOCALES } from "@/i18n";
+import { workspaceIcons } from "./icons.js";
 
 // https://vuetifyjs.com/en/introduction/why-vuetify/#feature-guides
 export default createVuetify({
+  icons: workspaceIcons,
   locale: {
     locale: LOCALES.find((item) => item.value === DEFAULT_LOCALE).widgetLocale,
     fallback: "en",

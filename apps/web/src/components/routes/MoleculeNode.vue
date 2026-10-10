@@ -93,9 +93,6 @@ const price = computed(() =>
 .starting .graph-node-heading > span {
   color: var(--ws-info, #356d91);
 }
-:global(.v-theme--dark) .starting .graph-node-heading > span {
-  color: var(--ws-info, #8bbbd9);
-}
 .molecule-graph-node > :deep(.smiles-image-container) {
   flex: 0 0 auto;
 }

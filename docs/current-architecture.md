@@ -82,6 +82,10 @@ governance. See [version operations](operations.md#版本管理).
 
 ## Single Authorities
 
+- First-party UI icons use one Vuetify SVG provider and an explicit same-version
+  MDI path catalog. Static and dynamic source choices are covered by AST and real
+  component-render checks. Framework aliases retain the official SVG set; native
+  Ketcher assets remain independent. There is no font or unknown-glyph fallback.
 - Browser requests terminate at the product API, never a second direct gateway.
 - Reaction reference search, NN conditions and FF share one reaction canvas,
   one draft API and separate draft/file lifecycle controllers. Ketcher renders

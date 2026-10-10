@@ -18,7 +18,7 @@
         max-width="260"
         src="@/assets/wrongSmiles.png"
       ></v-img>
-      <v-icon v-else icon="mdi-molecule-off" size="44"></v-icon>
+      <v-icon v-else icon="mdi-image-off-outline" size="44"></v-icon>
       <strong>{{ $tr('结构加载失败') }}</strong>
       <span>{{ smiles || $tr("空结构输入") }}</span>
       <v-btn
@@ -49,7 +49,7 @@
             max-width="260"
             src="@/assets/wrongSmiles.png"
           ></v-img>
-          <v-icon v-else icon="mdi-molecule-off" size="44"></v-icon>
+          <v-icon v-else icon="mdi-image-off-outline" size="44"></v-icon>
           <strong>{{ $tr('结构加载失败') }}</strong>
           <span>{{ smiles || $tr("空结构输入") }}</span>
         </div>

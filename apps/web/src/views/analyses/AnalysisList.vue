@@ -40,7 +40,7 @@
               <router-link :to="detailLocation(row.id)" :aria-label="openLabel(row)" class="analysis-preview-link" />
             </div>
             <span v-else class="analysis-nonchemical">
-              <v-icon :icon="row.kind === 'optimization' ? 'mdi-table-large' : 'mdi-molecule-off'" size="24" aria-hidden="true" />
+              <v-icon :icon="row.kind === 'optimization' ? 'mdi-table-large' : 'mdi-image-off-outline'" size="24" aria-hidden="true" />
               <span>{{ row.kind === 'optimization' ? $tr('实测 CSV') : $tr('结构未提供') }}</span>
             </span>
           </td>

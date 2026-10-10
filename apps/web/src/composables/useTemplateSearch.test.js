@@ -305,7 +305,7 @@ test("repeated form submissions remain single-flight during router navigation an
 });
 
 test("real details render SMARTS/provenance/attributes and page numeric references without links", async () => {
-  const wrapper = mount(TemplateDetails, { props: { template: native } });
+  const wrapper = mount(TemplateDetails, { props: { template: native }, global: { stubs: { VIcon: true } } });
   wrappers.push(wrapper);
   expect(wrapper.find("pre").text()).toBe(native.reaction_smarts);
   expect(wrapper.text()).toContain(String(native.raw.index));
@@ -313,6 +313,8 @@ test("real details render SMARTS/provenance/attributes and page numeric referenc
   expect(wrapper.text()).toContain("ring_delta");
   expect(wrapper.findAll(".template-references li")).toHaveLength(50);
   expect(wrapper.findAll("a")).toHaveLength(0);
+  expect(wrapper.findAll(".reference-pagination v-icon-stub").map((icon) => icon.attributes("icon")))
+    .toEqual(["mdi-chevron-left", "mdi-chevron-right"]);
   await wrapper.find('[aria-label="下一页"]').trigger("click");
   expect(wrapper.findAll(".template-references li")).toHaveLength(
     native.references.length - 50,

@@ -3,7 +3,7 @@ import { settledRouteImages, exportBounds, routeExportErrorMessage } from "./rou
 import { ROUTE_NODE_SIZE, graphFromCandidate } from "./route-graph";
 import { readFileSync } from "node:fs";
 jest.mock("html-to-image", () => ({ toPng: jest.fn() }));
-test("reaction icon fonts are discoverable on the element, not only its pseudo-element", () => {
+test("reaction arrows use registered SVG icons without a font-export workaround", () => {
   const source = readFileSync(
     "src/components/routes/ReactionNode.vue",
     "utf8",
@@ -13,9 +13,7 @@ test("reaction icon fonts are discoverable on the element, not only its pseudo-e
   for (const arrow of arrows) {
     expect(arrow).toContain('class="reaction-direction-icon"');
   }
-  expect(source).toMatch(
-    /\.reaction-direction-icon\s*\{\s*(?:\/\*[^]*?\*\/\s*)?font-family:\s*"Material Design Icons";/,
-  );
+  expect(source).not.toContain("Material Design Icons");
 });
 test("full export encloses the same chemical card geometry used by the live diagram", () => {
   const graph = graphFromCandidate({

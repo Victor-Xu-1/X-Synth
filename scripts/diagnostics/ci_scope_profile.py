@@ -292,7 +292,10 @@ SOURCE_EXTENSIONS = analysis.SOURCE_EXTENSIONS
 ASSET_EXTENSIONS = {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico"}
 # These tests scan source without importing it; other literal file reads are
 # resolved from their AST. Prefixes deliberately include deleted source paths.
-SOURCE_READERS = {SOURCE + "common/source-boundary.test.js": (SOURCE,)}
+SOURCE_READERS = {
+    SOURCE + "common/source-boundary.test.js": (SOURCE,),
+    SOURCE + "plugins/icon-source-policy.test.js": (SOURCE,),
+}
 PYTHON_DEPENDENCIES = {"networkx": "networkx"}
 
 
