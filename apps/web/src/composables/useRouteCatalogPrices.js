@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { API } from "@/common/api";
+import { STOCK_REQUEST_TIMEOUT_MS } from "@/common/stock-lookup";
 import {
   catalogRecordsForInputs,
   supplierPriceView,
@@ -56,20 +57,26 @@ export function useRouteCatalogPrices({
     ].sort(),
   );
   let generation = 0,
-    alive = true;
+    alive = true,
+    activeRequest = null;
   async function refresh() {
+    if (!alive) return;
     const current = ++generation;
+    activeRequest?.abort();
+    activeRequest = null;
     prices.value = {};
     error.value = "";
     loading.value = false;
     if (!enabled.value || !smiles.value.length) return;
     const requested = [...smiles.value],
       expected = expectedSnapshot.value;
+    const controller = new AbortController();
+    activeRequest = controller;
     loading.value = true;
     try {
       const response = await api.post("/api/v1/stock/lookup", {
         smiles: requested,
-      });
+      }, false, { signal: controller.signal, timeoutMs: STOCK_REQUEST_TIMEOUT_MS });
       if (!alive || current !== generation) return;
       prices.value = routeCatalogPrices(response, requested, expected);
     } catch (failure) {
@@ -81,6 +88,7 @@ export function useRouteCatalogPrices({
             ? failure.message
             : "目录价格查询失败，路线结构仍可查看。";
     } finally {
+      if (activeRequest === controller) activeRequest = null;
       if (alive && current === generation) loading.value = false;
     }
   }
@@ -92,6 +100,8 @@ export function useRouteCatalogPrices({
   onBeforeUnmount(() => {
     alive = false;
     generation++;
+    activeRequest?.abort();
+    activeRequest = null;
   });
   return { prices, loading, error, refresh };
 }
