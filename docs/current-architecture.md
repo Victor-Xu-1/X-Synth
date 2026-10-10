@@ -111,6 +111,24 @@ governance. See [version operations](operations.md#版本管理).
   File/SMILES-declared salts retain exact component counts through the older editor;
   undeclared ions are not inferred to be salts. Legacy single-molecule inputs and
   explicit model submission remain unchanged. See [Workspace Workflows](workspace-workflows.md).
+- Native Ketcher commands have one worker-response owner, installed at the pinned
+  standalone provider factory before initialization. The native worker has no
+  request IDs: direct commands therefore share a per-instance lane, and each
+  response releases only that request's introduced callback. Native result bytes,
+  options, validation errors and unsupported operations remain upstream. The host
+  editing lane remains separate; native internal commands cannot deadlock by
+  re-entering it. Persisted browser-cache departure suspends new dispatch and
+  resumes the same retained response ownership on persisted restoration. It does
+  not terminate a worker belonging to a retained document. Worker errors,
+  unreadable messages and actual frame departure retire
+  the instance and reject queued work; recovery requires a new editor, not reuse
+  of an uncorrelated response. Listener limits are not changed.
+  `apps/web/tooling/ketcher-provider-assets.js` guards the original bundle SHA-256
+  and unique factory, generates a content-addressed script and updates only the
+  generated iframe entry references. Development and production share that
+  generator. Vendored source and notices remain unchanged; source drift fails
+  before serving/building an unreviewed adaptation. The response owner is not a
+  new chemistry engine, formatter, timeout budget or model-validation shortcut.
 - Product job IDs and ownership are authoritative in the transactional job store.
   Native engine execution is a child operation, not another product task owner.
 - Accepted idempotency receipts are resolved before readiness checks. Replaying a

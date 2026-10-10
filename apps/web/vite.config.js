@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import vue from "@vitejs/plugin-vue";
 import vuetify, { transformAssetUrls } from "vite-plugin-vuetify";
 import { vuetifyControlSemantics } from "./tooling/vuetify-control-plugin.js";
+import { ketcherProviderAssets } from "./tooling/ketcher-provider-plugin.js";
 
 // Utilities
 import { defineConfig } from "vite";
@@ -25,6 +26,7 @@ export default defineConfig({
   },
   plugins: [
     vuetifyControlSemantics(import.meta.url),
+    ketcherProviderAssets(import.meta.url),
     vue({
       template: { transformAssetUrls },
     }),
