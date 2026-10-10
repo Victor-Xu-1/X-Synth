@@ -1,4 +1,5 @@
 export default [
+  ["放弃尚未提交的输入修改？", "Discard unsubmitted input changes?"],
   ["计算中", "Computing"], ["未完成", "Not completed"], ["已中断", "Interrupted"],
   ["{seconds} 秒", "{seconds} s"], ["{minutes} 分 {seconds} 秒", "{minutes} min {seconds} s"],
   ["树搜索", "Tree search"], ["启发式搜索", "Heuristic search"],

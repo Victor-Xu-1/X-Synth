@@ -13,7 +13,7 @@
               size="small"
               :aria-label="$tr('导入 RXN 反应')"
               :disabled="disabled || fileBusy"
-              @click="fileInput.click()"
+              @click="openFile"
             />
           </template>
         </v-tooltip>
@@ -136,12 +136,16 @@
       @change="importFile"
     />
     <WorkbenchDialog
+      v-if="filePresentation"
+      :key="filePresentation.ticket"
       :model-value="!!fileDraft"
       max-width="760"
+      :aria-labelledby="fileTitle"
       @update:model-value="discardFile"
+      v-on="filePresentation.events"
     >
       <v-card v-if="fileDraft">
-        <v-card-title>{{
+        <v-card-title :id="fileTitle" tag="h2">{{
           $tr(fileOrigin === "reference" ? "确认参考反应" : "确认反应文件")
         }}</v-card-title>
         <v-card-text class="reaction-file-preview">
@@ -172,12 +176,13 @@
   </section>
 </template>
 <script setup>
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, useId, watch } from "vue";
 import WorkbenchDialog from "./WorkbenchDialog.vue";
 import { EMPTY_REACTION_CANVAS } from "@/common/ketcher-reaction";
 import { MAX_REACTION_TEXT } from "@/common/reaction-input";
 import { useReactionDraft } from "@/composables/useReactionDraft";
 import { useReactionFiles } from "@/composables/useReactionFiles";
+import { useDialogReturnFocus } from "@/composables/useDialogReturnFocus";
 import InlineKetcherEditor from "@/components/InlineKetcherEditor.vue";
 import ReactionRecordPreview from "./ReactionRecordPreview.vue";
 import { uiText } from "@/i18n";
@@ -222,11 +227,76 @@ const {
   fileError,
   fileOrigin,
   discardFile,
-  importFile,
-  importRecords,
-  applyFile,
+  importFile: stageFile,
+  importRecords: stageRecords,
+  applyFile: applyStagedFile,
   exportFile,
 } = useReactionFiles({ text, disabled: () => props.disabled, board, draft });
+const fileTitle = useId(), filePresentation = shallowRef(null);
+const fileOpen = computed(() => !!fileDraft.value);
+const fileContext = computed(() => JSON.stringify([props.id, props.disabled]));
+const fileFocus = useDialogReturnFocus(fileOpen, fileContext);
+let focusTicket = null, approvedText = null, disposed = false;
+const importButton = () => inputRoot.value?.querySelector('[data-cy="reaction-import-file"]');
+const canImport = () => !disposed && workbenchActive.value && !props.disabled && !fileBusy.value && !fileDraft.value;
+function openFile(event) {
+  if (!canImport()) return;
+  focusTicket = fileFocus.begin(importButton(), event.currentTarget);
+  fileInput.value.click();
+}
+async function stageWithFocus(load, origin) {
+  if (!canImport()) return load();
+  const ticket = origin ? fileFocus.begin(importButton(), origin)
+    : focusTicket ?? fileFocus.begin(importButton(), importButton());
+  focusTicket = ticket;
+  const staged = await load();
+  if (!staged) {
+    fileFocus.discard(ticket);
+    if (focusTicket === ticket) focusTicket = null;
+  }
+  return staged;
+}
+function importFile(event) {
+  return stageWithFocus(() => stageFile(event));
+}
+function importRecords(records) {
+  return stageWithFocus(() => stageRecords(records), document.activeElement);
+}
+watch(fileDraft, (value) => {
+  if (!value) return;
+  const ticket = focusTicket;
+  // A keyed presentation retains its own leave ticket even if another import opens.
+  filePresentation.value = { ticket, events: { afterLeave: () => {
+    fileFocus.restore(ticket);
+    if (filePresentation.value?.ticket === ticket && !fileOpen.value) {
+      filePresentation.value = null;
+      if (focusTicket === ticket) focusTicket = null;
+    }
+  } } };
+}, { flush: "sync" });
+function retirePresentation() {
+  fileFocus.cancel();
+  focusTicket = null;
+  approvedText = null;
+  filePresentation.value = null;
+}
+watch(text, (value) => {
+  if (value === approvedText) { approvedText = null; return; }
+  retirePresentation();
+}, { flush: "sync" });
+watch([() => props.id, () => props.disabled], () => {
+  retirePresentation();
+  discardFile();
+}, { flush: "sync" });
+watch(workbenchActive, (active) => {
+  if (!active) { fileFocus.cancel(); focusTicket = null; approvedText = null; }
+}, { flush: "sync" });
+function applyFile() {
+  approvedText = fileDraft.value?.reaction_smiles;
+  applyStagedFile();
+  if (fileDraft.value) approvedText = null;
+}
+onBeforeUnmount(() => { disposed = true; });
 const processingMessage = computed(() => fileOperation.value === "export" ? "正在导出 RXN 反应"
   : fileOrigin.value === "reference" ? "载入参考反应" : "处理 RXN 反应");
 const error = computed(() => fileError.value || parseError.value);
@@ -263,12 +333,12 @@ function cancelImport() {
   fileError.value = "";
 }
 function cancelFileImport(event) {
-  if (props.disabled || fileOperation.value !== "import" || fileOrigin.value !== "file") return;
+  if (disposed || !workbenchActive.value || props.disabled || fileOperation.value !== "import" || fileOrigin.value !== "file") return;
   const origin = event.currentTarget, context = props.id, original = text.value;
   cancelImport();
   nextTick(() => {
     const target = inputRoot.value?.querySelector('[data-cy="reaction-import-file"]');
-    if (context === props.id && original === text.value && !props.disabled && !fileBusy.value && target?.isConnected
+    if (!disposed && workbenchActive.value && context === props.id && original === text.value && !props.disabled && !fileBusy.value && target?.isConnected
       && !target.disabled && !target.closest('[hidden], [inert], [aria-hidden="true"]')
       && (document.activeElement === origin || document.activeElement === document.body)) target.focus({ preventScroll: true });
   });

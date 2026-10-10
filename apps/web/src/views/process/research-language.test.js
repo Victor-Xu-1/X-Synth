@@ -29,6 +29,13 @@ test("complete interpolation preserves user column text, arbitrary chemical iden
   expect(message).toBe(`Levels for ${name} contain duplicates.`);
 });
 
+test("the owned CSV column-count error follows locale without translating unrelated source prose", () => {
+  const source = "CSV 必须包含 2-24 列。";
+  setLocale("en", { persist: false }); expect(optimizationMessage(source)).toBe("CSV must contain 2-24 columns.");
+  expect(optimizationMessage("研究者原始表说明 [Na+] / %")).toBe("研究者原始表说明 [Na+] / %");
+  setLocale("zh-CN", { persist: false }); expect(optimizationMessage(source)).toBe(source);
+});
+
 test("controlled dynamic validation and scientific notice displays are reactive, with unknown source prose unchanged", () => {
   const invalidMass = computed(() => processMessage("质量必须是有限的非负数。"));
   const zeroPmi = computed(() => processNotice("分离产物质量为零：PMI 分母为零，不返回无穷大或零 PMI。"));

@@ -1,6 +1,6 @@
 <template>
   <ModuleWorkbench title="分子合成复杂度评估">
-    <template #actions><v-btn variant="text" prepend-icon="mdi-history" to="/analyses?kind=assessment">{{ $tr('评估记录') }}</v-btn><v-btn v-if="saved.source.value || saved.error.value" variant="text" prepend-icon="mdi-plus" to="/assessment" :disabled="loading" @click="saved.startNew">{{ $tr('新建评估') }}</v-btn></template>
+    <template #actions><v-btn variant="text" prepend-icon="mdi-history" to="/analyses?kind=assessment">{{ $tr('评估记录') }}</v-btn><v-btn v-if="saved.source.value || saved.error.value" variant="text" prepend-icon="mdi-plus" to="/assessment" :disabled="loading" @click.capture="saved.startNew">{{ $tr('新建评估') }}</v-btn></template>
     <div v-if="saved.loading.value" class="workspace-loading" role="status">{{ $tr('正在读取已存结构') }}</div>
     <div v-if="saved.error.value" class="tool-error" role="alert">{{ $tr(saved.error.value) }}<v-btn variant="text" @click="saved.reload">{{ $tr('重新读取') }}</v-btn></div>
     <WorkbenchForm parameter-label="分子评估参数" @submit="calculate">
@@ -53,7 +53,7 @@ const { result, loading, error, calculate, reset } = useCalculation({
   pending,
   endpoint: "/api/v1/assessment/molecule",
   accepts: acceptsAssessment,
-  onResult: useAnalysisDelivery("assessment"),
+  onResult: useAnalysisDelivery("assessment", { onCommitted: () => saved.accept() }),
   fallback: "分子指标计算失败，请核对结构与计算服务。",
   body: () => {
     if (!smiles.value.trim())
@@ -62,7 +62,8 @@ const { result, loading, error, calculate, reset } = useCalculation({
   },
 });
 const saved = useAnalysisInput({
-  kind: "assessment", clear: () => { reset(); smiles.value = ""; }, prefill: (value) => { smiles.value = value; },
+  kind: "assessment", snapshot: smiles,
+  clear: () => { reset(); smiles.value = ""; }, prefill: (value) => { smiles.value = value; },
   apply: (input) => {
     if (typeof input?.smiles !== "string" || !input.smiles.trim()) throw new CalculationInputError("已存记录缺少完整结构。");
     smiles.value = input.smiles;

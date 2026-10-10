@@ -1,6 +1,6 @@
 <template>
   <ModuleWorkbench :title="$tr('可能杂质分析')">
-    <template #actions><v-btn v-if="saved.source.value || saved.error.value" to="/impurity" variant="text" prepend-icon="mdi-plus" :disabled="loading" @click="saved.startNew">{{ $tr('新建分析') }}</v-btn></template>
+    <template #actions><v-btn v-if="saved.source.value || saved.error.value" to="/impurity" variant="text" prepend-icon="mdi-plus" :disabled="loading" @click.capture="saved.startNew">{{ $tr('新建分析') }}</v-btn></template>
     <WorkbenchForm
       class="impurity-layout"
       :parameter-label="$tr('杂质分析参数')"
@@ -194,6 +194,7 @@ function initialize(next) {
 }
 const saved = useAnalysisInput({
   kind: "impurity", querySeeds: ["reactants", "known_product"], clear: () => initialize(createForm()),
+  snapshot: () => [form, dirty.value ? [selectedId.value, draft.value] : null],
   apply: (input) => initialize(restoreImpurityForm(input)),
   prefill: (_smiles, query) => {
     const next = createForm();
@@ -217,7 +218,7 @@ const { loading, error, result, calculate } = useCalculation({
   body: () => impurityBody(form),
   accepts: acceptsImpurities,
   fallback: "杂质模型计算未完成，请检查输入与实际模型状态。",
-  onResult: useAnalysisDelivery("impurity"),
+  onResult: useAnalysisDelivery("impurity", { onCommitted: () => saved.accept() }),
 });
 const locked = computed(() => loading.value || reading.value || saved.loading.value || !!saved.error.value);
 function select(row, group, index) {

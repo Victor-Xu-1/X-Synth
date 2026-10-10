@@ -6,7 +6,7 @@
     <router-link v-if="displayError && recordPath(currentPrediction?.record_id)" :to="recordPath(currentPrediction.record_id)">{{ $tr('打开已保存的结果') }}</router-link>
     <template #actions>
       <v-btn v-if="saved.source.value || saved.error.value" :to="needsProduct ? '/forward?tab=context' : '/forward?tab=forward'"
-        variant="text" prepend-icon="mdi-plus" :disabled="pendingTasks > 0" @click="saved.startNew">{{ $tr('新建计算') }}</v-btn>
+        variant="text" prepend-icon="mdi-plus" :disabled="pendingTasks > 0" @click.capture="saved.startNew">{{ $tr('新建计算') }}</v-btn>
       <v-btn
         to="/analyses"
         variant="text"
@@ -181,7 +181,11 @@ const requestError = ref(""),
   prefillError = ref(""),
   prefillPending = ref(false);
 const replayProduct = ref(""), replayNote = ref("");
-const deliverConditions = useAnalysisDelivery("conditions"), deliverForward = useAnalysisDelivery("forward");
+const replayedChoice = ref("");
+const hasProductChoice = ref(false);
+const committed = () => saved.accept();
+const deliverConditions = useAnalysisDelivery("conditions", { onCommitted: committed }),
+  deliverForward = useAnalysisDelivery("forward", { onCommitted: committed });
 const displayError = computed(() => prefillError.value || requestError.value);
 const inputPending = computed(
   () =>
@@ -280,9 +284,10 @@ function replaceRoute(value) {
   if (typeof value !== "string" || !Object.hasOwn(features, value)) return;
   router.replace({ path: "/forward", query: { ...route.query, tab: value } });
 }
-async function prefill() {
+async function prefill(_smiles, _query, acceptPrefill) {
   const current = ++prefillGeneration;
   const inputRevision = forwardRevision;
+  const initialCount = numForwardResults.value;
   const query = route.query;
   conditions.invalidate();
   forward.invalidate();
@@ -317,6 +322,7 @@ async function prefill() {
         forwardSmiles.value = value.reactants
           .map((record) => record.smiles)
           .join(".");
+        acceptPrefill?.([forwardSmiles.value, initialCount]);
       }
     } else if (query.reactants !== undefined || query.product !== undefined)
       reactionSmiles.value = reactionInputText({
@@ -356,26 +362,31 @@ watch(
 );
 const saved = useAnalysisInput({
   kind: () => needsProduct.value ? "conditions" : "forward",
+  snapshot: () => needsProduct.value
+    ? [reactionSmiles.value, hasProductChoice.value ? canvas.value?.selected ?? replayedChoice.value : replayedChoice.value, numContextResults.value]
+    : [forwardSmiles.value, numForwardResults.value],
   querySeeds: ["smiles", "rxnsmiles", "reaction_smiles", "reactants", "product"],
   clear: () => {
     prefillGeneration++; prefillPending.value = false; prefillError.value = "";
     conditions.invalidate(); forward.invalidate();
-    reactionSmiles.value = ""; forwardSmiles.value = ""; replayProduct.value = ""; replayNote.value = "";
+    reactionSmiles.value = ""; forwardSmiles.value = ""; replayProduct.value = ""; replayedChoice.value = ""; replayNote.value = ""; hasProductChoice.value = false;
   },
   prefill,
   apply: (input) => {
     const restored = predictionReplay(input, needsProduct.value ? "conditions" : "forward");
     if (needsProduct.value) {
       numContextResults.value = restored.count; reactionSmiles.value = restored.reaction;
-      replayProduct.value = restored.product; replayNote.value = restored.note;
+      replayProduct.value = restored.product; replayedChoice.value = restored.product; replayNote.value = restored.note;
     } else { numForwardResults.value = restored.count; forwardSmiles.value = restored.reactants; }
   },
 });
 watch(() => canvas.value?.parsed, (value) => {
+  // Preserve an explicit choice while native parsing is temporarily unavailable.
+  if (value) hasProductChoice.value = value.products.length > 1;
   if (replayProduct.value && value?.products.some((row) => row.smiles === replayProduct.value)) {
     canvas.value.selected = replayProduct.value; replayProduct.value = "";
   }
-});
+}, { flush: "sync" });
 onBeforeUnmount(() => {
   disposed = true;
   prefillGeneration++;

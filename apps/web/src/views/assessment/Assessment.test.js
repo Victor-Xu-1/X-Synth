@@ -4,7 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { API } from "@/common/api";
 import Assessment from "./Assessment.vue";
 import { calculationStubs, deferred, realCalculation } from "./test-support";
-jest.mock("vue-router", () => ({ useRoute: jest.fn(), useRouter: jest.fn() }));
+jest.mock("vue-router", () => ({ useRoute: jest.fn(), useRouter: jest.fn(), onBeforeRouteLeave: jest.fn(), onBeforeRouteUpdate: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { post: jest.fn(), get: jest.fn() } }));
 jest.mock("@/components/workspace/StructureInput.vue", () => ({ name: "StructureInput", template: "<div />" }));
 jest.mock("@/components/ModuleWorkbench.vue", () => ({ name: "ModuleWorkbench", template: "<slot />" }));

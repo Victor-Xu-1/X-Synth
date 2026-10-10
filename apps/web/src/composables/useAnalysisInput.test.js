@@ -3,7 +3,7 @@ import { mount, flushPromises } from "@vue/test-utils";
 import { useRoute } from "vue-router";
 import { API } from "@/common/api";
 import { useAnalysisInput } from "./useAnalysisInput";
-jest.mock("vue-router", () => ({ useRoute: jest.fn() }));
+jest.mock("vue-router", () => ({ useRoute: jest.fn(), onBeforeRouteLeave: jest.fn(), onBeforeRouteUpdate: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { get: jest.fn() } }));
 const wrappers = [], apply = jest.fn(), clear = jest.fn(), prefill = jest.fn();
 const record = (id, kind = "process") => ({ id, kind, status: "completed", created: "2026-10-08T00:00:00Z", inputs: { saved: id }, result: {} });
@@ -24,7 +24,7 @@ test("browser Back restores only a pointer bound to the exact originating page a
 test("a pointer for a different input URL cannot overwrite a fresh target", async () => {
   window.history.replaceState({ xSynthSubmittedInput: { version: 1, kind: "process", id: "old", location: "/process?smiles=CCO" } }, "");
   setup({ smiles: "CCN" }, "/process?smiles=CCN"); await flushPromises();
-  expect(API.get).not.toHaveBeenCalled(); expect(prefill).toHaveBeenCalledWith("CCN", { smiles: "CCN" });
+  expect(API.get).not.toHaveBeenCalled(); expect(prefill).toHaveBeenCalledWith("CCN", { smiles: "CCN" }, expect.any(Function));
 });
 test("stale record reads and unmounted views do not overwrite the current form", async () => {
   let finish;
@@ -55,7 +55,7 @@ test("new input resets a restored history entry even when its URL is unchanged, 
   expect({ ...cachedRouterState, ...window.history.state }.xSynthSubmittedInput).toBeNull();
   await wrapper.vm.reload();
   expect(API.get).toHaveBeenCalledTimes(1);
-  expect(prefill).toHaveBeenLastCalledWith("", {});
+  expect(prefill).toHaveBeenLastCalledWith("", {}, expect.any(Function));
 });
 
 test("new input exits failed recovery and discards late reads without clearing modified-click history", async () => {
@@ -68,4 +68,11 @@ test("new input exits failed recovery and discards late reads without clearing m
   expect(apply).not.toHaveBeenCalled(); expect(wrapper.vm.loading).toBe(false);
   wrapper.vm.error = "failed restore"; wrapper.vm.startNew();
   expect(wrapper.vm.error).toBe(""); expect(wrapper.vm.source).toBeNull();
+});
+
+test("hash-only focus navigation cannot clear or re-read submitted input", async () => {
+  API.get.mockResolvedValue(record("one"));
+  const { route } = setup({ record: "one" }, "/process?record=one"); await flushPromises();
+  clear.mockClear(); route.fullPath = "/process?record=one#workspace-content"; await flushPromises();
+  expect(clear).not.toHaveBeenCalled(); expect(API.get).toHaveBeenCalledTimes(1);
 });

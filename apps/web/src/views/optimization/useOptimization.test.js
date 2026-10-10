@@ -257,3 +257,26 @@ test("restored unnamed CSV has no display sentinel in fileName and a chosen lite
   expect(JSON.stringify(input)).toBe(original);
   expect(API.post.mock.calls).toEqual(Array.from({ length: 2 }, () => ["/api/v1/optimization/inspect", { content: CSV }]));
 });
+
+test("failed replacement keeps the verified table and settings but requires explicit retention before recommending", async () => {
+  const { state } = setup(); await confirmed(state); await flushPromises();
+  const previous = JSON.stringify([state.content.value, state.table.value, state.selectedRows.value, state.factors.value, state.target, state.batchSize.value, state.seed.value]);
+  API.post.mockRejectedValueOnce(new Error("replacement CSV invalid"));
+  await state.chooseFile(file("invalid.csv"));
+  expect(JSON.stringify([state.content.value, state.table.value, state.selectedRows.value, state.factors.value, state.target, state.batchSize.value, state.seed.value])).toBe(previous);
+  expect(state.fileName.value).toBe("measurements.csv");
+  expect(state.fileError.value).toBe(true); expect(state.canRecommend.value).toBe(false);
+  expect(state.confirmedMeasurements.value).toBe(false); expect(state.confirmedCandidates.value).toBe(false);
+  state.confirmedMeasurements.value = true; state.confirmedCandidates.value = true;
+  expect(state.canRecommend.value).toBe(false);
+  state.retainTable(); expect(state.fileError.value).toBe(false); expect(state.canRecommend.value).toBe(true);
+  expect(API.post.mock.calls.every(([url]) => url.endsWith("/inspect"))).toBe(true);
+});
+
+test("an oversized replacement does not erase verified input or make a parser request", async () => {
+  const { state } = setup(); await confirmed(state);
+  const original = state.table.value, calls = API.post.mock.calls.length;
+  await state.chooseFile({ ...file("large.csv"), size: 3 * 1024 * 1024 });
+  expect(state.table.value).toBe(original); expect(state.content.value).toBe(CSV);
+  expect(API.post).toHaveBeenCalledTimes(calls); expect(state.fileLoading.value).toBe(false);
+});
