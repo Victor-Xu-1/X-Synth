@@ -572,10 +572,15 @@ Public workbench delivery stays within the existing static-file authority. Only
 public text/WASM assets negotiate bounded deterministic gzip; private API and
 identity/scientific payloads are not compressed by this path. Representation-specific
 validators, Vary, HEAD, identity ranges, path containment and SPA fallbacks remain
-explicit contracts. AssetCacheLimits shares the platform performance-policy module:
-16 MiB/128 cached entries, 8 MiB source file, eight admitted cold requests and one
-compressor per API process. Warm bytes are reused; overload never launches unbounded
-work, and no compression policy changes a chemistry/search budget or scientific result.
+explicit contracts. The API static-asset cache owns its effective public transport
+defaults, validated by the shared AssetCacheLimits type: 16 MiB/128 retained encoded
+entries, 32 MiB source file, eight admitted cold requests and one compressor per API
+process. Raw files are read in at most 64 KiB chunks into deterministic gzip, not
+materialized as a second full-size input buffer. Encoded output and in-flight
+responses still consume memory; the retained-byte cap is not a total RSS ceiling.
+Warm bytes are reused; overload never launches unbounded work. Frontend transport
+defaults do not change the native performance-policy source, checkpoint identity,
+chemistry/search budgets or scientific results.
 
 | Path                        | Acceptance Target                                                         | Evidence                                                            |
 | --------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------- |

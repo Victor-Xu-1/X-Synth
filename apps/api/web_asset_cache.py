@@ -1,5 +1,6 @@
 import gzip
 import hashlib
+import io
 import os
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -7,6 +8,11 @@ from dataclasses import dataclass
 import anyio
 import anyio.to_thread
 from packages.platform.performance import AssetCacheLimits
+
+
+# Public transport defaults do not alter native search/checkpoint configuration.
+PUBLIC_ASSET_LIMITS = AssetCacheLimits(max_file_bytes=32 * 1024**2)
+SOURCE_CHUNK_BYTES = 64 * 1024
 
 
 def file_identity(value: os.stat_result) -> tuple[int, ...]:
@@ -32,7 +38,7 @@ class GzipAssetCache:
     """Per-ASGI-worker LRU, with one compressor and a bounded admission queue."""
 
     def __init__(self, limits: AssetCacheLimits | None = None) -> None:
-        self.limits = limits or AssetCacheLimits()
+        self.limits = limits or PUBLIC_ASSET_LIMITS
         self.entries: OrderedDict[str, GzipAsset] = OrderedDict()
         self.total_bytes = 0
         self._pending = anyio.Semaphore(self.limits.max_pending)
@@ -91,17 +97,31 @@ class GzipAssetCache:
         return encoded
 
     def _compress(self, path: str, identity: tuple[int, ...]) -> GzipAsset:
+        output = io.BytesIO()
         with open(path, "rb") as source:
-            if file_identity(os.fstat(source.fileno())) != identity:
-                raise AssetChanged()
-            data = source.read(min(identity[2], self.limits.max_file_bytes) + 1)
             if (
-                len(data) != identity[2]
-                or len(data) > self.limits.max_file_bytes
+                identity[2] > self.limits.max_file_bytes
                 or file_identity(os.fstat(source.fileno())) != identity
             ):
                 raise AssetChanged()
-        body = gzip.compress(data, compresslevel=6, mtime=0)
+            read_limit = min(identity[2], self.limits.max_file_bytes)
+            size = 0
+            with gzip.GzipFile(
+                filename="", mode="wb", fileobj=output, compresslevel=6, mtime=0
+            ) as encoder:
+                while chunk := source.read(min(
+                    SOURCE_CHUNK_BYTES, read_limit - size + 1
+                )):
+                    size += len(chunk)
+                    if size > read_limit:
+                        raise AssetChanged()
+                    encoder.write(chunk)
+            if (
+                size != identity[2]
+                or file_identity(os.fstat(source.fileno())) != identity
+            ):
+                raise AssetChanged()
+        body = output.getvalue()
         etag = '"' + hashlib.sha256(body).hexdigest() + '-gzip"'
         return GzipAsset(identity, body, etag)
 

@@ -4,13 +4,14 @@ import gzip
 import os
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 import anyio
 import pytest
 from starlette.middleware.exceptions import ExceptionMiddleware
 
-from apps.api.web_asset_cache import AssetCacheLimits, GzipAssetCache
+from apps.api.web_asset_cache import AssetCacheLimits, GzipAssetCache, file_identity
 from apps.api.web_assets import WorkbenchAssets
 
 
@@ -96,6 +97,158 @@ def test_gzip_preserves_real_file_bytes_type_length_and_security(site):
     again = fetch(app, headers=[("Accept-Encoding", "gzip")])
     assert again.body == encoded.body
     assert again.headers["etag"] == encoded.headers["etag"]
+
+
+def test_large_native_editor_asset_uses_public_transport_budget_and_reuses_bytes(site, monkeypatch):
+    app, assets, public = site[:3]
+    path = public / "ketcher-standalone/static/js/editor.js"
+    path.parent.mkdir(parents=True)
+    original = b"export const atom = 'C[C@H](O)Cl';\n" * 300_000
+    assert 8 * 1024**2 < len(original) < 32 * 1024**2
+    path.write_bytes(original)
+    calls = []
+    compress = assets._gzip_cache._compress
+
+    def measured(*args):
+        calls.append(args[0])
+        return compress(*args)
+
+    monkeypatch.setattr(assets._gzip_cache, "_compress", measured)
+    headers = [("Accept-Encoding", "gzip, identity;q=0")]
+    encoded = fetch(app, "/ketcher-standalone/static/js/editor.js", headers=headers)
+    assert encoded.status == 200
+    assert encoded.headers["content-encoding"] == "gzip"
+    assert encoded.headers["content-type"].startswith("text/javascript")
+    assert encoded.headers["cache-control"] == "no-cache"
+    assert encoded.headers["vary"] == "Accept-Encoding"
+    assert gzip.decompress(encoded.body) == path.read_bytes() == original
+    again = fetch(app, "/ketcher-standalone/static/js/editor.js", headers=headers)
+    assert again.body == encoded.body
+    assert calls == [str(path)]
+    assert assets._gzip_cache.total_bytes == len(encoded.body)
+    head = fetch(app, "/ketcher-standalone/static/js/editor.js", headers=headers, method="HEAD")
+    assert head.headers == encoded.headers and head.body == b""
+    cached = fetch(app, "/ketcher-standalone/static/js/editor.js", headers=headers + [
+        ("If-None-Match", encoded.headers["etag"]),
+    ])
+    assert cached.status == 304 and cached.body == b""
+    ranged = fetch(app, "/ketcher-standalone/static/js/editor.js", headers=[
+        ("Accept-Encoding", "gzip"), ("Range", "bytes=17-29"),
+    ])
+    assert ranged.status == 206 and ranged.body == original[17:30]
+    assert "content-encoding" not in ranged.headers
+
+
+@pytest.mark.parametrize("mutation", [None, "append", "truncate", "rewrite", "over-cap"])
+def test_compression_reads_real_source_incrementally(site, monkeypatch, mutation):
+    app, _, public, original = site[:4]
+    path = public / "assets/main.js"
+    before = path.stat()
+    source_open = open
+    reads = []
+    bytes_read = []
+    if mutation == "over-cap":
+        site[1]._gzip_cache = GzipAssetCache(AssetCacheLimits(
+            max_file_bytes=len(original) + 100,
+        ))
+
+    class MeasuredSource:
+        def __init__(self, source):
+            self.source = source
+
+        def fileno(self):
+            return self.source.fileno()
+
+        def read(self, size):
+            first = not reads
+            reads.append(size)
+            chunk = self.source.read(size)
+            bytes_read.append(len(chunk))
+            if first and mutation:
+                changed = {
+                    "append": original + b"x" * 512_000,
+                    "truncate": original[:1024],
+                    "rewrite": b"x" * len(original),
+                    "over-cap": original + b"x" * 512_000,
+                }[mutation]
+                path.write_bytes(changed)
+                os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+            return chunk
+
+    @contextmanager
+    def measured_open(*args, **kwargs):
+        with source_open(*args, **kwargs) as source:
+            yield MeasuredSource(source)
+
+    monkeypatch.setattr("apps.api.web_asset_cache.open", measured_open, raising=False)
+    encoded = fetch(app, headers=[("Accept-Encoding", "gzip, identity;q=0")])
+    assert len(reads) > 1 and 0 < max(reads) <= 64 * 1024
+    assert sum(bytes_read) <= len(original) + 1
+    if mutation:
+        assert encoded.status == 503
+        assert encoded.headers["cache-control"] == "no-store"
+        assert site[1]._gzip_cache.total_bytes == 0
+        assert not site[1]._gzip_cache.entries
+    else:
+        assert encoded.status == 200 and gzip.decompress(encoded.body) == original
+        assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("size", [1024, 1025])
+def test_streamed_encoding_respects_exact_source_cap(site, size):
+    app, assets, public = site[:3]
+    assets._gzip_cache = GzipAssetCache(AssetCacheLimits(max_file_bytes=1024))
+    original = b"a" * size
+    (public / "assets/boundary.js").write_bytes(original)
+    encoded = fetch(app, "/assets/boundary.js", headers=[
+        ("Accept-Encoding", "gzip, identity;q=0"),
+    ])
+    if size == 1024:
+        assert encoded.status == 200 and gzip.decompress(encoded.body) == original
+    else:
+        assert encoded.status == 406 and assets._gzip_cache.total_bytes == 0
+        plain = fetch(app, "/assets/boundary.js", headers=[("Accept-Encoding", "gzip")])
+        assert plain.status == 200 and plain.body == original
+        assert "content-encoding" not in plain.headers
+
+
+def test_uncacheable_real_encoding_is_not_retained_or_truncated(site, monkeypatch):
+    app, assets, public = site[:3]
+    cache = assets._gzip_cache = GzipAssetCache(AssetCacheLimits(
+        max_bytes=1024, max_file_bytes=16384,
+    ))
+    original = os.urandom(8192)
+    (public / "assets/incompressible.js").write_bytes(original)
+    calls = []
+    compress = cache._compress
+
+    def measured(*args):
+        calls.append(args[0])
+        return compress(*args)
+
+    monkeypatch.setattr(cache, "_compress", measured)
+    for _ in range(2):
+        encoded = fetch(app, "/assets/incompressible.js", headers=[
+            ("Accept-Encoding", "gzip, identity;q=0"),
+        ])
+        assert encoded.status == 200 and gzip.decompress(encoded.body) == original
+        assert len(encoded.body) > cache.limits.max_bytes
+        assert cache.total_bytes == 0 and not cache.entries
+    assert len(calls) == 2
+
+
+def test_streamed_gzip_is_deterministic_without_source_filename(site):
+    _, assets, public, original = site[:4]
+    first = public / "assets/main.js"
+    second = public / "assets/renamed.js"
+    second.write_bytes(original)
+    cache = assets._gzip_cache
+    cache_identity = file_identity(first.stat())
+    encoded = cache._compress(str(first), cache_identity)
+    assert encoded == cache._compress(str(first), cache_identity)
+    renamed = cache._compress(str(second), file_identity(second.stat()))
+    assert renamed.body == encoded.body and renamed.etag == encoded.etag
+    assert encoded.body[4:8] == b"\0" * 4 and not encoded.body[3] & 8
 
 
 @pytest.mark.parametrize(
