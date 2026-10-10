@@ -46,6 +46,7 @@ export function useKetcherMolecule({
   let writeQueue = Promise.resolve();
   let verificationController;
   let failedRead;
+  let failedWrite, drawingRecovery;
   let initializing = false;
   const binding = createKetcherBinding(() => autoSync() || !!onChanged, changed);
   function bindEditor(editor) {
@@ -58,6 +59,7 @@ export function useKetcherMolecule({
   function interruptEditor() {
     if (!ready.value || signal.aborted) return;
     invalidate();
+    failedWrite = drawingRecovery = undefined;
     ready.value = false;
     reloadRequired.value = true;
     binding.release();
@@ -88,6 +90,7 @@ export function useKetcherMolecule({
   async function setSmilesToEditor(value = smiles.value, options = {}) {
     captureFocus();
     const requested = invalidate();
+    failedWrite = drawingRecovery = undefined;
     const verification = new AbortController();
     verificationController = verification;
     const abortVerification = () => verification.abort();
@@ -125,7 +128,7 @@ export function useKetcherMolecule({
             invalidate();
             ready.value = false;
             binding.release();
-          }
+          } else failedWrite = { owner: binding.current, write: writeQueue, native: writeMolecule.flush() };
           error.value = reloadRequired.value
             ? "结构导入已中断。重新加载画板后恢复当前文本输入。"
             : formatError(
@@ -144,6 +147,19 @@ export function useKetcherMolecule({
     writeQueue = writeQueue.then(write, write);
     return writeQueue;
   }
+  async function waitForWrites(canRead) {
+    const recovery = drawingRecovery, write = writeQueue, native = writeMolecule.flush();
+    const canRecover = () => !!recovery && recovery === drawingRecovery
+      && recovery.owner === binding.current && recovery.write === write && recovery.native === native
+      && write === writeQueue && native === writeMolecule.flush()
+      && ready.value && !reloadRequired.value && canRead();
+    // A genuine canvas change retires only its owner's settled failed writes, not a new import.
+    try { await write; }
+    catch (failure) { if (!canRecover()) throw failure; }
+    try { await writeMolecule.flush(); }
+    catch (failure) { if (!canRecover()) throw failure; }
+    return canRecover();
+  }
   function readSnapshot(reader = readStructure, shouldPublish = false) {
     const requested = revision;
     const read = async owned => {
@@ -152,9 +168,8 @@ export function useKetcherMolecule({
       let readingCanvas = false;
       try {
         // Preparation, native import and accepted context are one owned write transaction.
-        await writeQueue;
-        await writeMolecule.flush();
-        if (!canRead() || error.value) return null;
+        const recovering = await waitForWrites(canRead);
+        if (!canRead() || reloadRequired.value || (error.value && !recovering)) return null;
         readingCanvas = true;
         const editor = await getEditor();
         if (editor !== binding.current) throw new KetcherImportInterruptedError("Ketcher owner changed during read");
@@ -170,6 +185,7 @@ export function useKetcherMolecule({
         if (shouldPublish) await publish(value);
         if (shouldPublish && canRead()) {
           onPublished(snapshot);
+          error.value = "";
           dirty.value = false;
           status.value = value ? "结构已同步" : "当前画板为空";
         } else if (canRead()) status.value = "画板就绪";
@@ -207,8 +223,12 @@ export function useKetcherMolecule({
     if (!ready.value || reloadRequired.value || writes.value || disabled() || signal.aborted) return;
     onChanged?.();
     if (!autoSync()) return;
+    if (failedWrite) {
+      drawingRecovery = failedWrite;
+      failedWrite = undefined;
+    }
     invalidate();
-    error.value = "";
+    if (!drawingRecovery) error.value = "";
     dirty.value = true;
     status.value = "正在读取画板";
     timer = setTimeout(readSmilesFromEditor, 250);
@@ -276,6 +296,7 @@ export function useKetcherMolecule({
   );
   function dispose() {
     invalidate();
+    failedWrite = drawingRecovery = undefined;
     binding.release();
   }
   signal.addEventListener("abort", dispose, { once: true });
