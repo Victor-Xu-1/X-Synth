@@ -1,6 +1,9 @@
 import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { TextEncoder } from "node:util";
+import { readFileSync } from "node:fs";
+import { parse } from "@vue/compiler-sfc";
+import postcss from "postcss";
 import { createRouter, createMemoryHistory } from "vue-router";
 import { API } from "@/common/api";
 import { saveAs } from "file-saver";
@@ -340,4 +343,19 @@ test("failed records without an error still have an explicit terminal state, nev
   const { wrapper } = await setup();
   expect(wrapper.get('[role="status"]').text()).toContain("未完成");
   expect(wrapper.find(".read-only-result").exists()).toBe(false);
+});
+
+test("record toolbar keeps one 44px action size and 4px gap with wrapping instead of mobile compression", () => {
+  const { descriptor } = parse(readFileSync(`${__dirname}/AnalysisDetail.vue`, "utf8"));
+  const css = postcss.parse(descriptor.styles[0].content);
+  const declarations = (selector) => {
+    const values = [];
+    css.walkRules(selector, (rule) => rule.walkDecls((entry) => values.push([entry.prop, entry.value])));
+    return values;
+  };
+  const actions = declarations(".analysis-record-actions :deep(.v-btn)");
+  expect(actions).toEqual(expect.arrayContaining([["width", "44px"], ["height", "44px"], ["min-width", "44px"], ["flex-shrink", "0"]]));
+  const gaps = declarations(".analysis-record-actions").filter(([name]) => name === "gap").map(([, value]) => value);
+  expect(gaps).toEqual(["4px"]);
+  expect(declarations(".analysis-navigation")).toContainEqual(["flex-wrap", "wrap"]);
 });

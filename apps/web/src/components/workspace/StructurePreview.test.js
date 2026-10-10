@@ -89,6 +89,16 @@ test("existing preview defaults and reaction input are passed verbatim to the th
     expect(wrapper.find("img").attributes("alt")).toBe("[13CH3]O>>[13CH2]=O");
   } finally { wrapper.unmount(); }
 });
+
+test("every shared chemistry inspection action has a stable 44px target, not only compact lists", () => {
+  const { descriptor } = parse(readFileSync(resolve(__dirname, "StructurePreview.vue"), "utf8"));
+  const css = postcss.parse(descriptor.styles[0].content);
+  const values = selector => Object.fromEntries((css.nodes.find(rule => rule.selector === selector)?.nodes || [])
+    .filter(node => node.type === "decl").map(node => [node.prop, node.value]));
+  expect(values(".preview-expand")).toMatchObject({ width: "44px", height: "44px", "min-width": "44px", "min-height": "44px" });
+  expect(values(".preview-heading")["min-height"]).toBe("44px");
+  expect(values(".compact-preview .preview-heading :deep(.v-btn)")).toEqual({});
+});
 test("short screens shrink the scrolling canvas without hiding it beneath the fixed header", () => {
   const { descriptor } = parse(readFileSync(resolve(__dirname, "StructureDrawingDialog.vue"), "utf8"));
   const css = postcss.parse(descriptor.styles[0].content);

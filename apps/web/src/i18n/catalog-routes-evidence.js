@@ -37,7 +37,7 @@ export default [
   ["查看参考记录详情：{name}", "View reference record details: {name}"], ["记录详情", "Record details"],
   ["收率原始字段", "Original yield field"], ["原始值", "Original value"], ["来源字段", "Source field"],
   ["测量类型", "Measurement type"], ["单位", "Unit"], ["原始分析记录", "Original analysis record"],
-  ["参考反应结果", "Reference reaction results"], ["{name} · {count} 条", "{name} · {count} records"],
+  ["参考反应结果", "Reference reaction results"], ["{name} · {count} 条", "{name} · Records: {count}"],
   ["本次查询结构", "Structures in this query"], ["未指定", "Not specified"],
   ["正在检索参考反应。", "Searching reference reactions."],
   ["未找到该产物结构的参考反应。", "No reference reactions found for this product structure."],
