@@ -10,13 +10,10 @@
         <WorkbenchScope :active="layer === 'query'">
           <WorkbenchForm parameter-label="原料检索条件" @submit="runSearch">
             <StructureInput ref="structure" v-model="smiles" label="化合物结构" :canvas-height="480" recycle />
-            <template #parameters>
-              <div class="tool-fields">
-                <h2 class="tool-section-title">{{ $tr('检索条件') }}</h2>
-                <p v-if="expectedSnapshot" class="workspace-muted stock-task-context">{{ $tr('关联任务目录快照') }}</p>
-              </div>
+            <template #action-context>
+              <span>{{ $tr('{value} 个目录结构', { value: workspace.health?.stock_snapshot?.unique_structures?.toLocaleString() || "—" }) }}</span>
+              <span v-if="expectedSnapshot" class="stock-task-context">{{ $tr('关联任务目录快照') }}</span>
             </template>
-            <template #action-context><span>{{ $tr('{value} 个目录结构', { value: workspace.health?.stock_snapshot?.unique_structures?.toLocaleString() || "—" }) }}</span></template>
             <template #actions>
               <v-btn color="primary" variant="flat" prepend-icon="mdi-magnify" type="submit"
                 data-cy="stock-search-submit" :disabled="!smiles.trim() || loading || inputPending" :loading="loading">{{ $tr('精确检索') }}</v-btn>

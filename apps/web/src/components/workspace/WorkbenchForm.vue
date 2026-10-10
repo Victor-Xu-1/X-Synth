@@ -2,7 +2,7 @@
   <form
     class="inspector-workbench"
     :class="{
-      'inspector-hidden': !inspectorVisible,
+      'inspector-hidden': !inspectorVisible || !$slots.parameters,
       'full-height': fullHeight,
     }"
     @submit.prevent="$emit('submit', $event)"
@@ -17,6 +17,7 @@
       <slot />
     </div>
     <aside
+      v-if="$slots.parameters"
       v-show="inspectorVisible"
       class="workbench-inspector"
       :aria-label="$tr(parameterLabel)"

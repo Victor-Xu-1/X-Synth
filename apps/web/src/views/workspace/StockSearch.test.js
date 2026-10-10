@@ -92,6 +92,18 @@ test("route prefill performs no lookup and a changed query resets both input and
   expect(wrapper.get("textarea").element.value).toBe("O");
   expect(API.post).not.toHaveBeenCalled();
 });
+test.each([{}, { smiles: "CCO", snapshot }])("stock query %j has no empty criteria column and keeps source context with its command", (query) => {
+  const { wrapper } = setup(query);
+  const form = wrapper.get("form");
+  expect(form.find("aside").exists()).toBe(false);
+  expect(form.classes()).toContain("inspector-hidden");
+  expect(form.findAll('[data-cy="stock-search-submit"]')).toHaveLength(1);
+  expect(form.get('[data-cy="stock-search-submit"]').isVisible()).toBe(true);
+  expect(form.get("footer").get(".workbench-action-context").text()).toContain("个目录结构");
+  expect(form.get(".workbench-action-context").text().includes("关联任务目录快照")).toBe(Boolean(query.snapshot));
+  expect(wrapper.get("textarea").element.value).toBe(query.smiles || "");
+  expect(API.post).not.toHaveBeenCalled();
+});
 test("response and task snapshots are labelled separately and missing prices remain unknown", async () => {
   const { wrapper } = setup();
   API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({
