@@ -25,11 +25,14 @@ const deferred = () => {
 
 async function setup(patch = {}) {
   const route = reactive({ params: { id: idA }, query: {} });
-  const state = { job: { job_id: idA, status: "searching", result_snapshot: snapshot }, routes: [routeValue], failArtifact: false, ...patch };
+  const state = { job: { job_id: idA, target_smiles: "CCO", status: "searching", result_snapshot: snapshot },
+    settings: { smiles: "CCO", description: "Original source", expansion_time: 127, min_routes: 4, max_routes: 8 },
+    routes: [routeValue], failArtifact: false, ...patch };
   const router = { push: jest.fn().mockResolvedValue(undefined) };
   useRoute.mockReturnValue(route);
   useRouter.mockReturnValue(router);
-  API.get.mockImplementation(async (url) => {
+  API.get.mockImplementation(async (url, query) => {
+    if (query?.include_settings) return { ...state.job, job_id: route.params.id, settings: state.settings };
     if (!url.includes("retrieve")) return { ...state.job, job_id: route.params.id };
     if (state.failArtifact) throw new Error("artifact unavailable");
     return { result: { unified_route_pool: { selected_routes: state.routes } } };
@@ -48,6 +51,16 @@ beforeEach(() => { jest.clearAllMocks(); jest.useFakeTimers(); });
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
   jest.clearAllTimers(); jest.useRealTimers();
+});
+
+test("task parameters are read only when opened and remain available without a readable route artifact", async () => {
+  const { wrapper, state } = await setup({ failArtifact: true });
+  expect(API.get.mock.calls.some(([, query]) => query?.include_settings)).toBe(false);
+  wrapper.vm.infoOpen = true; await settle();
+  expect(wrapper.vm.taskInfo.settings).toEqual(state.settings);
+  expect(API.get.mock.calls.filter(([, query]) => query?.include_settings)).toHaveLength(1);
+  expect(wrapper.vm.parameters.loading.value).toBe(false);
+  expect(API.post).not.toHaveBeenCalled();
 });
 
 test("poll ticks update lifecycle without downloading or replacing an unchanged route artifact", async () => {
@@ -167,7 +180,7 @@ test("duplicate rerun is blocked without blocking a separate resume mutation or 
   await wrapper.vm.changeTask("resume");
   expect(API.post).toHaveBeenCalledWith(`/api/v1/unified-route/jobs/${idA}/resume`);
   expect(wrapper.vm.rerunning).toBe(true);
-  request.resolve({ settings: { smiles: "CCO", description: "Original task", expansion_time: 1800, strategies: ["mcts", "retro_star"] } });
+  request.resolve({ job_id: idA, target_smiles: "CCO", settings: { smiles: "CCO", description: "Original task", expansion_time: 1800, strategies: ["mcts", "retro_star"] } });
   await rerun;
   expect(router.push).toHaveBeenCalledWith(expect.objectContaining({ path: "/", query: expect.objectContaining({ smiles: "CCO" }) }));
   expect(JSON.parse(router.push.mock.calls[0][0].query.search_settings)).toMatchObject({ expansion_time: 1800, strategies: ["mcts", "retro_star"] });

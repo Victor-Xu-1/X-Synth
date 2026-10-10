@@ -8,6 +8,8 @@ import { useRouteWorkbenchStore } from "@/store/route-workbench";
 import { API } from "@/common/api";
 import { expandMolecule } from "@/common/one-step";
 import RouteComposer from "./RouteComposer.vue";
+import { deserialize, serialize } from "node:v8";
+globalThis.structuredClone = value => deserialize(serialize(value));
 
 jest.mock("vue-router", () => ({
   useRoute: jest.fn(), useRouter: jest.fn(), onBeforeRouteLeave: jest.fn(),
@@ -37,7 +39,7 @@ const stubs = {
 };
 function setup() {
   setActivePinia(createPinia());
-  const route = reactive({ query: { mode: "manual", smiles: "CCO" } });
+  const route = reactive({ path: "/", query: { mode: "manual", smiles: "CCO" } });
   const router = { push: jest.fn(), replace: jest.fn(async (value) => { route.query = value.query; }) };
   useRoute.mockReturnValue(route); useRouter.mockReturnValue(router);
   useWorkspaceStore.mockReturnValue({ ready: true, can: () => true, refresh: jest.fn() });

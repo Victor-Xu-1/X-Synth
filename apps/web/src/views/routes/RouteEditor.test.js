@@ -42,6 +42,7 @@ jest.mock("@/components/workspace/StructureInput.vue", () => ({
   name: "StructureInput",
   props: ["modelValue", "label", "disabled"],
   emits: ["update:modelValue"],
+  data: () => ({ pending: false, hasUnconfirmedDraft: false, draftRevision: 0 }),
   template:
     '<label>{{ label }}<textarea :aria-label="label" :disabled="disabled" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" /></label>',
 }));
@@ -97,7 +98,9 @@ const stubs = {
   VListItem: true,
   VIcon: true,
   VDialog: {
+    name: "VDialog",
     props: ["modelValue"],
+    emits: ["update:modelValue"],
     template: '<div v-if="modelValue" class="dialog"><slot /></div>',
   },
   VProgressCircular: true,
@@ -606,6 +609,175 @@ test("closing the add-material dialog invalidates its pending structure check", 
     graph,
   );
   expect(wrapper.text()).toContain("已保存");
+});
+
+describe("molecule input drafts", () => {
+  const unload = () => {
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  async function materialInput(wrapper) {
+    await wrapper.get('button[aria-label="添加中间体或原料"]').trigger("click");
+    return wrapper.getComponent({ name: "StructureInput" });
+  }
+  const dismiss = (wrapper, action) => action === "cancel"
+    ? buttonWithText(wrapper, "取消").trigger("click")
+    : wrapper.findAllComponents({ name: "VDialog" }).find(dialog => dialog.props("modelValue"))
+      .vm.$emit("update:modelValue", false);
+
+  beforeEach(() => setLocale("zh-CN", { persist: false }));
+
+  test("empty initial material loading is not dirty and can close without confirmation", async () => {
+    const { wrapper } = await setup();
+    const input = await materialInput(wrapper);
+    input.vm.pending = true;
+    await flushPromises();
+    await input.get("textarea").setValue("   ");
+    expect(wrapper.vm.hasUnsavedChanges).toBe(false);
+    expect(unload()).toBe(false);
+    expect(onBeforeRouteLeave.mock.calls[0][0]({ path: "/documents" })).toBe(true);
+    await dismiss(wrapper, "cancel");
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(wrapper.find('textarea[aria-label="中间体或原料结构"]').exists()).toBe(false);
+    expect(API.post).not.toHaveBeenCalled();
+    expect(API.put).not.toHaveBeenCalled();
+  });
+
+  test.each(["leave", "update", "unload"])("material text protects %s without applying or saving", async action => {
+    const { wrapper } = await setup();
+    const input = await materialInput(wrapper);
+    await input.get("textarea").setValue("[13CH3][C@H](F)C(=O)[O-].[Na+]");
+    window.confirm.mockReturnValue(false);
+    if (action === "unload") expect(unload()).toBe(true);
+    else {
+      const guard = action === "leave" ? onBeforeRouteLeave : onBeforeRouteUpdate;
+      expect(guard.mock.calls[0][0]({ path: "/editor/" + importedId })).toBe(false);
+    }
+    expect(wrapper.vm.hasUnsavedChanges).toBe(true);
+    expect(input.get("textarea").element.value).toBe("[13CH3][C@H](F)C(=O)[O-].[Na+]");
+    expect(wrapper.get('[role="status"]').text()).toBe("未应用修改");
+    expect(wrapper.getComponent({ name: "RouteGraph" }).props("graph")).toEqual(graph);
+    expect(API.post).not.toHaveBeenCalled();
+    expect(API.put).not.toHaveBeenCalled();
+  });
+
+  test.each(["cancel", "dismiss"])("material %s requires idle-draft confirmation and clears only the owned input", async action => {
+    const { wrapper } = await setup();
+    const input = await materialInput(wrapper);
+    await input.get("textarea").setValue("CCO");
+    window.confirm.mockReturnValue(false);
+    await dismiss(wrapper, action);
+    await flushPromises();
+    expect(window.confirm).toHaveBeenCalledTimes(1);
+    expect(input.get("textarea").element.value).toBe("CCO");
+    expect(wrapper.vm.hasUnsavedChanges).toBe(true);
+    window.confirm.mockReturnValue(true);
+    await dismiss(wrapper, action);
+    await flushPromises();
+    expect(wrapper.find('textarea[aria-label="中间体或原料结构"]').exists()).toBe(false);
+    expect(wrapper.vm.hasUnsavedChanges).toBe(false);
+    expect(wrapper.getComponent({ name: "RouteGraph" }).props("graph")).toEqual(graph);
+    expect(API.post).not.toHaveBeenCalled();
+    expect(API.put).not.toHaveBeenCalled();
+    const reopened = await materialInput(wrapper);
+    expect(reopened.vm).not.toBe(input.vm);
+    expect(reopened.get("textarea").element.value).toBe("");
+    expect(wrapper.vm.hasUnsavedChanges).toBe(false);
+  });
+
+  test("native material intent remains protected while disabled and refuses local close until synchronized", async () => {
+    const { wrapper } = await setup();
+    const input = await materialInput(wrapper);
+    input.vm.hasUnconfirmedDraft = true;
+    input.vm.draftRevision++;
+    input.vm.pending = true;
+    wrapper.vm.validating = true;
+    await flushPromises();
+    expect(input.props("disabled")).toBe(true);
+    expect(buttonWithText(wrapper, "取消").element.disabled).toBe(true);
+    expect(wrapper.vm.hasUnsavedChanges).toBe(true);
+    expect(unload()).toBe(true);
+    window.confirm.mockReturnValue(false);
+    expect(onBeforeRouteLeave.mock.calls[0][0]({ path: "/documents" })).toBe(false);
+    window.confirm.mockClear();
+    window.confirm.mockReturnValue(true);
+    await dismiss(wrapper, "cancel");
+    await dismiss(wrapper, "dismiss");
+    await flushPromises();
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(wrapper.find('textarea[aria-label="中间体或原料结构"]').exists()).toBe(true);
+    input.vm.pending = false;
+    input.vm.hasUnconfirmedDraft = false;
+    wrapper.vm.validating = false;
+    await flushPromises();
+    expect(buttonWithText(wrapper, "取消").element.disabled).toBe(false);
+    await input.get("textarea").setValue("CCO");
+    await dismiss(wrapper, "cancel");
+    await flushPromises();
+    expect(window.confirm).toHaveBeenCalledTimes(1);
+    expect(wrapper.vm.hasUnsavedChanges).toBe(false);
+  });
+
+  test.each(["name", "text", "native"])("new-route %s intent protects leaving without treating initial canvas loading as input", async action => {
+    const { wrapper } = await setup("draft", null);
+    const input = wrapper.getComponent({ name: "StructureInput" });
+    input.vm.pending = true;
+    await flushPromises();
+    expect(wrapper.vm.hasUnsavedChanges).toBe(false);
+    if (action === "name") await wrapper.get(".editor-create-form input").setValue("本地路线名称");
+    if (action === "text") await input.get("textarea").setValue("CCO");
+    if (action === "native") {
+      input.vm.hasUnconfirmedDraft = true;
+      input.vm.draftRevision++;
+    }
+    await flushPromises();
+    window.confirm.mockReturnValue(false);
+    expect(wrapper.vm.hasUnsavedChanges).toBe(true);
+    expect(onBeforeRouteLeave.mock.calls[0][0]({ path: "/documents" })).toBe(false);
+    expect(unload()).toBe(true);
+    expect(API.get).not.toHaveBeenCalled();
+    expect(API.post).not.toHaveBeenCalled();
+    expect(API.put).not.toHaveBeenCalled();
+  });
+
+  test("accepted context change retires the old material owner without leaking its draft into the next document", async () => {
+    const { wrapper, route } = await setup();
+    const input = await materialInput(wrapper);
+    input.vm.hasUnconfirmedDraft = true;
+    input.vm.pending = true;
+    await input.get("textarea").setValue("CCO");
+    expect(onBeforeRouteUpdate.mock.calls[0][0]({ path: "/editor/" + importedId })).toBe(true);
+    expect(window.confirm).toHaveBeenCalledTimes(1);
+    API.get.mockResolvedValue({ id: importedId, title: "Next document", graph, revision: 1, state: "draft" });
+    route.params.id = importedId;
+    await flushPromises();
+    expect(wrapper.vm.hasUnsavedChanges).toBe(false);
+    expect(wrapper.find('textarea[aria-label="中间体或原料结构"]').exists()).toBe(false);
+    input.vm.$emit("update:modelValue", "late native structure");
+    await flushPromises();
+    expect(wrapper.vm.hasUnsavedChanges).toBe(false);
+    expect(wrapper.get('[aria-label="路线名称"]').element.value).toBe("Next document");
+    expect(wrapper.getComponent({ name: "RouteGraph" }).props("graph")).toEqual(graph);
+  });
+
+  test("failed material validation retains its text and leave protection until confirmed cancel", async () => {
+    const { wrapper } = await setup();
+    const input = await materialInput(wrapper);
+    await input.get("textarea").setValue("invalid draft");
+    API.post.mockRejectedValueOnce(new Error("validation unavailable"));
+    await buttonWithText(wrapper, "添加").trigger("click");
+    await flushPromises();
+    expect(input.get("textarea").element.value).toBe("invalid draft");
+    expect(wrapper.vm.hasUnsavedChanges).toBe(true);
+    expect(unload()).toBe(true);
+    window.confirm.mockReturnValue(false);
+    await dismiss(wrapper, "cancel");
+    expect(input.get("textarea").element.value).toBe("invalid draft");
+    expect(wrapper.getComponent({ name: "RouteGraph" }).props("graph")).toEqual(graph);
+    expect(API.post).toHaveBeenCalledWith("/api/v1/structure/validate", { smiles: "invalid draft" });
+    expect(API.put).not.toHaveBeenCalled();
+  });
 });
 
 async function idleInspector(wrapper) {

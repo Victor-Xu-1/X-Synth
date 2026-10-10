@@ -108,11 +108,13 @@
     <TaskInfoDialog
       v-model="infoOpen"
       :task="taskInfo"
-      :loading="loading"
-      :error="error"
+      :loading="loading || parameters.loading.value"
+      :error="parameters.error.value"
+      :busy="editing || mutating || rerunning"
+      :rerunning="rerunning"
       @preview="infoOpen = false"
       @rerun="rerun"
-      @retry="refresh(true)"
+      @retry="parameters.reload"
     />
   </section>
 </template>
@@ -134,6 +136,8 @@ import {
   taskIdentifier,
 } from "@/common/route-details";
 import { buildTaskSearchLocation } from "@/common/task-history-view";
+import { readTaskParameters } from "@/common/task-parameters";
+import { useTaskParameters } from "@/composables/useTaskParameters";
 import RouteReader from "@/components/routes/RouteReader.vue";
 import TaskInfoDialog from "@/components/workspace/TaskInfoDialog.vue";
 import TaskSearchProgress from "@/components/workspace/TaskSearchProgress.vue";
@@ -154,6 +158,7 @@ const error = ref(""),
   mutating = ref(false);
 const detailLoader = createTaskDetailLoader(API);
 const identifier = computed(() => taskIdentifier(route.params.id));
+const parameters = useTaskParameters({ id: identifier, open: infoOpen });
 const active = computed(
   () => job.value && activeTaskStates.includes(job.value.status),
 );
@@ -178,6 +183,7 @@ const taskInfo = computed(() =>
   job.value
     ? {
         ...job.value,
+        ...(parameters.data.value?.job_id === identifier.value ? { settings: parameters.data.value.settings } : {}),
         result_id: job.value.job_id,
         result_state: job.value.status,
         created: job.value.created_at,
@@ -285,10 +291,7 @@ async function rerun() {
   rerunning.value = true;
   actionError.value = "";
   try {
-    const values = await API.get(
-      "/api/v1/unified-route/jobs/" + id, null, false,
-      { signal: request.signal, timeoutMs: 15000 },
-    );
+    const values = await readTaskParameters(API, id, { signal: request.signal });
     if (isCurrent()) await router.push(buildTaskSearchLocation(values));
   } catch (cause) {
     if (isCurrent()) actionError.value = errorMessage(cause, "重新搜索参数读取失败。");

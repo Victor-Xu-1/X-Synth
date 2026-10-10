@@ -7,7 +7,6 @@ import {
   normalizeMode,
   querySeed,
   oneStepCandidate,
-  defaultSearchSettings,
   buildWorkbenchRequest,
 } from "@/common/workbench-model";
 import { expandMolecule } from "@/common/one-step";
@@ -64,30 +63,16 @@ export function useRouteWorkbench() {
     !seedError.value,
   );
   let lifetime = 0;
-  let appliedSeed = null;
   watch(
     () => route.query,
     (query) => {
+      if (route.path !== "/") return;
       try {
         const seed = querySeed(query);
-        if (!seed) {
-          if (appliedSeed !== "") {
-            lifetime++;
-            busy.value = false;
-            draft.settings = defaultSearchSettings();
-            appliedSeed = "";
-          }
-          seedError.value = false;
-          error.value = "";
-          return;
-        }
-        if (seed.key === appliedSeed && !seedError.value) return;
-        lifetime++;
-        busy.value = false;
-        draft.smiles = seed.smiles;
-        draft.name = seed.name;
-        draft.settings = seed.settings;
-        appliedSeed = seed.key;
+        const intent = window.history.state?.xSynthSearchIntent;
+        const changed = draft.applySeed(seed, { force: seedError.value,
+          intent: typeof intent === "string" && intent.length <= 128 ? intent : "" });
+        if (changed) { lifetime++; busy.value = false; }
         error.value = "";
         seedError.value = false;
       } catch (e) {

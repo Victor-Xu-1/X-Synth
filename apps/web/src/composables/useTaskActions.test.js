@@ -5,6 +5,7 @@ import { setLocale } from "@/i18n";
 
 const row = {
   result_id: "history-task",
+  job_id: "history-task",
   revision: 7,
   history_revision: 2,
   group_id: null,
@@ -94,7 +95,7 @@ test("late detail responses cannot replace the selected task", async () => {
   const { actions } = setupActions(api);
   const one = actions.info(row);
   const two = actions.info({ ...row, result_id: "second-task" });
-  second.resolve({ ...row, result_id: "second-task", settings });
+  second.resolve({ ...row, result_id: "second-task", job_id: "second-task", settings });
   await two;
   first.resolve({ ...row, settings });
   await one;
@@ -106,7 +107,7 @@ test("late detail responses cannot replace the selected task", async () => {
 test.each(["preview", "rerun"])("a later information selection invalidates an outstanding %s intent", async (action) => {
   const request = deferred();
   const api = { get: jest.fn().mockReturnValueOnce(request.promise).mockResolvedValueOnce({
-    ...row, result_id: "second-task", settings,
+    ...row, result_id: "second-task", job_id: "second-task", settings,
   }) };
   const { actions, router } = setupActions(api);
   const pending = actions[action](row);
@@ -141,7 +142,7 @@ test.each(["info", "preview", "rerun"])("changing the history collection invalid
 
 test.each(["preview", "rerun"])("the new %s intent survives closing another task's open information dialog", async action => {
   const request = deferred();
-  const second = { ...row, result_id: "second-task", description: "Task B", target_smiles: "CCN" };
+  const second = { ...row, result_id: "second-task", job_id: "second-task", description: "Task B", target_smiles: "CCN" };
   const secondSettings = { ...settings, smiles: "CCN" };
   const routes = [{ route_id: "second-route", target_smiles: "CCN", steps: [] }];
   const api = { get: jest.fn().mockResolvedValueOnce({ ...row, settings }).mockReturnValueOnce(request.promise) };
@@ -249,9 +250,7 @@ test("rerun retrieves original settings, then navigates without posting a model 
   };
   const { actions, router } = setupActions(api);
   await actions.rerun(row);
-  expect(api.get).toHaveBeenCalledWith("/api/results/retrieve", {
-    result_id: row.result_id,
-  });
+  expect(api.get).toHaveBeenCalledWith("/api/v1/unified-route/jobs/history-task", { include_settings: true }, true, { signal: undefined, timeoutMs: 15000 });
   expect(
     JSON.parse(router.push.mock.calls[0][0].query.search_settings),
   ).toEqual(settings);
@@ -273,6 +272,7 @@ test("only the latest selected rerun can navigate, even when its response arrive
   second.resolve({
     ...row,
     result_id: "second-task",
+    job_id: "second-task",
     settings: { ...settings, description: "Second task" },
   });
   await two;

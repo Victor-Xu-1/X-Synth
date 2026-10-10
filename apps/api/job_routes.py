@@ -6,7 +6,7 @@ from packages.orchestrator.job_repository import JobConflict
 from packages.orchestrator.job_commands import RouteDependenciesUnavailable, RouteJobCommands
 from packages.orchestrator.route_request import RouteJobRequest
 
-from .job_views import job_response, route_result, selected_routes_for_job
+from .job_views import job_response, original_search_settings, route_result, selected_routes_for_job
 from .security import authenticate
 
 
@@ -64,8 +64,12 @@ def job_router(*, repository, transport, readiness, artifacts: Path, budget):
         }
 
     @router.get("/unified-route/jobs/{job_id}")
-    def detail(job_id: str, request: Request):
-        return job_response(owned(request, job_id))
+    def detail(job_id: str, request: Request, include_settings: bool = False):
+        job = owned(request, job_id)
+        response = job_response(job)
+        if include_settings:
+            response["settings"] = original_search_settings(job)
+        return response
 
     @router.post("/unified-route/jobs/{job_id}/resume")
     def resume(job_id: str, request: Request):

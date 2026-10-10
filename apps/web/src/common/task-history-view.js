@@ -18,6 +18,7 @@ export const historyStatusOptions = [
 const parameterLabels = {
   backend: "搜索引擎",
   strategies: "搜索策略",
+  search_policy_version: "搜索策略版本",
   expansion_time: "搜索预算（秒）",
   max_paths: "候选路径上限",
   min_routes: "路线数量下限",
@@ -213,6 +214,9 @@ export function buildTaskSearchLocation(task) {
     );
   return {
     path: "/",
+    force: true,
+    // Only an opaque user-intent marker is added to browser history state.
+    state: { xSynthSearchIntent: Array.from(crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2, "0")).join("") },
     query: {
       smiles,
       task_name: task.settings.description ?? task.description ?? "",

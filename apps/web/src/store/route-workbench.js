@@ -13,6 +13,19 @@ export const useRouteWorkbenchStore = defineStore("route-workbench", () => {
   const manualRevision = ref(0),
     manualView = ref("input");
   let applyingManualRead = false;
+  let appliedSeed = null;
+
+  function applySeed(seed, { force = false, intent = "" } = {}) {
+    const key = JSON.stringify([seed?.key || "", intent]);
+    if (!force && key === appliedSeed) return false;
+    if (seed) {
+      smiles.value = seed.smiles;
+      name.value = seed.name;
+      settings.value = structuredClone(seed.settings);
+    } else if (appliedSeed !== null) settings.value = defaultSearchSettings();
+    appliedSeed = key;
+    return true;
+  }
 
   function invalidateManual() {
     manualRevision.value++;
@@ -68,6 +81,7 @@ export const useRouteWorkbenchStore = defineStore("route-workbench", () => {
     manualContext,
     manualRevision,
     manualView,
+    applySeed,
     invalidateManual,
     beginManualRequest,
     applyManualRead,
