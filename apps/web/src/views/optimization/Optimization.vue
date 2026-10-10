@@ -26,7 +26,7 @@
       <router-link v-if="error && recordPath(result?.record_id)" :to="recordPath(result.record_id)">{{ $tr('打开已保存的结果') }}</router-link>
       <div v-if="fileLoading" class="opt-loading" role="status"><v-progress-circular indeterminate size="22" />{{ $tr('读取当前实测表') }}</div>
       <div v-if="!table && !fileLoading && !saved.loading.value && !saved.error.value" class="opt-empty">
-        <v-icon icon="mdi-table-outline" size="30" /><h2>{{ $tr('实测记录') }}</h2><span>{{ $tr('尚无已选实验数据') }}</span>
+        <v-icon icon="mdi-table-large" size="30" /><h2>{{ $tr('实测记录') }}</h2><span>{{ $tr('尚无已选实验数据') }}</span>
       </div>
       <div v-if="table" class="opt-layout">
         <dl class="opt-input-context">

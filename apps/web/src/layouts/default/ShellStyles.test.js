@@ -5,7 +5,7 @@ import postcss from "postcss";
 import vuetify from "@/plugins/vuetify";
 import { DEFAULT_LOCALE, LOCALES } from "@/i18n";
 
-jest.mock("@mdi/font/css/materialdesignicons.css", () => ({}));
+jest.mock("@/plugins/icons", () => ({ workspaceIcons: { defaultSet: "mdi" } }));
 jest.mock("vuetify/styles", () => ({}));
 jest.mock("vuetify/locale", () => ({ zhHans: {} }));
 jest.mock("vuetify", () => ({ createVuetify: (options) => options }));
@@ -137,6 +137,7 @@ test.each([
     expect(DEFAULT_LOCALE).toBe("en");
     expect(vuetify.locale.locale).toBe(LOCALES.find((item) => item.value === DEFAULT_LOCALE).widgetLocale);
     expect(vuetify.locale.fallback).toBe("en");
+    expect(vuetify.icons.defaultSet).toBe("mdi");
   },
 );
 

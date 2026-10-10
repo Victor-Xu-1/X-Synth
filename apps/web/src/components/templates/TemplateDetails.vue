@@ -54,7 +54,7 @@
             rel="noopener noreferrer"
           >
             {{ $tr(link.label)
-            }}<span class="mdi mdi-open-in-new" aria-hidden="true" />
+            }}<v-icon icon="mdi-open-in-new" size="12" aria-hidden="true" />
           </a>
         </li>
       </ol>
@@ -70,7 +70,7 @@
           :disabled="page === 1"
           @click="page--"
         >
-          <span class="mdi mdi-chevron-left" aria-hidden="true" />
+          <v-icon icon="mdi-chevron-left" size="20" aria-hidden="true" />
         </button>
         <span>{{ page }} / {{ pages }}</span>
         <button
@@ -80,7 +80,7 @@
           :disabled="page === pages"
           @click="page++"
         >
-          <span class="mdi mdi-chevron-right" aria-hidden="true" />
+          <v-icon icon="mdi-chevron-right" size="20" aria-hidden="true" />
         </button>
       </nav>
     </section>
