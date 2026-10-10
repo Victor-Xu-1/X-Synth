@@ -105,6 +105,14 @@ governance. See [version operations](operations.md#版本管理).
   global Escape/back ownership without clearing the selection; active widget-specific
   disabled and empty states are never overridden by a default `disabled: false`.
 - Browser requests terminate at the product API, never a second direct gateway.
+- The saved-route library keeps one URL owner for its text filter and loaded-row
+  sort. A pure projection validates consumed summary fields without rewriting
+  titles or chemical identity; malformed pages remain explicit read failures.
+  Pagination advances by consumed server rows, while overlapping IDs replace
+  their summary once. Sorting and counts never imply a full-library or chemical
+  substructure search. Target images, editor navigation and read-only previews
+  remain separate actions; preview generations and return-focus tickets retire
+  with filter/sort intent before asynchronous navigation commits.
 - Scientific input forms keep one form-owned command surface. The shared action
   component follows input and parameters in reading order and stays reachable
   within that form on narrow screens; it does not teleport commands, duplicate

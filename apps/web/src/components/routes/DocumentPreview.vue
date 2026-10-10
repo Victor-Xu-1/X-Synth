@@ -3,21 +3,26 @@
     <v-card class="document-preview-dialog">
       <header class="document-preview-heading">
         <div class="document-preview-title">
-          <h2 :id="titleId">{{ document?.title }}</h2>
+          <h2 :id="titleId" tabindex="0">{{ document?.title }}</h2>
           <span class="state-badge">{{ $tr(documentStateLabel(document, document?.graph)) }}</span>
         </div>
         <div class="page-actions">
           <v-btn
+            class="document-preview-action document-preview-edit"
             :to="`/editor/${document.id}`"
             color="primary"
             variant="flat"
             prepend-icon="mdi-pencil-outline"
+            :aria-label="$tr('打开编辑')"
+            :title="$tr('打开编辑')"
             @click="navigate"
             >{{ $tr('打开编辑') }}</v-btn
           ><v-btn
+            class="document-preview-action"
             icon="mdi-close"
             variant="text"
             :aria-label="$tr('关闭预览')"
+            :title="$tr('关闭预览')"
             @click="open = false"
           />
         </div>
@@ -116,6 +121,8 @@ const { selected, detailsOpen, view, views, graphActive, graphView, readingMain,
   overflow: auto;
 }
 .document-preview-heading .page-actions { flex-shrink: 0; }
+.document-preview-heading .document-preview-action { min-height: 44px; height: 44px; }
+.document-preview-heading .document-preview-action.v-btn--icon { width: 44px; min-width: 44px; }
 .document-preview-title .state-badge { margin-top: 6px; }
 .document-preview-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .document-step-picker { flex: 0 0 auto; max-width: 360px; margin: 12px 16px; }
@@ -140,13 +147,22 @@ const { selected, detailsOpen, view, views, graphActive, graphView, readingMain,
   max-height: 65dvh;
 }
 @media (max-width: 700px) {
-  .document-preview-heading { flex-wrap: wrap; padding: 12px; gap: 8px; }
-  .document-preview-heading h2 { flex-basis: 100%; }
-  .document-preview-heading .page-actions { width: 100%; justify-content: flex-end; gap: 8px; }
+  .document-preview-heading { flex-wrap: nowrap; align-items: flex-start; padding: 12px; gap: 8px; }
+  .document-preview-title { min-width: 0; flex: 1 1 0%; }
+  .document-preview-heading .page-actions { width: auto; justify-content: flex-end; gap: 4px; }
+  .document-preview-heading .document-preview-action {
+    flex: 0 0 44px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+  .document-preview-edit { grid-template-areas: "prepend"; grid-template-columns: 1fr; }
+  .document-preview-edit :deep(.v-btn__prepend) { margin-inline: 0; justify-self: center; }
+  .document-preview-edit :deep(.v-btn__content) { display: none; }
   .document-preview-body {
     grid-template-columns: minmax(0, 1fr);
   }
-  .document-preview-title { flex-basis: 100%; }
   .document-preview-body > :deep(.route-inspector) {
     width: 100%;
     border-left: 0;
