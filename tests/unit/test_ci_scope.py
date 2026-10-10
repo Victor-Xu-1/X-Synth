@@ -758,6 +758,22 @@ def test_reviewed_dev_dependency_still_requires_a_real_importer(tmp_path, monkey
         profile.frontend_tests(before, after, {profile.WEB + "package.json"})
 
 
+@pytest.mark.parametrize("changed", sorted(profile.NATIVE_KETCHER_FILES))
+def test_native_factory_adapter_reaches_iframe_consumers_without_selecting_other_tools(tmp_path, monkeypatch, changed):
+    host = profile.SOURCE + "common/ketcher.js"
+    field = profile.SOURCE + "components/InlineKetcherEditor.vue"
+    field_test = profile.SOURCE + "components/InlineKetcherEditor.test.js"
+    unrelated = profile.SOURCE + "views/workspace/TaskHistory.test.js"
+    files = {name: "source" for name in (changed, host, field, field_test, unrelated)}
+    before, after = snapshot(tmp_path, files), snapshot(tmp_path, files)
+    records = {changed: record(), host: record(),
+        field: record(["../common/ketcher.js"]),
+        field_test: record(["./InlineKetcherEditor.vue"]), unrelated: record()}
+    monkeypatch.setattr(dependencies, "parse_frontend", lambda item: records)
+    profile.guard_paths({changed})
+    assert profile.frontend_tests(before, after, {changed})[0] == [field_test]
+
+
 def test_reviewed_build_lock_transitives_retain_their_exact_consumer_scope(tmp_path):
     package = manifest(devDependencies={"magic-string": "0.30.21"})
     entries = {"node_modules/magic-string": {"version": "0.30.21", "dev": True,

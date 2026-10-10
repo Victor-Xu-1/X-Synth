@@ -12,6 +12,11 @@ AiZynthFinder is maintained by the Molecular AI group at AstraZeneca and is
 provided under the MIT License; it is installed as an external dependency.
 Bundled frontend resources, including Ketcher and JSME, retain their respective
 license notices. See the license files shipped beside those resources.
+The Ketcher standalone bundle retains EPAM Systems' Apache-2.0 notices and its
+original reviewed source. X-Synth's generated native-provider adaptation changes
+worker request ownership and terminal callback cleanup only. The content-addressed
+generated script retains the original license-reference comment and is derived
+by the guarded build tooling; it is not an upstream Ketcher release.
 
 Scientific calculation dependencies remain external packages:
 - RDKit (BSD-3-Clause) provides molecule parsing, descriptors, SPS and Bertz CT.
