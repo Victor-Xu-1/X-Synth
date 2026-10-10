@@ -150,3 +150,9 @@ test("saturated accent fills only the selected marker, not broad page surfaces",
   expect(declarations(".workspace-nav").flex).toBe("1 0 auto");
   expect(declarations(".workspace-sidebar-footer")["flex-shrink"]).toBe("0");
 });
+
+test("enabled selection icons retain full contrast without changing disabled control semantics", () => {
+  const selector = ".workspace-shell .v-selection-control:not(.v-selection-control--disabled) .v-selection-control__input > .v-icon";
+  expect(declarations(selector).opacity).toBe("1");
+  expect(selector).toContain(":not(.v-selection-control--disabled)");
+});

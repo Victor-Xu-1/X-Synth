@@ -6,7 +6,7 @@
 唯一依赖管理器为 npm，锁文件为 package-lock.json，需要 Node.js 24。
 ```bash
 npm ci
-npm test -- --runInBand --runTestsByPath src/plugins/icons.test.js src/layouts/default/ShellStyles.test.js
+npm test -- --runInBand --runTestsByPath src/plugins/icons.test.js src/plugins/icon-source-policy.test.js
 npm run build
 ```
 

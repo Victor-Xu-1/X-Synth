@@ -69,3 +69,19 @@ test("reader surfaces use shared theme tokens and fixed, nonnegative type spacin
       if (decl.prop === "letter-spacing") expect(decl.value).toBe("0");
     });
 });
+
+test("scoped molecule-node colors cannot rewrite the global dark theme after visiting a route", () => {
+  const filename = "MoleculeNode.vue";
+  const { descriptor } = parse(readFileSync(resolve(directory, filename), "utf8"));
+  const result = compileStyle({ filename, id: "data-v-molecule", scoped: true, source: descriptor.styles[0].content });
+  expect(result.errors).toEqual([]);
+  const css = postcss.parse(result.code), globalColors = [];
+  css.walkDecls("color", (decl) => {
+    if (decl.parent.selector === ".v-theme--dark" || decl.parent.selector === ".v-theme--light") {
+      globalColors.push(decl.parent.selector);
+    }
+  });
+  expect(globalColors).toEqual([]);
+  expect(declarations(postcss.parse(descriptor.styles[0].content), ".starting .graph-node-heading > span").color)
+    .toBe("var(--ws-info, #356d91)");
+});
