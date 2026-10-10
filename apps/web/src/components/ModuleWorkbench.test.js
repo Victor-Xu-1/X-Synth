@@ -230,6 +230,105 @@ test("real Vuetify dialogs remain inside the gated content and keep the mounted 
   expect(input.value).toBe("retained native draft");
 });
 
+test("real select menus attach to the owned workbench surface rather than an isolated field", async () => {
+  const wrapper = await setup({}, { default: () => h(components.VSelect, {
+    label: "Template source", items: ["pistachio", "ord"], modelValue: "pistachio", menu: true,
+  }) });
+  const surface = wrapper.get(".workbench-content").element;
+  const menu = wrapper.getComponent(components.VMenu);
+  const overlay = menu.getComponent(components.VOverlay);
+  expect(overlay.props("attach") === surface).toBe(true);
+  expect(overlay.props("disabled")).toBe(false);
+  expect(surface.querySelector('.v-overlay-container [role="listbox"]')).not.toBeNull();
+  expect(surface.querySelector('.v-field .v-overlay')).toBeNull();
+  const input = wrapper.get('input[role="combobox"]').element;
+  mockWorkspace.features.stock = false;
+  await flushPromises();
+  expect(overlay.props("modelValue")).toBe(false);
+  expect(wrapper.getComponent(components.VSelect).props("modelValue")).toBe("pistachio");
+  expect(input.isConnected).toBe(true);
+  expect(wrapper.get(".workbench-content").attributes("inert")).toBeDefined();
+  expect(wrapper.get(".workbench-content").isVisible()).toBe(false);
+  mockWorkspace.features.stock = true;
+  await flushPromises();
+  expect(overlay.props("attach") === surface).toBe(true);
+  expect(overlay.props("disabled")).toBe(false);
+  expect(wrapper.get('input[role="combobox"]').element).toBe(input);
+});
+
+test("open-on-mount selectors cannot bootstrap through an unowned body portal", async () => {
+  const mutations = [];
+  const observer = new MutationObserver(records => {
+    for (const record of records) {
+      const target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+      const portal = target.closest?.('.v-overlay-container');
+      if ((portal?.parentElement === document.body && record.addedNodes.length) ||
+          (target === document.body && [...record.addedNodes].some(node => node.nodeType === 1 && node.classList.contains('v-overlay-container')))) {
+        mutations.push(record);
+      }
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  try {
+    await setup({}, { default: () => h(components.VSelect, {
+      label: "Template source", items: ["pistachio"], modelValue: "pistachio", menu: true,
+    }) });
+    expect(mutations.length).toBe(0);
+  } finally { observer.disconnect(); }
+});
+
+test("subpanel and header menus stay physically inside their own hidden and inert gates", async () => {
+  const modules = [{ value: "a", title: "Alpha" }, { value: "b", title: "Beta" }];
+  const select = label => h(components.VSelect, { label, items: ["pistachio"], modelValue: "pistachio", menu: true });
+  const wrapper = await setup({ modules, activeModule: "a" }, {
+    actions: () => select("Header source"), module: ({ value }) => select(value + " source"),
+  });
+  const actions = wrapper.get(".page-actions");
+  const first = wrapper.findAll('[role="tabpanel"]')[0];
+  const firstInput = first.get('input[role="combobox"]').element;
+  const firstOverlay = first.getComponent(components.VSelect).getComponent(components.VMenu).getComponent(components.VOverlay);
+  expect(actions.element.querySelector('.v-overlay-container [role="listbox"]')).not.toBeNull();
+  expect(firstOverlay.props("modelValue")).toBe(true);
+  expect(first.element.querySelector('.v-overlay-container [role="listbox"]')).not.toBeNull();
+  expect(document.body.querySelector(':scope > .v-overlay-container [role="listbox"]')).toBeNull();
+  await wrapper.setProps({ activeModule: "b" });
+  await flushPromises();
+  expect(first.attributes("inert")).toBeDefined();
+  expect(first.isVisible()).toBe(false);
+  expect(firstOverlay.props("modelValue")).toBe(false);
+  expect(first.get('input[role="combobox"]').element).toBe(firstInput);
+  expect(first.element.querySelector('.v-overlay-container [role="listbox"]')).toBeNull();
+  expect(wrapper.findAll('[role="tabpanel"]')[1].element.querySelector('.v-overlay-container [role="listbox"]')).not.toBeNull();
+  mockWorkspace.features.stock = false;
+  await flushPromises();
+  expect(actions.attributes("inert")).toBeDefined();
+  expect(actions.isVisible()).toBe(false);
+});
+
+test("returning to an older select menu gives it Escape ownership without reviving the hidden menu", async () => {
+  const modules = [{ value: "a", title: "Alpha" }, { value: "b", title: "Beta" }];
+  const wrapper = await setup({ modules, activeModule: "a" }, { module: () => h(components.VSelect, {
+    label: "Template source", items: ["pistachio"], modelValue: "pistachio", menu: true, transition: false,
+  }) });
+  const first = wrapper.getComponent(components.VSelect);
+  const overlay = select => select.getComponent(components.VMenu).getComponent(components.VOverlay);
+  await wrapper.setProps({ activeModule: "b" });
+  await flushPromises();
+  const second = wrapper.findAllComponents(components.VSelect)[1];
+  expect(overlay(first).props("modelValue")).toBe(false);
+  expect(overlay(second).props("modelValue")).toBe(true);
+  await wrapper.setProps({ activeModule: "a" });
+  await flushPromises();
+  expect(overlay(first).props("modelValue")).toBe(true);
+  expect(overlay(second).props("modelValue")).toBe(false);
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await flushPromises();
+  expect(overlay(first).props("modelValue")).toBe(false);
+  expect(overlay(second).props("modelValue")).toBe(false);
+  expect(first.props("modelValue")).toBe("pistachio");
+  expect(second.props("modelValue")).toBe("pistachio");
+});
+
 test("inactive named panels retain dialog inputs but release focus and scroll capture", async () => {
   const modules = [{ value: "a", title: "Alpha" }, { value: "b", title: "Beta" }];
   const wrapper = await setup({ modules, activeModule: "a" }, { module: ({ value }) => value === "a"

@@ -41,6 +41,7 @@ const button = {
     '<button :disabled="disabled || loading" :data-icon="icon"><slot /></button>',
 };
 const stubs = {
+  VDefaultsProvider: { template: "<slot />" },
   VBtn: button,
   VIcon: true,
   VDivider: true,

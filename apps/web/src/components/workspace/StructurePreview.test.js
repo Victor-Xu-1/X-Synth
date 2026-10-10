@@ -14,6 +14,7 @@ jest.mock("@/components/SmilesImage.vue", () => ({
   template: '<div class="test-image"><img :alt="smiles" /></div>',
 }));
 const stubs = {
+  VDefaultsProvider: { template: "<slot />" },
   VDialog: { props: ["modelValue"], template: '<div v-if="modelValue" role="dialog"><slot /></div>' },
   VTooltip: { template: '<span><slot name="activator" :props="{}" /></span>' },
   VBtn: { props: ["disabled"], template: '<button :disabled="disabled"><slot /></button>' },

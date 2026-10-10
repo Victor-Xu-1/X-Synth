@@ -43,6 +43,14 @@ The workspace's Material Design Icons paths use @mdi/js 7.4.47, maintained by
 Pictogrammers / Austin Andrews under Apache-2.0. Only explicitly registered
 library paths are bundled; the installed package retains its license notice.
 
+The source-map-preserving build adaptation uses magic-string 0.30.21, maintained
+by Rich Harris under the MIT License. It is an external development dependency,
+not a browser runtime or a vendored copy; its installed license notice is retained.
+
+Vuetify 3.13.6 retains the MIT License: Copyright (c) 2016-now Vuetify, LLC.
+The guarded module-render adaptation changes selection-field semantics only;
+other framework code and its original license remain upstream.
+
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights

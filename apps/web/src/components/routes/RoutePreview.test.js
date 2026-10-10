@@ -8,6 +8,7 @@ jest.mock("vue-router", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 jest.mock("./RouteReader.vue", () => ({ props: ["candidates"], template: '<div class="actual-reader-boundary" />' }));
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 const stubs = {
+  VDefaultsProvider: { template: "<slot />" },
   VDialog: { props: ["modelValue"], template: '<div v-if="modelValue" role="dialog"><slot /></div>' },
   VCard: { template: '<section><slot /></section>' },
   VBtn: { props: ["to"], template: '<button :data-to="to"><slot /></button>' },

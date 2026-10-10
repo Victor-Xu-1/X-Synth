@@ -124,7 +124,8 @@ def parse_frontend(snapshot) -> dict:
     sources = {
         path: snapshot.text(path)
         for path in sorted(snapshot.files)
-        if path.startswith(SOURCE) and path.endswith((".js", ".vue"))
+        if (path.startswith((SOURCE, WEB + "tooling/")) or path == WEB + "vite.config.js")
+        and path.endswith((".js", ".vue"))
     }
     try:
         result = subprocess.run(

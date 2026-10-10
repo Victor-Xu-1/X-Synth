@@ -99,6 +99,8 @@ test("a direction missing from the index is not represented as an ordinary no-ma
   expect(wrapper.get('button[type="submit"]').element.disabled).toBe(true);
   const direction = wrapper.findAllComponents(stubs.VSelect).find((field) => field.props("label") === "反应方向");
   expect(direction.props("items").find((item) => item.value === "forward").props.disabled).toBe(true);
+  expect(direction.props("items").find((item) => item.value === "forward").props["aria-disabled"]).toBe(true);
+  expect(direction.props("items").find((item) => item.value === "retro").props["aria-disabled"]).toBeUndefined();
 });
 
 test("English index coverage explains a missing direction and changes language without a query or filter reset", async () => {

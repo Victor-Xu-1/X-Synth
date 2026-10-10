@@ -18,6 +18,7 @@ jest.mock("@/components/routes/DocumentPreview.vue", () => ({
 }));
 
 const stubs = {
+  VDefaultsProvider: { template: "<slot />" },
   VDialog: { props: ["modelValue"], template: '<div v-if="modelValue" role="dialog"><slot /></div>' },
   VBtn: { props: ["disabled", "loading", "to"], template: '<button :disabled="disabled || loading" :data-to="to"><slot /></button>' },
   VTooltip: { template: '<div><slot name="activator" :props="{}" /></div>' },

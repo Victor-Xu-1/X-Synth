@@ -29,6 +29,7 @@ const slot = {
   template: '<div><slot /><slot name="activator" :props="{}" /></div>',
 };
 const stubs = {
+  VDefaultsProvider: { template: "<slot />" },
   VTooltip: slot,
   VMenu: slot,
   VList: slot,

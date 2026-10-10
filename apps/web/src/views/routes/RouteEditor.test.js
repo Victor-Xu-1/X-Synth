@@ -84,6 +84,7 @@ const graph = {
   edges: [],
 };
 const stubs = {
+  VDefaultsProvider: { template: "<slot />" },
   VTooltip: { template: '<div><slot name="activator" :props="{}" /></div>' },
   VMenu: {
     template: '<div><slot name="activator" :props="{}" /><slot /></div>',

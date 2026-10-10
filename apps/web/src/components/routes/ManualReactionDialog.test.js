@@ -34,6 +34,7 @@ const graph = () => ({
 });
 const wrappers = [];
 const stubs = {
+  VDefaultsProvider: { template: "<slot />" },
   VDialog: {
     props: ["modelValue"],
     template: '<div v-if="modelValue"><slot /></div>',

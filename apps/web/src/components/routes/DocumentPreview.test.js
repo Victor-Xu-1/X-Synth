@@ -16,6 +16,7 @@ beforeEach(() => { mockWidth.value = 1440; mockFocus.mockClear(); });
 const document = { id: "a".repeat(32), title: "原始研究路线", graph: { target_id: "m1",
   nodes: [{ id: "m1", type: "molecule", smiles: "[13CH3][C@H](O)C(=O)[O-].[Na+]", position: { x: 20, y: 20 } }], edges: [] } };
 const stubs = {
+  VDefaultsProvider: { template: "<slot />" },
   VDialog: { props: ["modelValue"], template: '<div v-if="modelValue" role="dialog"><slot /></div>' },
   VCard: { template: '<section><slot /></section>' },
   VBtn: { template: '<button><slot /></button>' },
