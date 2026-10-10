@@ -1,4 +1,4 @@
-import { onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, readonly, ref, watch } from "vue";
 import { API } from "@/common/api";
 import {
   checkedReactionDraft,
@@ -15,7 +15,8 @@ import {
 } from "@/common/reaction-records";
 
 export function useReactionFiles({ text, disabled, board, draft }) {
-  const fileBusy = ref(false),
+  const fileOperation = ref(null),
+    fileBusy = computed(() => fileOperation.value !== null),
     fileDraft = ref(null),
     fileProduct = ref(""),
     fileError = ref(""),
@@ -30,7 +31,7 @@ export function useReactionFiles({ text, disabled, board, draft }) {
     revision++;
     fileDraft.value = null;
     fileProduct.value = "";
-    fileBusy.value = false;
+    fileOperation.value = null;
     fileOrigin.value = "file";
   }
   watch(
@@ -70,7 +71,7 @@ export function useReactionFiles({ text, disabled, board, draft }) {
     const controller = new AbortController();
     stagingController = controller;
     fileOrigin.value = origin;
-    fileBusy.value = true;
+    fileOperation.value = "import";
     fileError.value = "";
     try {
       const value = await load(current, { signal: controller.signal, timeoutMs: REACTION_REQUEST_TIMEOUT_MS });
@@ -93,7 +94,7 @@ export function useReactionFiles({ text, disabled, board, draft }) {
       return false;
     } finally {
       if (stagingController === controller) stagingController = undefined;
-      if (current()) fileBusy.value = false;
+      if (current()) fileOperation.value = null;
     }
   }
   function applyFile() {
@@ -126,7 +127,7 @@ export function useReactionFiles({ text, disabled, board, draft }) {
     const current = ++revision,
       original = text.value,
       identities = draft.parsed.value;
-    fileBusy.value = true;
+    fileOperation.value = "export";
     fileError.value = "";
     try {
       const content = await board.value.exportRxn();
@@ -157,7 +158,7 @@ export function useReactionFiles({ text, disabled, board, draft }) {
       if (!disposed && current === revision)
         fileError.value = errorMessage(failure, "完整反应未导出。");
     } finally {
-      if (current === revision) fileBusy.value = false;
+      if (current === revision) fileOperation.value = null;
     }
   }
   onBeforeUnmount(() => {
@@ -165,6 +166,7 @@ export function useReactionFiles({ text, disabled, board, draft }) {
     discardFile();
   });
   return {
+    fileOperation: readonly(fileOperation),
     fileBusy,
     fileDraft,
     fileProduct,
