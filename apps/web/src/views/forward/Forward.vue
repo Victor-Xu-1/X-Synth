@@ -71,7 +71,9 @@
           >
             {{ predictionMessage(displayError) }}
           </p>
-          <div class="forward-submit-actions">
+        </div>
+      </template>
+      <template #actions>
             <v-btn
               type="submit"
               color="primary"
@@ -96,8 +98,6 @@
                 />
               </template>
             </v-tooltip>
-          </div>
-        </div>
       </template>
       <section class="forward-reaction" aria-labelledby="reaction-heading">
         <h2 id="reaction-heading" class="tool-section-title">{{ $tr('反应结构') }}</h2>
@@ -397,15 +397,6 @@ onBeforeUnmount(() => {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   padding: 12px 0;
-}
-.forward-submit-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.forward-submit-actions :deep(.v-btn__content) {
-  white-space: normal;
 }
 .forward-parameters .tool-error {
   overflow-wrap: anywhere;

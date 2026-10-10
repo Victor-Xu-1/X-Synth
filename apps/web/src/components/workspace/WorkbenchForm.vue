@@ -23,10 +23,16 @@
     >
       <slot name="parameters" />
     </aside>
+    <WorkbenchActions v-if="$slots.actions" v-show="inspectorVisible" class="workbench-form-actions"
+      :label="parameterLabel">
+      <template v-if="$slots['action-context']" #context><slot name="action-context" /></template>
+      <slot name="actions" />
+    </WorkbenchActions>
   </form>
 </template>
 
 <script setup>
+import WorkbenchActions from "./WorkbenchActions.vue";
 defineProps({
   parameterLabel: { type: String, default: "参数" },
   inspectorVisible: { type: Boolean, default: true },
@@ -73,6 +79,7 @@ defineEmits(["submit"]);
 .workbench-page-modes {
   margin-bottom: 24px;
 }
+.workbench-form-actions { grid-column: 1 / -1; grid-row: 2; }
 .inspector-hidden {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -107,6 +114,7 @@ defineEmits(["submit"]);
     border-top: 1px solid var(--ws-border);
     padding: 22px 16px;
   }
+  .workbench-form-actions { grid-row: 3; }
   .workbench-page-heading {
     gap: 12px;
     flex-wrap: wrap;

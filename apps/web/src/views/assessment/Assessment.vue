@@ -16,6 +16,11 @@
           <h2 class="tool-section-title">{{ $tr('分子指标') }}</h2>
           <div v-if="error" class="tool-error" role="alert">{{ $tr(error) }}</div>
           <router-link v-if="error && recordPath(result?.record_id)" :to="recordPath(result.record_id)">{{ $tr('打开已保存的结果') }}</router-link>
+          <p class="workspace-muted">SA Score · SPS / nSPS · Bertz CT</p>
+          <p class="workspace-muted">{{ $tr('单条结构记录最多 256 个原子。分子指标不构成路线或实验验证。') }}</p>
+        </div>
+      </template>
+      <template #actions>
           <v-btn
             type="submit"
             color="primary"
@@ -25,9 +30,6 @@
             :disabled="disabled || pending || !smiles.trim()"
             >{{ $tr('计算分子指标') }}</v-btn
           >
-          <p class="workspace-muted">SA Score · SPS / nSPS · Bertz CT</p>
-          <p class="workspace-muted">{{ $tr('单条结构记录最多 256 个原子。分子指标不构成路线或实验验证。') }}</p>
-        </div>
       </template>
     </WorkbenchForm>
   </ModuleWorkbench>

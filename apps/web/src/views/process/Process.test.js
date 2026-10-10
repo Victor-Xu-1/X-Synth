@@ -61,6 +61,9 @@ test("input has purposeful sections and no empty result pane or per-row drawing 
   expect(wrapper.findAll('[role="tabpanel"]')).toHaveLength(3);
   expect(wrapper.findAllComponents({ name: "StructureInput" })).toHaveLength(1);
   expect(wrapper.get('[aria-label="投料 1 质量"]').element.value).toBe("");
+  expect(wrapper.findAll('button[type="submit"]')).toHaveLength(1);
+  expect(wrapper.get('button[type="submit"]').element.closest("form")).toBe(wrapper.get("form").element);
+  expect(wrapper.get('.process-actions').attributes("role")).toBe("group");
 });
 
 test("adjacent input navigation keeps entered quantities and focuses the selected layer", async () => {

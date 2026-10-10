@@ -1,6 +1,7 @@
 <template>
-  <ModuleWorkbench :title="$tr('工艺物料核算')">
-    <template #actions><v-btn variant="text" prepend-icon="mdi-history" to="/analyses?kind=process">{{ $tr('批次记录') }}</v-btn></template>
+  <ModuleWorkbench class="process-workbench" :title="$tr('工艺物料核算')">
+    <template #actions><v-btn class="batch-history" variant="text" prepend-icon="mdi-history" to="/analyses?kind=process"
+      :aria-label="$tr('批次记录')" :title="$tr('批次记录')">{{ $tr('批次记录') }}</v-btn></template>
     <form ref="inputForm" class="process-input" novalidate :aria-busy="disabled" @submit.prevent="calculate">
       <header class="batch-heading">
         <div><span class="batch-stage">{{ $tr('批次录入 · {current} / {total}', { current: sectionIndex + 1, total: sections.length }) }}</span><h2>{{ $tr(sections[sectionIndex].heading) }}</h2></div>
@@ -32,14 +33,12 @@
         <MaterialTable ref="outputInputs" v-model="form.otherOutputs" :title="$tr('其他出料')" :roles="OUTPUT_ROLES" :disabled="disabled" />
       </section>
       </WorkbenchTabs>
-      <footer class="process-actions">
-        <div class="batch-outline"><span>{{ $tr('{count} 项投料', { count: form.materials.length }) }}</span><span>{{ $tr('{count} 项其他出料', { count: form.otherOutputs.length }) }}</span><span>{{ form.inputBoundaryComplete ? $tr('完整投料边界') : $tr('未确认投料边界') }}</span></div>
-        <div class="batch-section-navigation">
+      <WorkbenchActions class="process-actions" label="批次录入分区">
+        <template #context><span>{{ $tr('{count} 项投料', { count: form.materials.length }) }}</span><span>{{ $tr('{count} 项其他出料', { count: form.otherOutputs.length }) }}</span><span>{{ form.inputBoundaryComplete ? $tr('完整投料边界') : $tr('未确认投料边界') }}</span></template>
           <v-btn v-if="sectionIndex > 0" type="button" data-section-previous variant="text" prepend-icon="mdi-arrow-left" :disabled="disabled || pending" @click="moveSection(-1)">{{ $tr('上一步') }}</v-btn>
           <v-btn v-if="sectionIndex < sections.length - 1" type="button" data-section-next variant="text" append-icon="mdi-arrow-right" :disabled="disabled || pending" @click="moveSection(1)">{{ $tr(sections[sectionIndex + 1].title) }}</v-btn>
         <v-btn type="submit" color="primary" variant="flat" prepend-icon="mdi-calculator-variant-outline" :loading="loading" :disabled="disabled || pending || !form.product.smiles.trim()">{{ $tr('核算批次') }}</v-btn>
-        </div>
-      </footer>
+      </WorkbenchActions>
     </form>
   </ModuleWorkbench>
 </template>
@@ -48,6 +47,7 @@ import { computed, nextTick, reactive, ref } from "vue";
 import { processMessage } from "./ui-copy";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import WorkbenchTabs from "@/components/WorkbenchTabs.vue";
+import WorkbenchActions from "@/components/workspace/WorkbenchActions.vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import { recordPath } from "@/common/analysis-records";
 import { useAnalysisDelivery } from "@/composables/useAnalysisDelivery";
@@ -117,9 +117,20 @@ h3 { font-size: 15px; margin: 0 0 4px; }
 .boundary-label { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.7; padding-top: 20px; }
 .boundary-label input { margin-top: 4px; flex: none; }
 .tool-error:focus-visible { outline: 2px solid var(--ws-danger); outline-offset: 4px; }
-.process-actions { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 18px; padding: 20px 0; border-top: 1px solid var(--ws-border); }
-.batch-outline { display: flex; flex-wrap: wrap; gap: 8px 20px; color: var(--ws-muted); font-size: 12px; }
-.batch-section-navigation { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.process-actions { margin-inline: -30px; }
 @media (max-width: 1000px) { .product-grid { grid-template-columns: minmax(0, 1fr); gap: 26px; } .product-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } .product-fields h3, .scientific-note { grid-column: 1 / -1; } }
-@media (max-width: 600px) { .process-input { padding: 18px 16px 0; } .product-fields { grid-template-columns: minmax(0, 1fr); } .batch-heading { align-items: flex-start; } .batch-source { flex-direction: column; gap: 2px; } .batch-section-navigation { width: 100%; gap: 6px; } .batch-section-navigation > :deep(.v-btn) { flex: 1 1 auto; } .batch-section-navigation > :deep(.v-btn[type="submit"]) { flex-basis: 100%; } }
+@media (max-width: 600px) {
+  .process-workbench :deep(.page-heading) { flex-wrap: nowrap; gap: 12px; margin-bottom: 16px; }
+  .process-workbench :deep(.page-heading h1) { font-size: 20px; }
+  .batch-history { min-width: 44px; width: 44px; height: 44px; padding: 0; }
+  .batch-history :deep(.v-btn__content) { display: none; }
+  .batch-history :deep(.v-btn__prepend) { margin-inline: 0; }
+  .process-input { padding: 0; }
+  .process-actions { margin-inline: 0; }
+  .product-fields { grid-template-columns: minmax(0, 1fr); }
+  .batch-heading { align-items: flex-start; margin-bottom: 14px; }
+  .batch-heading h2 { font-size: 17px; line-height: 1.4; }
+  .batch-panel { padding-block: 18px; }
+  .batch-source { flex-direction: column; gap: 2px; }
+}
 </style>
