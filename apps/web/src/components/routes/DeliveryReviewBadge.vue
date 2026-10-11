@@ -13,6 +13,7 @@ const grade = computed(() => deliveryReviewGrade(props.receipt));
 const icons = {
   not_independently_reviewed: "mdi-shield-outline",
   model_checked: "mdi-shield-search",
+  operation_evidence_required: "mdi-flask-outline",
   purchase_form_unresolved: "mdi-flask-outline",
 };
 </script>
@@ -33,5 +34,6 @@ const icons = {
 }
 .delivery-review-badge :deep(.v-icon) { flex-shrink: 0; }
 .delivery-review-badge[data-delivery-grade="model_checked"] { color: var(--ws-text); }
-.delivery-review-badge[data-delivery-grade="purchase_form_unresolved"] { color: var(--ws-warning); }
+.delivery-review-badge[data-delivery-grade="purchase_form_unresolved"],
+.delivery-review-badge[data-delivery-grade="operation_evidence_required"] { color: var(--ws-warning); }
 </style>

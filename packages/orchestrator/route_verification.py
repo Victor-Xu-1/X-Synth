@@ -12,10 +12,12 @@ from packages.knowledge_base.reaction_library import ReactionLibraryError
 from packages.route_pool.pool import UnifiedRoutePool
 from packages.route_pool.workflow import build_route_pool_result
 from packages.validation.route_quality import RouteQualityPolicy
+from packages.validation.reaction_operations import screen_step_operations
 
 from .verification_cache import VerificationCache
 from .qualification_queue import QualificationQueue, family_key
 from .reference_evidence import reference_evidence, recorded_reaction_support
+from .operation_review import operation_record, operations_summary
 
 
 def forward_match(output, product, minimum):
@@ -65,7 +67,7 @@ class RouteVerifier:
         self._check_reference_source()
         epoch = self.epoch()
         cache = VerificationCache(Path(directory) / "verification.json", owner, epoch)
-        policy = RouteQualityPolicy(require_full_forward_validation=True)
+        policy = RouteQualityPolicy(require_full_forward_validation=True, require_operation_validation=True)
         routes = {route.route_id: route for route in report.all_routes}
         checked = set()
         queue = QualificationQueue(report.all_routes)
@@ -76,7 +78,7 @@ class RouteVerifier:
             if route is None or len(qualified_families) >= maximum:
                 break
             self._check_reference_source()
-            forward, references = [], []
+            forward, references, operations = [], [], []
             for step in route.steps:
                 if interrupted():
                     raise EngineUnavailable("route_verification_interrupted", recoverable=True)
@@ -88,12 +90,14 @@ class RouteVerifier:
                                     "feasibility_score": None, "matched": False,
                                     "reason": "unsupported_forward_input"})
                     break
-                binding = (reactants, step.product)
+                screening = screen_step_operations(step)
+                binding = (reactants, step.product, tuple(screening["template_sha256"]), tuple(screening["witness_sha256"]))
                 if binding in step_checks and not step_checks[binding][0].get("record_support"):
-                    saved_forward, saved_reference = step_checks[binding]
+                    saved_forward, saved_reference, saved_operation = step_checks[binding]
                     forward.append({**saved_forward, "step_id": step.step_id})
                     references.append({**saved_reference, "step_id": step.step_id})
-                    if not saved_forward["matched"]:
+                    operations.append({**saved_operation, "step_id": step.step_id})
+                    if not saved_forward["matched"] or saved_operation["status"] == "evidence_required":
                         break
                     continue
                 output, identifier = self.prediction(reactants, owner, cache)
@@ -105,7 +109,10 @@ class RouteVerifier:
                     max_atoms=self.max_atoms,
                 )
                 top1 = matched
-                support = recorded_reaction_support(evidence) if rank is not None and rank > 1 and score >= plausibility else []
+                process_support = recorded_reaction_support(evidence) if (
+                    rank is not None and score >= plausibility and (rank > 1 or screening["status"] == "evidence_required")
+                ) else []
+                support = process_support if rank is not None and rank > 1 else []
                 matched = matched or bool(support)
                 forward.append({"step_id": step.step_id, "record_id": identifier, "expected_rank": rank,
                                 "model": output.model, "feasibility_score": score, "matched": matched,
@@ -113,18 +120,22 @@ class RouteVerifier:
                                 "support_kind": "model_top1" if top1 else "record_supported_model_candidate" if support else "unsupported",
                                 "record_support": support})
                 references.append({"step_id": step.step_id, **reference_evidence(evidence)})
-                step_checks[binding] = (forward[-1], references[-1])
+                operations.append(operation_record(step, screening, process_support))
+                step_checks[binding] = (forward[-1], references[-1], operations[-1])
                 if interrupted():
                     raise EngineUnavailable("route_verification_interrupted", recoverable=True)
                 progress({"checked_routes": len(checked), "current_step": step.step_id,
                           "forward_records": len(cache.records)})
-                if not matched:
+                if not matched or operations[-1]["status"] == "evidence_required":
                     break
             if self.epoch() != epoch:
                 raise EngineUnavailable("qualification_model_restarted", recoverable=True)
-            passed = len(forward) == len(route.steps) and all(row["matched"] for row in forward)
+            forward_passed = len(forward) == len(route.steps) and all(row["matched"] for row in forward)
+            operation_passed = len(operations) == len(route.steps) and all(row["status"] != "evidence_required" for row in operations)
+            passed = forward_passed and operation_passed
             review = {
-                "version": 2,
+                "version": 3,
+                "operations": operations_summary(operations, len(route.steps)),
                 "forward": {"matched_steps": sum(row["matched"] for row in forward),
                             "model_top1_matched_steps": sum(row.get("model_top1_matched", False) for row in forward),
                             "record_supported_steps": sum(bool(row.get("record_support")) for row in forward),
@@ -139,8 +150,9 @@ class RouteVerifier:
                                "records": references},
             }
             routes[route.route_id] = replace(route, metadata={
-                **route.metadata, "full_forward_prediction_validated": passed,
-                "forward_validation_passed": passed,
+                **route.metadata, "full_forward_prediction_validated": forward_passed,
+                "forward_validation_passed": forward_passed,
+                "operation_validation_passed": operation_passed,
                 "forward_validation_method": "graph2smiles_top1_or_record_supported_candidate"
                 if any(row.get("record_support") for row in forward)
                 else "native_template_or_exact_record_and_graph2smiles_top1"
@@ -148,7 +160,8 @@ class RouteVerifier:
                 else "native_template_and_graph2smiles_top1",
                 "automated_review": review,
                 "qualification_status": "qualified" if passed else (
-                    "unsupported" if any(row.get("reason") for row in forward) else "forward_rejected"
+                    "operation_evidence_required" if any(row["status"] == "evidence_required" for row in operations)
+                    else "unsupported" if any(row.get("reason") for row in forward) else "forward_rejected"
                 ),
             })
             checked.add(route.route_id)

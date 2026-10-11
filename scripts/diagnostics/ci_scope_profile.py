@@ -184,6 +184,10 @@ SEARCH_ROUND_FILES = {
     "packages/orchestrator/verification_cache.py",
     "packages/orchestrator/qualification_queue.py",
     "packages/orchestrator/reference_evidence.py",
+    "packages/orchestrator/process_support.py",
+    "packages/orchestrator/operation_review.py",
+    "packages/validation/reaction_operations.py",
+    "packages/chemistry/reaction_centers.py",
     "packages/validation/template_forward.py",
     "packages/route_pool/workflow.py",
     "packages/orchestrator/pipeline.py",
@@ -489,6 +493,7 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
     if roots & HISTORY_FILES:
         selected.update(
             {
+                "tests/unit/test_delivery_review.py",
                 "tests/unit/test_history_projection.py",
                 "tests/unit/test_route_document_api.py",
                 "tests/unit/test_product_api_security.py",
@@ -573,6 +578,7 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
             "tests/unit/test_route_topology.py",
             "tests/unit/test_qualification_queue.py",
             "tests/unit/test_reference_evidence.py",
+            "tests/unit/test_reaction_operations.py", "tests/unit/test_operation_review.py",
             "tests/unit/test_template_forward.py", "tests/unit/test_evidence_route_integration.py",
         })
     if roots & ARCHITECTURE_FILES:

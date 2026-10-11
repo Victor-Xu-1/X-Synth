@@ -192,7 +192,7 @@ test("overlapping reference scopes are separate counters, not a summed coverage 
 test("unsupported and malformed records do not become verified after reactive updates", async () => {
   const wrapper = setup(RouteReviewSummary, { candidate: candidate() });
   const future = candidate();
-  future.metadata.automated_review.version = 3;
+  future.metadata.automated_review.version = 4;
   await wrapper.setProps({ candidate: future });
   expect(textOf(wrapper, "forward")).toContain("记录版本不支持");
   const invalid = candidate();
@@ -263,6 +263,28 @@ test("an empty RouteReader does not invent a review", () => {
   const wrapper = setup(RouteReader, { candidates: [] });
   expect(wrapper.findComponent(RouteReviewSummary).exists()).toBe(false);
   expect(wrapper.text()).toContain("暂无路线数据");
+});
+
+test("version three model review and pending operations remain distinct in both languages", async () => {
+  const value = candidate("version-three");
+  const forward = value.metadata.automated_review.forward;
+  value.metadata.automated_review.version = 3;
+  forward.model_top1_matched_steps = 4;
+  forward.record_supported_steps = 0;
+  forward.records = value.steps.map(step => ({ step_id: step.step_id, record_id: "a".repeat(32),
+    expected_rank: 1, model: "graph2smiles_uspto_stereo", matched: true, model_top1_matched: true,
+    support_kind: "model_top1", record_support: [] }));
+  value.metadata.delivery_review = { version: 1, phase: "automated_review", basis: "route_receipt",
+    grade: "operation_evidence_required", independent_review: { status: "missing" },
+    purchase_identity: { policy: "defined_purchase_identity_v1", status: "unknown", unresolved_materials: [] },
+    operations: { policy: "template_operation_evidence_v1", status: "evidence_required",
+      unresolved_steps: [{ step_id: "s2", reasons: ["reduction_with_bond_formation"] }] } };
+  const before = JSON.stringify(value), wrapper = setup(RouteReviewSummary, { candidate: value });
+  expect(textOf(wrapper, "forward")).toContain("4/4");
+  expect(textOf(wrapper, "operations")).toContain("1 步需过程依据");
+  setLocale("en", { persist: false }); await wrapper.vm.$nextTick();
+  expect(textOf(wrapper, "operations")).toContain("1 steps need process evidence");
+  expect(JSON.stringify(value)).toBe(before);
 });
 
 test("the new summary compiles script, template and scoped CSS with the real Vue compiler", () => {

@@ -300,6 +300,7 @@ def test_native_template_and_history_changes_use_explicit_related_contracts(tmp_
             "tests/unit/test_template_export.py",
             "tests/unit/test_native_template_namespaces.py",
             "tests/unit/test_history_projection.py",
+            "tests/unit/test_delivery_review.py",
             "tests/unit/test_route_document_api.py",
             "tests/unit/test_job_history.py",
             "tests/unit/test_job_repository.py",
@@ -324,6 +325,9 @@ def test_native_template_and_history_changes_use_explicit_related_contracts(tmp_
         item, item, {"packages/platform/native_capabilities.py"}
     )
     assert "tests/unit/test_history_projection.py" in profile.python_tests(
+        item, item, {"apps/api/job_views.py"}
+    )
+    assert "tests/unit/test_delivery_review.py" in profile.python_tests(
         item, item, {"apps/api/job_views.py"}
     )
 

@@ -26,7 +26,7 @@ from .review_worker import review_job
 from .review_execution import CancellableReview
 from .route_request import RouteJobRequest
 from .runtime_health import route_runtime_status
-from .search_progress import begin_search_round, remaining_search_rounds
+from .search_progress import begin_search_round, remaining_search_rounds, final_route_status
 from .review_policy import REVIEW_POLICY, upgrade_review_checkpoint
 from .route_artifacts import RouteArtifactError, RouteArtifactStore
 from .qualification_queue import rejected_reactions
@@ -365,13 +365,7 @@ class RoutePipeline:
                     error_code=failures[0].code,
                 )
             if pass_number == request.repair_attempts + 1:
-                status = (
-                    "completed_not_enough_routes"
-                    if pool.selected_routes
-                    else "failed"
-                    if failures and not sources
-                    else "failed_unclosed"
-                )
+                status = final_route_status(pool, had_failures=bool(failures), had_sources=bool(sources))
                 return self._transition(
                     job["id"],
                     status,

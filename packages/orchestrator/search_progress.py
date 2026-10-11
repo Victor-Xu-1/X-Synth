@@ -20,3 +20,9 @@ def begin_search_round(checkpoint: dict, pass_number: int) -> dict:
         "native_progress": checkpoint.get("native_progress", {})
         if pass_number == previous else {},
     }
+
+
+def final_route_status(pool, *, had_failures: bool, had_sources: bool) -> str:
+    if pool.selected_routes or any(route.closed for route in pool.all_routes):
+        return "completed_not_enough_routes"
+    return "failed" if had_failures and not had_sources else "failed_unclosed"

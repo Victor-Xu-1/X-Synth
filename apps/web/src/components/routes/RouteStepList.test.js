@@ -52,6 +52,22 @@ test("larger bounded drawings preserve isotope, stereochemistry, charge, salt an
   expect(wrapper.getComponent({ name: "RouteEvidencePanel" }).props("step")).toEqual(candidate.steps[0]);
 });
 
+test("operation evidence warnings bind the actual source step without changing structures", () => {
+  const value = { ...candidate, steps: [{ ...candidate.steps[0], step_id: "native-step-A" }], metadata: {
+    ...candidate.metadata, delivery_review: { version: 1, phase: "automated_review", basis: "route_receipt",
+      grade: "operation_evidence_required", independent_review: { status: "missing" },
+      purchase_identity: { policy: "defined_purchase_identity_v1", status: "unknown", unresolved_materials: [] },
+      operations: { policy: "template_operation_evidence_v1", status: "evidence_required",
+        unresolved_steps: [{ step_id: "native-step-A", reasons: ["operation_record_missing"] }] } },
+  } };
+  const before = JSON.stringify(value), wrapper = setup({ candidate: value });
+  expect(wrapper.get(".step-operation-warning").text()).toContain("反应操作待核验");
+  expect(JSON.stringify(value)).toBe(before);
+  const other = { ...value, steps: [{ ...value.steps[0], step_id: "other-step" }] };
+  const unrelated = setup({ candidate: other });
+  expect(unrelated.find(".step-operation-warning").exists()).toBe(false);
+});
+
 test("each compound exposes a separate magnify action without nesting drawing retry inside selection", async () => {
   const wrapper = setup();
   expect(wrapper.findAll(".step-structure-enlarge")).toHaveLength(3);

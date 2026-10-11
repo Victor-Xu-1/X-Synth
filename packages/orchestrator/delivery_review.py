@@ -5,6 +5,8 @@ import re
 
 from packages.adapters.stock.procurement_identity import POLICY, procurement_identity_reason
 from .review_policy import FORWARD_REVIEW_POLICIES
+from .operation_review import operation_receipt, forward_support_bound
+from .reference_evidence import recorded_support_proofs_are_valid
 
 
 MODEL = "graph2smiles_uspto_stereo"
@@ -23,14 +25,7 @@ def _hex(value, length):
 
 
 def _supported_candidate(row):
-    proofs = row.get("record_support")
-    return isinstance(proofs, list) and bool(proofs) and all(
-        isinstance(proof, dict) and _text(proof.get("id"))
-        and proof.get("source") == "ORD"
-        and _hex(proof.get("snapshot"), 64) and _hex(proof.get("source_sha256"), 64)
-        and proof.get("basis") == "exact_recorded_reaction_with_positive_yield"
-        for proof in proofs
-    )
+    return recorded_support_proofs_are_valid(row.get("record_support"))
 
 
 def independent_review(route: dict) -> dict:
@@ -41,7 +36,7 @@ def independent_review(route: dict) -> dict:
     if review is None:
         return {"status": "missing"}
     invalid = {"status": "invalid"}
-    if not isinstance(review, dict) or type(review.get("version")) is not int or review["version"] not in {1, 2}:
+    if not isinstance(review, dict) or type(review.get("version")) is not int or review["version"] not in {1, 2, 3}:
         return invalid
     steps, forward = route.get("steps"), review.get("forward")
     if not isinstance(steps, list) or not steps or not isinstance(forward, dict):
@@ -80,12 +75,16 @@ def independent_review(route: dict) -> dict:
             elif kind == "record_supported_model_candidate":
                 if not row["matched"] or row["model_top1_matched"] or rank is None or rank < 2 or not _supported_candidate(row):
                     return invalid
+                if review["version"] == 3 and not forward_support_bound(
+                    row["record_support"], next(step for step in steps if step["step_id"] == identifier), review,
+                ):
+                    return invalid
                 supported += 1
             elif kind != "unsupported" or row["matched"] or row["model_top1_matched"] or row["record_support"]:
                 return invalid
     if accepted != matched:
         return invalid
-    if review["version"] == 2 and (
+    if review["version"] in {2, 3} and (
         not _count(forward.get("model_top1_matched_steps")) or not _count(forward.get("record_supported_steps"))
         or top1 != forward["model_top1_matched_steps"] or supported != forward["record_supported_steps"]
         or top1 + supported != matched
@@ -113,18 +112,21 @@ def purchase_identity(route: dict) -> dict:
             "unresolved_materials": unresolved}
 
 
-def _receipt(review: dict, purchase: dict, basis: str) -> dict:
+def _receipt(review: dict, purchase: dict, basis: str, operations: dict | None = None) -> dict:
+    operations = operations or {"policy": "template_operation_evidence_v1", "status": "not_assessed", "unresolved_steps": []}
     grade = "not_independently_reviewed"
     if review["status"] == "checked":
         grade = "model_checked"
+    if operations["status"] == "evidence_required":
+        grade = "operation_evidence_required"
     if purchase["status"] == "unresolved":
         grade = "purchase_form_unresolved"
     return {"version": 1, "phase": "automated_review", "basis": basis, "grade": grade,
-            "independent_review": review, "purchase_identity": purchase}
+            "independent_review": review, "purchase_identity": purchase, "operations": operations}
 
 
 def delivery_review(route: dict) -> dict:
-    return _receipt(independent_review(route), purchase_identity(route), "route_receipt")
+    return _receipt(independent_review(route), purchase_identity(route), "route_receipt", operation_receipt(route))
 
 
 def with_delivery_review(route: dict) -> dict:

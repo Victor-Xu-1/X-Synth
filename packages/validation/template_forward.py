@@ -7,6 +7,7 @@ from functools import lru_cache
 
 from rdchiral.initialization import rdchiralReactants, rdchiralReaction
 from rdchiral.main import rdchiralRun
+from rdchiral.clean import combine_enantiomers_into_racemic
 from rdkit import Chem
 
 from packages.adapters.stock.commercial_stock import canonicalize_smiles
@@ -22,16 +23,39 @@ def templates(step):
 
 
 @lru_cache(maxsize=2048)
-def reconstruct(smarts, precursors, target):
+def reconstruction(smarts, precursors, target):
     product_pattern, precursor_pattern = smarts.split(">>")
+    matched = False
     try:
         reaction = rdchiralReaction(f"({precursor_pattern})>>({product_pattern})")
-        predicted = rdchiralRun(reaction, rdchiralReactants(precursors))
-        return canonicalize_smiles(target) in {
+        reactants = rdchiralReactants(precursors)
+        before = Chem.MolToSmiles(reactants.reactants, isomericSmiles=True)
+        predicted, mapped = rdchiralRun(reaction, reactants, return_mapped=True)
+        expected = canonicalize_smiles(target)
+        matched = expected in {
             canonicalize_smiles(value) for value in predicted
         }
+        witnesses = tuple((before, value[0]) for product, value in mapped.items()
+                          if matched and canonicalize_smiles(product) == expected)
+        if matched and not witnesses:
+            expected_molecule = Chem.MolFromSmiles(expected)
+            skeleton = Chem.MolToSmiles(expected_molecule, isomericSmiles=False)
+            compatible = {
+                product for product in mapped
+                if (molecule := Chem.MolFromSmiles(product)) is not None
+                and Chem.MolToSmiles(molecule, isomericSmiles=False) == skeleton
+                and molecule.HasSubstructMatch(expected_molecule, useChirality=True)
+            }
+            # Use the same native consolidation, without changing target identity.
+            if expected in {canonicalize_smiles(value) for value in combine_enantiomers_into_racemic(set(compatible))}:
+                witnesses = tuple((before, mapped[product][0]) for product in sorted(compatible))
+        return matched, witnesses
     except (ValueError, RuntimeError, IndexError, KeyError, AttributeError):
-        return False
+        return matched, ()
+
+
+def reconstruct(smarts, precursors, target):
+    return reconstruction(smarts, precursors, target)[0]
 
 
 def bond_family(smarts, product):
