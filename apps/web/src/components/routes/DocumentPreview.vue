@@ -9,7 +9,7 @@
         <div class="page-actions">
           <v-btn
             class="document-preview-action document-preview-edit"
-            :to="`/editor/${document.id}`"
+            :to="documentEditorLocation(document.id, libraryQuery)"
             color="primary"
             variant="flat"
             prepend-icon="mdi-pencil-outline"
@@ -73,8 +73,9 @@ import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
 import { onBeforeUnmount, toRef, useId } from "vue";
 import { useDocumentReading } from "@/composables/useDocumentReading";
 import { documentStateLabel } from "@/common/document-navigation";
+import { documentEditorLocation } from "@/common/document-library-view";
 const open = defineModel({ type: Boolean, default: false });
-const props = defineProps({ document: Object, focusTicket: { type: Number, default: null } });
+const props = defineProps({ document: Object, focusTicket: { type: Number, default: null }, libraryQuery: Object });
 const emit = defineEmits(["afterLeave", "navigate"]);
 const presentationTicket = props.focusTicket;
 let disposed = false;

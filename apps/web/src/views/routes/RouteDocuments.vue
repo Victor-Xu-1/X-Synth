@@ -73,7 +73,7 @@
                 />
             </td>
             <td class="document-identity-cell">
-                <router-link :to="`/editor/${row.id}`" class="document-title-cell"
+                <router-link :to="documentEditorLocation(row.id, libraryQuery)" class="document-title-cell"
                   :aria-label="$tr('打开编辑：{name}', { name: row.title })">
                   <strong :title="row.title">{{ row.title }}</strong
                   ><span class="workspace-code" :title="row.target_smiles">{{ row.target_smiles }}</span>
@@ -96,7 +96,7 @@
                     </template></v-tooltip>
                   </template>
                   <v-list density="compact" class="document-action-menu" role="menu" :aria-label="$tr('路线操作：{name}', { name: row.title })">
-                    <v-list-item role="menuitem" :title="$tr('打开编辑')" prepend-icon="mdi-pencil-outline" :to="`/editor/${row.id}`" :disabled="actionBusy" />
+                    <v-list-item role="menuitem" :title="$tr('打开编辑')" prepend-icon="mdi-pencil-outline" :to="documentEditorLocation(row.id, libraryQuery)" :disabled="actionBusy" />
                     <v-list-item role="menuitem" :title="$tr('删除文档')" prepend-icon="mdi-trash-can-outline" :disabled="actionBusy || loading" @click="remove(row)" />
                   </v-list>
                 </v-menu>
@@ -115,6 +115,7 @@
       :key="previewTicket"
       v-model="showPreview"
       :document="previewDocument"
+      :library-query="libraryQuery"
       :focus-ticket="previewTicket"
       @after-leave="previewFocus.restore"
       @navigate="previewFocus.cancel"
@@ -126,7 +127,8 @@ import { computed, mergeProps, onMounted, onBeforeUnmount, ref, watch } from "vu
 import { useRoute, useRouter } from "vue-router";
 import { API } from "@/common/api";
 import { uiText, useUiLanguage } from "@/i18n";
-import { documentSort, documentSortOptions, readDocumentSummaries, mergeDocumentSummaries, documentLibraryRows } from "@/common/document-library-view";
+import { documentSort, documentSortOptions, readDocumentSummaries, mergeDocumentSummaries, documentLibraryRows,
+  documentLibraryQuery, documentEditorLocation } from "@/common/document-library-view";
 import { readRouteDocument, RouteDocumentResponseError } from "@/common/route-document-response";
 import { errorMessage } from "@/common/workspace-errors";
 import { displayTime } from "@/common/task-state";
@@ -137,7 +139,8 @@ import { useDialogReturnFocus } from "@/composables/useDialogReturnFocus";
 
 const route = useRoute(), router = useRouter();
 const { locale } = useUiLanguage();
-const sort = computed(() => documentSort(route.query.sort));
+const libraryQuery = computed(() => documentLibraryQuery(route.query));
+const sort = computed(() => documentSort(libraryQuery.value.sort));
 function changeSort(event) {
   const next = documentSort(event.target.value);
   event.target.value = sort.value;
@@ -145,7 +148,7 @@ function changeSort(event) {
   return router.replace({ path: "/documents", query: { ...route.query, sort: next === "updated" ? undefined : next } });
 }
 const query = computed({
-  get: () => typeof route.query.query === "string" ? route.query.query : "",
+  get: () => libraryQuery.value.query || "",
   set: (value) => {
     retirePreview();
     return router.replace({ path: "/documents", query: { ...route.query, query: value || undefined } });

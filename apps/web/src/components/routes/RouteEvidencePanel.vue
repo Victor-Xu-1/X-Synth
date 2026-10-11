@@ -9,6 +9,18 @@
     <p v-if="candidate?.metadata?.forward_validation_method === 'native_template_reconstruction'" class="evidence-boundary">{{ $tr('模板重构仅核对结构一致性，不代表独立正向预测或实验验证。') }}</p>
     <p v-if="candidate?.metadata?.forward_validation_method === 'native_template_or_exact_record_consistency'" class="evidence-boundary">{{ $tr('原始记录一致性仅核对反应物和产物身份，不代表独立正向预测或当前条件的实验验证。') }}</p>
     <p v-if="candidate?.metadata?.forward_validation_method === 'graph2smiles_top1_or_record_supported_candidate'" class="evidence-boundary">{{ $tr('非第一名的正向候选仅在完整反应身份、原始条件及正收率记录一致时获得支持；不代表当前实验已验证。') }}</p>
+    <section v-if="dataset" class="evidence-section saved-dataset-provenance">
+      <h3>{{ $tr('已保存的数据集来源') }}</h3>
+      <dl class="evidence-facts">
+        <template v-for="field in dataset.fields" :key="field.label">
+          <dt>{{ $tr(field.label) }}</dt><dd>{{ field.value }}</dd>
+        </template>
+      </dl>
+      <a v-for="link in dataset.links" :key="link.key" :href="link.href" target="_blank" rel="noopener noreferrer">
+        {{ $tr(link.label) }} · {{ link.value }}
+      </a>
+      <p class="evidence-boundary">{{ $tr('数据集引用仅说明数据来源，不证明该目标反应的文献匹配、条件或收率。') }}</p>
+    </section>
     <section v-if="materials.length" class="evidence-section">
       <h3>{{ $tr('起始原料') }}<span>{{ materials.length }}</span></h3>
       <ul class="evidence-values">
@@ -47,6 +59,7 @@
 <script setup>
 import { computed } from "vue";
 import { forwardEvidence, modelEvidence, recordEvidence } from "@/common/route-details";
+import { buildReactionEvidence, createReactionEvidenceInput } from "@/common/reaction-evidence";
 const props = defineProps({ candidate: Object, step: Object });
 const controlledValues = new Set(["验证方法", "模板重构", "验证记录", "独立正向预测"]);
 const stringList = (value) => Array.isArray(value) ? [...new Set(value.filter((item) => typeof item === "string" && item
@@ -56,6 +69,10 @@ const materials = computed(() => stringList(props.candidate?.starting_materials)
 const sources = computed(() => stringList(props.candidate?.closure_sources));
 const references = computed(() => stringList(props.candidate?.evidence_refs));
 const models = computed(() => modelEvidence(props.step));
+const dataset = computed(() => {
+  const record = props.step || props.candidate;
+  return buildReactionEvidence(createReactionEvidenceInput({ ...record?.metadata, ...record })).dataset;
+});
 const metadata = computed(() => {
   const value = (props.step || props.candidate)?.metadata;
   return value && typeof value === "object" && Object.keys(value).length ? JSON.stringify(value, null, 2) : "";
@@ -69,6 +86,8 @@ const metadata = computed(() => {
 .evidence-section { border-top: 1px solid var(--ws-border); padding-top: 12px; margin-top: 14px; }
 .evidence-section h3, .evidence-section summary { font-size: 12px; font-weight: 550; }
 .evidence-section h3 span { margin-left: 8px; color: var(--ws-muted); font-weight: 400; }
+.saved-dataset-provenance h3 { margin-bottom: 12px; }
+.saved-dataset-provenance a { display: block; margin-top: 10px; overflow-wrap: anywhere; }
 .evidence-section summary { cursor: pointer; padding: 2px 0; }
 .evidence-section summary:focus-visible { outline: 2px solid var(--ws-text); outline-offset: 3px; }
 .evidence-values { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }

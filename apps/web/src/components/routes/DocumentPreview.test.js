@@ -25,6 +25,19 @@ const stubs = {
   VSelect: { props: ["modelValue", "items"], template: '<select />' },
 };
 
+test("reader-fix library context survives preview-to-editor entry without changing saved scientific data", async () => {
+  const libraryQuery = { query: "[13CH3][C@H](O)C(=O)[O-].[Na+]", sort: "title", returnUrl: "https://evil.example" };
+  const before = JSON.stringify(document);
+  const wrapper = mount(DocumentPreview, { props: { modelValue: true, document, libraryQuery }, global: {
+    stubs: { ...stubs, VBtn: { props: ["to"], template: '<button><slot /></button>' } },
+  } });
+  expect(wrapper.getComponent(".document-preview-edit").props("to")).toEqual({
+    path: `/editor/${document.id}`, query: { library_query: libraryQuery.query, library_sort: "title" },
+  });
+  expect(JSON.stringify(document)).toBe(before);
+  wrapper.unmount();
+});
+
 function previewStyles() {
   const { descriptor } = parse(readFileSync(resolve(__dirname, "DocumentPreview.vue"), "utf8"));
   return postcss.parse(descriptor.styles[0].content);

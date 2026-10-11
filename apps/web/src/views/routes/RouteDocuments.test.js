@@ -15,7 +15,7 @@ jest.mock("@/components/SmilesImage.vue", () => ({
   props: ["smiles"], template: '<div :data-smiles="smiles"><button aria-label="重试结构加载" /></div>',
 }));
 jest.mock("@/components/routes/DocumentPreview.vue", () => ({
-  props: ["modelValue", "document", "focusTicket"], template: "<div />",
+  props: ["modelValue", "document", "focusTicket", "libraryQuery"], template: "<div />",
 }));
 
 const stubs = {
@@ -85,6 +85,20 @@ test("one page reads once; long names, chemical identity and all operations rema
   expect(API.delete).not.toHaveBeenCalled();
   expect(wrapper.findAll('thead th').map(cell => cell.text())).toEqual(["目标化合物", "路线", "反应", "更新时间", "操作"]);
   expect(wrapper.getComponent(StructurePreview).props()).toMatchObject({ compact: true, width: 180, height: 96 });
+});
+
+test("reader-fix library context reaches editor title, menu and preview entry through the same projection", async () => {
+  const wrapper = await setup("/documents?query=CCO&sort=title&returnUrl=https%3A%2F%2Fevil.example");
+  expect(wrapper.get(".document-title-cell").attributes("href"))
+    .toBe("/editor/document-a?library_query=CCO&library_sort=title");
+  expect(wrapper.getComponent(".document-action-menu button").props("to"))
+    .toEqual({ path: "/editor/document-a", query: { library_query: "CCO", library_sort: "title" } });
+  API.get.mockResolvedValueOnce(savedDocument());
+  await wrapper.get('[aria-label="预览文档：先导系列路线"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.getComponent(DocumentPreview).props("libraryQuery")).toEqual({ query: "CCO", sort: "title" });
+  expect(API.post).not.toHaveBeenCalled();
+  expect(API.delete).not.toHaveBeenCalled();
 });
 
 test("sorting is URL-owned, scoped to loaded rows and preserves the original title and chemical data", async () => {

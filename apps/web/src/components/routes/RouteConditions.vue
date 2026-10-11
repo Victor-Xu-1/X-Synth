@@ -39,6 +39,13 @@
         rel="noopener noreferrer"
         >{{ $tr(link.label) }} · {{ link.value }}</a
       >
+      <section v-if="step.evidence.dataset" class="saved-dataset-provenance">
+        <h3>{{ $tr('已保存的数据集来源') }}</h3>
+        <a v-for="link in step.evidence.dataset.links" :key="link.key" :href="link.href" target="_blank" rel="noopener noreferrer">
+          {{ $tr(link.label) }} · {{ link.value }}
+        </a>
+        <p class="workspace-muted">{{ $tr('数据集引用仅说明数据来源，不证明该目标反应的文献匹配、条件或收率。') }}</p>
+      </section>
       <ReactionReferences :product="step.product" :reactants="step.reactants" />
     </article>
     <RouteConditionDialog
@@ -112,6 +119,8 @@ header .v-btn {
   font-size: 12px;
   padding: 14px 0;
 }
+.saved-dataset-provenance { border-top: 1px solid var(--ws-border); margin-top: 12px; padding-top: 12px; }
+.saved-dataset-provenance h3 { font-size: 12px; font-weight: 600; }
 dt {
   color: var(--ws-muted);
 }

@@ -91,7 +91,7 @@ const stubs = {
     template: '<div><slot name="activator" :props="{}" /><slot /></div>',
   },
   VBtn: {
-    props: ["disabled"],
+    props: ["disabled", "to"],
     template: '<button :disabled="disabled"><slot /></button>',
   },
   VList: { template: "<div><slot /></div>" },
@@ -144,9 +144,9 @@ test("a failed saved-document read offers a retry rather than a new-route creati
   expect(API.post).not.toHaveBeenCalled();
   expect(API.put).not.toHaveBeenCalled();
 });
-async function setup(state = "source_copy", identifier = documentId) {
+async function setup(state = "source_copy", identifier = documentId, query = {}) {
   const router = { replace: jest.fn().mockResolvedValue(undefined) };
-  const route = reactive({ params: { id: identifier } });
+  const route = reactive({ params: { id: identifier }, query });
   useRoute.mockReturnValue(route);
   useRouter.mockReturnValue(router);
   useWorkspaceStore.mockReturnValue({ can: () => false });
@@ -191,6 +191,42 @@ async function selectFile(wrapper, value = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(window, "confirm").mockReturnValue(true);
+});
+
+test("reader-fix library return retains the validated library context without writes or dirty-guard bypass", async () => {
+  const query = { library_query: "[13CH3][C@H](O)Cl.[Na+]", library_sort: "title", returnUrl: "https://evil.example" };
+  const { wrapper } = await setup("source_copy", documentId, query);
+  const back = wrapper.getComponent('[data-cy="document-library-return"]');
+  const destination = { path: "/documents", query: { query: query.library_query, sort: "title" } };
+  expect(back.props("to")).toEqual(destination);
+  expect(onBeforeRouteLeave).toHaveBeenCalledTimes(1);
+  await wrapper.get('[aria-label="路线名称"]').setValue("Unsaved source-owned title");
+  window.confirm.mockReturnValue(false);
+  expect(onBeforeRouteLeave.mock.calls[0][0](destination)).toBe(false);
+  expect(wrapper.get('[aria-label="路线名称"]').element.value).toBe("Unsaved source-owned title");
+  expect(wrapper.vm.hasUnsavedChanges).toBe(true);
+  expect(wrapper.getComponent({ name: "RouteGraph" }).props("graph")).toEqual(graph);
+  expect(API.post).not.toHaveBeenCalled();
+  expect(API.put).not.toHaveBeenCalled();
+  setLocale("en", { persist: false }); await flushPromises();
+  expect(back.attributes("aria-label")).toBe("Back to saved routes");
+  expect(back.props("to")).toEqual(destination);
+});
+
+test("reader-fix library return from direct editor entry ignores arbitrary destinations", async () => {
+  const { wrapper } = await setup("draft", documentId, { returnUrl: "//evil.example", query: "not library context" });
+  expect(wrapper.getComponent('[data-cy="document-library-return"]').props("to")).toBe("/documents");
+  expect(API.post).not.toHaveBeenCalled();
+  expect(API.put).not.toHaveBeenCalled();
+});
+
+test("reader-fix failed document reads retain the same validated library return location", async () => {
+  API.get.mockRejectedValueOnce(new Error("read failed"));
+  const { wrapper } = await setup("source_copy", documentId, { library_query: "CCO", library_sort: "reactions" });
+  const back = wrapper.getComponent(".editor-unavailable .page-actions button:last-child");
+  expect(back.props("to")).toEqual({ path: "/documents", query: { query: "CCO", sort: "reactions" } });
+  expect(API.post).not.toHaveBeenCalled();
+  expect(API.put).not.toHaveBeenCalled();
 });
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());

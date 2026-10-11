@@ -8,10 +8,29 @@ export const documentSortOptions = [
 export function documentSort(value) {
   return documentSortOptions.some(option => option.value === value) ? value : "updated";
 }
+export function documentLibraryQuery(value = {}) {
+  const query = {};
+  if (typeof value?.query === "string" && value.query) query.query = value.query;
+  const sort = documentSort(value?.sort);
+  if (sort !== "updated") query.sort = sort;
+  return query;
+}
+const documentIdentifier = value => typeof value === "string" && !!value && !/[^A-Za-z0-9_-]/.test(value);
+export function documentEditorLocation(identifier, libraryQuery) {
+  if (!documentIdentifier(identifier)) return null;
+  const query = Object.fromEntries(Object.entries(documentLibraryQuery(libraryQuery))
+    .map(([key, value]) => [`library_${key}`, value]));
+  const path = `/editor/${identifier}`;
+  return Object.keys(query).length ? { path, query } : path;
+}
+export function documentLibraryLocation(editorQuery = {}) {
+  const query = documentLibraryQuery({ query: editorQuery?.library_query, sort: editorQuery?.library_sort });
+  return Object.keys(query).length ? { path: "/documents", query } : "/documents";
+}
 export function readDocumentSummaries(value) {
   const ids = new Set();
   if (!Array.isArray(value) || value.some(row => {
-    if (!row || typeof row.id !== "string" || !/^[a-zA-Z0-9_-]+$/.test(row.id) || ids.has(row.id) ||
+    if (!row || !documentIdentifier(row.id) || ids.has(row.id) ||
         typeof row.title !== "string" || typeof row.target_smiles !== "string" ||
         typeof row.modified !== "string" || !Number.isFinite(Date.parse(row.modified)) ||
         !Number.isInteger(row.reaction_count) || row.reaction_count < 0) return true;
