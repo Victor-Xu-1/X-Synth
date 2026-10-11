@@ -112,5 +112,7 @@ export default [
   ["输入结构记录 ×{count}", "Input structure records ×{count}"],
   ["反应物未连接", "Reactants not connected"], ["产物未连接", "Product not connected"],
   ["模板重构 通过", "Template reconstruction passed"], ["模板重构 未通过", "Template reconstruction not passed"],
-  ["步骤验证 通过", "Step verification passed"], ["步骤验证 未通过", "Step verification not passed"],
+  ["来源一致性 通过", "Source consistency passed"], ["来源一致性 未通过", "Source consistency not passed"],
+  ["预测与来源一致性 通过", "Prediction and source consistency passed"], ["预测与来源一致性 未通过", "Prediction and source consistency not passed"],
+  ["存储核验记录 通过", "Stored check record passed"], ["存储核验记录 未通过", "Stored check record not passed"],
 ];
