@@ -4,7 +4,7 @@ export default [
   ["采购形式未明确", "Purchase form unresolved"],
   ["反应操作待核验", "Reaction operations unverified"],
   ["反应操作：", "Reaction operations:"],
-  ["{value} 步需过程依据", "{value} steps need process evidence"],
+  ["{value} 步需过程依据", "Steps needing process evidence: {value}"],
   ["核验等级", "Review grade"],
   ["单步分析 · {model}", "One-step analysis · {model}"],
   ["关闭预览", "Close preview"], ["继续逆合成", "Continue retrosynthesis"], ["关闭候选", "Close candidates"],
