@@ -25,6 +25,7 @@
       @edge-click="({ edge }) => $emit('select-edge', edge.id)"
       @pane-click="$emit('select', null)"
       @nodes-change="onNodeChanges"
+      @move-start="onViewportIntent"
       @connect="onConnect"
     >
       <template #node-molecule="props"
@@ -84,7 +85,7 @@ async function initialized() {
 onBeforeUnmount(() => { disposed = true; });
 const surface = ref(null);
 const { fitView, zoomIn, zoomOut, findNode } = useVueFlow(props.id);
-const { fit, focus } = useRouteViewport(surface, fitView, () => ({
+const { fit, focus, cancel } = useRouteViewport(surface, fitView, () => ({
   padding: 0.12, maxZoom: props.overview ? 1 : 1.25, duration: 0,
 }));
 const incomingNodeIds = computed(() =>
@@ -147,6 +148,9 @@ function onNodeChanges(changes) {
     nodes: props.graph.nodes.map(node => updates.has(node.id) ? { ...node, position: updates.get(node.id) } : node),
   });
 }
+function onViewportIntent({ event }) {
+  if (event) cancel();
+}
 function onConnect({ source, target }) {
   if (!props.editable) return;
   if (!canConnect(props.graph, source, target)) {
@@ -173,8 +177,8 @@ function arrange() {
   nextTick(fit);
 }
 const tools = [
-  { label: "放大", icon: "mdi-plus", action: () => zoomIn() },
-  { label: "缩小", icon: "mdi-minus", action: () => zoomOut() },
+  { label: "放大", icon: "mdi-plus", action: () => { cancel(); return zoomIn(); } },
+  { label: "缩小", icon: "mdi-minus", action: () => { cancel(); return zoomOut(); } },
   { label: "适应画布", icon: "mdi-fit-to-screen-outline", action: fit },
 ];
 const geometryKey = computed(() => JSON.stringify(props.graph.nodes.map(node => [

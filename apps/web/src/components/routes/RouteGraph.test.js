@@ -8,18 +8,19 @@ Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID });
 const mockFitView = jest.fn();
 const mockResize = jest.fn();
 const mockFindNode = jest.fn();
+const mockZoomIn = jest.fn(), mockZoomOut = jest.fn();
 jest.mock("@vueuse/core", () => ({ useResizeObserver: (...args) => mockResize(...args) }));
 jest.mock("@vue-flow/core", () => ({
   VueFlow: {
     name: "VueFlow",
     props: ["nodes", "edges", "minZoom"],
-    emits: ["node-drag-stop", "nodes-change", "connect", "node-click", "nodes-initialized"],
+    emits: ["node-drag-stop", "nodes-change", "move-start", "connect", "node-click", "nodes-initialized"],
     template: '<div><div v-for="node in nodes" :key="node.id" @click="$emit(\'node-click\', { node, event: $event })"><slot :name="\'node-\' + node.type" :data="node.data" :selected="node.selected" /></div><slot /></div>',
   },
   useVueFlow: () => ({
     fitView: mockFitView,
-    zoomIn: jest.fn(),
-    zoomOut: jest.fn(),
+    zoomIn: mockZoomIn,
+    zoomOut: mockZoomOut,
     findNode: (...args) => mockFindNode(...args),
   }),
   MarkerType: { ArrowClosed: "arrowclosed" },
@@ -44,7 +45,7 @@ function setup(graph, editable = false) {
   return wrapper;
 }
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
-beforeEach(() => { mockFitView.mockReset(); mockResize.mockClear(); mockFindNode.mockReset(); });
+beforeEach(() => { mockFitView.mockReset(); mockResize.mockClear(); mockFindNode.mockReset(); mockZoomIn.mockReset(); mockZoomOut.mockReset(); });
 
 test("native keyboard position changes commit once without mutating the source graph", async () => {
   const graph = { target_id: "m", nodes: [{ id: "m", type: "molecule", position: { x: 20, y: 20 } }], edges: [] };
@@ -235,6 +236,24 @@ test("explicit replacement and disposal release stale camera waiters", async () 
   let last;
   wrapper.vm.focus(['m'], { duration: 150 }).then(value => { last = value; }); await flushPromises();
   wrapper.unmount(); await flushPromises(); expect(last).toBe(false);
+});
+
+test.each(['wheel', 'zoom in', 'zoom out'])("native %s retires Locate before a later resize", async action => {
+  const graph = { target_id: "m", nodes: [{ id: "m", type: "molecule", position: { x: 20, y: 20 } }], edges: [] };
+  const wrapper = setup(graph), bounds = { width: 800, height: 400 };
+  jest.spyOn(wrapper.element, 'getBoundingClientRect').mockImplementation(() => bounds);
+  await flushPromises();
+  mockFitView.mockReturnValueOnce(new Promise(() => {}));
+  let result;
+  wrapper.vm.focus(['m'], { duration: 150 }).then(value => { result = value; }); await flushPromises();
+  if (action === 'wheel') wrapper.getComponent({ name: 'VueFlow' }).vm.$emit('move-start', { event: new WheelEvent('wheel') });
+  else await wrapper.findAll('.route-viewport-controls button')[action === 'zoom in' ? 0 : 1].trigger('click');
+  await flushPromises(); expect(result).toBe(false);
+  if (action !== 'wheel') expect(action === 'zoom in' ? mockZoomIn : mockZoomOut).toHaveBeenCalledTimes(1);
+  mockFitView.mockResolvedValueOnce(true);
+  bounds.width = 900; mockResize.mock.calls[0][1]([{ contentRect: { ...bounds } }]); await flushPromises();
+  expect(result).toBe(false);
+  expect(mockFitView).toHaveBeenLastCalledWith({ padding: 0.12, maxZoom: 1.25, duration: 0 });
 });
 
 test.each(["overview", "reading", "editable"])(

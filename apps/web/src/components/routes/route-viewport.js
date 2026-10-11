@@ -64,6 +64,10 @@ export function useRouteViewport(surface, fitView, options) {
     focusOptions = { ...settings, nodes: [...nodes] };
     return schedule(settings.duration ?? 0, true);
   }
+  function cancel() {
+    focusOptions = null; duration = 0;
+    pending?.resolve(false); running?.resolve(false); pending = null; running = null;
+  }
   useResizeObserver(surface, ([entry]) => {
     const bounds = entry?.contentRect;
     if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
@@ -76,7 +80,7 @@ export function useRouteViewport(surface, fitView, options) {
     schedule();
   });
   onScopeDispose(() => {
-    active = false; pending?.resolve(false); running?.resolve(false); pending = null; running = null;
+    active = false; cancel();
   });
-  return { fit, focus };
+  return { fit, focus, cancel };
 }
