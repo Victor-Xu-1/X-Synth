@@ -217,6 +217,10 @@ governance. See [version operations](operations.md#版本管理).
   exports consume that same receipt. Source copies retain server-owned receipts
   only while chemical signatures are unchanged; layout-only edits preserve them,
   chemistry edits invalidate them, and external imports cannot create them.
+  PNG resource caching retains the full drawing URL, including chemical identity
+  and rendering options in its query. Repeated captures cannot reuse a different
+  compound merely because it shares the same drawing endpoint; cache-busting a
+  path-only key is not an identity check.
 - Search and final closure must use the same immutable stock snapshot. Snapshot
   identity is retained in the checkpoint and delivered result.
 - A CID, CAS, supplier name or Mongo internal ID alone is not commercial evidence.
