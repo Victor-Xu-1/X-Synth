@@ -118,6 +118,54 @@ def test_failed_background_result_cannot_replace_same_generation_confirmed_by_re
     assert index.read(job) == receipt
 
 
+def test_checkpoint_free_batch_failure_preserves_direct_publication_confirmation(tmp_path, reviewed):
+    job = staged(tmp_path, reviewed)
+    light = {**job, "checkpoint": {}}
+    index = index_for(tmp_path)
+    index.read(light)
+    token = index._pending[job["id"]][0]
+    receipt = selected_routes_review([reviewed], job_id=job["id"],
+        snapshot_id=job["checkpoint"]["published_result"]["snapshot_id"])
+    assert index.remember(job, receipt, token=index.token(job))
+    index._unavailable([(token, light)])
+    assert index.read(light) == receipt
+    source = tmp_path / job["id"] / "results" / receipt["source_binding"]["snapshot_id"] / "selected_routes.json"
+    source.rename(source.with_name("retained-route.json"))
+    index._unavailable([(token, light)])
+    assert index.read(light)["status"] == "unavailable"
+
+
+def test_newer_source_validated_direct_confirmation_advances_old_desired_state(tmp_path, reviewed):
+    first = staged(tmp_path, reviewed)
+    second = {**first, "revision": 2}
+    index = index_for(tmp_path)
+    index.read(first)
+    receipt = selected_routes_review([reviewed], job_id=second["id"],
+        snapshot_id=second["checkpoint"]["published_result"]["snapshot_id"])
+    assert index.remember(second, receipt, token=index.token(second))
+    assert index.read(second) == receipt
+    assert not index._pending
+
+
+def test_desired_eviction_cannot_roll_back_retained_newer_confirmation(tmp_path, reviewed):
+    first = staged(tmp_path, reviewed)
+    second = {**first, "revision": 2}
+    limits = HistoryReviewLimits(max_entries=1, max_pending=1, batch_size=1)
+    index = index_for(tmp_path, limits=limits)
+    index.read(first)
+    old_token, queued = index._pending.pop(first["id"])
+    index._inflight[first["id"]] = old_token
+    receipt = selected_routes_review([reviewed], job_id=first["id"],
+        snapshot_id=first["checkpoint"]["published_result"]["snapshot_id"])
+    index.read(second)
+    assert index.remember(second, receipt, token=index.token(second))
+    for prefix in ("b", "c", "d"):
+        index.read({**first, "id": prefix * 32})
+    assert first["id"] not in index._desired
+    assert not index.remember(queued, receipt, token=old_token)
+    assert index.read(second) == receipt
+
+
 def test_projection_defers_to_active_work_and_close_reaps_its_process(tmp_path, reviewed):
     job = staged(tmp_path, reviewed)
     busy = Event()

@@ -1,6 +1,7 @@
 """Bounded, read-only history projection without chemical work on request threads."""
 from collections import OrderedDict
 from copy import deepcopy
+from dataclasses import dataclass
 import sqlite3
 from pathlib import Path
 from threading import Event, Lock, Thread
@@ -14,6 +15,14 @@ from .history_review_identity import snapshot_identifier, review_token, projecti
 
 def review_batch(loader, jobs):
     return [loader(job) for job in jobs]
+
+
+@dataclass(frozen=True)
+class ReviewEntry:
+    context: str
+    revision: int
+    source: tuple
+    receipt: dict
 
 
 class HistoryReviewIndex:
@@ -51,22 +60,23 @@ class HistoryReviewIndex:
             return unavailable
         with self._lock:
             previous = self._desired.get(identifier)
-            if previous is not None and revision < previous[1]:
+            retained = self._entries.get(identifier)
+            if ((previous is not None and revision < previous[1])
+                    or (retained is not None and revision < retained.revision)):
                 return pending_routes_review(identifier, snapshot)
             self._desired[identifier] = (token, revision)
             self._desired.move_to_end(identifier)
             self._trim_desired()
-            retained = self._entries.get(identifier)
-            if retained is not None and retained[0] == token:
-                actual_snapshot = retained[2]["source_binding"]["snapshot_id"]
+            if retained is not None and retained.context == token:
+                actual_snapshot = retained.receipt["source_binding"]["snapshot_id"]
                 try:
-                    matches = (snapshot is None or snapshot == actual_snapshot) and retained[1] == artifact_identity(self.artifacts, job, actual_snapshot)
+                    matches = (snapshot is None or snapshot == actual_snapshot) and retained.source == artifact_identity(self.artifacts, job, actual_snapshot)
                 except (OSError, ValueError):
                     return unavailable
                 if matches:
                     self._entries.move_to_end(identifier)
-                    return deepcopy(retained[2])
-            if self._inflight.get(identifier) != token and len(self._pending) < self.limits.max_pending:
+                    return deepcopy(retained.receipt)
+            if self._inflight.get(identifier) != token and (identifier in self._pending or len(self._pending) < self.limits.max_pending):
                 self._pending[identifier] = (token, deepcopy(projection_job(job)))
                 self._wake.set()
         return pending_routes_review(identifier, snapshot)
@@ -94,20 +104,26 @@ class HistoryReviewIndex:
             if self._stop.is_set():
                 return False
             desired = self._desired.get(job["id"])
-            if desired is not None and desired[0] != current and (
-                token is not None or revision < desired[1]
-            ):
+            if desired is not None and (revision < desired[1]
+                    or (revision == desired[1] and desired[0] != current)):
                 return False
             retained = self._entries.get(job["id"])
-            if (token is not None and receipt["status"] != "ready" and retained is not None
-                    and retained[0] == current and retained[1] == current_source and retained[2]["status"] == "ready"):
+            if retained is not None and (revision < retained.revision
+                    or (revision == retained.revision and retained.context != current)):
                 return False
+            if (token is not None and receipt["status"] != "ready" and retained is not None
+                    and retained.context == current and retained.receipt["status"] == "ready"):
+                # A checkpoint-free batch failure knows less than the confirmed publication.
+                confirmed_snapshot = retained.receipt["source_binding"]["snapshot_id"]
+                if retained.source == artifact_identity(self.artifacts, job, confirmed_snapshot):
+                    return False
             self._desired[job["id"]] = (current, revision)
             self._desired.move_to_end(job["id"])
             self._trim_desired()
-            self._entries[job["id"]] = (current, current_source, deepcopy(receipt))
+            self._entries[job["id"]] = ReviewEntry(current, revision, current_source, deepcopy(receipt))
             self._entries.move_to_end(job["id"])
-            if self._pending.get(job["id"], (None,))[0] == current:
+            queued = self._pending.get(job["id"])
+            if queued is not None and (queued[0] == current or queued[1].get("revision", 0) < revision):
                 self._pending.pop(job["id"], None)
             while len(self._entries) > self.limits.max_entries:
                 self._entries.popitem(last=False)
@@ -153,13 +169,19 @@ class HistoryReviewIndex:
                     if not isinstance(result, tuple) or len(result) != 2:
                         raise ValueError("Invalid history source projection")
                     receipt, identity = result
+                    if not isinstance(receipt, dict):
+                        raise ValueError("Invalid history review receipt")
                     if receipt.get("status") != "pending":
                         self.remember(job, receipt, token=token, source_identity=identity)
             except EngineUnavailable as error:
                 if error.code == "review_interrupted" and not self._stop.is_set():
                     with self._lock:
                         for token, job in batch:
-                            if job["id"] not in self._pending and len(self._pending) < self.limits.max_pending:
+                            desired = self._desired.get(job["id"])
+                            retained = self._entries.get(job["id"])
+                            if (desired is not None and desired[0] == token and job["id"] not in self._pending
+                                    and not (retained is not None and retained.context == token and retained.receipt["status"] == "ready")
+                                    and len(self._pending) < self.limits.max_pending):
                                 self._pending[job["id"]] = (token, job)
                     self._stop.wait(self.limits.idle_wait_seconds)
                 else:

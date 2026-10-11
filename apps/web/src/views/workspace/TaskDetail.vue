@@ -318,8 +318,8 @@ watch(
     detailLoader.reset();
     requestedSelectionPending = true;
     job.value = null;
-    deliveryReview.value = null;
     candidates.value = [];
+    deliveryReview.value = null;
     selectedId.value = "";
     view.value = "overview";
     infoOpen.value = false;

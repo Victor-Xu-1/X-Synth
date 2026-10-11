@@ -191,15 +191,18 @@ governance. See [version operations](operations.md#版本管理).
   boolean success flag cannot certify a route. Read-time grades preserve archived
   source data and distinguish missing review, model agreement and undefined purchase
   identities, never experimentally proven feasibility. Selected-route summaries
-  aggregate the current individual receipts,including mixed grades;stored counts
+  aggregate the current individual receipts, including mixed grades; stored counts
   alone cannot describe the current comprehensive review. History reads a bounded
   derived index rather than parsing every route on request threads. The index
-  checks publication/scientific-summary identity and cheap artifact stamps,runs
-  cancellable small batches only while route work is idle,and retains no chemical
+  checks publication/scientific-summary identity and cheap artifact stamps, runs
+  cancellable small batches only while route work is idle, and retains no chemical
   gate or scientific records. Pending/unavailable states never become model passes.
   Loaded results immediately update the same derived summary. Display-only changes
-  do not invalidate it;changed publications,legacy files and implementation restarts
+  do not invalidate it; changed publications, legacy files and implementation restarts
   do. Bounds belong to HistoryReviewLimits in the central performance authority.
+  Retained entries bind their worker revision independently of queue eviction.
+  Older completions cannot roll back newer confirmations; a checkpoint-free
+  background failure cannot replace a still-valid, directly confirmed publication.
   Preview/detail filters and JSON/PNG/CSV
   exports consume that same receipt. Source copies retain server-owned receipts
   only while chemical signatures are unchanged; layout-only edits preserve them,

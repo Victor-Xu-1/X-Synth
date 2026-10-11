@@ -20,6 +20,7 @@ def review_context(job):
 
 
 def artifact_identity(artifacts, job, snapshot):
+    artifacts = artifacts.resolve()
     review_context(job)
     def stamp(path):
         if path.is_symlink() or not path.resolve().is_relative_to(artifacts):
