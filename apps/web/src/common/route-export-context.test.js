@@ -75,7 +75,7 @@ test("raster resource caching retains the compound identity in drawing query par
   const operation = routeImage(surface(), graph(), null, { isCurrent: () => current });
   global.fetch = jest.fn(async url => ({
     status: 200, headers: { get: () => "image/svg+xml" },
-    blob: async () => new Blob([new URL(url, "http://localhost").searchParams.get("smiles")], { type: "image/svg+xml" }),
+    blob: async () => new Blob([new URL(url, "http://localhost").searchParams.toString()], { type: "image/svg+xml" }),
   }));
   try {
     for (let i = 0; i < 10 && !toPng.mock.calls.length; i++) await Promise.resolve();
@@ -89,6 +89,13 @@ test("raster resource caching retains the compound identity in drawing query par
     expect(await resourceToDataURL(urls[0], "image/svg+xml", options)).toBe(ethanol);
     expect(global.fetch).toHaveBeenCalledTimes(2);
     expect(options.includeQueryParams).toBe(true);
+    const identities = ["F[C@H](Cl)Br", "F[C@@H](Cl)Br", "[13CH3]CO", "[Na+].[Cl-]"];
+    const resources = [ethanol, methylamine];
+    for (const smiles of identities)
+      resources.push(await resourceToDataURL(getImageUrl({ smiles, svg: true, transparent: true }), "image/svg+xml", options));
+    resources.push(await resourceToDataURL(getImageUrl({ smiles: "CCO", svg: true, transparent: false }), "image/svg+xml", options));
+    expect(new Set(resources).size).toBe(resources.length);
+    expect(global.fetch).toHaveBeenCalledTimes(resources.length);
   } finally {
     global.fetch = oldFetch;
     current = false;

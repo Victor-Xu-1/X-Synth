@@ -384,6 +384,9 @@ governance. See [version operations](operations.md#版本管理).
   truncation. Returned no-match is not proof of absent literature. Reactant/product
   identity excludes agents, conditions and outcomes; recorded conditions/yields
   are counted only for that identity and are not copied onto a predicted step.
+  Text-only reported yield is shown verbatim with an explicit unparsed qualifier,
+  not converted to a number, given an inferred unit or replaced by a no-record
+  label. Numeric zero, unknown units and original source fields remain distinct.
 - CPU-heavy route review runs in one owned, cancellable child process. Cancellation
   interrupts that child without a chemistry time limit or signalling unrelated
   processes; API handling and task observation remain available.
