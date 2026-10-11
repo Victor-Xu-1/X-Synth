@@ -91,7 +91,16 @@ test("structure, step selection and graph location retain actual graph node IDs"
   await wrapper.get(".step-product").trigger("click");
   await wrapper.get('.step-heading button[aria-label="定位步骤 1"]').trigger("click");
   expect(wrapper.emitted("select").map(([id]) => id)).toEqual(["r-1", graph.target_id]);
-  expect(wrapper.emitted("locate")).toEqual([["r-1"]]);
+  expect(wrapper.emitted("locate")).toEqual([["r-1", expect.any(MouseEvent)]]);
+});
+
+test("Locate preserves the actual keyboard and pointer activation events", () => {
+  const wrapper = setup();
+  const button = wrapper.get('.step-heading button[aria-label="定位步骤 1"]');
+  const events = [0, 1].map(detail => new MouseEvent("click", { bubbles: true, detail }));
+  events.forEach(event => button.element.dispatchEvent(event));
+  expect(wrapper.emitted("locate").map(([id]) => id)).toEqual(["r-1", "r-1"]);
+  events.forEach((event, index) => expect(wrapper.emitted("locate")[index][1]).toBe(event));
 });
 
 test.each([".step-select", ".step-product", ".step-precursors .step-molecule"])(
@@ -114,6 +123,7 @@ test.each([".step-select", ".step-product", ".step-precursors .step-molecule"])(
 test("missing node identities disable navigation and empty steps stay explicit", async () => {
   const wrapper = setup({ graph: { nodes: [], edges: [] } });
   expect(wrapper.get(".step-select").attributes("disabled")).toBeDefined();
+  expect(wrapper.get('button[aria-label="定位步骤 1"]').attributes("disabled")).toBeDefined();
   expect(wrapper.findAll(".step-molecule").every((button) => button.attributes("disabled") !== undefined)).toBe(true);
   await wrapper.setProps({ candidate: { ...candidate, steps: [] } });
   expect(wrapper.text()).toContain("未记录反应步骤");

@@ -45,7 +45,7 @@
               <button
                 class="material-structure"
                 :aria-label="$tr('查看{name}', { name: materialUiLabel(row, index, graph) })"
-                @click="$emit('select', row.nodeId)"
+                @click="$emit('select', row.nodeId, $event)"
               >
                 <SmilesImage
                   :smiles="row.smiles"

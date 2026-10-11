@@ -219,7 +219,7 @@
           :key="candidate.route_id"
           :candidate="candidate"
           :graph="sourceGraph"
-          @select="selectNode"
+          @select="selectStepNode"
           @navigate="$emit('navigate')"
         />
         <RouteMaterials
@@ -227,7 +227,7 @@
           :graph="sourceGraph"
           generated-step-labels
           :expected-snapshot="stockSnapshot"
-          @select="selectNode"
+          @select="selectStepNode"
           @navigate="$emit('navigate')"
         />
         <details class="reader-evidence" :key="candidate.route_id">
@@ -392,6 +392,7 @@ let generation = 0,
   inspectorNavigation = 0,
   overviewOrigin = null,
   selectionOrigin = null,
+  pendingLocation = null,
   disposed = false;
 function labelFor(choice) {
   return routeLabel(
@@ -501,6 +502,7 @@ function selectStepNode(id, event) {
 }
 async function selectNode(id, revealDetails = true, event = null) {
   const navigation = ++inspectorNavigation;
+  pendingLocation = null;
   selectionOrigin = null;
   selectedNode.value = sourceGraph.value.nodes.some((node) => node.id === id)
     ? id
@@ -525,6 +527,7 @@ async function selectNode(id, revealDetails = true, event = null) {
 }
 async function closeInspector() {
   const navigation = ++inspectorNavigation, point = selectionOrigin;
+  pendingLocation = null;
   selectionOrigin = null;
   selectedNode.value = null;
   await nextTick();
@@ -535,14 +538,29 @@ async function closeInspector() {
   origin.scrollIntoView?.({ block: "nearest" });
   origin.focus?.({ preventScroll: true });
 }
-async function locateNode(id) {
+async function locateNode(id, event) {
+  if (!sourceGraph.value.nodes.some(node => node.id === id)) return;
   selectNode(id, false);
   const routeId = selectedId.value, source = sourceGraph.value;
+  const request = { keyboard: event?.detail === 0, origin: document.activeElement };
+  pendingLocation = request;
   view.value = "graph";
-  await nextTick();
-  if (!disposed && routeId === selectedId.value && selectedNode.value === id &&
-    view.value === "graph" && source === sourceGraph.value)
+  const current = () => !disposed && pendingLocation === request &&
+    routeId === selectedId.value && selectedNode.value === id &&
+    view.value === "graph" && source === sourceGraph.value;
+  try {
+    await nextTick();
+    if (!current()) return;
     await graphView.value?.focus([id], { padding: 0.45, maxZoom: 1, duration: 150 });
+    if (!current() || !request.keyboard ||
+      (document.activeElement !== document.body && document.activeElement !== request.origin)) return;
+    const node = [...(graphView.value?.$el?.querySelectorAll('.vue-flow__node[data-id]') || [])]
+      .find(element => element.dataset.id === id);
+    const entry = node?.querySelector("button:not([disabled])") || node;
+    if (entry?.isConnected && !entry.closest('[hidden], [inert]')) entry.focus({ preventScroll: true });
+  } finally {
+    if (pendingLocation === request) pendingLocation = null;
+  }
 }
 function exportJson() {
   if (candidate.value)
@@ -599,6 +617,7 @@ watch(choices, (values) => {
 });
 watch(() => props.candidates, () => {
   overviewOrigin = null;
+  pendingLocation = null;
   layerNavigation++;
 }, { flush: "sync" });
 watch(
@@ -609,6 +628,7 @@ watch(
   { immediate: true },
 );
 watch(selectedId, () => {
+  pendingLocation = null;
   selectedNode.value = null;
   selectionOrigin = null;
   inspectorNavigation++;
@@ -617,6 +637,7 @@ watch(selectedId, () => {
   generation++;
 });
 watch(view, async (value) => {
+  if (value !== "graph") pendingLocation = null;
   selectionOrigin = null;
   inspectorNavigation++;
   if (value === "graph") {
@@ -626,6 +647,7 @@ watch(view, async (value) => {
 }, { flush: "sync" });
 onBeforeUnmount(() => {
   disposed = true;
+  pendingLocation = null;
   overviewOrigin = null;
   layerNavigation++;
   selectionOrigin = null;

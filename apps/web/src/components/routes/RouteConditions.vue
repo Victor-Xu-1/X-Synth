@@ -2,7 +2,7 @@
   <section class="route-conditions" :aria-label="$tr('反应条件列表')">
     <article v-for="step in steps" :key="step.nodeId" class="condition-step">
       <header>
-        <button type="button" @click="$emit('select', step.nodeId)">
+        <button type="button" @click="$emit('select', step.nodeId, $event)">
           <strong>{{ $tr('合成步骤 {value}', { value: step.number }) }}</strong>
         </button>
         <span>{{ $tr('步骤模型分数 {value}', { value: $tr(step.confidence) }) }}</span>

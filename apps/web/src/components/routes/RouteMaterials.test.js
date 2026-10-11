@@ -22,6 +22,15 @@ beforeEach(() => API.post.mockReset());
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
 const response = () => priceContractResponse();
 
+test("material details forward original keyboard and pointer events without a lookup", () => {
+  const wrapper = setup();
+  const events = [0, 1].map(detail => new MouseEvent("click", { bubbles: true, detail }));
+  events.forEach(event => wrapper.get(".material-structure").element.dispatchEvent(event));
+  expect(wrapper.emitted("select").map(([id]) => id)).toEqual(["material", "material"]);
+  events.forEach((event, index) => expect(wrapper.emitted("select")[index][1]).toBe(event));
+  expect(API.post).not.toHaveBeenCalled();
+});
+
 test("materials lookup stays explicit and shows per-supplier raw catalog prices without cost totals", async () => {
   const wrapper = setup();
   expect(API.post).not.toHaveBeenCalled();

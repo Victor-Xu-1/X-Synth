@@ -9,6 +9,20 @@ jest.mock("@/components/references/ReactionReferences.vue", () => ({ template: '
 jest.mock("./RouteConditionDialog.vue", () => ({ template: '<div />' }));
 import { conditionRows } from "@/common/route-reading";
 
+test("step details forward the original keyboard and pointer events without predictions", () => {
+  conditionRows.mockReturnValue([{ nodeId: "original-step", number: 1, confidence: "0", reactants: ["C"], product: "CO",
+    evidence: { conditions: [], links: [] },
+  }]);
+  const wrapper = mount(RouteConditions, { global: { stubs: { VBtn: true } } });
+  try {
+    const events = [0, 1].map(detail => new MouseEvent("click", { bubbles: true, detail }));
+    events.forEach(event => wrapper.get("header button").element.dispatchEvent(event));
+    expect(wrapper.emitted("select").map(([id]) => id)).toEqual(["original-step", "original-step"]);
+    events.forEach((event, index) => expect(wrapper.emitted("select")[index][1]).toBe(event));
+    expect(wrapper.findComponent({ name: "RouteConditionDialog" }).exists()).toBe(false);
+  } finally { wrapper.unmount(); }
+});
+
 test("reader-fix condition reader labels saved dataset citation without filling missing experimental conditions", () => {
   setLocale("en", { persist: false });
   conditionRows.mockReturnValue([{ nodeId: "r-1", number: 1, confidence: "1.000", reactants: ["CN1CCNCC1"], product: "CCO",
