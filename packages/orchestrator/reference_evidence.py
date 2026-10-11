@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-
 from packages.adapters.askcos.reference_models import ReferenceSearchResponse
 from packages.knowledge_base.reaction_models import (
     EvidenceSourceStatus,
@@ -12,17 +10,7 @@ from packages.knowledge_base.reaction_models import (
 from packages.knowledge_base.reaction_library import verify_evidence_record
 from packages.adapters.askcos.evidence_proposals import recorded_candidate_exclusion
 from .process_support import process_observations, process_fields
-
-
-def recorded_support_proofs_are_valid(proofs):
-    return isinstance(proofs, list) and bool(proofs) and all(
-        isinstance(proof, dict) and isinstance(proof.get("id"), str) and proof["id"].strip()
-        and proof.get("source") == "ORD"
-        and isinstance(proof.get("snapshot"), str) and re.fullmatch(r"[a-f0-9]{64}", proof["snapshot"])
-        and isinstance(proof.get("source_sha256"), str) and re.fullmatch(r"[a-f0-9]{64}", proof["source_sha256"])
-        and proof.get("basis") == "exact_recorded_reaction_with_positive_yield"
-        for proof in proofs
-    )
+from packages.validation.recorded_process import recorded_support_proofs_are_valid
 
 
 def recorded_reaction_support(response: ReferenceSearchResponse) -> list[dict]:

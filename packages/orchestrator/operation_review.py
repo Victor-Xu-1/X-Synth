@@ -1,11 +1,8 @@
 """Bind compound-operation screening to exact recorded process evidence."""
 
-from packages.adapters.askcos.references import ReferenceSearchInput, canonical_reference_query
 from packages.route_schema.route_schema import RouteStep
 from packages.validation.reaction_operations import POLICY, screen_step_operations
-
-from .reference_evidence import recorded_support_proofs_are_valid
-from .process_support import YIELD_FIELD, condition_field_scope
+from packages.validation.recorded_process import support_bound as _support_bound
 
 
 def operation_record(step, screening, support):
@@ -29,55 +26,6 @@ def _step(raw):
             or not all(isinstance(value, str) and value for value in raw["precursors"])):
         raise ValueError("Invalid operation input")
     return RouteStep(**{key: raw[key] for key in RouteStep.__dataclass_fields__ if key in raw})
-
-
-def _support_bound(proofs, step, reference):
-    if not recorded_support_proofs_are_valid(proofs) or not isinstance(reference, dict):
-        return False
-    if reference.get("has_more") is not False or reference.get("complete") is not True:
-        return False
-    query = canonical_reference_query(ReferenceSearchInput(product=step.product, reactants=step.precursors), max_atoms=300)
-    if reference.get("query") != query.model_dump(mode="json"):
-        return False
-    sources, refs = reference.get("sources"), reference.get("refs")
-    if not isinstance(sources, list) or not sources or not all(isinstance(row, dict) and row.get("ready") is True for row in sources):
-        return False
-    if not isinstance(refs, list) or not all(isinstance(row, dict) for row in refs):
-        return False
-    for proof in proofs:
-        if not any(row.get("source") == "ORD" and row.get("snapshot") == proof["snapshot"] for row in sources):
-            return False
-        record = next((row for row in refs if row.get("id") == proof["id"] and row.get("source") == "ORD"
-                   and row.get("match_scope") == "reaction_identity"
-                   and (row.get("reaction_conditions_recorded") is True or row.get("reaction_procedure_recorded") is True)
-                   and row.get("reaction_yields_recorded") is True
-                   and isinstance(row.get("provenance"), dict)
-                   and row["provenance"].get("source_sha256") == proof["source_sha256"]), None)
-        if record is None:
-            return False
-        observations = proof.get("recorded_outcomes")
-        if not isinstance(observations, list) or not observations:
-            return False
-        for item in observations:
-            if (not isinstance(item, dict) or type(item.get("outcome_index")) is not int
-                    or (record["provenance"].get("outcome_indices")
-                        and item["outcome_index"] not in record["provenance"]["outcome_indices"])
-                    or item.get("product_smiles") != step.product
-                    or not isinstance(item.get("yield_source_field"), str)):
-                return False
-            matched = YIELD_FIELD.fullmatch(item["yield_source_field"])
-            fields = item.get("condition_source_fields")
-            if (not matched or int(matched[1]) != item["outcome_index"] or not isinstance(fields, list)
-                    or not fields or not all(isinstance(field, str) and condition_field_scope(field, item["outcome_index"])
-                                            and field in record.get("reaction_condition_fields", []) for field in fields)):
-                return False
-            expected = {"value": item.get("yield_value"), "unit": item.get("yield_unit"),
-                        "method": "ord_product_measurement", "measurement_type": "YIELD",
-                        "product_smiles": step.product, "source_field": item["yield_source_field"]}
-            if (type(expected["value"]) not in {int, float} or not 0 < expected["value"] <= 100
-                    or expected["unit"] != "%" or expected not in record.get("reaction_yield_measurements", [])):
-                return False
-    return True
 
 
 def _valid_record(row, screen, step, reference):

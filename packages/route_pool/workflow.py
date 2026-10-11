@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from hashlib import sha256
+import json
 from typing import Any
 
 from packages.adapters.stock.commercial_stock import CommercialStockRegistry
@@ -124,12 +126,13 @@ def build_route_pool_result(*, id, pool, source_summaries):
     effective_quality_policy = pool.quality_policy or RouteQualityPolicy()
     min_routes, max_routes = pool.min_routes, pool.max_routes
     all_routes = pool.ranked_routes()
+    strategies = pool.strategy_selection()
     selected_routes = pool.final_candidates()
     quality_decisions = [
         effective_quality_policy.evaluate_route(route) for route in all_routes
     ]
-    pending = [set(decision.reasons) == {"full_forward_validation_required"}
-               for decision in quality_decisions]
+    pending = [_unreviewed(route, decision)
+               for route, decision in zip(all_routes, quality_decisions, strict=True)]
     quality_rejection_counts = Counter(
         reason
         for decision, deferred in zip(quality_decisions, pending)
@@ -154,6 +157,9 @@ def build_route_pool_result(*, id, pool, source_summaries):
         "quality_pending_route_count": sum(pending),
         "quality_rejected_route_count": quality_rejected_route_count,
         "quality_rejection_counts": dict(sorted(quality_rejection_counts.items())),
+        "strategy_dominated_route_count": len(strategies.dominated),
+        "strategy_pending_route_count": len(strategies.pending),
+        "strategy_selection": _strategy_receipt(all_routes, strategies),
         "selected_route_count": len(selected_routes),
         "selected_closed_route_count": selected_closed_route_count,
         "draft_route_count": sum(1 for route in selected_routes if not route.closed),
@@ -162,6 +168,7 @@ def build_route_pool_result(*, id, pool, source_summaries):
         "selected_engine_counts": _route_counts_by_engine(selected_routes),
         "selected_family_count": len(_route_family_keys(selected_routes)),
         "diversity_basis": "first_retrosynthetic_move",
+        "strategy_selection_policy": "qualified_exact_shortcut_v1",
         "selected_first_step_source_count": len(_first_step_sources(selected_routes)),
         "selected_first_step_sources": sorted(_first_step_sources(selected_routes)),
         "min_routes": min_routes,
@@ -181,6 +188,30 @@ def build_route_pool_result(*, id, pool, source_summaries):
         all_routes=all_routes,
         selected_routes=selected_routes,
     )
+
+
+def _unreviewed(route, decision):
+    reasons = set(decision.reasons)
+    if not reasons or not reasons <= {"full_forward_validation_required", "operation_evidence_required"}:
+        return False
+    review = route.metadata.get("automated_review")
+    ledger = review.get("operations") if isinstance(review, dict) else None
+    return not (isinstance(review, dict) and type(review.get("version")) is int and review["version"] == 3
+                and isinstance(ledger, dict) and isinstance(ledger.get("records"), list) and ledger["records"])
+
+
+def _strategy_receipt(routes, decision):
+    source = {route.route_id: route for route in routes}
+    decisions = {**decision.dominated, **decision.pending}
+    involved = set(decisions) | {value.route_id for value in decisions.values()}
+    digests = {identifier: sha256(json.dumps(asdict(source[identifier]), sort_keys=True,
+               ensure_ascii=True, allow_nan=False, separators=(",", ":")).encode()).hexdigest()
+               for identifier in involved}
+    return {"policy": "qualified_exact_shortcut_v1", "route_sha256": digests,
+            "dominated": {identifier: {**asdict(value), "replaced_steps": list(value.replaced_steps)}
+                          for identifier, value in decision.dominated.items()},
+            "pending": {identifier: {**asdict(value), "replaced_steps": list(value.replaced_steps)}
+                        for identifier, value in decision.pending.items()}}
 
 
 def _output_mode(selected_routes: list[RouteCandidate]) -> str:

@@ -4,6 +4,7 @@ from collections import defaultdict, deque
 
 from packages.validation.route_quality import RouteQualityPolicy
 from packages.validation.route_topology import route_signature, topology_reasons
+from packages.route_pool.strategy import potential_shortcut
 
 
 def family_key(route):
@@ -30,13 +31,20 @@ class QualificationQueue:
             self.groups[family_key(route)].append(route)
         self.families = deque(self.groups)
 
-    def next(self, qualified_families):
-        while self.families:
+    def next(self, qualified_families, *, representatives=(), only_improvements=False):
+        for _ in range(len(self.families)):
             family = self.families.popleft()
-            if family in qualified_families:
-                continue
             group = self.groups[family]
+            index = 0
+            if only_improvements or family in qualified_families:
+                index = next((index for index, route in enumerate(group)
+                              if any(potential_shortcut(route, value) for value in representatives)), None)
+                if index is None:
+                    self.families.append(family)
+                    continue
+            group.rotate(-index)
             route = group.popleft()
+            group.rotate(index)
             if group:
                 self.families.append(family)
             return route

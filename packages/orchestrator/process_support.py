@@ -1,16 +1,6 @@
 """Recorded process minima, retaining outcome and parameter field identity."""
 
-import re
-
-YIELD_FIELD = re.compile(r"outcomes\[(\d+)\]\.products\[\d+\]\.measurements\[\d+\]")
-TIME_FIELD = re.compile(r"outcomes\[(\d+)\]\.reaction_time")
-
-
-def condition_field_scope(field, outcome):
-    if field == "procedure" or field.startswith(("conditions.temperature.", "conditions.pressure.")):
-        return True
-    matched = TIME_FIELD.fullmatch(field)
-    return bool(matched and int(matched[1]) == outcome)
+from packages.validation.recorded_process import YIELD_FIELD, TIME_FIELD
 
 
 def _condition_fields(record, outcome):

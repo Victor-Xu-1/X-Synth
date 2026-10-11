@@ -72,10 +72,13 @@ class RouteVerifier:
         checked = set()
         queue = QualificationQueue(report.all_routes)
         qualified_families = set()
+        representatives = UnifiedRoutePool(min_routes=minimum, max_routes=maximum, quality_policy=policy)
+        selected = []
         step_checks = {}
         while True:
-            route = queue.next(qualified_families)
-            if route is None or len(qualified_families) >= maximum:
+            route = queue.next(qualified_families, representatives=selected,
+                               only_improvements=len(qualified_families) >= maximum)
+            if route is None:
                 break
             self._check_reference_source()
             forward, references, operations = [], [], []
@@ -109,9 +112,8 @@ class RouteVerifier:
                     max_atoms=self.max_atoms,
                 )
                 top1 = matched
-                process_support = recorded_reaction_support(evidence) if (
-                    rank is not None and score >= plausibility and (rank > 1 or screening["status"] == "evidence_required")
-                ) else []
+                recorded_process = recorded_reaction_support(evidence)
+                process_support = recorded_process if rank is not None and score >= plausibility else []
                 support = process_support if rank is not None and rank > 1 else []
                 matched = matched or bool(support)
                 forward.append({"step_id": step.step_id, "record_id": identifier, "expected_rank": rank,
@@ -119,7 +121,8 @@ class RouteVerifier:
                                 "model_top1_matched": top1,
                                 "support_kind": "model_top1" if top1 else "record_supported_model_candidate" if support else "unsupported",
                                 "record_support": support})
-                references.append({"step_id": step.step_id, **reference_evidence(evidence)})
+                references.append({"step_id": step.step_id, **reference_evidence(evidence),
+                                   "recorded_process_support": recorded_process})
                 operations.append(operation_record(step, screening, process_support))
                 step_checks[binding] = (forward[-1], references[-1], operations[-1])
                 if interrupted():
@@ -166,7 +169,9 @@ class RouteVerifier:
             })
             checked.add(route.route_id)
             if passed:
-                qualified_families.add(family_key(route))
+                representatives.add_routes([routes[route.route_id]])
+                selected = representatives.final_candidates()
+                qualified_families = {family_key(row) for row in selected}
         if interrupted():
             raise EngineUnavailable("route_verification_interrupted", recoverable=True)
         self._check_reference_source()
