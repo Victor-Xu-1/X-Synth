@@ -164,6 +164,7 @@ TEMPLATE_FILES = {
     "packages/knowledge_base/template_paging.py",
 }
 HISTORY_FILES = {
+    "packages/orchestrator/delivery_review.py",
     "apps/api/job_views.py",
     "apps/api/result_routes.py",
     "packages/workspace/history_projection.py",
@@ -347,6 +348,7 @@ def guard_paths(paths: set[str]) -> None:
         known |= path.startswith("packages/workspace/") and suffix == ".py"
         known |= path.startswith("packages/adapters/optimization/") and suffix == ".py"
         known |= path in {
+            "tests/integration/delivery_review_browser.mjs",
             "tests/integration/test_optimization_published.py",
             "tests/integration/optimization_browser.mjs",
             "tests/integration/forward_browser.mjs",

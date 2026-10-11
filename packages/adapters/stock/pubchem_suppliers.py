@@ -207,7 +207,7 @@ def build_pubchem_supplier_registry(
 def _supplier_decision(canonical: str, source: dict) -> EvidenceDecision | None:
     """A parsed vendor membership row is not procurement evidence by itself."""
     record = supplier_record({
-        "smiles": canonical, "source": source.get("SourceName"),
+        **source, "smiles": canonical, "source": source.get("SourceName"),
         "catalog_id": _optional_text(source.get("RegistryID")),
         "url": _optional_text(source.get("SourceRecordURL") or source.get("SourceURL")),
     })

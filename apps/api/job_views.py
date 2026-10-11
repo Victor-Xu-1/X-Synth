@@ -7,6 +7,7 @@ from packages.workspace.history_projection import historical_routes
 from packages.chemistry.material_scope import stored_route_scope_exclusions
 from packages.orchestrator.review_policy import FORWARD_REVIEW_POLICIES
 from packages.orchestrator.route_artifacts import RouteArtifactError, RouteArtifactStore
+from packages.orchestrator.delivery_review import history_delivery_review, with_delivery_review
 
 
 def history_metadata(job: dict) -> dict:
@@ -23,7 +24,7 @@ def display_description(job: dict) -> str:
 
 
 def job_response(job: dict) -> dict:
-    summary = public_summary(job.get("summary") or {})
+    summary = delivery_summary(job.get("summary") or {})
     request = job["request"]
     return {
         "job_id": job["id"],
@@ -112,9 +113,34 @@ def public_summary(value):
     return value
 
 
+def delivery_summary(summary):
+    return {**public_summary(summary), "delivery_review": history_delivery_review(summary)}
+
+
 def result_snapshot_identifier(checkpoint):
     pointer = (checkpoint or {}).get("published_result")
     return pointer.get("snapshot_id") if isinstance(pointer, dict) else None
+
+
+def delivery_routes(selected, *, job=None, budget):
+    if not isinstance(selected, list) or not all(isinstance(route, dict) for route in selected):
+        raise HTTPException(409, "路线结果结构损坏，需要重新计算。")
+    try:
+        outside_scope = any(stored_route_scope_exclusions(route) for route in selected)
+        projected = [with_delivery_review(route) for route in selected]
+    except (ValueError, TypeError, KeyError) as exc:
+        raise HTTPException(409, "路线结果结构损坏，需要重新计算。") from exc
+    if outside_scope:
+        raise HTTPException(409, "候选超出当前物料范围，需要重新审查或搜索。")
+    policy = ((job or {}).get("checkpoint") or {}).get("review_policy")
+    if isinstance(policy, str) and policy in FORWARD_REVIEW_POLICIES and any(
+        route["metadata"]["delivery_review"]["independent_review"]["status"] != "checked"
+        for route in projected
+    ):
+        raise HTTPException(409, "独立正向核验尚未完成，路线不能作为已核验结果发布。")
+    if len(json.dumps(projected, ensure_ascii=False).encode("utf-8")) > budget.response_bytes:
+        raise HTTPException(413, "Route data exceeds the response budget")
+    return projected
 
 
 def selected_route_data(path, *, budget, job=None):
@@ -124,19 +150,9 @@ def selected_route_data(path, *, budget, job=None):
         raise HTTPException(413, "Route data exceeds the response budget")
     try:
         selected = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(selected, list):
-            raise ValueError("Invalid selected route collection")
-        outside_scope = any(stored_route_scope_exclusions(route) for route in selected)
     except (ValueError, TypeError) as exc:
         raise HTTPException(409, "路线结果结构损坏，需要重新计算。") from exc
-    if outside_scope:
-        raise HTTPException(409, "旧候选超出当前物料范围，需要重新审查或搜索。")
-    if job and (job.get("checkpoint") or {}).get("review_policy") in FORWARD_REVIEW_POLICIES and any(
-        route.get("metadata", {}).get("full_forward_prediction_validated") is not True
-        for route in selected
-    ):
-        raise HTTPException(409, "独立正向核验尚未完成，路线不能作为已核验结果发布。")
-    return selected
+    return delivery_routes(selected, job=job, budget=budget)
 
 
 def selected_routes_for_job(job, *, artifacts, budget):
@@ -148,13 +164,7 @@ def selected_routes_for_job(job, *, artifacts, budget):
         raise HTTPException(503, "路线快照暂时无法读取，请稍后重试。") from exc
     if selected is None:
         return selected_route_data(artifacts / job["id"] / "selected_routes.json", budget=budget, job=job)
-    if any(stored_route_scope_exclusions(route) for route in selected):
-        raise HTTPException(409, "候选超出当前物料范围，需要重新审查或搜索。")
-    if (job.get("checkpoint") or {}).get("review_policy") in FORWARD_REVIEW_POLICIES and any(
-        route.get("metadata", {}).get("full_forward_prediction_validated") is not True for route in selected
-    ):
-        raise HTTPException(409, "独立正向核验尚未完成，路线不能作为已核验结果发布。")
-    return selected
+    return delivery_routes(selected, job=job, budget=budget)
 
 
 def route_result(job, *, artifacts, budget):
@@ -172,8 +182,7 @@ def route_result(job, *, artifacts, budget):
             raise HTTPException(
                 409, "Historical route records cannot be projected"
             ) from exc
-        if any(stored_route_scope_exclusions(route) for route in routes):
-            raise HTTPException(409, "旧候选超出当前物料范围，需要重新审查或搜索。")
+        routes = delivery_routes(routes, budget=budget)
         result = document.get("result")
         if not isinstance(result, dict):
             raise HTTPException(409, "Historical result format is invalid")
@@ -182,7 +191,7 @@ def route_result(job, *, artifacts, budget):
         if job.get("request"):
             document["description"] = display_description(job)
         result["unified_route_pool"] = {
-            "summary": public_summary(job["summary"]),
+            "summary": delivery_summary(job["summary"]),
             "selected_routes": routes,
         }
         if (
@@ -207,9 +216,9 @@ def route_result(job, *, artifacts, budget):
         "public": False,
         "result": {
             "version": 2,
-            "stats": public_summary(job["summary"] or {}),
+            "stats": delivery_summary(job["summary"] or {}),
             "unified_route_pool": {
-                "summary": public_summary(job["summary"] or {}),
+                "summary": delivery_summary(job["summary"] or {}),
                 "selected_routes": selected,
             },
             "uds": {

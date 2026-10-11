@@ -19,10 +19,10 @@
       hide-details
     />
     <v-select
-      v-model="filters.closure"
-      :items="closures"
+      v-model="filters.grade"
+      :items="grades"
       :item-title="item => $tr(item.title)"
-      :label="$tr('原料闭合')"
+      :label="$tr('核验等级')"
       density="compact"
       variant="outlined"
       hide-details
@@ -45,7 +45,7 @@
         Object.assign(filters, {
           query: '',
           engine: '',
-          closure: '',
+          grade: '',
           sort: 'rank',
         })
       "
@@ -56,6 +56,7 @@
 import { computed } from "vue";
 import { engineLabel } from "@/common/route-details";
 import { engineUiLabel } from "./route-ui-text";
+import { deliveryReviewLabels } from "@/common/delivery-review";
 const filters = defineModel({ type: Object, required: true });
 const props = defineProps({ candidates: { type: Array, default: () => [] } });
 const engines = computed(() => [
@@ -64,10 +65,9 @@ const engines = computed(() => [
     .filter(Boolean)
     .map((value) => ({ title: engineLabel(value), value })),
 ]);
-const closures = [
+const grades = [
   { title: "全部记录", value: "" },
-  { title: "库存闭合", value: "closed" },
-  { title: "未闭合", value: "open" },
+  ...Object.entries(deliveryReviewLabels).map(([value, title]) => ({ value, title })),
 ];
 const sorts = [
   { title: "综合排序", value: "rank" },

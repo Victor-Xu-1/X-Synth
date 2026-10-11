@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 from packages.route_schema.route_schema import RouteCandidate
+from .procurement_identity import procurement_identity_reason
 
 from .route_pruning import (
     projected_occurrences, pruning_plan, source_occurrences, source_path_digest,
@@ -46,6 +47,12 @@ class CommercialStockRegistry:
                 replace(decision, smiles=(decision.smiles or "").strip())
                 for decision in decisions
             ]
+        self._decisions = [
+            replace(decision, decision="ambiguous", reason=reason)
+            if decision.decision == "accepted" and (reason := procurement_identity_reason(decision.smiles))
+            else decision
+            for decision in self._decisions
+        ]
         self._decision_index: dict[str, list[EvidenceDecision]] = {}
         self._pruning_snapshot_cache = None
         for decision in self._decisions:

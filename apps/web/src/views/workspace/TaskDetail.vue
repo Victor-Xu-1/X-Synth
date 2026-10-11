@@ -17,6 +17,7 @@
           :class="taskStateClass(job.status)"
           >{{ taskStateLabel(job.status) }}</span
         >
+        <DeliveryReviewBadge v-if="job" :receipt="taskDeliveryReview(job)" />
       </div>
       <div class="page-actions">
         <v-btn
@@ -139,6 +140,8 @@ import { buildTaskSearchLocation } from "@/common/task-history-view";
 import { readTaskParameters } from "@/common/task-parameters";
 import { useTaskParameters } from "@/composables/useTaskParameters";
 import RouteReader from "@/components/routes/RouteReader.vue";
+import DeliveryReviewBadge from "@/components/routes/DeliveryReviewBadge.vue";
+import { taskDeliveryReview } from "@/common/delivery-review";
 import TaskInfoDialog from "@/components/workspace/TaskInfoDialog.vue";
 import TaskSearchProgress from "@/components/workspace/TaskSearchProgress.vue";
 const route = useRoute(),

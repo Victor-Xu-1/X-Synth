@@ -2,6 +2,8 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { API } from "@/common/api";
 import { priceContractResponse } from "@/common/route-price-test-data";
 import RouteMaterials from "./RouteMaterials.vue";
+import * as routeReading from "@/common/route-reading";
+import Papa from "papaparse";
 
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 jest.mock("@/components/SmilesImage.vue", () => ({ template: "<span />" }));
@@ -85,4 +87,20 @@ test("noncanonical materials use one batch lookup and the server receipt", async
   expect(API.post).toHaveBeenCalledTimes(1);
   expect(API.post).toHaveBeenCalledWith("/api/v1/stock/lookup", { smiles: ["OCC"] });
   expect(wrapper.text()).toContain("2.08 $/g");
+});
+
+test("the materials download keeps the owner's unresolved route receipt without a lookup", async () => {
+  const download = jest.spyOn(routeReading, "downloadRouteBlob").mockImplementation(() => {});
+  const wrapper = setup();
+  const smiles = "O=C([O-])[O-]";
+  const receipt = { version: 1, phase: "automated_review", basis: "route_receipt", grade: "purchase_form_unresolved",
+    independent_review: { status: "missing" }, purchase_identity: { policy: "defined_purchase_identity_v1",
+      status: "unresolved", unresolved_materials: [{ smiles, reason: "undefined_purchase_form" }] } };
+  try {
+    await wrapper.setProps({ deliveryReview: receipt, graph: { ...graph,
+      nodes: graph.nodes.map(node => node.id === "material" ? { ...node, smiles } : node) } });
+    await wrapper.findAll("button")[1].trigger("click");
+    expect(Papa.parse(download.mock.calls[0][0]).data[1]).toEqual(["原料", smiles, "步骤 1", "采购形式未明确"]);
+    expect(API.post).not.toHaveBeenCalled();
+  } finally { download.mockRestore(); }
 });

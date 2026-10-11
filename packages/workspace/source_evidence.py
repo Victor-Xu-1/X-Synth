@@ -35,3 +35,4 @@ class SourceEvidence(BaseModel):
     job_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     route_index: int = Field(default=0, strict=True, ge=0, le=9)
     result_snapshot: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    delivery_review: dict[str, Any] | None = None

@@ -65,6 +65,23 @@ def test_supplier_structure_and_claimed_inchikey_must_agree():
     assert supplier_record({**catalog_row(), "smiles": "C[*]"}) is None
 
 
+def test_sigma_product_path_and_sku_are_bound():
+    row = catalog_row()
+    assert supplier_record({**row, "catalog_id": "different-product"}) is None
+    assert supplier_record({**row, "url": "https://www.sigmaaldrich.com/US/en/product/aldrich/not-a-real-product"}) is None
+    assert supplier_record(catalog_row("Cl", "H3162", "7647-01-0") | {
+        "url": "https://www.sigmaaldrich.com/US/en/product/aldrich/h3162",
+    })["catalog_id"] == "H3162"
+
+
+def test_one_supplier_sku_cannot_establish_two_exact_structures(tmp_path):
+    output = tmp_path / "conflict-identity.sqlite"
+    with pytest.raises(StockIndexError, match="Conflicting catalog"):
+        compile_stock_index([catalog_row(), catalog_row(smiles="CCO")], output=output,
+                            source_id="unit-catalog", source_sha256="a" * 64)
+    assert not output.exists() and not output.with_name(output.name + ".building").exists()
+
+
 @pytest.mark.parametrize("size", [0, -1, True, 5001])
 def test_paging_cannot_disable_the_read_budget(tmp_path, size):
     base = snapshot(tmp_path / "base.sqlite", [catalog_row()])

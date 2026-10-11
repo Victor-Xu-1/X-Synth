@@ -18,6 +18,7 @@ from packages.adapters.stock.catalog_pricing import (
 )
 from packages.adapters.stock.stock_index import StockIndex
 from packages.adapters.stock.commercial_stock import canonicalize_smiles
+from packages.adapters.stock.procurement_identity import POLICY
 
 
 @pytest.mark.parametrize("value", [None])
@@ -205,6 +206,40 @@ def test_real_api_echoes_each_original_input_with_canonical_identity(
                 record["price"]["catalog_sha256"]
                 == real_index.summary["catalog_sha256"]
             )
+
+
+def test_real_undefined_ion_is_preserved_but_not_a_native_or_delivered_terminal(real_index):
+    from packages.adapters.askcos.catalog_pricer import CatalogPricer
+    from packages.adapters.stock.stock_index import IndexedCommercialStockRegistry
+    from packages.route_schema.route_schema import RouteCandidate, RouteStep
+
+    smiles = "O=C([O-])[O-]"
+    records = real_index.lookup(smiles)
+    assert records, "Acceptance needs the retained real carbonate record"
+    before = real_index.summary
+    result = priced_lookup({smiles: records}, before)
+    receipt = result["results"][smiles][0]["procurement"]
+    assert receipt == {"policy": POLICY, "status": "unresolved",
+                       "reason": "undefined_purchase_form", "eligible_for_closure": False}
+    assert {key: result["results"][smiles][0][key] for key in records[0]} == records[0]
+    assert CatalogPricer(real_index.path).lookup_smiles(smiles) is None
+    registry = IndexedCommercialStockRegistry(real_index)
+    assert not registry.is_buyable(smiles)
+    assert registry.rejected_reasons(smiles) == ["undefined_purchase_form"]
+    # A malformed native terminal flag cannot override the same real catalog decision.
+    route = RouteCandidate("identity-control", "askcos", "CCO", closed=True,
+        starting_materials=[smiles], steps=[RouteStep("s1", smiles + ">>CCO", [smiles], "CCO", "identity-control")])
+    outcome = registry.close_route_if_buyable(route)
+    assert outcome.closed is False and outcome.metadata["unclosed_precursors"] == [smiles]
+    assert route.closed is True and real_index.summary == before
+
+
+@pytest.mark.parametrize("smiles", [
+    "[Na+].[Na+].O=C([O-])[O-]", "[Cl-].C[N+](C)(C)C", "[NH3+]CC(=O)[O-]", "[13CH3]CO",
+])
+def test_complete_ionic_and_isotopic_identities_are_not_blanket_rejected(smiles):
+    from packages.adapters.stock.procurement_identity import procurement_identity_reason
+    assert procurement_identity_reason(smiles) is None
 
 
 if __name__ == "__main__":

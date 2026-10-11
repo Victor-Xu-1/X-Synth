@@ -126,7 +126,7 @@ import SmilesImage from "@/components/SmilesImage.vue";
 import MoleculeStockDialog from "./MoleculeStockDialog.vue";
 import SupplierPrice from "./SupplierPrice.vue";
 import { materialUiLabel, materialUsesUiText } from "./route-ui-text";
-const props = defineProps({ graph: Object, expectedSnapshot: String, generatedStepLabels: Boolean });
+const props = defineProps({ graph: Object, expectedSnapshot: String, generatedStepLabels: Boolean, deliveryReview: { default: null } });
 defineEmits(["select", "navigate"]);
 const rows = computed(() => materialRows(props.graph));
 const records = ref({}),
@@ -175,7 +175,7 @@ async function lookup() {
 }
 function exportCsv() {
   downloadRouteBlob(
-    "\uFEFF" + materialsCsv(rows.value),
+    "\uFEFF" + materialsCsv(rows.value, props.deliveryReview),
     "starting-materials.csv",
     "text/csv;charset=utf-8",
   );

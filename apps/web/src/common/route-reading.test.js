@@ -7,6 +7,8 @@ import {
   materialsCsv,
 } from "./route-reading";
 import { serialize, deserialize } from "node:v8";
+import Papa from "papaparse";
+import { setLocale } from "@/i18n";
 beforeAll(() => {
   global.structuredClone = (value) => deserialize(serialize(value));
 });
@@ -122,3 +124,30 @@ test("material CSV has chemistry identity and neutralizes spreadsheet formula pr
   expect(csv).toContain("[Na+].[Cl-]");
   expect(csv).not.toContain("采购数量");
 });
+
+test("material CSV carries the localized route receipt without changing scientific cells", () => {
+  const rows = [{ label: '原料, "raw"', smiles: "O=C([O-])[O-]", usedIn: ["步骤 1"] }];
+  const receipt = { version: 1, phase: "automated_review", basis: "route_receipt", grade: "purchase_form_unresolved",
+    independent_review: { status: "missing" }, purchase_identity: { policy: "defined_purchase_identity_v1",
+      status: "unresolved", unresolved_materials: [{ smiles: rows[0].smiles, reason: "undefined_purchase_form" }] } };
+  const before = JSON.stringify({ rows, receipt });
+  for (const [locale, headers, label] of [
+    ["en", ["Starting material", "Structure SMILES", "Used in steps", "Review grade"], "Purchase form unresolved"],
+    ["zh-CN", ["原料", "结构 SMILES", "使用步骤", "核验等级"], "采购形式未明确"],
+  ]) {
+    setLocale(locale, { persist: false });
+    expect(Papa.parse(materialsCsv(rows, receipt)).data).toEqual([headers,
+      [rows[0].label, rows[0].smiles, "步骤 1", label]]);
+  }
+  expect(JSON.stringify({ rows, receipt })).toBe(before);
+});
+
+test.each([undefined, null, { version: 99, grade: "model_checked" }, { full_forward_prediction_validated: true }])(
+  "CSV never turns an absent or unsupported receipt into certification: %j", (receipt) => {
+    setLocale("en", { persist: false });
+    const rows = [{ label: "raw", smiles: "[13CH3][C@H](O)C(=O)[O-].[Na+]", usedIn: ["original step"] }];
+    expect(Papa.parse(materialsCsv(rows, receipt)).data[1]).toEqual([
+      "raw", rows[0].smiles, "original step", "Not independently reviewed",
+    ]);
+  },
+);

@@ -185,6 +185,16 @@ governance. See [version operations](operations.md#版本管理).
   that same store. Metadata revisions are independent of worker revisions; they
   never rewrite scientific requests, execution states or checkpoints. Owner-filtered
   pages and counts use one SQLite read transaction without decoding large checkpoints.
+- Delivery-review projection has one workflow authority in
+  `packages/orchestrator/delivery_review.py`. Recognized producer receipts require
+  consistent models, record identifiers, step counts and support semantics; a
+  boolean success flag cannot certify a route. Read-time grades preserve archived
+  source data and distinguish missing review, model agreement and undefined purchase
+  identities, never experimentally proven feasibility. History uses stored policy
+  and counts without opening each route file. Preview/detail filters and JSON/PNG/CSV
+  exports consume that same receipt. Source copies retain server-owned receipts
+  only while chemical signatures are unchanged; layout-only edits preserve them,
+  chemistry edits invalidate them, and external imports cannot create them.
 - Search and final closure must use the same immutable stock snapshot. Snapshot
   identity is retained in the checkpoint and delivered result.
 - A CID, CAS, supplier name or Mongo internal ID alone is not commercial evidence.
@@ -344,10 +354,25 @@ for bounded monitoring, rather than scanning large template tables on each poll.
 Imports use one supplier-evidence authority. Missing prices, CAS and current
 stock remain unknown; a catalog record is not a live procurement confirmation.
 
+Catalog admission preserves explicit negative facts: test/demo roles, unavailable
+or non-purchasable entries cannot become terminals. Supported SKU/path bindings
+and declared InChIKeys must agree; compilation rejects a supplier SKU attributed
+to multiple exact structures. These are import consistency checks, not evidence
+that an arbitrary supplier page exists or that it presently offers the compound.
+The shared purchase-identity policy requires a complete electroneutral commodity,
+without guessing a missing counterion, normalizing salts or changing stereochemistry.
+Balanced salts and zwitterions remain eligible. Existing immutable rows stay readable;
+price responses carry a separate policy-bound procurement receipt. Defined chemical
+identity does not certify a solvent, concentration, purity or package. Native pricing
+and final closure apply the same policy, and its code is included in the native
+checkpoint fingerprint. Archival availability claims never rebind an old graph.
+
 Catalog composition streams existing immutable snapshots with bounded keyset
 reads and new supplier records through that same authority. Input files are never
 overwritten. Conflicting records require explicit resolution instead of silently
 keeping the first price; supplied InChIKeys must agree with the exact structure.
+The shared keyset iterator closes each bounded read before downstream molecular
+processing, so catalog-wide operations do not bypass lookup transaction deadlines.
 Verified small catalogs complement, rather than replace, the large stock corpus.
 
 Route documents retain repeated reactant input records on unique graph edges.

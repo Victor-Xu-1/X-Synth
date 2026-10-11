@@ -77,6 +77,21 @@ export function taskRouteCount(task) {
   return Number.isInteger(count) && count >= 0 ? count : null;
 }
 
+function executionSummary(value) {
+  const sources = [
+    [value.result?.unified_route_pool, "summary"],
+    [value.result, "stats"],
+    [value, "summary"],
+    [value, "unified_route_pool_summary"],
+  ];
+  for (const [source, key] of sources) {
+    // An explicit malformed summary clears evidence instead of borrowing another source.
+    if (isRecord(source) && Object.hasOwn(source, key))
+      return isRecord(source[key]) ? source[key] : {};
+  }
+  return undefined;
+}
+
 export function normalizeTaskInfo(task, response = {}) {
   task = task || {};
   const value = isRecord(response) ? response : {};
@@ -105,11 +120,8 @@ export function normalizeTaskInfo(task, response = {}) {
     : state === task.result_state
       ? task.modified
       : null;
-  const summary =
-    value.result?.unified_route_pool?.summary ||
-    value.result?.stats ||
-    value.summary ||
-    {};
+  const incomingSummary = executionSummary(value);
+  const summary = (stale ? undefined : incomingSummary) ?? executionSummary(task) ?? {};
   const routes = value.result?.unified_route_pool?.selected_routes;
   return {
     ...task,
@@ -135,10 +147,12 @@ export function normalizeTaskInfo(task, response = {}) {
       ? task.num_trees
       : (snapshot.num_trees ??
         snapshot.selected_route_count ??
-        summary.selected_route_count ??
+        incomingSummary?.selected_route_count ??
         (Array.isArray(routes) ? routes.length : task.num_trees)),
     settings: isRecord(value.settings) ? value.settings : task.settings || null,
     error_code: value.error_code ?? task.error_code,
+    unified_route_pool_summary: summary,
+    summary,
   };
 }
 

@@ -1,4 +1,8 @@
 export default [
+  ["未独立核验", "Not independently reviewed"],
+  ["模型已核验", "Model checked"],
+  ["采购形式未明确", "Purchase form unresolved"],
+  ["核验等级", "Review grade"],
   ["单步分析 · {model}", "One-step analysis · {model}"],
   ["关闭预览", "Close preview"], ["继续逆合成", "Continue retrosynthesis"], ["关闭候选", "Close candidates"],
   ["搜索候选", "Search candidates"], ["当前模型没有返回候选", "The current model returned no candidates"],

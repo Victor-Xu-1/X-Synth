@@ -69,11 +69,8 @@
       <strong>{{ labelFor(selectedChoice) }}</strong>
       <span>{{ $tr('总步数 {count}', { count: candidate.steps.length }) }}</span>
       <span>{{ $tr('最长线性步数 {value}', { value: linearSteps ?? $tr('未记录') }) }}</span>
-      <span
-        class="state-badge"
-        :class="{ success: candidate.closed === true, warning: candidate.closed === false }"
-        >{{ $tr(closureLabel(candidate)) }}</span
-      >
+      <DeliveryReviewBadge :receipt="candidate.metadata?.delivery_review" />
+      <span v-if="candidate.closed === false" class="workspace-muted">{{ $tr('未闭合') }}</span>
       <div class="page-actions">
         <v-menu
           ><template #activator="{ props }">
@@ -227,6 +224,7 @@
           :graph="sourceGraph"
           generated-step-labels
           :expected-snapshot="stockSnapshot"
+          :delivery-review="candidate.metadata?.delivery_review"
           @select="selectStepNode"
           @navigate="$emit('navigate')"
         />
@@ -276,7 +274,6 @@ import {
 import {
   candidateChoices,
   retainedRouteId,
-  closureLabel,
   longestLinearSteps,
 } from "@/common/route-details";
 import {
@@ -297,6 +294,7 @@ import RouteConditions from "./RouteConditions.vue";
 import RouteMaterials from "./RouteMaterials.vue";
 import RouteEvidencePanel from "./RouteEvidencePanel.vue";
 import RouteReviewSummary from "./RouteReviewSummary.vue";
+import DeliveryReviewBadge from "./DeliveryReviewBadge.vue";
 import { useRouteCatalogPrices } from "@/composables/useRouteCatalogPrices";
 const readerTools = [
   { value: "graph", label: "路线图", icon: "mdi-graph-outline" },
@@ -316,7 +314,7 @@ const props = defineProps({
 defineEmits(["edit", "navigate"]);
 const selectedId = defineModel("selectedRoute", { type: String, default: "" });
 const view = defineModel("view", { type: String, default: "overview" });
-const filters = ref({ query: "", engine: "", closure: "", sort: "rank" });
+const filters = ref({ query: "", engine: "", grade: "", sort: "rank" });
 const picked = ref([]),
   readingIds = ref([]),
   readerRoot = ref(null),
@@ -569,6 +567,7 @@ function exportJson() {
         routeDocumentPayload(
           `合成路线 ${labelFor(selectedChoice.value)}`,
           sourceGraph.value,
+          candidate.value.metadata?.delivery_review,
         ),
         null,
         2,
@@ -579,7 +578,7 @@ function exportJson() {
 }
 function exportMaterials() {
   downloadRouteBlob(
-    "\uFEFF" + materialsCsv(materialRows(sourceGraph.value)),
+    "\uFEFF" + materialsCsv(materialRows(sourceGraph.value), candidate.value?.metadata?.delivery_review),
     `${labelFor(selectedChoice.value)}-materials.csv`,
     "text/csv;charset=utf-8",
   );
@@ -593,7 +592,10 @@ async function exportPng() {
   exporting.value = true;
   exportError.value = "";
   try {
-    const image = await routeImage(graphView.value.element, value);
+    const surface = graphView.value.element;
+    const isCurrent = () => !disposed && current === generation && routeId === selectedId.value
+      && view.value === "graph" && sourceGraph.value === value && graphView.value?.element === surface;
+    const image = await routeImage(surface, value, candidate.value.metadata?.delivery_review, { isCurrent });
     if (!disposed && current === generation && routeId === selectedId.value) {
       const a = document.createElement("a");
       a.href = image;

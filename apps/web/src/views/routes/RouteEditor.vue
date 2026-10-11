@@ -40,7 +40,8 @@
               v-bind="props"
               prepend-icon="mdi-download"
               variant="text"
-              :disabled="!document || importing || applying"
+              :disabled="!document || importing || applying || exporting"
+              :loading="exporting"
               >{{ $tr('导出路线') }}</v-btn
             ></template
           ><v-list density="compact"
@@ -69,6 +70,7 @@
     </header>
     <div v-if="document" class="route-document-source">
       <span class="state-badge">{{ $tr(sourceStateLabel) }}</span>
+      <DeliveryReviewBadge :receipt="deliveryReview" />
       <router-link v-if="origin" :to="origin.to">
         {{ origin.label }} <v-icon icon="mdi-arrow-top-right" size="14" />
       </router-link>
@@ -238,6 +240,7 @@ import { useEditorInspectorFocus } from "@/composables/useEditorInspectorFocus";
 import { documentStepDetails } from "@/common/document-step-details";
 import { documentEditorLocation, documentLibraryLocation } from "@/common/document-library-view";
 import RouteGraph from "@/components/routes/RouteGraph.vue";
+import DeliveryReviewBadge from "@/components/routes/DeliveryReviewBadge.vue";
 import RouteInspector from "@/components/routes/RouteInspector.vue";
 import ExpandMolecule from "@/components/routes/ExpandMolecule.vue";
 import ManualReactionDialog from "@/components/routes/ManualReactionDialog.vue";
@@ -254,6 +257,7 @@ import {
   documentOrigin,
   documentPersistenceLabel,
   documentStateLabel,
+  documentDeliveryReview,
 } from "@/common/document-navigation";
 import {
   cleanGraph,
@@ -305,6 +309,7 @@ const initialDraftTitle = ref(uiText("未命名路线"));
 const canvas = ref(null),
   importing = ref(false),
   applying = ref(false),
+  exporting = ref(false),
   fileInput = ref(null),
   newTitle = ref(initialDraftTitle.value),
   newSmiles = ref(""),
@@ -400,6 +405,9 @@ const persistenceLabel = computed(() =>
 const sourceStateLabel = computed(() =>
   documentStateLabel(document.value, graph.value),
 );
+const deliveryReview = computed(() => documentDeliveryReview(document.value, graph.value));
+let imageGeneration = 0;
+watch([() => document.value?.id, graph, deliveryReview], () => { imageGeneration++; }, { deep: true, flush: "sync" });
 const origin = computed(() => documentOrigin(document.value));
 function runEditAction(action) {
   if (editingLocked.value || action.disabled) return;
@@ -606,22 +614,30 @@ function exportDocument() {
   if (!document.value || importing.value || applying.value) return;
   download(
     new Blob(
-      [JSON.stringify(routeDocumentPayload(title.value, graph.value), null, 2)],
+      [JSON.stringify(routeDocumentPayload(title.value, graph.value, deliveryReview.value), null, 2)],
       { type: "application/json" },
     ),
     "route.x-synth.json",
   );
 }
 async function exportImage() {
-  if (!document.value || importing.value || applying.value) return;
+  if (!document.value || importing.value || applying.value || exporting.value) return;
+  const current = imageGeneration, owner = document.value.id, surface = canvas.value.element;
+  const isCurrent = () => imageGeneration === current && document.value?.id === owner
+    && canvas.value?.element === surface;
+  exporting.value = true;
   try {
-    const url = await routeImage(canvas.value.element, graph.value);
+    const url = await routeImage(surface, graph.value, deliveryReview.value, { isCurrent });
+    if (!isCurrent()) return;
     const link = window.document.createElement("a");
     link.href = url;
     link.download = "route.png";
     link.click();
   } catch (e) {
-    error.value = routeExportErrorMessage(e, "图像导出失败，请确认结构图已加载。");
+    if (document.value?.id === owner)
+      error.value = routeExportErrorMessage(e, "图像导出失败，请确认结构图已加载。");
+  } finally {
+    exporting.value = false;
   }
 }
 async function importDocument(event) {
@@ -651,6 +667,7 @@ function beforeUnload(event) {
 }
 window.addEventListener("beforeunload", beforeUnload);
 onBeforeUnmount(() => {
+  imageGeneration++;
   documentNavigation.dispose();
   window.removeEventListener("beforeunload", beforeUnload);
 });

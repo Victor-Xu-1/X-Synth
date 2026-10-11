@@ -1,6 +1,7 @@
 import dagre from "@dagrejs/dagre";
 import { topologyFromCandidate } from "./route-graph.js";
 import { syntheticStepOrder } from "./synthetic-step-order";
+import { deliveryReviewGrade } from "./delivery-review";
 const list = (value) => (Array.isArray(value) ? value : []);
 const strings = (value) =>
   list(value).filter((item) => typeof item === "string" && item.trim());
@@ -57,14 +58,6 @@ export function engineLabel(engine) {
     (typeof engine === "string" && engine.trim() ? engine : "来源未记录")
   );
 }
-export function closureLabel(route) {
-  if (route?.metadata?.historical_unreviewed) return "历史未复核";
-  return route?.closed === true
-    ? "库存闭合"
-    : route?.closed === false
-      ? "未闭合"
-      : "闭合未记录";
-}
 export function confidenceText(value) {
   return finite(value) && value >= 0 && value <= 1
     ? value.toFixed(3)
@@ -72,7 +65,7 @@ export function confidenceText(value) {
 }
 export function candidateChoices(
   routes,
-  { query = "", engine = "", closure = "", sort = "rank" } = {},
+  { query = "", engine = "", grade = "", sort = "rank" } = {},
 ) {
   const search = query.trim().toLocaleLowerCase();
   const choices = list(routes).map((route, originalIndex) => ({
@@ -82,7 +75,7 @@ export function candidateChoices(
   }));
   const matching = choices.filter(({ route, originalIndex }) => {
     if (engine && route.engine !== engine) return false;
-    if (closure && route.closed !== (closure === "closed")) return false;
+    if (grade && deliveryReviewGrade(route.metadata?.delivery_review) !== grade) return false;
     const text = [
       String(originalIndex + 1),
       `R${originalIndex + 1}`,
@@ -248,11 +241,6 @@ export function forwardEvidence(candidate) {
       label:
         method === "native_template_reconstruction" ? "模板重构" : "验证记录",
       value: metadata.forward_validation_passed ? "通过" : "未通过",
-    });
-  if (typeof metadata.full_forward_prediction_validated === "boolean")
-    facts.push({
-      label: "独立正向预测",
-      value: metadata.full_forward_prediction_validated ? "已验证" : "未验证",
     });
   return [
     ...facts,

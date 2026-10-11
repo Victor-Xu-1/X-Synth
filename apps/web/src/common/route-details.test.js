@@ -13,7 +13,6 @@ import { graphFromCandidate } from "./route-graph";
 import dagre from "@dagrejs/dagre";
 import {
   candidateChoices,
-  closureLabel,
   confidenceText,
   engineLabel,
   forwardEvidence,
@@ -106,10 +105,8 @@ test("filter and sort preserve original indices and never mutate selected record
   expect(
     candidateChoices(routes, { engine: "askcos_mcts" })[0].originalIndex,
   ).toBe(1);
-  expect(candidateChoices(routes, { closure: "closed" })).toHaveLength(2);
-  expect(candidateChoices(routes, { closure: "open" })[0].route.route_id).toBe(
-    "branch",
-  );
+  expect(candidateChoices(routes, { grade: "not_independently_reviewed" })).toHaveLength(3);
+  expect(candidateChoices(routes, { grade: "model_checked" })).toHaveLength(0);
   expect(candidateChoices(routes, { query: "mcule" })).toHaveLength(3);
   expect(
     candidateChoices(routes, { query: "NCCc1ccccc1" })[0].originalIndex,
@@ -167,7 +164,7 @@ test("poll completion and UI sorting retain selection without resetting existing
   const filters = {
     query: "branch",
     engine: "askcos_mcts",
-    closure: "open",
+    grade: "not_independently_reviewed",
     sort: "steps",
   };
   const snapshot = JSON.stringify(filters);
@@ -188,6 +185,21 @@ test("poll completion and UI sorting retain selection without resetting existing
     candidate.route_id,
   );
   expect(retainedRouteId([], branch.route_id)).toBe("");
+});
+
+test("the review-grade filter follows procurement identity, never the archived closed flag", () => {
+  const legacy = { ...candidate, route_id: "legacy", closed: true };
+  const ion = { ...candidate, route_id: "ion", closed: true, metadata: { delivery_review: {
+    version: 1, phase: "automated_review", basis: "route_receipt", grade: "purchase_form_unresolved",
+    independent_review: { status: "missing" },
+    purchase_identity: { policy: "defined_purchase_identity_v1", status: "unresolved",
+      unresolved_materials: [{ smiles: "O=C([O-])[O-]", reason: "undefined_purchase_form" }] },
+  } } };
+  const routes = [legacy, ion], before = JSON.stringify(routes);
+  expect(candidateChoices(routes, { grade: "purchase_form_unresolved" }).map(item => item.route.route_id)).toEqual(["ion"]);
+  expect(candidateChoices(routes, { grade: "not_independently_reviewed" }).map(item => item.route.route_id)).toEqual(["legacy"]);
+  expect(candidateChoices(routes, { grade: "model_checked" })).toEqual([]);
+  expect(JSON.stringify(routes)).toBe(before);
 });
 test("unknown scores sort last while actual zero and negative scores remain valid records", () => {
   const routes = [
@@ -265,17 +277,12 @@ test("node options contain all branches and distinguish starting material from a
   );
   expect(choices.some((item) => /商购|可购买/.test(item.label))).toBe(false);
 });
-test("confidence is displayed as its own field and unknown closure stays unknown", () => {
+test("confidence is displayed as its own field without inferring closure", () => {
   expect(confidenceText(0)).toBe("0.000");
   expect(confidenceText(candidate.steps[0].confidence)).toBe("0.999");
   expect(confidenceText(0.87)).toBe("0.870");
   for (const value of [null, undefined, false, "0.8", Infinity, NaN, -1, 1.2])
     expect(confidenceText(value)).toBe("未记录");
-  expect(closureLabel({ closed: true })).toBe("库存闭合");
-  expect(closureLabel({ closed: "true" })).toBe("闭合未记录");
-  expect(
-    closureLabel({ closed: false, metadata: { historical_unreviewed: true } }),
-  ).toBe("历史未复核");
   expect(engineLabel(candidate.engine)).toBe("启发式搜索 · RetroStar");
   expect(engineLabel("unrecognized")).toBe("unrecognized");
   expect(stepDetails(branch, graph)[0].confidence).toBe("0.000");
@@ -331,10 +338,10 @@ test("template reconstruction does not imply independent forward prediction", ()
     expect.arrayContaining([
       { label: "验证方法", value: "模板重构一致性" },
       { label: "模板重构", value: "通过" },
-      { label: "独立正向预测", value: "未验证" },
     ]),
   );
   expect(forwardEvidence({ metadata: {} })).toEqual([]);
+  expect(forwardEvidence({ metadata: { full_forward_prediction_validated: true } })).toEqual([]);
   expect(
     forwardEvidence({ metadata: { forward_validation_passed: true } }),
   ).not.toEqual(

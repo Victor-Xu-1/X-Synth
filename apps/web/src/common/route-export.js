@@ -1,5 +1,7 @@
 import { toPng } from "html-to-image";
 import { ROUTE_NODE_SIZE, READING_NODE_SIZE } from "./route-graph";
+import { deliveryReviewGrade, deliveryReviewLabels } from "./delivery-review";
+import { uiText } from "@/i18n";
 
 class RouteExportError extends Error {}
 
@@ -83,18 +85,29 @@ export async function settledRouteImages(viewport, timeoutMs = 3000) {
   }
 }
 
-export async function routeImage(surface, graph) {
+export async function routeImage(surface, graph, deliveryReview = null, { isCurrent = () => true } = {}) {
   const viewport = surface.querySelector(".vue-flow__transformationpane");
+  const assertCurrent = () => {
+    if (!isCurrent() || !surface.isConnected || surface.querySelector(".vue-flow__transformationpane") !== viewport)
+      throw new RouteExportError("路线结构已变化，请重新导出。");
+  };
+  assertCurrent();
   const bounds = exportBounds(
     graph,
     surface.classList.contains("reading") ? READING_NODE_SIZE : ROUTE_NODE_SIZE,
   );
   await settledRouteImages(viewport);
+  assertCurrent();
   await document.fonts.ready;
+  assertCurrent();
   const background = getComputedStyle(surface)
     .getPropertyValue("--ws-bg")
     .trim();
-  return toPng(viewport, {
+  const gradeLabel = uiText(deliveryReviewLabels[deliveryReviewGrade(deliveryReview)]);
+  const headerHeight = 44;
+  if (bounds.height + headerHeight > 8192 || bounds.width * (bounds.height + headerHeight) > 16_000_000)
+    throw new RouteExportError("路线图超出图像导出尺寸，请使用路线 JSON。");
+  const diagram = await toPng(viewport, {
     backgroundColor: background,
     width: bounds.width,
     height: bounds.height,
@@ -108,4 +121,32 @@ export async function routeImage(surface, graph) {
       transform: `translate(${32 - bounds.x}px, ${32 - bounds.y}px) scale(1)`,
     },
   });
+  assertCurrent();
+  const image = new Image();
+  image.src = diagram;
+  let timer;
+  try {
+    await Promise.race([
+      image.decode(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new RouteExportError("路线图导出失败。")), 3000);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+  assertCurrent();
+  const canvas = document.createElement("canvas");
+  canvas.width = bounds.width;
+  canvas.height = bounds.height + headerHeight;
+  const context = canvas.getContext("2d");
+  if (!context) throw new RouteExportError("路线图导出失败。");
+  context.fillStyle = background || "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = getComputedStyle(surface).color;
+  context.font = "14px sans-serif";
+  context.fillText(gradeLabel, 16, 27, bounds.width - 32);
+  context.drawImage(image, 0, headerHeight);
+  assertCurrent();
+  return canvas.toDataURL("image/png");
 }

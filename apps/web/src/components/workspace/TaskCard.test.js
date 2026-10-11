@@ -62,7 +62,7 @@ const wrappers = [];
 function setup(props = {}) {
   const wrapper = mount(TaskCard, {
     props: { task: row, ...props },
-    global: { stubs },
+    global: { stubs: { ...stubs, VIcon: true } },
   });
   wrappers.push(wrapper);
   return wrapper;

@@ -32,6 +32,8 @@ NATIVE_EXTERNAL_FILES = (
     "packages/adapters/stock/commercial_stock.py",
     "packages/adapters/stock/route_pruning.py",
     "packages/adapters/stock/supplier_evidence.py",
+    "packages/adapters/stock/supplier_admission.py",
+    "packages/adapters/stock/procurement_identity.py",
     "packages/adapters/stock/stock_snapshot.py",
     "packages/adapters/stock/catalog_pricing.py",
     "packages/platform/immutable_sqlite.py",

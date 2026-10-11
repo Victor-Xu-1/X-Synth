@@ -44,3 +44,22 @@ test("wrong format and version cannot become imported route documents", () => {
   expect(() => parseRouteDocument("invalid")).toThrow();
   expect(MAX_ROUTE_FILE_BYTES).toBe(10485760);
 });
+
+test("JSON export retains the delivery receipt but import never inherits certification", () => {
+  const graph = graphFromCandidate({ target_smiles: "CCO", steps: [] });
+  const receipt = { version: 1, phase: "automated_review", grade: "not_independently_reviewed" };
+  const value = routeDocumentPayload("R001", graph, receipt);
+  expect(JSON.parse(JSON.stringify(value)).metadata.delivery_review).toEqual(receipt);
+  expect(parseRouteDocument(JSON.stringify(value))).toEqual({ title: "R001", graph: cleanGraph(graph) });
+  expect(routeDocumentPayload("R001", graph).metadata.delivery_review).toBeNull();
+});
+
+test("an imported JSON model grade cannot authorize a new document", () => {
+  const graph = graphFromCandidate({ target_smiles: "CCO", steps: [] });
+  const receipt = { version: 1, phase: "automated_review", basis: "route_receipt", grade: "model_checked",
+    independent_review: { status: "checked", review_version: 1, model: "graph2smiles_uspto_stereo", matched_steps: 1, total_steps: 1 },
+    purchase_identity: { policy: "defined_purchase_identity_v1", status: "defined", unresolved_materials: [] } };
+  const parsed = parseRouteDocument(JSON.stringify({ ...routeDocumentPayload("Raw", graph, receipt),
+    state: "source_copy", source: { delivery_review: receipt } }));
+  expect(parsed).toEqual({ title: "Raw", graph: cleanGraph(graph) });
+});

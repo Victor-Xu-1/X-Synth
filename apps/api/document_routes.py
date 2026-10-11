@@ -87,6 +87,7 @@ def document_router(*, documents, repository, transport, artifacts, budget):
             graph, source = graph_from_candidate(
                 candidates[body.route_index], max_atoms=budget.max_structure_atoms
             )
+            source["delivery_review"] = candidates[body.route_index]["metadata"]["delivery_review"]
         except (ValueError, TypeError, KeyError, OSError) as exc:
             raise HTTPException(
                 409, "任务路线数据无效或不可用，无法创建路线文档。"
