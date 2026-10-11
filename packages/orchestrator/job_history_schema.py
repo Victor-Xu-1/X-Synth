@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import json
 import math
+import time
+from contextlib import contextmanager
+
+from packages.platform.leader_lock import LeaderLock
 
 __all__ = [
     "ARCHIVABLE_STATES",
@@ -13,12 +17,31 @@ __all__ = [
     "TERMINAL_STATES",
     "HistorySchemaError",
     "initialize_schema",
+    "schema_initialization",
     "progress_projection",
 ]
 
 
 class HistorySchemaError(RuntimeError):
     """The stored schema or legacy records cannot be safely migrated."""
+
+
+@contextmanager
+def schema_initialization(path, *, timeout_seconds=5.0):
+    """Serialize connection setup before WAL switching and the migration transaction."""
+    if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+        raise ValueError("Database initialization requires a finite positive wait")
+    lock = LeaderLock(path.with_suffix(".schema.lock"))
+    deadline = time.monotonic() + timeout_seconds
+    try:
+        while not lock.acquire():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise HistorySchemaError("Job database initialization is busy")
+            time.sleep(min(0.01, remaining))
+        yield
+    finally:
+        lock.close()
 
 
 TERMINAL_STATES = frozenset(

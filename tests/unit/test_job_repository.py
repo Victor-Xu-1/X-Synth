@@ -214,3 +214,69 @@ def test_concurrent_repository_open_runs_schema_upgrade_only_once(tmp_path):
         assert [
             row[0] for row in connection.execute("SELECT version FROM schema_version")
         ] == [2]
+
+
+def test_repository_initialization_waits_for_the_schema_owner(tmp_path):
+    from concurrent.futures import TimeoutError
+    from threading import Event
+    from packages.platform.leader_lock import LeaderLock
+
+    path = tmp_path / "jobs.sqlite"
+    schema_one_database(path)
+    started = Event()
+    lock = LeaderLock(path.with_suffix(".schema.lock"))
+    assert lock.acquire()
+    def initialize():
+        started.set()
+        return JobRepository(path)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(initialize)
+            assert started.wait(2)
+            try:
+                with pytest.raises(TimeoutError):
+                    future.result(timeout=0.2)
+            finally:
+                lock.close()
+            assert future.result(timeout=5).get("archived")["status"] == "cancelled"
+    finally:
+        if not lock.stream.closed:
+            lock.close()
+
+
+def test_schema_initialization_contention_is_bounded_and_does_not_change_data(tmp_path):
+    from packages.orchestrator.job_history_schema import HistorySchemaError, schema_initialization
+    from packages.platform.leader_lock import LeaderLock
+
+    path = tmp_path / "jobs.sqlite"
+    schema_one_database(path)
+    before = path.read_bytes()
+    lock = LeaderLock(path.with_suffix(".schema.lock"))
+    assert lock.acquire()
+    try:
+        with pytest.raises(HistorySchemaError, match="initialization is busy"):
+            with schema_initialization(path, timeout_seconds=0.05):
+                pytest.fail("Another initialization owner cannot be bypassed")
+    finally:
+        lock.close()
+    assert path.read_bytes() == before
+    assert JobRepository(path).get("archived")["status"] == "cancelled"
+
+
+def test_separate_processes_initialize_one_database_without_migration_races(tmp_path):
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    path = tmp_path / "jobs.sqlite"
+    schema_one_database(path)
+    code = "from packages.orchestrator.job_repository import JobRepository; import sys; print(JobRepository(sys.argv[1]).get('archived')['status'])"
+    environment = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2])}
+    def initialize(_):
+        return subprocess.run([sys.executable, "-c", code, str(path)], env=environment,
+                              capture_output=True, text=True, check=True, timeout=15).stdout.strip()
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        assert list(pool.map(initialize, range(3))) == ["cancelled"] * 3
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("SELECT version FROM schema_version").fetchall() == [(2,)]
