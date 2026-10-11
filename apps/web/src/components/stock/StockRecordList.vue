@@ -8,6 +8,7 @@
           <dt>{{ $tr('交期（目录）') }}</dt><dd class="stock-lead-time">{{ row.lead_time?.trim() || $tr('未记录') }}</dd></dl>
       </div>
       <div class="stock-record-price">
+        <ProcurementStatus :record="row" :snapshot="result.snapshot" :smiles="result.smiles" compact />
         <span class="stock-field-label">{{ $tr('目录价格基准') }}</span>
         <SupplierPrice :record="row" :snapshot="result.snapshot" :smiles="result.smiles" compact />
       </div>
@@ -27,6 +28,7 @@
 
 <script setup>
 import SupplierPrice from "@/components/routes/SupplierPrice.vue";
+import ProcurementStatus from "./ProcurementStatus.vue";
 import { safeExternalUrl } from "@/common/external-url";
 defineProps({ result: { type: Object, required: true } });
 defineEmits(["select"]);

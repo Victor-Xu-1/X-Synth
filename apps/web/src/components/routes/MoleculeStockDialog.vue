@@ -56,6 +56,7 @@
               >{{ $tr('供应商目录') }}<v-icon icon="mdi-open-in-new" size="14"
             /></a>
           </header>
+          <ProcurementStatus class="stock-node-procurement" :record="row" :snapshot="snapshot" :smiles="canonicalSmiles" />
           <dl>
             <div>
               <dt>{{ $tr('目录号') }}</dt>
@@ -100,6 +101,7 @@ import { catalogRecordsForInputs } from "@/common/route-price";
 import { errorMessage } from "@/common/workspace-errors";
 import SmilesImage from "@/components/SmilesImage.vue";
 import SupplierPrice from "./SupplierPrice.vue";
+import ProcurementStatus from "@/components/stock/ProcurementStatus.vue";
 const open = defineModel({ type: Boolean, default: false });
 const props = defineProps({ smiles: String, expectedSnapshot: String });
 defineEmits(["navigate"]);
@@ -194,6 +196,9 @@ h2 {
 }
 .stock-node-record header {
   font-size: 13px;
+}
+.stock-node-procurement {
+  margin-top: 10px;
 }
 dl {
   display: grid;

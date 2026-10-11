@@ -3,6 +3,7 @@ import StockEvidence from "./StockEvidence.vue";
 import StockRecordList from "./StockRecordList.vue";
 import { priceContractRecord } from "@/common/route-price-test-data";
 import StructurePreview from "@/components/workspace/StructurePreview.vue";
+import { initializeLocale, setLocale } from "@/i18n";
 
 jest.mock("@/components/workspace/StructurePreview.vue", () => ({
   name: "StructurePreview", props: ["smiles", "label"], template: '<div class="evidence-structure">{{ smiles }}</div>',
@@ -85,4 +86,43 @@ test("no-match evidence retains its confirmed query drawing without a supplier o
   expect(wrapper.find(".stock-supplier-evidence").exists()).toBe(false);
   expect(wrapper.find(".supplier-price").exists()).toBe(false);
   wrapper.unmount();
+});
+
+test("selected record evidence shows the same bound procurement limit in both languages while retaining catalog and price data", async () => {
+  initializeLocale(null);
+  const record = { ...priceContractRecord(), cas: "64-17-5", url: "https://example.org/catalogue", procurement: {
+    policy: "defined_purchase_identity_v1", status: "unresolved", reason: "undefined_purchase_form", eligible_for_closure: false,
+  } };
+  const input = result([record]), before = JSON.stringify(input);
+  const wrapper = mount(StockEvidence, { props: { result: input, record, snapshotMatches: false }, global: { stubs } });
+  try {
+    expect(wrapper.get("[data-procurement-status]").attributes("data-procurement-status")).toBe("unresolved");
+    expect(wrapper.text()).toContain("Complete purchase form not recorded");
+    expect(wrapper.text()).toContain("Not a confirmed commercial starting material");
+    expect(wrapper.text()).toContain("do not establish live supply, purity or experimental usability");
+    setLocale("zh-CN", { persist: false }); await wrapper.vm.$nextTick();
+    expect(wrapper.text()).toContain("完整采购形式未记录");
+    expect(wrapper.text()).toContain("不能作为已确认商购原料");
+    expect(wrapper.text()).toContain(record.cas);
+    expect(wrapper.text()).toContain(record.catalog_id);
+    expect(wrapper.text()).toContain("2.08 $/g");
+    expect(wrapper.get("a.catalog-link").attributes("href")).toBe(record.url);
+    expect(JSON.stringify(input)).toBe(before);
+  } finally { wrapper.unmount(); }
+});
+
+test("switching evidence context makes a supplied decision invalid rather than reusing the selected record's certainty", async () => {
+  const record = { ...priceContractRecord(), procurement: {
+    policy: "defined_purchase_identity_v1", status: "defined", reason: null, eligible_for_closure: true,
+  } };
+  const input = result([record]);
+  const wrapper = mount(StockEvidence, { props: { result: input, record }, global: { stubs } });
+  try {
+    expect(wrapper.get("[data-procurement-status]").attributes("data-procurement-status")).toBe("defined");
+    await wrapper.setProps({ result: { ...input, snapshot: expectedSnapshot } });
+    expect(wrapper.get("[data-procurement-status]").attributes("data-procurement-status")).toBe("invalid");
+    expect(wrapper.find(".procurement-material-limit").exists()).toBe(false);
+    await wrapper.setProps({ record: null });
+    expect(wrapper.find("[data-procurement-status]").exists()).toBe(false);
+  } finally { wrapper.unmount(); }
 });

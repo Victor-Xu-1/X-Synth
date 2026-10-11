@@ -77,6 +77,12 @@
                   <strong>{{ record.source }}</strong
                   ><span>{{ record.catalog_id || $tr('目录号未记录') }}</span>
                   <span v-if="record.cas">CAS {{ record.cas }}</span>
+                  <ProcurementStatus
+                    :record="record"
+                    :snapshot="snapshot"
+                    :smiles="canonicalSmiles[row.smiles]"
+                    compact
+                  />
                   <SupplierPrice
                     :record="record"
                     :snapshot="snapshot"
@@ -132,6 +138,7 @@ import { purchaseFormPresentation } from "@/common/delivery-review";
 import SmilesImage from "@/components/SmilesImage.vue";
 import MoleculeStockDialog from "./MoleculeStockDialog.vue";
 import SupplierPrice from "./SupplierPrice.vue";
+import ProcurementStatus from "@/components/stock/ProcurementStatus.vue";
 import { materialUiLabel, materialUsesUiText, materialCsvRows } from "./route-ui-text";
 const props = defineProps({ graph: Object, expectedSnapshot: String, generatedStepLabels: Boolean, deliveryReview: { default: null } });
 defineEmits(["select", "navigate"]);

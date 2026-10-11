@@ -5,6 +5,7 @@
         :width="560" :height="180" data-cy="stock-evidence-structure" />
       <section v-if="record" class="stock-supplier-evidence" :aria-label="$tr('选中供应商目录证据')">
         <h3>{{ record.source || $tr('供应商未记录') }}</h3>
+        <ProcurementStatus class="stock-evidence-procurement" :record="record" :snapshot="result.snapshot" :smiles="result.smiles" />
         <dl class="stock-evidence-fields">
           <dt>{{ $tr('目录号') }}</dt><dd class="workspace-code">{{ record.catalog_id || $tr('未记录') }}</dd>
           <dt>CAS</dt><dd>{{ record.cas || $tr('未记录') }}</dd>
@@ -40,6 +41,7 @@
 
 <script setup>
 import SupplierPrice from "@/components/routes/SupplierPrice.vue";
+import ProcurementStatus from "./ProcurementStatus.vue";
 import StructurePreview from "@/components/workspace/StructurePreview.vue";
 import { safeExternalUrl } from "@/common/external-url";
 defineProps({ result: { type: Object, required: true }, record: { type: Object, default: null }, snapshotMatches: { type: Boolean, default: null } });
@@ -50,6 +52,7 @@ defineProps({ result: { type: Object, required: true }, record: { type: Object, 
 .stock-evidence-overview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
 .stock-evidence-overview > * { min-width: 0; }
 .stock-evidence h3 { font-size: 14px; margin: 0 0 16px; overflow-wrap: anywhere; }
+.stock-evidence-procurement { margin-bottom: 16px; }
 .stock-evidence-fields { display: grid; grid-template-columns: minmax(90px, 150px) minmax(0, 1fr); gap: 10px 16px; margin: 0; font-size: 13px; }
 .stock-evidence-fields dt { color: var(--ws-muted); }
 .stock-evidence-fields dd { margin: 0; overflow-wrap: anywhere; }

@@ -70,6 +70,8 @@ export default [
   ["快照比较", "Snapshot comparison"], ["与任务快照一致", "Matches the task snapshot"],
   ["快照不同：当前目录记录不属于原任务快照", "Snapshot mismatch: these catalogue records are not from the original task snapshot"],
   ["选中供应商目录证据", "Selected supplier catalogue evidence"], ["供应商未记录", "Supplier not recorded"],
+  ["采购依据无效", "Procurement evidence invalid"], ["不能作为已确认商购原料", "Not a confirmed commercial starting material"],
+  ["目录记录不代表实时供货、纯度或实验可用性。", "Catalogue records do not establish live supply, purity or experimental usability."],
   ["交期（目录）", "Lead time (catalogue)"], ["目录页", "Catalogue page"], ["查看原目录", "View original catalogue"],
   ["交期来自目录快照，非实时供货承诺。价格与缺失字段保持原目录依据，不代表采购资格或实验可用性。", "Lead time comes from the catalogue snapshot, not a live supply guarantee. Prices and missing fields retain the original catalogue basis; they do not establish procurement eligibility or experimental usability."],
   ["未选择供应商目录记录", "No supplier catalogue record selected"],
