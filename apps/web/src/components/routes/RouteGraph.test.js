@@ -7,18 +7,21 @@ Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID });
 
 const mockFitView = jest.fn();
 const mockResize = jest.fn();
+const mockFindNode = jest.fn();
+const mockZoomIn = jest.fn(), mockZoomOut = jest.fn();
 jest.mock("@vueuse/core", () => ({ useResizeObserver: (...args) => mockResize(...args) }));
 jest.mock("@vue-flow/core", () => ({
   VueFlow: {
     name: "VueFlow",
     props: ["nodes", "edges", "minZoom"],
-    emits: ["node-drag-stop", "connect", "node-click", "nodes-initialized"],
+    emits: ["node-drag-stop", "nodes-change", "move-start", "connect", "node-click", "nodes-initialized"],
     template: '<div><div v-for="node in nodes" :key="node.id" @click="$emit(\'node-click\', { node, event: $event })"><slot :name="\'node-\' + node.type" :data="node.data" :selected="node.selected" /></div><slot /></div>',
   },
   useVueFlow: () => ({
     fitView: mockFitView,
-    zoomIn: jest.fn(),
-    zoomOut: jest.fn(),
+    zoomIn: mockZoomIn,
+    zoomOut: mockZoomOut,
+    findNode: (...args) => mockFindNode(...args),
   }),
   MarkerType: { ArrowClosed: "arrowclosed" },
   Handle: { template: "<span />" },
@@ -42,7 +45,53 @@ function setup(graph, editable = false) {
   return wrapper;
 }
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
-beforeEach(() => { mockFitView.mockClear(); mockResize.mockClear(); });
+beforeEach(() => { mockFitView.mockReset(); mockResize.mockClear(); mockFindNode.mockReset(); mockZoomIn.mockReset(); mockZoomOut.mockReset(); });
+
+test("native keyboard position changes commit once without mutating the source graph", async () => {
+  const graph = { target_id: "m", nodes: [{ id: "m", type: "molecule", position: { x: 20, y: 20 } }], edges: [] };
+  const wrapper = setup(graph, true), flow = wrapper.getComponent({ name: "VueFlow" });
+  const position = { x: 25, y: 20 };
+  flow.vm.$emit("nodes-change", [{ id: "m", type: "position", dragging: false, from: { x: 20, y: 20 }, position }]);
+  await flushPromises();
+  expect(wrapper.emitted("update:graph")).toHaveLength(1);
+  const next = wrapper.emitted("update:graph")[0][0];
+  expect(next.nodes[0].position).toEqual(position);
+  position.x = 999;
+  expect(next.nodes[0].position.x).toBe(25);
+  expect(graph.nodes[0].position).toEqual({ x: 20, y: 20 });
+  await wrapper.setProps({ graph: next });
+  flow.vm.$emit("nodes-change", [{ id: "m", type: "position", dragging: false, position: next.nodes[0].position }]);
+  expect(wrapper.emitted("update:graph")).toHaveLength(1);
+});
+
+test("pointer movement commits the complete moved selection only at native drag completion", async () => {
+  const graph = { target_id: "m", nodes: [
+    { id: "m", type: "molecule", position: { x: 20, y: 20 } },
+    { id: "r", type: "reaction", position: { x: 50, y: 20 } },
+  ], edges: [] };
+  const wrapper = setup(graph, true), flow = wrapper.getComponent({ name: "VueFlow" });
+  flow.vm.$emit("nodes-change", [{ id: "m", type: "position", dragging: true, position: { x: 30, y: 20 } }]);
+  expect(wrapper.emitted("update:graph")).toBeUndefined();
+  mockFindNode.mockImplementation(id => ({ position: { x: id === "m" ? 30 : 60, y: 25 } }));
+  flow.vm.$emit("nodes-change", graph.nodes.map(node => ({ id: node.id, type: "position", dragging: false, from: node.position })));
+  flow.vm.$emit("node-drag-stop", { node: { id: "m", position: { x: 30, y: 25 } } });
+  expect(wrapper.emitted("update:graph")).toHaveLength(1);
+  expect(wrapper.emitted("update:graph")[0][0].nodes.map(node => node.position)).toEqual([{ x: 30, y: 25 }, { x: 60, y: 25 }]);
+});
+
+test("read-only, stale, invalid and non-position changes cannot enter graph history", async () => {
+  const graph = { target_id: "m", nodes: [{ id: "m", type: "molecule", position: { x: 20, y: 20 } }], edges: [] };
+  const wrapper = setup(graph), flow = wrapper.getComponent({ name: "VueFlow" });
+  const valid = { id: "m", type: "position", dragging: false, position: { x: 25, y: 20 } };
+  flow.vm.$emit("nodes-change", [valid]);
+  expect(wrapper.emitted("update:graph")).toBeUndefined();
+  await wrapper.setProps({ editable: true });
+  flow.vm.$emit("nodes-change", [
+    { ...valid, type: "dimensions" }, { ...valid, dragging: true }, { ...valid, id: "missing" },
+    { ...valid, position: { x: Infinity, y: 20 } }, { ...valid, from: { x: 100, y: 200 } },
+  ]);
+  expect(wrapper.emitted("update:graph")).toBeUndefined();
+});
 
 test("optional toolbar keeps viewport actions outside the molecule pan-and-zoom surface", async () => {
   const wrapper = setup({ target_id: "target", nodes: [{ id: "target", type: "molecule", position: { x: 20, y: 20 } }], edges: [] });
@@ -155,6 +204,56 @@ test("an explicit step focus wins over a coalesced reveal and survives resize un
   await wrapper.vm.fit();
   expect(mockFitView).toHaveBeenLastCalledWith({ padding: 0.12, maxZoom: 1.25, duration: 0 });
   expect(wrapper.emitted("update:graph")).toBeUndefined();
+});
+
+test("a resize completing the same focus settles an interrupted native animation", async () => {
+  const graph = { target_id: "m", nodes: [{ id: "m", type: "molecule", position: { x: 20, y: 20 } }], edges: [] };
+  const wrapper = setup(graph), bounds = { width: 800, height: 400 };
+  jest.spyOn(wrapper.element, 'getBoundingClientRect').mockImplementation(() => bounds);
+  await flushPromises();
+  mockFitView.mockReturnValueOnce(new Promise(() => {}));
+  let completed = false;
+  const focus = wrapper.vm.focus(['m'], { padding: 0.45, maxZoom: 1, duration: 150 });
+  focus.then(() => { completed = true; }); await flushPromises();
+  mockFitView.mockResolvedValueOnce(true);
+  bounds.width = 900;
+  mockResize.mock.calls[0][1]([{ contentRect: { ...bounds } }]); await flushPromises();
+  expect(completed).toBe(true);
+  expect(mockFitView).toHaveBeenLastCalledWith({ nodes: ['m'], padding: 0.45, maxZoom: 1, duration: 0 });
+});
+
+test("explicit replacement and disposal release stale camera waiters", async () => {
+  const graph = { target_id: "m", nodes: [{ id: "m", type: "molecule", position: { x: 20, y: 20 } }], edges: [] };
+  const wrapper = setup(graph);
+  jest.spyOn(wrapper.element, 'getBoundingClientRect').mockReturnValue({ width: 800, height: 400 });
+  await flushPromises();
+  mockFitView.mockReturnValueOnce(new Promise(() => {}));
+  let first;
+  wrapper.vm.focus(['m'], { duration: 150 }).then(value => { first = value; }); await flushPromises();
+  mockFitView.mockResolvedValueOnce(true);
+  await wrapper.vm.fit(); await flushPromises(); expect(first).toBe(false);
+  mockFitView.mockReturnValueOnce(new Promise(() => {}));
+  let last;
+  wrapper.vm.focus(['m'], { duration: 150 }).then(value => { last = value; }); await flushPromises();
+  wrapper.unmount(); await flushPromises(); expect(last).toBe(false);
+});
+
+test.each(['wheel', 'zoom in', 'zoom out'])("native %s retires Locate before a later resize", async action => {
+  const graph = { target_id: "m", nodes: [{ id: "m", type: "molecule", position: { x: 20, y: 20 } }], edges: [] };
+  const wrapper = setup(graph), bounds = { width: 800, height: 400 };
+  jest.spyOn(wrapper.element, 'getBoundingClientRect').mockImplementation(() => bounds);
+  await flushPromises();
+  mockFitView.mockReturnValueOnce(new Promise(() => {}));
+  let result;
+  wrapper.vm.focus(['m'], { duration: 150 }).then(value => { result = value; }); await flushPromises();
+  if (action === 'wheel') wrapper.getComponent({ name: 'VueFlow' }).vm.$emit('move-start', { event: new WheelEvent('wheel') });
+  else await wrapper.findAll('.route-viewport-controls button')[action === 'zoom in' ? 0 : 1].trigger('click');
+  await flushPromises(); expect(result).toBe(false);
+  if (action !== 'wheel') expect(action === 'zoom in' ? mockZoomIn : mockZoomOut).toHaveBeenCalledTimes(1);
+  mockFitView.mockResolvedValueOnce(true);
+  bounds.width = 900; mockResize.mock.calls[0][1]([{ contentRect: { ...bounds } }]); await flushPromises();
+  expect(result).toBe(false);
+  expect(mockFitView).toHaveBeenLastCalledWith({ padding: 0.12, maxZoom: 1.25, duration: 0 });
 });
 
 test.each(["overview", "reading", "editable"])(

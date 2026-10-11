@@ -65,8 +65,8 @@ export function useDocumentReading(open, record) {
     const request = pendingLocation;
     if (!request || !graphReady.value || view.value !== "graph" || !current(request.epoch, request.id)) return;
     pendingLocation = null;
-    await graphView.value?.focus([request.id], { padding: 0.45, maxZoom: 1, duration: 150 });
-    if (!current(request.epoch, request.id) || !request.keyboard) return;
+    const applied = await graphView.value?.focus([request.id], { padding: 0.45, maxZoom: 1, duration: 150 });
+    if (applied === false || !current(request.epoch, request.id) || !request.keyboard) return;
     const element = [...(graphView.value?.$el?.querySelectorAll('.vue-flow__node[data-id]') || [])].find(value => value.dataset.id === request.id);
     (element?.querySelector("button") || element)?.focus({ preventScroll: true });
   }

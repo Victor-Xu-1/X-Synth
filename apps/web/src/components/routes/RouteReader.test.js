@@ -14,6 +14,7 @@ Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID });
 globalThis.structuredClone = (value) => deserialize(serialize(value));
 
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
+jest.mock("@/store/workspace", () => ({ useWorkspaceStore: () => ({ can: () => false }) }));
 jest.mock("@vueuse/core", () => ({ useResizeObserver: jest.fn() }));
 const mockFocus = jest.fn();
 jest.mock("./RouteGraph.vue", () => ({
@@ -21,18 +22,10 @@ jest.mock("./RouteGraph.vue", () => ({
   props: ["graph", "scores", "overview", "editable"],
   emits: ["select"],
   methods: { fit() {}, focus: (...args) => mockFocus(...args) },
-  template: '<div class="graph-contract" />',
+  template: '<div class="graph-contract"><div v-for="node in graph.nodes" :key="node.id" class="vue-flow__node" :data-id="node.id" tabindex="0"><button class="graph-entry" /></div></div>',
 }));
 jest.mock("./RouteInspector.vue", () => ({
   name: "RouteInspector",
-  template: "<div />",
-}));
-jest.mock("./RouteConditions.vue", () => ({
-  name: "RouteConditions",
-  template: "<div />",
-}));
-jest.mock("./RouteMaterials.vue", () => ({
-  name: "RouteMaterials",
   template: "<div />",
 }));
 jest.mock("@/components/SmilesImage.vue", () => ({
@@ -69,6 +62,9 @@ const stubs = {
   RouteMaterials: true,
   RouteInspector: true,
   RouteEvidencePanel: true,
+  ReactionReferences: true,
+  RouteConditionDialog: true,
+  MoleculeStockDialog: true,
 };
 const wrappers = [], scrollFrames = [];
 function scrollFrame(className = "workspace-page") {
@@ -80,7 +76,7 @@ function scrollFrame(className = "workspace-page") {
   return frame;
 }
 let layout;
-async function setup(candidates, props = {}, lazyVisible = true, attached = false) {
+async function setup(candidates, props = {}, lazyVisible = true, attached = false, entryStubs = {}) {
   const wrapper = mount(RouteReader, {
     props: { candidates, canEdit: true, ...props },
     attachTo: attached === true ? document.body : attached || undefined,
@@ -88,6 +84,7 @@ async function setup(candidates, props = {}, lazyVisible = true, attached = fals
       stubs: {
         ...stubs,
         VLazy: lazyVisible ? stubs.VLazy : { template: "<div />" },
+        ...entryStubs,
       },
     },
   });
@@ -107,6 +104,7 @@ const candidate = (id, target = "CCO") => ({
 });
 beforeEach(() => {
   jest.clearAllMocks();
+  mockFocus.mockReset();
   API.post.mockRejectedValue(new Error("catalog unavailable"));
   layout = jest.spyOn(dagre, "layout");
 });
@@ -365,7 +363,155 @@ describe("inspector activation focus", () => {
     expect(document.activeElement).toBe(button);
   });
 
-  test.each([390, 1440])("Locate at %ipx changes only the graph viewport, not DOM focus", async (width) => {
+  test.each([390, 1440])("keyboard Locate at %ipx transfers the removed entry's focus to its graph node", async (width) => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+    const route = candidate("native-a"), before = JSON.stringify(route);
+    const wrapper = await setup([route], { view: "steps" }, true, true);
+    const origin = wrapper.get('button[aria-label="定位步骤 1"]');
+    origin.element.focus();
+    origin.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+    await flushPromises();
+    expect(origin.element.isConnected).toBe(false);
+    expect(document.activeElement === wrapper.get('.vue-flow__node[data-id="r-1"] button').element).toBe(true);
+    expect(mockFocus).toHaveBeenCalledWith(["r-1"], { padding: 0.45, maxZoom: 1, duration: 150 });
+    expect(JSON.stringify(route)).toBe(before);
+  });
+
+  test("keyboard Locate waits for its camera and does not override a newer focus choice", async () => {
+    const frame = scrollFrame(), outside = document.createElement("button");
+    frame.appendChild(outside);
+    const wrapper = await setup([candidate("native-a")], { view: "steps" }, true, frame);
+    let finish;
+    mockFocus.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const origin = wrapper.get('button[aria-label="定位步骤 1"]');
+    origin.element.focus();
+    origin.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+    await flushPromises();
+    expect(document.activeElement).not.toBe(wrapper.get('.vue-flow__node[data-id="r-1"] button').element);
+    outside.focus();
+    finish(); await flushPromises();
+    expect(document.activeElement).toBe(outside);
+  });
+
+  test.each(["pointer Locate", "view round trip"])("a delayed keyboard Locate cannot regain ownership after %s", async (change) => {
+    const wrapper = await setup([candidate("native-a")], { view: "steps" }, true, true);
+    let finish;
+    mockFocus.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const origin = wrapper.get('button[aria-label="定位步骤 1"]');
+    origin.element.focus();
+    origin.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+    await flushPromises();
+    if (change === "pointer Locate") await wrapper.vm.locateNode("r-1", new MouseEvent("click", { detail: 1 }));
+    else {
+      await wrapper.get('.reader-tool-rail button[aria-label="步骤"]').trigger("click");
+      expect(wrapper.findComponent({ name: "RouteStepList" }).exists()).toBe(true);
+      await wrapper.get('.reader-tool-rail button[aria-label="路线图"]').trigger("click");
+    }
+    const entry = wrapper.get('.vue-flow__node[data-id="r-1"] button');
+    const focus = jest.spyOn(entry.element, "focus");
+    finish(); await flushPromises();
+    expect(focus).not.toHaveBeenCalled();
+  });
+
+  test.each([null, "", "missing-node"])("Locate rejects invalid ID %s without leaving Steps or clearing selection", async (id) => {
+    const wrapper = await setup([candidate("native-a")], { view: "steps" }, true, true);
+    await wrapper.vm.selectNode("r-1", false);
+    const origin = wrapper.get('button[aria-label="定位步骤 1"]');
+    origin.element.focus();
+    await wrapper.vm.locateNode(id, new MouseEvent("click", { detail: 0 }));
+    expect(wrapper.vm.selectedNode).toBe("r-1");
+    expect(wrapper.emitted("update:view")).toBeUndefined();
+    expect(mockFocus).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(origin.element);
+  });
+
+  test.each(["queued", "camera"].flatMap(phase =>
+    ["route", "view", "source", "selection", "unmount"].map(change => [phase, change]),
+  ))("%s Locate cannot hand off focus after a %s change", async (phase, change) => {
+    const frame = scrollFrame(), outside = document.createElement("button");
+    frame.appendChild(outside);
+    const wrapper = await setup([candidate("native-a"), candidate("native-b", "CCN")], { view: "steps" }, true, frame);
+    let finish;
+    if (phase === "camera") mockFocus.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const origin = wrapper.get('button[aria-label="定位步骤 1"]');
+    origin.element.focus();
+    origin.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+    if (phase === "camera") {
+      await flushPromises();
+      expect(mockFocus).toHaveBeenCalledTimes(1);
+    }
+    let update;
+    if (change === "route") update = wrapper.setProps({ selectedRoute: "native-b" });
+    if (change === "view") update = wrapper.setProps({ view: "materials" });
+    if (change === "source") update = wrapper.setProps({ candidates: [candidate("native-a", "CN")] });
+    if (change === "selection") update = wrapper.vm.selectNode("r-1", true, new MouseEvent("click", { detail: 1 }));
+    if (change === "unmount") wrapper.unmount();
+    outside.focus();
+    await update;
+    if (finish) finish();
+    await flushPromises();
+    expect(document.activeElement).toBe(outside);
+    if (phase === "queued") expect(mockFocus).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["conditions", ".condition-step header button"],
+    ["materials", ".material-structure"],
+  ].flatMap(([view, selector]) => [390, 1440].map(width => [view, selector, width])))(
+    "actual %s entry %s at %ipx preserves activation and its exact origin", async (view, selector, width) => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+    const route = candidate("native-a"), before = JSON.stringify(route);
+    const wrapper = await setup([route], { view }, true, true, { RouteConditions: false, RouteMaterials: false });
+    const origin = wrapper.get(selector);
+    origin.element.focus();
+    origin.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+    await flushPromises();
+    const inspector = wrapper.getComponent({ name: "RouteInspector" });
+    expect(document.activeElement === inspector.element).toBe(true);
+    inspector.vm.$emit("close"); await flushPromises();
+    expect(document.activeElement).toBe(origin.element);
+    scroll.mockClear();
+    origin.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    await flushPromises();
+    if (width <= 1100) {
+      const details = wrapper.getComponent({ name: "RouteInspector" });
+      expect(document.activeElement === details.element).toBe(true);
+      details.vm.$emit("close"); await flushPromises();
+      expect(document.activeElement).toBe(origin.element);
+    } else {
+      expect(document.activeElement).toBe(origin.element);
+      expect(scroll).not.toHaveBeenCalled();
+    }
+    expect(mockFocus).not.toHaveBeenCalled();
+    expect(API.post).not.toHaveBeenCalled();
+    expect(JSON.stringify(route)).toBe(before);
+  });
+
+  test.each(["conditions", "materials"].flatMap(view =>
+    ["route", "view", "source", "unmount", "invalid ID"].map(change => [view, change]),
+  ))("actual %s activation cannot reveal stale details after %s", async (view, change) => {
+    const frame = scrollFrame(), outside = document.createElement("button");
+    frame.appendChild(outside);
+    const wrapper = await setup([candidate("native-a"), candidate("native-b", "CCN")], { view }, true, frame,
+      { RouteConditions: false, RouteMaterials: false });
+    const origin = wrapper.get(view === "conditions" ? ".condition-step header button" : ".material-structure");
+    origin.element.focus();
+    origin.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+    let update;
+    if (change === "route") update = wrapper.setProps({ selectedRoute: "native-b" });
+    if (change === "view") update = wrapper.setProps({ view: "steps" });
+    if (change === "source") update = wrapper.setProps({ candidates: [candidate("native-a", "CN")] });
+    if (change === "unmount") wrapper.unmount();
+    if (change === "invalid ID") wrapper.getComponent({ name: view === "conditions" ? "RouteConditions" : "RouteMaterials" })
+      .vm.$emit("select", "missing-node", new MouseEvent("click", { detail: 0 }));
+    outside.focus(); await update; await flushPromises();
+    expect(document.activeElement).toBe(outside);
+    expect(scroll).not.toHaveBeenCalled();
+    expect(mockFocus).not.toHaveBeenCalled();
+    if (change === "invalid ID") expect(wrapper.findComponent({ name: "RouteInspector" }).exists()).toBe(false);
+  });
+
+  test.each([390, 1440])("pointer Locate at %ipx changes only the graph viewport, not DOM focus", async (width) => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
     const frame = scrollFrame(), outside = document.createElement("button");
     frame.appendChild(outside);
@@ -599,6 +745,24 @@ test("passive source, route and view updates do not move the user's focus or scr
   expect(frame.scrollTop).toBe(234);
 });
 
+test("parent-bound keyboard Locate focuses the graph after the view model settles", async () => {
+  const frame = scrollFrame();
+  const parent = mount({
+    components: { RouteReader },
+    setup: () => ({ candidates: [candidate("native-a")], selected: ref("native-a"), view: ref("steps") }),
+    template: '<RouteReader :candidates="candidates" v-model:selected-route="selected" v-model:view="view" />',
+  }, { attachTo: frame, global: { stubs } });
+  wrappers.push(parent);
+  await flushPromises();
+  const origin = parent.get('button[aria-label="定位步骤 1"]');
+  origin.element.focus();
+  origin.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+  await flushPromises();
+  expect(origin.element.isConnected).toBe(false);
+  expect(document.activeElement === parent.get('.vue-flow__node[data-id="r-1"] button').element).toBe(true);
+  expect(mockFocus).toHaveBeenCalledTimes(1);
+});
+
 test("unmount before a requested reading layer settles cannot focus a detached route tab", async () => {
   const frame = scrollFrame();
   const wrapper = await setup([candidate("native-a")], {}, false, frame);
@@ -608,6 +772,14 @@ test("unmount before a requested reading layer settles cannot focus a detached r
   await flushPromises();
   expect(focus).not.toHaveBeenCalled();
   focus.mockRestore();
+});
+
+test("cancelled camera placement preserves the current keyboard control", async () => {
+  const frame = scrollFrame(), outside = document.createElement('button'); frame.append(outside);
+  const wrapper = await setup([candidate('native-a')], { view: 'steps' }, false, frame);
+  outside.focus(); mockFocus.mockResolvedValueOnce(false);
+  await wrapper.vm.locateNode('r-1', { detail: 0 }); await flushPromises();
+  expect(document.activeElement).toBe(outside);
 });
 
 test("a replacement source invalidates a pending entry focus before the new layer settles", async () => {

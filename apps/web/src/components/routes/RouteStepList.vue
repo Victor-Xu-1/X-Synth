@@ -154,7 +154,7 @@
               variant="text"
               :aria-label="$tr('定位步骤 {value}', { value: step.number })"
               :disabled="!step.nodeId"
-              @click="$emit('locate', step.nodeId)"
+              @click="$emit('locate', step.nodeId, $event)"
             /> </template
         ></v-tooltip>
       </header>

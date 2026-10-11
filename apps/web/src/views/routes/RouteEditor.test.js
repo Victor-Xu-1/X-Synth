@@ -57,7 +57,7 @@ jest.mock("@/components/routes/RouteGraph.vue", () => ({
   name: "RouteGraph",
   props: ["graph", "editable", "stepNumbers"],
   emits: ["update:graph", "select"],
-  template: '<div class="editor-graph" />',
+  template: '<div class="editor-graph"><button v-for="node in graph.nodes" :key="node.id" :data-node-id="node.id" @click="$emit(\'select\', node.id, $event)">{{ node.id }}</button></div>',
 }));
 jest.mock("@/components/routes/RouteNodeContext.vue", () => ({
   name: "RouteNodeContext",
@@ -144,7 +144,7 @@ test("a failed saved-document read offers a retry rather than a new-route creati
   expect(API.post).not.toHaveBeenCalled();
   expect(API.put).not.toHaveBeenCalled();
 });
-async function setup(state = "source_copy", identifier = documentId, query = {}) {
+async function setup(state = "source_copy", identifier = documentId, query = {}, attached = false) {
   const router = { replace: jest.fn().mockResolvedValue(undefined) };
   const route = reactive({ params: { id: identifier }, query });
   useRoute.mockReturnValue(route);
@@ -161,11 +161,32 @@ async function setup(state = "source_copy", identifier = documentId, query = {})
         ? { job_id: jobId, route_id: "askcos_mcts:record", route_index: 0 }
         : {},
   });
-  const wrapper = mount(RouteEditor, { global: { stubs } });
+  const wrapper = mount(RouteEditor, { attachTo: attached ? document.body : undefined, global: { stubs } });
   wrappers.push(wrapper);
   await flushPromises();
   return { wrapper, router, route };
 }
+
+test("keyboard inspector close preserves an unconfirmed note until discard and then returns to the graph entry", async () => {
+  const { wrapper } = await setup("source_copy", documentId, {}, true);
+  const origin = wrapper.get('.editor-graph [data-node-id="target"]').element;
+  origin.getClientRects = () => [{ width: 40, height: 30 }];
+  origin.focus(); origin.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 0 }));
+  await flushPromises();
+  expect(document.activeElement).toBe(wrapper.get('.route-inspector').element);
+  await wrapper.get('.route-inspector textarea[maxlength="4096"]').setValue("Unconfirmed original note");
+  const close = wrapper.get('.route-inspector header button'); close.element.focus();
+  window.confirm.mockReturnValue(false);
+  await close.trigger('click'); await flushPromises();
+  expect(document.activeElement).toBe(close.element);
+  expect(wrapper.get('.route-inspector textarea[maxlength="4096"]').element.value).toBe("Unconfirmed original note");
+  window.confirm.mockReturnValue(true);
+  await close.trigger('click'); await flushPromises();
+  expect(wrapper.find('.route-inspector').exists()).toBe(false);
+  expect(document.activeElement).toBe(origin);
+  expect(wrapper.getComponent({ name: "RouteGraph" }).props('graph').nodes[0].note).toBe("");
+  expect(API.post).not.toHaveBeenCalled(); expect(API.put).not.toHaveBeenCalled();
+});
 async function selectFile(wrapper, value = {}) {
   const file = {
     size: 100,

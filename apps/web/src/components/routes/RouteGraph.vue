@@ -24,7 +24,8 @@
       @node-click="({ node, event }) => $emit('select', node.id, event)"
       @edge-click="({ edge }) => $emit('select-edge', edge.id)"
       @pane-click="$emit('select', null)"
-      @node-drag-stop="onDrag"
+      @nodes-change="onNodeChanges"
+      @move-start="onViewportIntent"
       @connect="onConnect"
     >
       <template #node-molecule="props"
@@ -83,8 +84,8 @@ async function initialized() {
 }
 onBeforeUnmount(() => { disposed = true; });
 const surface = ref(null);
-const { fitView, zoomIn, zoomOut } = useVueFlow({ id: props.id });
-const { fit, focus } = useRouteViewport(surface, fitView, () => ({
+const { fitView, zoomIn, zoomOut, findNode } = useVueFlow(props.id);
+const { fit, focus, cancel } = useRouteViewport(surface, fitView, () => ({
   padding: 0.12, maxZoom: props.overview ? 1 : 1.25, duration: 0,
 }));
 const incomingNodeIds = computed(() =>
@@ -129,14 +130,26 @@ const flowEdges = computed(() =>
     style: { stroke: "#969696", strokeWidth: 1.35, fill: "none" },
   })),
 );
-function onDrag({ node }) {
-  if (!props.editable) return;
-  emit("update:graph", {
-    ...props.graph,
-    nodes: props.graph.nodes.map((item) =>
-      item.id === node.id ? { ...item, position: node.position } : item,
-    ),
+function onNodeChanges(changes) {
+  if (disposed || !props.editable) return;
+  const positions = changes.filter(change => change.type === "position" && change.dragging === false);
+  if (!positions.length) return;
+  const source = new Map(props.graph.nodes.map(node => [node.id, node])), updates = new Map();
+  for (const change of positions) {
+    const node = source.get(change.id);
+    if (!node || change.from && (change.from.x !== node.position.x || change.from.y !== node.position.y)) continue;
+    // Keyboard changes carry coordinates; pointer completion uses the final native position.
+    const position = change.position || findNode(change.id)?.position;
+    if (!Number.isFinite(position?.x) || !Number.isFinite(position?.y) ||
+      position.x === node.position.x && position.y === node.position.y) continue;
+    updates.set(change.id, { x: position.x, y: position.y });
+  }
+  if (updates.size) emit("update:graph", { ...props.graph,
+    nodes: props.graph.nodes.map(node => updates.has(node.id) ? { ...node, position: updates.get(node.id) } : node),
   });
+}
+function onViewportIntent({ event }) {
+  if (event) cancel();
 }
 function onConnect({ source, target }) {
   if (!props.editable) return;
@@ -164,8 +177,8 @@ function arrange() {
   nextTick(fit);
 }
 const tools = [
-  { label: "放大", icon: "mdi-plus", action: () => zoomIn() },
-  { label: "缩小", icon: "mdi-minus", action: () => zoomOut() },
+  { label: "放大", icon: "mdi-plus", action: () => { cancel(); return zoomIn(); } },
+  { label: "缩小", icon: "mdi-minus", action: () => { cancel(); return zoomOut(); } },
   { label: "适应画布", icon: "mdi-fit-to-screen-outline", action: fit },
 ];
 const geometryKey = computed(() => JSON.stringify(props.graph.nodes.map(node => [
