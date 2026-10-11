@@ -113,6 +113,9 @@
       v-if="candidate && view !== 'overview'"
       class="reader-review-summary"
       :candidate="candidate"
+      :busy="busy"
+      :inspection-enabled="reviewInspectionEnabled(selectedChoice)"
+      @inspect-review="(kind, event) => inspectReview(candidate, kind, event)"
     />
     <p v-if="exportError" class="reader-error tool-error" role="alert">
       {{ $tr(exportError) }}
@@ -145,7 +148,9 @@
             @choose="openRoute"
             @edit="$emit('edit', $event)"
           />
-          <RouteReviewSummary :candidate="choice.route" />
+          <RouteReviewSummary :candidate="choice.route" :busy="busy"
+            :inspection-enabled="reviewInspectionEnabled(choice)"
+            @inspect-review="(kind, event) => inspectReview(choice.route, kind, event)" />
       </div>
     </div>
     <div v-else-if="candidate" class="reader-detail-body">
@@ -243,6 +248,8 @@
         generated-step-labels
         :graph="sourceGraph"
         :step="stepForNode(candidate, selectedNode)"
+        :display-step-number="selectedReviewTargets.numbers[selectedNode]"
+        :delivery-review="candidate.metadata?.delivery_review"
         :snapshot="stockSnapshot"
         :context-id="candidate.route_id"
         :target="selectedNode === sourceGraph.target_id"
@@ -279,13 +286,13 @@ import {
 import {
   routeLabel,
   selectedRouteChoices,
-  materialRows,
   materialsCsv,
   downloadRouteBlob,
 } from "@/common/route-reading";
 import { routeImage, routeExportErrorMessage } from "@/common/route-export";
 import { routeDocumentPayload } from "@/common/route-document-file";
 import { stepForNode } from "@/common/route-node-context";
+import { reviewTargets } from "@/common/route-review-targets";
 import RouteFilters from "./RouteFilters.vue";
 import RouteGraph from "./RouteGraph.vue";
 import RouteInspector from "./RouteInspector.vue";
@@ -295,6 +302,7 @@ import RouteMaterials from "./RouteMaterials.vue";
 import RouteEvidencePanel from "./RouteEvidencePanel.vue";
 import RouteReviewSummary from "./RouteReviewSummary.vue";
 import DeliveryReviewBadge from "./DeliveryReviewBadge.vue";
+import { materialCsvRows } from "./route-ui-text";
 import { useRouteCatalogPrices } from "@/composables/useRouteCatalogPrices";
 const readerTools = [
   { value: "graph", label: "路线图", icon: "mdi-graph-outline" },
@@ -326,6 +334,7 @@ const picked = ref([]),
   exporting = ref(false),
   exportError = ref("");
 const preparedGraphs = new WeakMap();
+const reviewProjections = new WeakMap();
 function prepareRoute(candidate) {
   if (!preparedGraphs.has(candidate))
     preparedGraphs.set(
@@ -333,6 +342,17 @@ function prepareRoute(candidate) {
       computed(() => prepareCandidateGraph(candidate, READING_NODE_SIZE)),
     );
   return preparedGraphs.get(candidate).value;
+}
+function reviewForChoice(choice) {
+  if (!choice) return { numbers: {}, operations: [], purchase: [] };
+  const value = choice.route;
+  if (!reviewProjections.has(value)) reviewProjections.set(value,
+    computed(() => reviewTargets(value, prepareRoute(value).topology)));
+  return reviewProjections.get(value).value;
+}
+function reviewInspectionEnabled(choice) {
+  const targets = reviewForChoice(choice);
+  return { operations: targets.operations.length > 0, purchase: targets.purchase.length > 0 };
 }
 const choices = computed(() =>
   candidateChoices(props.candidates, filters.value).map((choice) => ({
@@ -351,6 +371,7 @@ const selectedChoice = computed(() =>
   ),
 );
 const candidate = computed(() => selectedChoice.value?.route);
+const selectedReviewTargets = computed(() => reviewForChoice(selectedChoice.value));
 const emptyGraph = { nodes: [], edges: [], target_id: "" };
 const topology = computed(
   () => selectedChoice.value?.prepared.topology || emptyGraph,
@@ -474,6 +495,29 @@ function openRoute(id) {
   view.value = "graph";
   return revealReading(++layerNavigation, id);
 }
+async function inspectReview(source, kind, event) {
+  if (props.busy || !["operations", "purchase"].includes(kind) ||
+      !readerRoot.value?.isConnected || readerRoot.value.closest('[hidden], [inert]')) return;
+  const routeId = source?.route_id;
+  const choice = choices.value.find(item => item.route === source && item.route.route_id === routeId);
+  const issue = reviewForChoice(choice)[kind][0];
+  if (!choice || !issue) return;
+  const receipt = source.metadata?.delivery_review;
+  if (view.value === "overview") rememberOverview("route", routeId);
+  readingIds.value = [];
+  selectedId.value = routeId;
+  const nextView = kind === "operations" ? "steps" : "materials";
+  view.value = nextView;
+  const navigation = ++layerNavigation;
+  const current = () => !disposed && !props.busy && navigation === layerNavigation && selectedId.value === routeId &&
+    candidate.value === source && source.metadata?.delivery_review === receipt && view.value === nextView &&
+    readerRoot.value?.isConnected && !readerRoot.value.closest('[hidden], [inert]') &&
+    reviewForChoice(selectedChoice.value)[kind].some(item => item.nodeId === issue.nodeId);
+  await nextTick();
+  if (!current()) return;
+  const origin = readerRoot.value?.querySelector(`.reader-review-summary [data-reader-action="review-${kind}"]`);
+  return selectNode(issue.nodeId, true, event, origin, current);
+}
 function moveTab(event, values, current, select) {
   if (event.altKey || event.ctrlKey || event.metaKey) return;
   if (!values.length || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -498,7 +542,7 @@ function moveViewTab(event) {
 function selectStepNode(id, event) {
   return selectNode(id, true, event);
 }
-async function selectNode(id, revealDetails = true, event = null) {
+async function selectNode(id, revealDetails = true, event = null, reviewOrigin = null, inspectionCurrent = null) {
   const navigation = ++inspectorNavigation;
   pendingLocation = null;
   selectionOrigin = null;
@@ -506,17 +550,25 @@ async function selectNode(id, revealDetails = true, event = null) {
     ? id
     : null;
   // Native keyboard and assistive activation dispatch clicks with zero detail.
-  if (!selectedNode.value || !revealDetails || (window.innerWidth > 1100 && event?.detail !== 0)) return;
+  if (!selectedNode.value || !revealDetails || (window.innerWidth > 1100 && event?.detail !== 0 && !reviewOrigin)) return;
   const routeId = selectedId.value, readingView = view.value, source = sourceGraph.value;
-  const focused = event?.target?.closest?.('button, a[href], input, [tabindex]')
+  const focused = reviewOrigin || event?.target?.closest?.('button, a[href], input, [tabindex]')
     || event?.currentTarget || document.activeElement;
   await nextTick();
+  if (inspectionCurrent && !inspectionCurrent()) {
+    if (navigation === inspectorNavigation && routeId === selectedId.value && id === selectedNode.value) {
+      selectedNode.value = null;
+      selectionOrigin = null;
+    }
+    return;
+  }
   if (disposed || navigation !== inspectorNavigation || routeId !== selectedId.value ||
     id !== selectedNode.value || readingView !== view.value || source !== sourceGraph.value) return;
   const main = readerMain.value, inspector = inspectorView.value?.$el;
   if (!main?.isConnected || !inspector?.isConnected) return;
   const selector = readingView === "graph" ? ".vue-flow__node[data-id]" : "[data-node-id]";
-  const origin = main.contains(focused) && focused !== main ? focused
+  const origin = reviewOrigin?.isConnected && readerRoot.value?.contains(reviewOrigin) ? reviewOrigin
+    : main.contains(focused) && focused !== main ? focused
     : [...main.querySelectorAll(selector)]
       .find((element) => (element.dataset.nodeId || element.dataset.id) === id) || null;
   selectionOrigin = { element: origin, routeId, view: readingView, graph: source };
@@ -578,7 +630,7 @@ function exportJson() {
 }
 function exportMaterials() {
   downloadRouteBlob(
-    "\uFEFF" + materialsCsv(materialRows(sourceGraph.value), candidate.value?.metadata?.delivery_review),
+    "\uFEFF" + materialsCsv(materialCsvRows(sourceGraph.value, true), candidate.value?.metadata?.delivery_review),
     `${labelFor(selectedChoice.value)}-materials.csv`,
     "text/csv;charset=utf-8",
   );
@@ -621,6 +673,13 @@ watch(() => props.candidates, () => {
   overviewOrigin = null;
   pendingLocation = null;
   layerNavigation++;
+}, { flush: "sync" });
+watch(candidate, (value, previous) => {
+  if (value === previous) return;
+  selectedNode.value = null;
+  selectionOrigin = null;
+  pendingLocation = null;
+  inspectorNavigation++;
 }, { flush: "sync" });
 watch(
   readingChoices,

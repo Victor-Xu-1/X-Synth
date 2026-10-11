@@ -61,6 +61,7 @@
           :score="document.prediction_scores?.[selected]"
           :target="selected === graph.target_id"
           :display-step-number="stepNumbers[selected]"
+          :delivery-review="deliveryReview"
           @close="closeDetails"
           @navigate="navigate"
         />

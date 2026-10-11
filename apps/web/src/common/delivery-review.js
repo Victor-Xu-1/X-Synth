@@ -50,6 +50,7 @@ function individualReviewGrade(receipt) {
   const unresolved = purchase.unresolved_materials;
   if (unresolved.some((item) => !record(item) || typeof item.smiles !== "string" || !item.smiles.trim() ||
       !["undefined_purchase_form", "indeterminate_purchase_structure"].includes(item.reason)) ||
+      new Set(unresolved.map(item => item.smiles)).size !== unresolved.length ||
       (purchase.status === "unresolved") !== (unresolved.length > 0)) return null;
   if (review.status === "checked") {
     if (receipt.basis === "route_receipt") {

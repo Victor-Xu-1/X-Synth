@@ -6,7 +6,7 @@
     data-review="step-operations"
   >
     <p class="step-review-heading">
-      <v-icon icon="mdi-alert-outline" size="16" aria-hidden="true" />{{ $tr('反应操作待核验') }}
+      <v-icon icon="mdi-alert-circle-outline" size="16" aria-hidden="true" />{{ $tr('反应操作待核验') }}
     </p>
     <ul>
       <li v-for="reason in reasons" :key="reason">{{ $tr(reason) }}</li>

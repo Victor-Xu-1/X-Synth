@@ -112,7 +112,7 @@ test("the materials download keeps the owner's unresolved route receipt without 
     await wrapper.setProps({ deliveryReview: receipt, graph: { ...graph,
       nodes: graph.nodes.map(node => node.id === "material" ? { ...node, smiles } : node) } });
     await wrapper.findAll("button")[1].trigger("click");
-    expect(Papa.parse(download.mock.calls[0][0]).data[1]).toEqual(["原料", smiles, "步骤 1", "采购形式未明确"]);
+    expect(Papa.parse(download.mock.calls[0][0]).data[1]).toEqual(["原料", smiles, "步骤 1", "采购形式未明确", "采购形式未明确", "完整采购形式未记录"]);
     expect(API.post).not.toHaveBeenCalled();
   } finally { download.mockRestore(); }
 });

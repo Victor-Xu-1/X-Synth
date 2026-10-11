@@ -131,13 +131,13 @@ test("material CSV carries the localized route receipt without changing scientif
     independent_review: { status: "missing" }, purchase_identity: { policy: "defined_purchase_identity_v1",
       status: "unresolved", unresolved_materials: [{ smiles: rows[0].smiles, reason: "undefined_purchase_form" }] } };
   const before = JSON.stringify({ rows, receipt });
-  for (const [locale, headers, label] of [
-    ["en", ["Starting material", "Structure SMILES", "Used in steps", "Review grade"], "Purchase form unresolved"],
-    ["zh-CN", ["原料", "结构 SMILES", "使用步骤", "核验等级"], "采购形式未明确"],
+  for (const [locale, headers, label, reason] of [
+    ["en", ["Starting material", "Structure SMILES", "Used in steps", "Route review grade", "Purchase form", "Purchase form reason"], "Purchase form unresolved", "Complete purchase form not recorded"],
+    ["zh-CN", ["原料", "结构 SMILES", "使用步骤", "路线核验等级", "采购形式", "采购形式原因"], "采购形式未明确", "完整采购形式未记录"],
   ]) {
     setLocale(locale, { persist: false });
     expect(Papa.parse(materialsCsv(rows, receipt)).data).toEqual([headers,
-      [rows[0].label, rows[0].smiles, "步骤 1", label]]);
+      [rows[0].label, rows[0].smiles, "步骤 1", label, label, reason]]);
   }
   expect(JSON.stringify({ rows, receipt })).toBe(before);
 });
@@ -147,7 +147,7 @@ test.each([undefined, null, { version: 99, grade: "model_checked" }, { full_forw
     setLocale("en", { persist: false });
     const rows = [{ label: "raw", smiles: "[13CH3][C@H](O)C(=O)[O-].[Na+]", usedIn: ["original step"] }];
     expect(Papa.parse(materialsCsv(rows, receipt)).data[1]).toEqual([
-      "raw", rows[0].smiles, "original step", "Not independently reviewed",
+      "raw", rows[0].smiles, "original step", "Not independently reviewed", "Purchase form unreviewed", "",
     ]);
   },
 );

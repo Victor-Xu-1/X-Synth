@@ -42,6 +42,9 @@ test("orphan,ambiguous and malformed review identities cannot target another str
   expect(reviewTargets(value, graph)).toEqual({ numbers: {}, operations: [], purchase: [] });
   value.metadata.delivery_review.version = 2;
   expect(purchaseFormPresentation(value.metadata.delivery_review, "CC").status).toBe("unknown");
+  const duplicate = receipt();
+  duplicate.purchase_identity.unresolved_materials.push({ ...duplicate.purchase_identity.unresolved_materials[0] });
+  expect(purchaseFormPresentation(duplicate, "CC").status).toBe("unknown");
 });
 
 test("per-material form does not copy the whole-route grade or claim supplier availability", () => {
