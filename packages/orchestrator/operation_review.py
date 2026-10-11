@@ -46,7 +46,8 @@ def _valid_record(row, screen, step, reference):
     return row.get("status") == screen["status"] and row.get("record_support") == []
 
 
-def _records(value):
+def step_records(value):
+    """Index unique step records; malformed or ambiguous ledgers supply no evidence."""
     if not isinstance(value, list) or not all(isinstance(row, dict) and isinstance(row.get("step_id"), str) for row in value):
         return {}
     records = {row["step_id"]: row for row in value}
@@ -65,7 +66,7 @@ def operation_rejection_ids(steps, review):
     ledger = review.get("operations")
     if not isinstance(ledger, dict) or ledger.get("policy") != POLICY:
         return set()
-    records = _records(ledger.get("records"))
+    records = step_records(ledger.get("records"))
     rejected = set()
     for step in steps:
         row = records.get(step.step_id)
@@ -82,7 +83,7 @@ def forward_support_bound(proofs, raw_step, review):
         step = _step(raw_step)
         references = review.get("references")
         references = references if isinstance(references, dict) else {}
-        return _support_bound(proofs, step, _records(references.get("records")).get(step.step_id))
+        return _support_bound(proofs, step, step_records(references.get("records")).get(step.step_id))
     except (ValueError, TypeError, KeyError, AttributeError):
         return False
 
@@ -99,7 +100,7 @@ def operation_receipt(route):
         ledger = ledger if isinstance(ledger, dict) else {}
         references = review.get("references")
         references = references if isinstance(references, dict) else {}
-        records, refs = _records(ledger.get("records")), _records(references.get("records"))
+        records, refs = step_records(ledger.get("records")), step_records(references.get("records"))
         screened, supported = [], False
         for step in steps:
             screen = screen_step_operations(step)

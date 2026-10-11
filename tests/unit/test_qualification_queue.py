@@ -110,6 +110,20 @@ def test_repair_feedback_keeps_valid_alternatives_and_original_review_data():
     assert route == original
 
 
+@pytest.mark.parametrize("tamper", ["missing_step", "invalid_step", "duplicate", "invalid_forward", "invalid_records", "invalid_review"])
+def test_malformed_forward_ledger_cannot_fail_the_job_or_supply_exclusions(tamper):
+    route = operation_reviewed_candidate()
+    review = route.metadata["automated_review"]
+    row = review["forward"]["records"][0]
+    if tamper == "missing_step": del row["step_id"]
+    elif tamper == "invalid_step": row["step_id"] = []
+    elif tamper == "duplicate": review["forward"]["records"].append({**row, "matched": False, "record_id": None, "reason": "unsupported_forward_input"})
+    elif tamper == "invalid_forward": review["forward"] = []
+    elif tamper == "invalid_records": review["forward"]["records"] = True
+    elif tamper == "invalid_review": route.metadata["automated_review"] = []
+    assert rejected_reactions([route]) == []
+
+
 def test_pending_is_not_a_failed_scientific_result():
     route = candidate(1)
     checked = replace(candidate(2, "two"), metadata={"full_forward_prediction_validated": True})

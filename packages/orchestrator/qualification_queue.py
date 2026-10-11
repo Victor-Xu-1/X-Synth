@@ -5,7 +5,7 @@ from collections import defaultdict, deque
 from packages.validation.route_quality import RouteQualityPolicy
 from packages.validation.route_topology import route_signature, topology_reasons
 from packages.route_pool.strategy import potential_shortcut
-from .operation_review import operation_rejection_ids
+from .operation_review import operation_rejection_ids, step_records
 
 
 def family_key(route):
@@ -60,11 +60,12 @@ def rejected_reactions(routes):
     reactions = set()
     for route in routes:
         review = route.metadata.get("automated_review", {})
-        records = review.get("forward", {}).get("records", [])
-        checked = {row["step_id"] for row in records if type(row.get("matched")) is bool
+        if not isinstance(review, dict) or not isinstance(review.get("forward"), dict):
+            continue
+        records = step_records(review["forward"].get("records"))
+        checked = {identifier for identifier, row in records.items() if type(row.get("matched")) is bool
                    and isinstance(row.get("record_id"), str) and row["record_id"] and not row.get("reason")}
-        failed = {row["step_id"] for row in records if row.get("matched") is False
-                  and row.get("record_id") and not row.get("reason")}
+        failed = {identifier for identifier in checked if records[identifier]["matched"] is False}
         failed.update(operation_rejection_ids(route.steps, review) & checked)
         reactions.update(step.reaction_smiles for step in route.steps if step.step_id in failed)
     return sorted(reactions)
