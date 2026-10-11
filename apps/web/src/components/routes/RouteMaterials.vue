@@ -134,6 +134,7 @@ import {
 import { safeExternalUrl } from "@/common/external-url";
 import { errorMessage } from "@/common/workspace-errors";
 import { catalogRecordsForInputs } from "@/common/route-price";
+import { STOCK_REQUEST_TIMEOUT_MS } from "@/common/stock-lookup";
 import { purchaseFormPresentation } from "@/common/delivery-review";
 import SmilesImage from "@/components/SmilesImage.vue";
 import MoleculeStockDialog from "./MoleculeStockDialog.vue";
@@ -154,11 +155,14 @@ const records = ref({}),
   stockOpen = ref(false),
   stockSmiles = ref("");
 let generation = 0,
-  disposed = false;
+  disposed = false,
+  activeRequest = null;
 watch(
   () => [rows.value.map((row) => row.smiles).join("\n"), props.expectedSnapshot],
   () => {
     generation++;
+    activeRequest?.abort();
+    activeRequest = null;
     records.value = {};
     canonicalSmiles.value = {};
     snapshot.value = "";
@@ -171,23 +175,30 @@ async function lookup() {
   if (loading.value || !rows.value.length) return;
   const current = ++generation,
     smiles = rows.value.map((row) => row.smiles);
+  activeRequest?.abort();
+  const controller = new AbortController();
+  activeRequest = controller;
+  const isCurrent = () => !disposed && current === generation && !controller.signal.aborted;
   records.value = {};
   canonicalSmiles.value = {};
   snapshot.value = "";
   loading.value = true;
   error.value = "";
   try {
-    const value = await API.post("/api/v1/stock/lookup", { smiles });
-    if (disposed || current !== generation) return;
+    const value = await API.post("/api/v1/stock/lookup", { smiles }, false, {
+      signal: controller.signal, timeoutMs: STOCK_REQUEST_TIMEOUT_MS,
+    });
+    if (!isCurrent()) return;
     const parsed = catalogRecordsForInputs(value, smiles);
     records.value = parsed.records;
     canonicalSmiles.value = parsed.canonicalSmiles;
     snapshot.value = parsed.snapshot;
   } catch (cause) {
-    if (!disposed && current === generation)
+    if (isCurrent())
       error.value = errorMessage(cause, "采购目录核对失败。");
   } finally {
-    if (!disposed && current === generation) loading.value = false;
+    if (activeRequest === controller) activeRequest = null;
+    if (isCurrent()) loading.value = false;
   }
 }
 function exportCsv() {
@@ -200,6 +211,8 @@ function exportCsv() {
 onBeforeUnmount(() => {
   disposed = true;
   generation++;
+  activeRequest?.abort();
+  activeRequest = null;
 });
 </script>
 <style scoped>

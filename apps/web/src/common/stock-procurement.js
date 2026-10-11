@@ -14,7 +14,7 @@ export function stockProcurementPresentation(record, context = {}) {
   };
   if (record?.procurement === undefined) return result;
   if (typeof context.smiles !== "string" || !context.smiles.trim()
-    || typeof context.snapshot !== "string" || !context.snapshot) return result;
+    || typeof context.snapshot !== "string" || !context.snapshot.trim()) return result;
   const value = record.procurement;
   if (!recordObject(value) || value.policy !== POLICY || !supplierPriceView(record, context).basis
     || !(value.status === "defined" && value.reason === null && value.eligible_for_closure === true

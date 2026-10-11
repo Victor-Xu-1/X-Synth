@@ -3,6 +3,7 @@ import { API } from "@/common/api";
 import { priceContractRecord, priceContractResponse } from "@/common/route-price-test-data";
 import MoleculeStockDialog from "./MoleculeStockDialog.vue";
 import { initializeLocale, setLocale } from "@/i18n";
+import { STOCK_REQUEST_TIMEOUT_MS } from "@/common/stock-lookup";
 
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 jest.mock("@/components/SmilesImage.vue", () => ({ template: "<span />" }));
@@ -64,7 +65,8 @@ test("noncanonical purchase input uses the server receipt without structure-vali
   wrappers.push(wrapper);
   await flushPromises();
   expect(API.post).toHaveBeenCalledTimes(1);
-  expect(API.post).toHaveBeenCalledWith("/api/v1/stock/lookup", { smiles: ["OCC"] });
+  expect(API.post).toHaveBeenCalledWith("/api/v1/stock/lookup", { smiles: ["OCC"] }, false,
+    expect.objectContaining({ signal: expect.any(AbortSignal), timeoutMs: STOCK_REQUEST_TIMEOUT_MS }));
   expect(wrapper.text()).toContain("2.08 $/g");
   expect(wrapper.get("[data-procurement-status]").attributes("data-procurement-status")).toBe("defined");
 });
@@ -123,4 +125,34 @@ test("closing or changing a lookup retires the prior procurement status along wi
   await wrapper.setProps({ modelValue: true, smiles: "N" }); await flushPromises();
   expect(wrapper.find("[data-procurement-status]").exists()).toBe(false);
   expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+});
+
+test.each(["close", "structure", "snapshot", "unmount"])("%s cancels the bounded in-flight catalogue request", async (change) => {
+  let resolveOld;
+  API.post.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }));
+  const wrapper = setup();
+  const options = API.post.mock.calls[0][3];
+  expect(options?.signal).toBeInstanceOf(AbortSignal);
+  expect(options.timeoutMs).toBe(STOCK_REQUEST_TIMEOUT_MS);
+  expect(options.signal.aborted).toBe(false);
+  API.post.mockResolvedValueOnce({ ...response(), results: { CCO: [] },
+    requested: [{ smiles: change === "structure" ? "OCC" : "CCO", canonical_smiles: "CCO" }] });
+  if (change === "close") await wrapper.setProps({ modelValue: false });
+  if (change === "structure") await wrapper.setProps({ smiles: "OCC" });
+  if (change === "snapshot") await wrapper.setProps({ expectedSnapshot: "b".repeat(64) });
+  if (change === "unmount") {
+    wrappers.splice(wrappers.indexOf(wrapper), 1);
+    wrapper.unmount();
+  }
+  expect(options.signal.aborted).toBe(true);
+  resolveOld(response()); await flushPromises();
+  if (change !== "unmount") expect(wrapper.find(".stock-node-record").exists()).toBe(false);
+});
+
+test("deadline failure leaves an explicit retryable error, not catalogue success", async () => {
+  API.post.mockRejectedValueOnce(new DOMException("Catalogue timed out", "TimeoutError"));
+  const wrapper = setup(); await flushPromises();
+  expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+  expect(wrapper.find(".stock-node-record").exists()).toBe(false);
+  expect(wrapper.find("[data-procurement-status]").exists()).toBe(false);
 });

@@ -5,6 +5,7 @@ import RouteMaterials from "./RouteMaterials.vue";
 import * as routeReading from "@/common/route-reading";
 import Papa from "papaparse";
 import { initializeLocale, setLocale } from "@/i18n";
+import { STOCK_REQUEST_TIMEOUT_MS } from "@/common/stock-lookup";
 
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 jest.mock("@/components/SmilesImage.vue", () => ({ template: "<span />" }));
@@ -51,7 +52,8 @@ test("materials lookup stays explicit and shows per-supplier raw catalog prices 
   API.post.mockResolvedValueOnce(response());
   await wrapper.get("button").trigger("click");
   await flushPromises();
-  expect(API.post).toHaveBeenCalledWith("/api/v1/stock/lookup", { smiles: ["CCO"] });
+  expect(API.post).toHaveBeenCalledWith("/api/v1/stock/lookup", { smiles: ["CCO"] }, false,
+    expect.objectContaining({ signal: expect.any(AbortSignal), timeoutMs: STOCK_REQUEST_TIMEOUT_MS }));
   expect(wrapper.text()).toContain("2.08 $/g");
   expect(wrapper.text()).toContain("币种未标注");
   expect(wrapper.text()).not.toMatch(/总价|成本|人民币|USD|CNY/);
@@ -97,7 +99,8 @@ test("noncanonical materials use one batch lookup and the server receipt", async
   await wrapper.get("button").trigger("click");
   await flushPromises();
   expect(API.post).toHaveBeenCalledTimes(1);
-  expect(API.post).toHaveBeenCalledWith("/api/v1/stock/lookup", { smiles: ["OCC"] });
+  expect(API.post).toHaveBeenCalledWith("/api/v1/stock/lookup", { smiles: ["OCC"] }, false,
+    expect.objectContaining({ signal: expect.any(AbortSignal), timeoutMs: STOCK_REQUEST_TIMEOUT_MS }));
   expect(wrapper.text()).toContain("2.08 $/g");
 });
 
@@ -228,4 +231,26 @@ test.each([[undefined, "unknown"], [null, "invalid"]])("per-record %p decisions 
   expect(wrapper.find(".procurement-material-limit").exists()).toBe(false);
   expect(wrapper.find("[data-purchase-status]").exists()).toBe(false);
   expect(wrapper.text()).toContain("2.08 $/g");
+});
+
+test.each(["structure", "snapshot", "unmount"])("%s cancels the bounded material batch instead of only hiding it", async change => {
+  let resolveOld;
+  API.post.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }));
+  const wrapper = setup();
+  await wrapper.get("button").trigger("click");
+  const options = API.post.mock.calls[0][3];
+  expect(options?.signal).toBeInstanceOf(AbortSignal);
+  expect(options.timeoutMs).toBe(STOCK_REQUEST_TIMEOUT_MS);
+  expect(options.signal.aborted).toBe(false);
+  if (change === "structure") await wrapper.setProps({ graph: { ...graph,
+    nodes: graph.nodes.map(node => node.id === "material" ? { ...node, smiles: "N" } : node) } });
+  if (change === "snapshot") await wrapper.setProps({ expectedSnapshot: "b".repeat(64) });
+  if (change === "unmount") {
+    wrappers.splice(wrappers.indexOf(wrapper), 1);
+    wrapper.unmount();
+  }
+  expect(options.signal.aborted).toBe(true);
+  resolveOld(response()); await flushPromises();
+  if (change !== "unmount") expect(wrapper.find(".catalog-record").exists()).toBe(false);
+  expect(API.post).toHaveBeenCalledTimes(1);
 });

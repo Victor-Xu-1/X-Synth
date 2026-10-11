@@ -31,6 +31,6 @@ test.each([{ smiles: "O" }, { snapshot: "c".repeat(64) }])("decision cannot move
 });
 
 test.each([{}, { smiles: "CCO" }, { snapshot: "a".repeat(64) }, { ...context, smiles: "" },
-  { ...context, snapshot: "" }])("missing inspection context is not verified procurement (%#)", value => {
+  { ...context, snapshot: "" }, { ...context, snapshot: " \t " }])("missing inspection context is not verified procurement (%#)", value => {
   expect(stockProcurementPresentation(row(), value)).toMatchObject({ status: "unknown", eligibleForClosure: false });
 });

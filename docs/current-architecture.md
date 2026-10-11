@@ -237,6 +237,10 @@ governance. See [version operations](operations.md#版本管理).
   determined structure/form only; unresolved, missing or invalid decisions cannot
   become verified closure eligibility. Catalogue/CAS/price records remain visible
   without implying real-time supply, purity or experimental suitability.
+  Catalogue requests share a 15-second transport deadline; route/input/snapshot
+  changes, dialog closure and unmount cancel their obsolete request. Generation
+  checks still reject late data, and a timeout remains a visible read error rather
+  than an empty catalogue or a successful procurement check.
 - Native trained models retain their exact template index and fingerprint
   parameters. A shared template query database cannot replace a trained output
   ordering. Imported ORD/USPTO templates are knowledge assets until a compatible
