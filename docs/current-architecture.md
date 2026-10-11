@@ -185,6 +185,16 @@ governance. See [version operations](operations.md#版本管理).
   that same store. Metadata revisions are independent of worker revisions; they
   never rewrite scientific requests, execution states or checkpoints. Owner-filtered
   pages and counts use one SQLite read transaction without decoding large checkpoints.
+- Delivery-review projection has one workflow authority in
+  `packages/orchestrator/delivery_review.py`. Recognized producer receipts require
+  consistent models, record identifiers, step counts and support semantics; a
+  boolean success flag cannot certify a route. Read-time grades preserve archived
+  source data and distinguish missing review, model agreement and undefined purchase
+  identities, never experimentally proven feasibility. History uses stored policy
+  and counts without opening each route file. Preview/detail filters and JSON/PNG/CSV
+  exports consume that same receipt. Source copies retain server-owned receipts
+  only while chemical signatures are unchanged; layout-only edits preserve them,
+  chemistry edits invalidate them, and external imports cannot create them.
 - Search and final closure must use the same immutable stock snapshot. Snapshot
   identity is retained in the checkpoint and delivered result.
 - A CID, CAS, supplier name or Mongo internal ID alone is not commercial evidence.

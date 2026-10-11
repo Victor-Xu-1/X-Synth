@@ -1,63 +1,12 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { after, before, test } from "node:test";
 import Papa from "../../apps/web/node_modules/papaparse/papaparse.js";
 import { chromium, expect, capture, noOverflow, structures, readOnlyPage } from "./route_reading_browser_support.mjs";
 
-const root = process.env.X_SYNTH_PROJECTION_ROOT;
-assert(root, "Use the isolated delivery-review worktree.");
-const python = process.env.X_SYNTH_NATIVE_PYTHON;
-assert(python, "Use the installed native product Python.");
-function projected(value) {
-  function thin(item) {
-    const result = item.result?.unified_route_pool;
-    return {
-      summary: item.summary,
-      unified_route_pool_summary: item.unified_route_pool_summary,
-      results: item.results?.map(thin),
-      ...(result ? { result: { unified_route_pool: {
-        summary: result.summary,
-        selected_routes: result.selected_routes.map(route => ({
-          starting_materials: route.starting_materials,
-          steps: route.steps.map(step => ({ step_id: step.step_id })),
-          metadata: { full_forward_prediction_validated: route.metadata.full_forward_prediction_validated,
-            forward_validation_passed: route.metadata.forward_validation_passed,
-            automated_review: route.metadata.automated_review && { version: route.metadata.automated_review.version,
-              forward: route.metadata.automated_review.forward } },
-        })),
-      } } } : {}),
-    };
-  }
-  const args = ["env", "PYTHONPATH=.", "PYTHONDONTWRITEBYTECODE=1", python, "tests/integration/delivery_review_projection.py"];
-  const result = process.platform === "win32"
-    ? spawnSync("wsl.exe", ["-d", "WSL", "--cd", root, "--", ...args], { input: JSON.stringify(thin(value)), encoding: "utf8", timeout: 30000, maxBuffer: 32 * 1024**2 })
-    : spawnSync(args.shift(), args, { cwd: root, input: JSON.stringify(thin(value)), encoding: "utf8", timeout: 30000, maxBuffer: 32 * 1024**2 });
-  assert.equal(result.status, 0, result.stderr || String(result.error));
-  function apply(item, projection) {
-    if (item.summary) item.summary.delivery_review = projection.summary.delivery_review;
-    if (item.unified_route_pool_summary) item.unified_route_pool_summary.delivery_review = projection.unified_route_pool_summary.delivery_review;
-    const pool = item.result?.unified_route_pool;
-    if (pool) {
-      pool.summary.delivery_review = projection.result.unified_route_pool.summary.delivery_review;
-      pool.selected_routes.forEach((route, i) => {
-        route.metadata.delivery_review = projection.result.unified_route_pool.selected_routes[i].metadata.delivery_review;
-      });
-    }
-    item.results?.forEach((row, i) => apply(row, projection.results[i]));
-    return item;
-  }
-  return apply(structuredClone(value), JSON.parse(result.stdout));
-}
 async function bytes(download) {
   const stream = await download.createReadStream(), chunks = [];
   for await (const chunk of stream) chunks.push(chunk);
   return Buffer.concat(chunks);
-}
-function fulfillProjection(route, response, value) {
-  const headers = { ...response.headers(), "content-type": "application/json" };
-  delete headers["content-length"];
-  delete headers["content-encoding"];
-  return route.fulfill({ status: response.status(), headers, body: JSON.stringify(value) });
 }
 async function download(page, reader, title) {
   await reader.getByRole("button", { name: "Export", exact: true }).click();
@@ -99,7 +48,7 @@ assert(Array.isArray(cases) && cases.length > 0 && cases.every(item => Array.isA
   && /^[a-f0-9]{32}$/.test(item[0]) && ["Not independently reviewed", "Model checked", "Purchase form unresolved"].includes(item[1])),
 "Explicitly supply existing read-only case IDs and expected labels in X_SYNTH_DELIVERY_BROWSER_CASES.");
 let browser, historyId, localeChecked = false;
-const records = new Map(), originals = new Map();
+const records = new Map();
 before(async () => {
   const paths = cases.flatMap(([id]) => [`/api/results/retrieve?result_id=${id}`, `/api/v1/unified-route/jobs/${id}`]);
   paths.push("/api/v1/results/page?offset=0&limit=24");
@@ -109,37 +58,21 @@ before(async () => {
     assert(response.ok);
     raw.push(await response.json());
   }
-  const projection = projected({ results: raw });
-  paths.forEach((pathname, i) => { records.set(pathname, projection.results[i]); originals.set(pathname, raw[i]); });
-  historyId = projection.results.at(-1).results.find(row => row.result_state === "completed"
+  paths.forEach((pathname, i) => records.set(pathname, raw[i]));
+  historyId = raw.at(-1).results.find(row => row.result_state === "completed"
     && row.unified_route_pool_summary.delivery_review.grade === "not_independently_reviewed").result_id;
   browser = await chromium.launch({ channel: "chrome", headless: true });
 });
 after(async () => { await browser?.close(); });
 
 for (const [id, label] of cases) for (const width of [1440, 390]) {
-  test(`projected delivery grade ${id} ${width}px`, { timeout: 120000 }, async () => {
+  test(`live delivery grade ${id} ${width}px`, { timeout: 120000 }, async () => {
     const { page, context, errors, blocked } = await readOnlyPage(browser, { width, height: 960 }, "light");
     try {
-      await context.route("**/api/v1/stock/lookup", async (route) => {
-        assert.equal(route.request().method(), "POST");
-        // Read-only lookup uses the product origin at the isolated dev proxy boundary.
-        const response = await route.fetch({ headers: { ...route.request().headers(), origin: "http://127.0.0.1:8769" } });
-        return route.fulfill({ response });
-      });
-      await context.route("**/api/**", async (route) => {
-        const request = route.request(), pathname = new URL(request.url()).pathname;
-        if (request.method() !== "GET" || !/results\/(retrieve|page)$|unified-route\/jobs\//.test(pathname)) return route.fallback();
-        const response = await route.fetch();
-        if (!response.ok()) return route.fulfill({ response });
-        const key = pathname.endsWith("/page") ? "/api/v1/results/page?offset=0&limit=24"
-          : pathname.endsWith("/retrieve") ? `${pathname}?result_id=${new URL(request.url()).searchParams.get("result_id")}` : pathname;
-        assert.deepEqual(await response.json(), originals.get(key), "The original record must remain identical to the preflight projection input.");
-        return fulfillProjection(route, response, records.get(key));
-      });
       const response = await page.request.get(`/api/results/retrieve?result_id=${id}`);
       assert(response.ok());
       const source = await response.json(), record = records.get(`/api/results/retrieve?result_id=${id}`);
+      assert.deepEqual(source, record, "The live immutable result must match the preflight record.");
       const routes = record.result.unified_route_pool.selected_routes;
       assert.equal(source.result_state, record.result_state);
       await page.goto(`/results/${id}`);
@@ -176,11 +109,6 @@ for (const [id, label] of cases) for (const width of [1440, 390]) {
 test("history cards and list retain lifecycle and independent-review labels", { timeout: 120000 }, async () => {
   const { page, context, errors, blocked } = await readOnlyPage(browser, { width: 1440, height: 960 }, "light");
   try {
-    await context.route("**/api/v1/results/page?**", async (route) => {
-      const response = await route.fetch();
-      assert.deepEqual(await response.json(), originals.get("/api/v1/results/page?offset=0&limit=24"));
-      return fulfillProjection(route, response, records.get("/api/v1/results/page?offset=0&limit=24"));
-    });
     await page.goto("/results");
     const card = page.locator(`.task-card[data-task-id="${historyId}"]`);
     await expect(card.locator(".state-badge")).toHaveText("Completed");
