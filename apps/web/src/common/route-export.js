@@ -85,14 +85,21 @@ export async function settledRouteImages(viewport, timeoutMs = 3000) {
   }
 }
 
-export async function routeImage(surface, graph, deliveryReview = null) {
+export async function routeImage(surface, graph, deliveryReview = null, { isCurrent = () => true } = {}) {
   const viewport = surface.querySelector(".vue-flow__transformationpane");
+  const assertCurrent = () => {
+    if (!isCurrent() || !surface.isConnected || surface.querySelector(".vue-flow__transformationpane") !== viewport)
+      throw new RouteExportError("路线结构已变化，请重新导出。");
+  };
+  assertCurrent();
   const bounds = exportBounds(
     graph,
     surface.classList.contains("reading") ? READING_NODE_SIZE : ROUTE_NODE_SIZE,
   );
   await settledRouteImages(viewport);
+  assertCurrent();
   await document.fonts.ready;
+  assertCurrent();
   const background = getComputedStyle(surface)
     .getPropertyValue("--ws-bg")
     .trim();
@@ -114,6 +121,7 @@ export async function routeImage(surface, graph, deliveryReview = null) {
       transform: `translate(${32 - bounds.x}px, ${32 - bounds.y}px) scale(1)`,
     },
   });
+  assertCurrent();
   const image = new Image();
   image.src = diagram;
   let timer;
@@ -127,6 +135,7 @@ export async function routeImage(surface, graph, deliveryReview = null) {
   } finally {
     clearTimeout(timer);
   }
+  assertCurrent();
   const canvas = document.createElement("canvas");
   canvas.width = bounds.width;
   canvas.height = bounds.height + headerHeight;
@@ -138,5 +147,6 @@ export async function routeImage(surface, graph, deliveryReview = null) {
   context.font = "14px sans-serif";
   context.fillText(gradeLabel, 16, 27, bounds.width - 32);
   context.drawImage(image, 0, headerHeight);
+  assertCurrent();
   return canvas.toDataURL("image/png");
 }

@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "@vue/compiler-sfc";
 import { initializeLocale, setLocale } from "@/i18n";
+import * as routeExport from "@/common/route-export";
 jest.mock("@vueuse/core", () => ({ useResizeObserver: jest.fn() }));
 
 test("the document title does not suppress the shared keyboard-focus outline", () => {
@@ -182,6 +183,31 @@ test("editor keeps layout-only source review but suppresses it as soon as chemis
   flow.vm.$emit("update:graph", { ...graph, nodes: graph.nodes.map(node => ({ ...node, smiles: "CCN" })) });
   await flushPromises();
   expect(badge()).toBe("not_independently_reviewed");
+});
+
+test("PNG completion cannot publish a stale grade after editing and restoring chemistry", async () => {
+  let finish;
+  const raster = new Promise(resolve => { finish = resolve; });
+  const render = jest.spyOn(routeExport, "routeImage").mockReturnValue(raster);
+  const click = jest.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  try {
+    const { wrapper } = await setup();
+    const operation = wrapper.vm.exportImage();
+    const current = render.mock.calls[0][3].isCurrent;
+    expect(current()).toBe(true);
+    const flow = wrapper.getComponent({ name: "RouteGraph" });
+    flow.vm.$emit("update:graph", { ...graph, nodes: graph.nodes.map(node => ({ ...node, smiles: "CCN" })) });
+    await flushPromises();
+    expect(current()).toBe(false);
+    flow.vm.$emit("update:graph", graph);
+    await flushPromises();
+    expect(current()).toBe(false);
+    finish("data:image/png;base64,stale");
+    await operation;
+    expect(click).not.toHaveBeenCalled();
+    expect(API.post).not.toHaveBeenCalled();
+    expect(API.put).not.toHaveBeenCalled();
+  } finally { render.mockRestore(); click.mockRestore(); }
 });
 
 test("keyboard inspector close preserves an unconfirmed note until discard and then returns to the graph entry", async () => {

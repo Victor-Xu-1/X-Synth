@@ -592,7 +592,10 @@ async function exportPng() {
   exporting.value = true;
   exportError.value = "";
   try {
-    const image = await routeImage(graphView.value.element, value, candidate.value.metadata?.delivery_review);
+    const surface = graphView.value.element;
+    const isCurrent = () => !disposed && current === generation && routeId === selectedId.value
+      && view.value === "graph" && sourceGraph.value === value && graphView.value?.element === surface;
+    const image = await routeImage(surface, value, candidate.value.metadata?.delivery_review, { isCurrent });
     if (!disposed && current === generation && routeId === selectedId.value) {
       const a = document.createElement("a");
       a.href = image;

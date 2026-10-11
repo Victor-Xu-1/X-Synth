@@ -40,7 +40,8 @@
               v-bind="props"
               prepend-icon="mdi-download"
               variant="text"
-              :disabled="!document || importing || applying"
+              :disabled="!document || importing || applying || exporting"
+              :loading="exporting"
               >{{ $tr('导出路线') }}</v-btn
             ></template
           ><v-list density="compact"
@@ -308,6 +309,7 @@ const initialDraftTitle = ref(uiText("未命名路线"));
 const canvas = ref(null),
   importing = ref(false),
   applying = ref(false),
+  exporting = ref(false),
   fileInput = ref(null),
   newTitle = ref(initialDraftTitle.value),
   newSmiles = ref(""),
@@ -404,6 +406,8 @@ const sourceStateLabel = computed(() =>
   documentStateLabel(document.value, graph.value),
 );
 const deliveryReview = computed(() => documentDeliveryReview(document.value, graph.value));
+let imageGeneration = 0;
+watch([() => document.value?.id, graph, deliveryReview], () => { imageGeneration++; }, { deep: true, flush: "sync" });
 const origin = computed(() => documentOrigin(document.value));
 function runEditAction(action) {
   if (editingLocked.value || action.disabled) return;
@@ -617,15 +621,23 @@ function exportDocument() {
   );
 }
 async function exportImage() {
-  if (!document.value || importing.value || applying.value) return;
+  if (!document.value || importing.value || applying.value || exporting.value) return;
+  const current = imageGeneration, owner = document.value.id, surface = canvas.value.element;
+  const isCurrent = () => imageGeneration === current && document.value?.id === owner
+    && canvas.value?.element === surface;
+  exporting.value = true;
   try {
-    const url = await routeImage(canvas.value.element, graph.value, deliveryReview.value);
+    const url = await routeImage(surface, graph.value, deliveryReview.value, { isCurrent });
+    if (!isCurrent()) return;
     const link = window.document.createElement("a");
     link.href = url;
     link.download = "route.png";
     link.click();
   } catch (e) {
-    error.value = routeExportErrorMessage(e, "图像导出失败，请确认结构图已加载。");
+    if (document.value?.id === owner)
+      error.value = routeExportErrorMessage(e, "图像导出失败，请确认结构图已加载。");
+  } finally {
+    exporting.value = false;
   }
 }
 async function importDocument(event) {
@@ -655,6 +667,7 @@ function beforeUnload(event) {
 }
 window.addEventListener("beforeunload", beforeUnload);
 onBeforeUnmount(() => {
+  imageGeneration++;
   documentNavigation.dispose();
   window.removeEventListener("beforeunload", beforeUnload);
 });
