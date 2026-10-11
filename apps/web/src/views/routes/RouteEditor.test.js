@@ -191,7 +191,7 @@ test("chemistry change aborts a pending source read and a restored graph cannot 
   await flushPromises(); expect(sourceSignal.aborted).toBe(true);
   flow.vm.$emit("update:graph", value.graph); pending.resolve(sourceEvidence(value)); await flushPromises();
   expect(wrapper.get(".document-source-status").attributes("data-source-state")).toBe("retired");
-  expect(wrapper.get(".route-document-source .delivery-review-badge").attributes("data-delivery-grade")).toBe("not_independently_reviewed");
+  expect(wrapper.find(".route-document-source .delivery-review-badge").exists()).toBe(false);
   expect(API.get).toHaveBeenCalledTimes(2);
 });
 test("legacy editor uses the current unreviewed source receipt instead of omitting null saved review", async () => {
@@ -209,7 +209,9 @@ test("invalid original source response leaves the saved receipt and never guesse
   const { wrapper } = await setupSourceEvidence(value, evidence);
   wrapper.getComponent({ name: "RouteGraph" }).vm.$emit("select", "r-2"); await flushPromises();
   const inspector = wrapper.getComponent({ name: "RouteInspector" });
-  expect(inspector.props("step")).toBeUndefined(); expect(inspector.props("deliveryReview")).toEqual(value.metadata.delivery_review);
+  expect(inspector.props("step")).toBeUndefined(); expect(inspector.props("deliveryReview")).toBeNull();
+  expect(wrapper.find(".document-current-review").exists()).toBe(false);
+  expect(wrapper.get("[data-source-saved-review]").text()).toContain("历史票据");
   expect(wrapper.find('[data-review="step-operations"]').exists()).toBe(false);
   expect(wrapper.get(".document-source-status").attributes("data-source-state")).toBe("error");
 });
@@ -266,20 +268,22 @@ async function setup(state = "source_copy", identifier = documentId, query = {},
   return { wrapper, router, route };
 }
 
-test("editor keeps layout-only source review but suppresses it as soon as chemistry changes", async () => {
+test("editor keeps labelled layout-only historical review but never calls it current", async () => {
   const receipt = { version: 1, phase: "automated_review", basis: "route_receipt", grade: "model_checked",
     independent_review: { status: "checked", review_version: 1, model: "graph2smiles_uspto_stereo", matched_steps: 1, total_steps: 1 },
     purchase_identity: { policy: "defined_purchase_identity_v1", status: "defined", unresolved_materials: [] } };
   const { wrapper } = await setup("source_copy", documentId, {}, false, receipt);
   const badge = () => wrapper.get(".route-document-source .delivery-review-badge").attributes("data-delivery-grade");
   expect(badge()).toBe("model_checked");
+  expect(wrapper.find(".document-current-review").exists()).toBe(false);
+  expect(wrapper.get("[data-source-saved-review]").text()).toContain("历史票据");
   const flow = wrapper.getComponent({ name: "RouteGraph" });
   flow.vm.$emit("update:graph", { ...graph, nodes: graph.nodes.map(node => ({ ...node, note: "raw", position: { x: 10, y: 20 } })) });
   await flushPromises();
   expect(badge()).toBe("model_checked");
   flow.vm.$emit("update:graph", { ...graph, nodes: graph.nodes.map(node => ({ ...node, smiles: "CCN" })) });
   await flushPromises();
-  expect(badge()).toBe("not_independently_reviewed");
+  expect(wrapper.find(".route-document-source .delivery-review-badge").exists()).toBe(false);
 });
 
 test("PNG completion cannot publish a stale grade after editing and restoring chemistry", async () => {

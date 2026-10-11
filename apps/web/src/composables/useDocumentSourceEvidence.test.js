@@ -19,7 +19,8 @@ test("one body-free owned-document read delivers actual node steps and the curre
   const value = sourceDocument(), evidence = sourceEvidence(value); API.get.mockResolvedValue(evidence);
   const { state } = setup(value);
   expect(state.loading.value).toBe(true);
-  expect(state.deliveryReview.value).toEqual(value.metadata.delivery_review);
+  expect(state.deliveryReview.value).toBeNull();
+  expect(state.savedDeliveryReview.value).toEqual(value.metadata.delivery_review);
   await flushPromises();
   expect(API.get).toHaveBeenCalledTimes(1);
   expect(API.get).toHaveBeenCalledWith(`/api/v1/route-documents/${value.id}/source-evidence`, null, false,
@@ -41,12 +42,14 @@ test("invalid binding and invalid current receipts do not overwrite the saved re
   API.get.mockResolvedValueOnce(evidence);
   const { state } = setup(value); await flushPromises();
   expect(state.loaded.value).toBeNull(); expect(state.error.value).toContain("不一致");
-  expect(state.deliveryReview.value).toEqual(value.metadata.delivery_review);
+  expect(state.deliveryReview.value).toBeNull();
+  expect(state.savedDeliveryReview.value).toEqual(value.metadata.delivery_review);
   const malformedReceipt = sourceEvidence(value); malformedReceipt.metadata.delivery_review.version = 99;
   API.get.mockResolvedValueOnce(malformedReceipt); await state.retry();
   expect(state.loaded.value).toBeNull(); expect(state.stepsByNode.value).toEqual({});
   expect(state.error.value).toContain("响应无效");
-  expect(state.deliveryReview.value).toEqual(value.metadata.delivery_review);
+  expect(state.deliveryReview.value).toBeNull();
+  expect(state.savedDeliveryReview.value).toEqual(value.metadata.delivery_review);
 });
 test("title, note, label, position, graph ordering and edge IDs retain the same evidence request", async () => {
   const value = sourceDocument(); API.get.mockResolvedValue(sourceEvidence(value));
@@ -114,7 +117,8 @@ test("bound unavailable leaves the saved receipt intact and can be explicitly re
   API.get.mockResolvedValueOnce({ status: "unavailable", reason: "source_structure_inconsistent", binding });
   const { state } = setup(value); await flushPromises();
   expect(state.unavailable.value.reason).toBe("source_structure_inconsistent");
-  expect(state.deliveryReview.value).toEqual(value.metadata.delivery_review);
+  expect(state.deliveryReview.value).toBeNull();
+  expect(state.savedDeliveryReview.value).toEqual(value.metadata.delivery_review);
   API.get.mockResolvedValueOnce(sourceEvidence(value)); await state.retry();
   expect(state.unavailable.value).toBeNull(); expect(state.loaded.value).not.toBeNull();
 });
@@ -123,4 +127,22 @@ test("drafts and missing old document hashes do not request source evidence", as
   const value = sourceDocument(); delete value.metadata.chemical_signature;
   const { state } = setup(value); await flushPromises();
   expect(API.get).not.toHaveBeenCalled(); expect(state.unavailable.value.reason).toBe("chemical_signature_missing");
+});
+
+test.each(["changed", "missing-receipt", "network"])("%s after reopening cannot optimistically restore an old checked receipt", async failure => {
+  const value = sourceDocument(), valid = sourceEvidence(value);
+  API.get.mockResolvedValueOnce(valid);
+  const { state, active } = setup(value); await flushPromises();
+  expect(state.deliveryReview.value.grade).toBe("operation_evidence_required");
+  active.value = false;
+  if (failure === "changed") API.get.mockResolvedValueOnce({ status: "unavailable",
+    reason: "source_publication_changed", binding: valid.binding });
+  else if (failure === "missing-receipt") {
+    const bad = sourceEvidence(value); delete bad.metadata.delivery_review;
+    API.get.mockResolvedValueOnce(bad);
+  } else API.get.mockRejectedValueOnce(new Error("offline"));
+  active.value = true; await flushPromises();
+  expect(state.loaded.value).toBeNull();
+  expect(state.deliveryReview.value).toBeNull();
+  expect(state.savedDeliveryReview.value.grade).toBe("model_checked");
 });

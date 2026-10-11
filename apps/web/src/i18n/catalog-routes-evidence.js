@@ -1,4 +1,6 @@
 export default [
+  ["副本保存时的审查记录", "Copy-time review record"],
+  ["历史票据，不代表当前来源核验。", "Historical receipt, not a current source inspection."],
   ["已保存的步骤核验", "Saved step review"],
   ["保存的模型支持", "Recorded model support"],
   ["保存的全反应匹配", "Recorded reaction match"], ["保存的产物匹配", "Recorded product-only match"],

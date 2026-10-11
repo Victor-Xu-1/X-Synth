@@ -67,25 +67,30 @@ test("switching and closing a preview aborts source reads and ignores late respo
   await wrapper.setProps({ modelValue: false }); expect(nextSignal.aborted).toBe(true);
   next.resolve(sourceEvidence(second)); await flushPromises(); wrapper.unmount();
 });
-test("source read failure keeps the saved badge and exposes an explicit successful retry", async () => {
+test("source read failure exposes only labelled history and an explicit successful retry", async () => {
   const value = sourceDocument(); API.get.mockRejectedValueOnce(new Error(JSON.stringify({ detail: { code: "document_source_busy" } })));
   const wrapper = mount(DocumentPreview, { props: { modelValue: true, document: value }, global: { stubs } });
-  await flushPromises(); expect(wrapper.get(".delivery-review-badge").attributes("data-delivery-grade")).toBe("model_checked");
+  await flushPromises();
+  expect(wrapper.find(".document-current-review").exists()).toBe(false);
+  expect(wrapper.get("[data-source-saved-review] .delivery-review-badge").attributes("data-delivery-grade")).toBe("model_checked");
+  expect(wrapper.get("[data-source-saved-review]").text()).toContain("历史票据");
   expect(wrapper.get(".document-source-status").text()).toContain("繁忙");
   API.get.mockResolvedValueOnce(sourceEvidence(value)); await wrapper.get(".document-source-status button").trigger("click"); await flushPromises();
   expect(API.get).toHaveBeenCalledTimes(2); expect(wrapper.get(".delivery-review-badge").attributes("data-delivery-grade")).toBe("operation_evidence_required");
   wrapper.unmount();
 });
 
-test("saved preview uses only the server's current source receipt", async () => {
+test("legacy saved preview distinguishes historical receipt from current inspection and drafts", async () => {
   const receipt = { version: 1, phase: "automated_review", basis: "route_receipt", grade: "model_checked",
     independent_review: { status: "checked", review_version: 1, model: "graph2smiles_uspto_stereo", total_steps: 1, matched_steps: 1 },
     purchase_identity: { policy: "defined_purchase_identity_v1", status: "defined", unresolved_materials: [] } };
   const wrapper = mount(DocumentPreview, { props: { modelValue: true,
     document: { ...document, state: "source_copy", metadata: { delivery_review: receipt } } }, global: { stubs } });
   expect(wrapper.get(".delivery-review-badge").attributes("data-delivery-grade")).toBe("model_checked");
+  expect(wrapper.find(".document-current-review").exists()).toBe(false);
+  expect(wrapper.get("[data-source-saved-review]").text()).toContain("历史票据");
   await wrapper.setProps({ document: { ...document, state: "draft", metadata: { delivery_review: receipt } } });
-  expect(wrapper.get(".delivery-review-badge").attributes("data-delivery-grade")).toBe("not_independently_reviewed");
+  expect(wrapper.find(".delivery-review-badge").exists()).toBe(false);
   wrapper.unmount();
 });
 

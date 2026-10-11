@@ -70,9 +70,10 @@
     </header>
     <div v-if="document" class="route-document-source">
       <span class="state-badge">{{ $tr(sourceStateLabel) }}</span>
-      <DeliveryReviewBadge :receipt="deliveryReview" />
+      <DeliveryReviewBadge v-if="deliveryReview" class="document-current-review" :receipt="deliveryReview" />
       <DocumentSourceStatus :loaded="sourceEvidence" :loading="sourceLoading" :unavailable="sourceUnavailable"
         :error="sourceError" :retired="sourceRetired" @retry="retrySource" />
+      <DocumentSavedReview v-if="!deliveryReview" :receipt="savedDeliveryReview" />
       <router-link v-if="origin" :to="origin.to">
         {{ origin.label }} <v-icon icon="mdi-arrow-top-right" size="14" />
       </router-link>
@@ -248,6 +249,7 @@ import { documentEditorLocation, documentLibraryLocation } from "@/common/docume
 import RouteGraph from "@/components/routes/RouteGraph.vue";
 import DeliveryReviewBadge from "@/components/routes/DeliveryReviewBadge.vue";
 import DocumentSourceStatus from "@/components/routes/DocumentSourceStatus.vue";
+import DocumentSavedReview from "@/components/routes/DocumentSavedReview.vue";
 import RouteInspector from "@/components/routes/RouteInspector.vue";
 import ExpandMolecule from "@/components/routes/ExpandMolecule.vue";
 import ManualReactionDialog from "@/components/routes/ManualReactionDialog.vue";
@@ -413,7 +415,7 @@ const sourceStateLabel = computed(() =>
 );
 const sourceActive = computed(() => !loading.value && !reloading.value && !importing.value);
 const { loaded: sourceEvidence, loading: sourceLoading, unavailable: sourceUnavailable, error: sourceError,
-  retired: sourceRetired, deliveryReview, automatedReview, stepsByNode: sourceSteps, retry: retrySource, retire: retireSource }
+  retired: sourceRetired, deliveryReview, savedDeliveryReview, automatedReview, stepsByNode: sourceSteps, retry: retrySource, retire: retireSource }
   = useDocumentSourceEvidence(document, graph, { active: sourceActive });
 let imageGeneration = 0;
 watch([() => document.value?.id, graph, deliveryReview], () => { imageGeneration++; }, { deep: true, flush: "sync" });

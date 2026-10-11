@@ -6,9 +6,10 @@
           <h2 :id="titleId" tabindex="0">{{ document?.title }}</h2>
           <div class="document-preview-status">
             <span class="state-badge">{{ $tr(documentStateLabel(document, document?.graph)) }}</span>
-            <DeliveryReviewBadge :receipt="deliveryReview" />
+            <DeliveryReviewBadge v-if="deliveryReview" class="document-current-review" :receipt="deliveryReview" />
             <DocumentSourceStatus :loaded="sourceEvidence" :loading="sourceLoading" :unavailable="sourceUnavailable"
               :error="sourceError" :retired="sourceRetired" @retry="retrySource" />
+            <DocumentSavedReview v-if="!deliveryReview" :receipt="savedDeliveryReview" />
           </div>
         </div>
         <div class="page-actions">
@@ -80,6 +81,7 @@ import DocumentStepList from "./DocumentStepList.vue";
 import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
 import DeliveryReviewBadge from "./DeliveryReviewBadge.vue";
 import DocumentSourceStatus from "./DocumentSourceStatus.vue";
+import DocumentSavedReview from "./DocumentSavedReview.vue";
 import { onBeforeUnmount, toRef, useId } from "vue";
 import { useDocumentReading } from "@/composables/useDocumentReading";
 import { useDocumentSourceEvidence } from "@/composables/useDocumentSourceEvidence";
@@ -98,7 +100,7 @@ const { selected, detailsOpen, view, views, graphActive, graphView, readingMain,
   graph, node, steps, stepNumbers, stepError, stepChoices, reactionSelection, mobileDetails,
   changeView, selectNode, closeDetails, locateStep, graphInitialized } = useDocumentReading(open, toRef(props, "document"));
 const { loaded: sourceEvidence, loading: sourceLoading, unavailable: sourceUnavailable, error: sourceError,
-  retired: sourceRetired, deliveryReview, automatedReview, stepsByNode: sourceSteps, retry: retrySource }
+  retired: sourceRetired, deliveryReview, savedDeliveryReview, automatedReview, stepsByNode: sourceSteps, retry: retrySource }
   = useDocumentSourceEvidence(toRef(props, "document"), graph, { active: open });
 </script>
 <style scoped>

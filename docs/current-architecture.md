@@ -686,6 +686,10 @@ Runtime paths are stripped through the shared public-evidence projection. Local
 chemical changes retire evidence immediately; title, note and layout changes do
 not constitute chemistry. A changed server revision during reading is rejected.
 One shared document-context reader owns UI cancellation and late-response guards.
+Current badges and inspector warnings use only a validated source inspection.
+Loading, unavailable, malformed or failed reads cannot optimistically restore a
+copy-time grade. The unchanged saved receipt is separate, collapsed and explicitly
+historical; chemical edits retire both bindings rather than reassign them.
 Current clients bind the selected index to its route ID; a changed selection is
 rejected rather than copied as a different route. Published source provenance also
 retains the immutable result snapshot. Legacy index-only callers remain compatible.
