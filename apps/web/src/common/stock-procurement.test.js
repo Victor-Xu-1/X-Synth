@@ -29,3 +29,8 @@ test.each([null, [], {}, { ...defined, policy: "future" }, { ...defined, reason:
 test.each([{ smiles: "O" }, { snapshot: "c".repeat(64) }])("decision cannot move across structure/snapshot (%#)", overrides => {
   expect(stockProcurementPresentation(row(), { ...context, ...overrides }).status).toBe("invalid");
 });
+
+test.each([{}, { smiles: "CCO" }, { snapshot: "a".repeat(64) }, { ...context, smiles: "" },
+  { ...context, snapshot: "" }])("missing inspection context is not verified procurement (%#)", value => {
+  expect(stockProcurementPresentation(row(), value)).toMatchObject({ status: "unknown", eligibleForClosure: false });
+});

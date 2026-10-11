@@ -13,6 +13,8 @@ export function stockProcurementPresentation(record, context = {}) {
     eligibleForClosure: false, boundaryLabel: "目录记录不代表实时供货、纯度或实验可用性。",
   };
   if (record?.procurement === undefined) return result;
+  if (typeof context.smiles !== "string" || !context.smiles.trim()
+    || typeof context.snapshot !== "string" || !context.snapshot) return result;
   const value = record.procurement;
   if (!recordObject(value) || value.policy !== POLICY || !supplierPriceView(record, context).basis
     || !(value.status === "defined" && value.reason === null && value.eligible_for_closure === true
