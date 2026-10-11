@@ -1,6 +1,12 @@
 import { defineComponent, ref } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import { useStockSearch } from "./useStockSearch";
+import { priceContractResponse } from "@/common/route-price-test-data";
+
+function emptyResponse() {
+  const value = priceContractResponse(); value.results.CCO = [];
+  return value;
+}
 
 const wrappers = [];
 function setup(api) {
@@ -45,7 +51,7 @@ test("catalog lookup uses the same retirement signal and a bounded individual re
   const validation = api.post.mock.calls[0][3], catalog = api.post.mock.calls[1][3];
   expect(catalog).toEqual({ signal: validation.signal, timeoutMs: 15000 });
   state.reset(); expect(catalog.signal.aborted).toBe(true);
-  resolve({ snapshot: "a".repeat(64), results: { CCO: [] } }); await run;
+  resolve(emptyResponse()); await run;
   expect(state.matchedResult.value).toBeNull();
   expect(state.loading.value).toBe(false);
 });
@@ -53,7 +59,7 @@ test("catalog lookup uses the same retirement signal and a bounded individual re
 test("current timeout is readable and a fresh explicit retry uses a new signal", async () => {
   const api = { post: jest.fn().mockRejectedValueOnce(new DOMException("network wait", "TimeoutError"))
     .mockResolvedValueOnce({ smiles: "CCO" })
-    .mockResolvedValueOnce({ snapshot: "a".repeat(64), results: { CCO: [] } }) };
+    .mockResolvedValueOnce(emptyResponse()) };
   const state = setup(api); await state.search();
   expect(state.error.value).toBe("服务请求超时，请刷新或重试。");
   expect(state.loading.value).toBe(false);

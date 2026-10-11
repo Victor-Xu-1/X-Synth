@@ -5,7 +5,7 @@ import { API } from "@/common/api";
 import { useWorkspaceStore } from "@/store/workspace";
 import { setLocale } from "@/i18n";
 import StockSearch from "./StockSearch.vue";
-import { priceContractRecord } from "@/common/route-price-test-data";
+import { priceContractRecord, stockContractResponse } from "@/common/route-price-test-data";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "@vue/compiler-sfc";
@@ -69,7 +69,7 @@ function trackRuntimeErrors(wrapper) {
   return errors;
 }
 async function lookup(wrapper, records = [{ smiles: "CCO", source: "supplier-a", catalog_id: "record-a" }], canonical = "CCO") {
-  API.post.mockResolvedValueOnce({ smiles: canonical }).mockResolvedValueOnce({ snapshot, results: { [canonical]: records } });
+  API.post.mockResolvedValueOnce({ smiles: canonical }).mockResolvedValueOnce(stockContractResponse(canonical, records));
   await wrapper.get("form").trigger("submit");
   await flushPromises();
 }
@@ -106,10 +106,8 @@ test.each([{}, { smiles: "CCO", snapshot }])("stock query %j has no empty criter
 });
 test("response and task snapshots are labelled separately and missing prices remain unknown", async () => {
   const { wrapper } = setup();
-  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({
-    snapshot: otherSnapshot,
-    results: { CCO: [{ smiles: "CCO", catalog_id: "record-a", ppg: null }] },
-  });
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce(
+    stockContractResponse("CCO", [{ smiles: "CCO", catalog_id: "record-a", ppg: null }], otherSnapshot));
   await wrapper.get("form").trigger("submit");
   await flushPromises();
   expect(wrapper.text()).toContain(snapshot);
@@ -123,7 +121,7 @@ test("response and task snapshots are labelled separately and missing prices rem
 test("catalog prices use the shared baseline and never present an inferred ISO currency", async () => {
   const { wrapper } = setup();
   const record = priceContractRecord();
-  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({ snapshot, results: { CCO: [record] } });
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce(stockContractResponse("CCO", [record]));
   await wrapper.get("form").trigger("submit");
   await flushPromises();
   expect(wrapper.text()).toContain("2.08 $/g");
@@ -133,10 +131,7 @@ test("catalog prices use the shared baseline and never present an inferred ISO c
 });
 test("query changes immediately hide old records and do not automatically fetch replacement evidence", async () => {
   const { route, wrapper } = setup();
-  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({
-    snapshot,
-    results: { CCO: [{ smiles: "CCO", catalog_id: "record-a" }] },
-  });
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce(stockContractResponse("CCO", [{ smiles: "CCO", catalog_id: "record-a" }]));
   await wrapper.get("form").trigger("submit");
   await flushPromises();
   expect(wrapper.text()).toContain("record-a");
@@ -148,10 +143,7 @@ test("query changes immediately hide old records and do not automatically fetch 
 });
 test("supplier anchors use the shared safe URL boundary", async () => {
   const { wrapper } = setup();
-  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({
-    snapshot,
-    results: {
-      CCO: [
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce(stockContractResponse("CCO", [
         { smiles: "CCO", catalog_id: "one", url: "javascript:alert(1)" },
         {
           smiles: "CCO",
@@ -163,9 +155,7 @@ test("supplier anchors use the shared safe URL boundary", async () => {
           catalog_id: "three",
           url: "https://example.org/catalog",
         },
-      ],
-    },
-  });
+      ]));
   await wrapper.get("form").trigger("submit");
   await flushPromises();
   expect(wrapper.findAll("a")).toHaveLength(1);
@@ -176,10 +166,7 @@ test("supplier anchors use the shared safe URL boundary", async () => {
 
 test("matched stock structure uses the shared read-only preview without changing evidence", async () => {
   const { wrapper } = setup();
-  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({
-    snapshot,
-    results: { CCO: [{ smiles: "CCO", catalog_id: "record-a" }] },
-  });
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce(stockContractResponse("CCO", [{ smiles: "CCO", catalog_id: "record-a" }]));
   await wrapper.get("form").trigger("submit");
   await flushPromises();
   const preview = wrapper.getComponent({ name: "StructurePreview" });
@@ -206,9 +193,7 @@ test("catalogue records wrap at 390 without truncating identity or breaking the 
 
 test("catalogue lead time is shown unchanged and is never a live dispatch promise", async () => {
   const { wrapper } = setup();
-  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({
-    snapshot, results: { CCO: [{ smiles: "CCO", catalog_id: "record-a", lead_time: "7-21days" }] },
-  });
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce(stockContractResponse("CCO", [{ smiles: "CCO", catalog_id: "record-a", lead_time: "7-21days" }]));
   await wrapper.get("form").trigger("submit");
   await flushPromises();
   expect(wrapper.get(".stock-lead-time").text()).toBe("7-21days");
@@ -341,7 +326,7 @@ test("lookup failure is distinct from no-match and can be retried through the un
   expect(panel(wrapper, "目录记录").text()).toContain("catalog unavailable");
   expect(panel(wrapper, "目录记录").text()).not.toContain("未找到精确目录记录");
   expect(tab(wrapper, "证据详情").element.disabled).toBe(true);
-  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({ snapshot, results: { CCO: [] } });
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce(stockContractResponse("CCO"));
   await wrapper.get('[data-cy="stock-retry"]').trigger("click");
   await flushPromises();
   expect(panel(wrapper, "目录记录").text()).toContain("未找到精确目录记录");
@@ -372,7 +357,7 @@ test("a current completion after returning to query does not steal input focus o
   await wrapper.get('[data-cy="stock-edit-query"]').trigger("click");
   const input = wrapper.get("textarea").element;
   expect(document.activeElement).toBe(input);
-  resolveLookup({ snapshot, results: { CCO: [{ smiles: "CCO", catalog_id: "record-a" }] } });
+  resolveLookup(stockContractResponse("CCO", [{ smiles: "CCO", catalog_id: "record-a" }]));
   await flushPromises();
   expect(panel(wrapper, "查询").isVisible()).toBe(true);
   expect(document.activeElement).toBe(input);
@@ -387,7 +372,7 @@ test("new unconfirmed input rejects an outstanding catalog success even when sou
   await flushPromises();
   inputPending.value = true;
   await nextTick();
-  resolveLookup({ snapshot, results: { CCO: [{ smiles: "CCO", catalog_id: "stale-record" }] } });
+  resolveLookup(stockContractResponse("CCO", [{ smiles: "CCO", catalog_id: "stale-record" }]));
   await flushPromises();
   inputPending.value = false;
   await nextTick();

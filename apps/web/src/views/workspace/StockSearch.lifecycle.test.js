@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import { mount } from "@vue/test-utils";
+import { stockContractResponse } from "@/common/route-price-test-data";
 import { nextTick, reactive } from "vue";
 import { useRoute } from "vue-router";
 import { API } from "@/common/api";
@@ -73,7 +74,7 @@ test("recycled confirmed iframe never clears source query or its task snapshot, 
   frame.contentWindow.ketcher = firstEditor;
   await settle();
   expect(field.vm.pending).toBe(false);
-  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({ snapshot, results: { CCO: [{ smiles: "CCO", catalog_id: "record-a" }] } });
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce(stockContractResponse("CCO", [{ smiles: "CCO", catalog_id: "record-a" }]));
   await wrapper.get("form").trigger("submit");
   await settle();
   expect(wrapper.get('[data-cy="stock-match-heading"]').isVisible()).toBe(true);
@@ -94,7 +95,7 @@ test("recycled confirmed iframe never clears source query or its task snapshot, 
   replacement.contentWindow.ketcher = editorFixture();
   await settle();
   expect(wrapper.get("textarea").element.value).toBe("CCO");
-  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce({ snapshot, results: { CCO: [] } });
+  API.post.mockResolvedValueOnce({ smiles: "CCO" }).mockResolvedValueOnce(stockContractResponse("CCO"));
   await wrapper.get("form").trigger("submit");
   await settle();
   await wrapper.findAll('[role="tab"]').find((tab) => tab.text() === "证据详情").trigger("click");
