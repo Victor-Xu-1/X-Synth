@@ -27,15 +27,15 @@ export function useKetcherView({ root, active, ready, blocked, onChange, getFram
   let focusReturn, scrollReturn;
   const returnReaders = new Set();
   function watchReturnIntent() {
-    const owner = document;
+    const owners = new Set([document, getFrame()?.contentDocument].filter(Boolean));
     const state = { interrupted: false };
     const events = ["wheel", "touchstart", "pointerdown", "keydown"];
     const interrupt = event => {
       if (event.type === "keydown" && !["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", "Tab"].includes(event.key)) return;
       state.interrupted = true;
     };
-    state.stop = () => { for (const event of events) owner.removeEventListener(event, interrupt, true); returnReaders.delete(state.stop); };
-    for (const event of events) owner.addEventListener(event, interrupt, { capture: true, passive: true });
+    state.stop = () => { for (const owner of owners) for (const event of events) owner.removeEventListener(event, interrupt, true); returnReaders.delete(state.stop); };
+    for (const owner of owners) for (const event of events) owner.addEventListener(event, interrupt, { capture: true, passive: true });
     returnReaders.add(state.stop);
     return state;
   }
@@ -88,6 +88,10 @@ export function useKetcherView({ root, active, ready, blocked, onChange, getFram
   }
   function changed() {
     const next = owns(root.value);
+    if (document.fullscreenElement && !next) {
+      epoch++; retireReturn(); invoker = null; expanded.value = false;
+      return;
+    }
     if (next && (!active.value || pending.value && operationEpoch !== epoch)) {
       void release();
       return;
