@@ -154,6 +154,7 @@
       <RouteInspector
         v-if="selectedNode"
         ref="inspectorView"
+        tabindex="-1"
         :context-id="document.id"
         :node="selectedNode"
         :graph="graph"
@@ -233,6 +234,7 @@ import {
 import { routeImage, routeExportErrorMessage } from "@/common/route-export";
 import { useRouteDocument } from "@/composables/useRouteDocument";
 import { useInspectorDraftGuard } from "@/composables/useInspectorDraftGuard";
+import { useEditorInspectorFocus } from "@/composables/useEditorInspectorFocus";
 import { documentStepDetails } from "@/common/document-step-details";
 import { documentEditorLocation, documentLibraryLocation } from "@/common/document-library-view";
 import RouteGraph from "@/components/routes/RouteGraph.vue";
@@ -322,6 +324,9 @@ const inspectorLocked = computed(
 );
 const editingLocked = computed(() => inspectorLocked.value || applying.value);
 const inspectorView = ref(null);
+const inspectorFocus = useEditorInspectorFocus({ selected, canvas, inspector: inspectorView, locked: editingLocked,
+  context: () => JSON.stringify([document.value?.id, route.params.id]),
+});
 const draftGuard = useInspectorDraftGuard({
   contextId: () => document.value?.id,
   nodeId: () => selectedNode.value?.id,
@@ -401,15 +406,15 @@ function runEditAction(action) {
   if (action.label !== "打开路线文档" && !draftGuard.requestDiscard()) return;
   action.run();
 }
-function selectNode(value) {
-  if (editingLocked.value || value === selected.value || !draftGuard.requestDiscard()) return;
-  selected.value = value;
+function selectNode(value, event) {
+  if (editingLocked.value || (value !== selected.value && !draftGuard.requestDiscard())) return;
+  return inspectorFocus.select(value, event);
 }
 function discardInspector() {
   if (!editingLocked.value) draftGuard.requestDiscard();
 }
 function closeInspector() {
-  if (!editingLocked.value && draftGuard.requestDiscard()) selected.value = null;
+  if (!editingLocked.value && draftGuard.requestDiscard()) return inspectorFocus.close();
 }
 function updateGraph(value) {
   if (!editingLocked.value && draftGuard.permitsGraphChange(graph.value, value)) replaceGraph(value);
