@@ -14,6 +14,13 @@ export function vuetifyControlSemantics(workspaceUrl) {
     enforce: "pre",
     configResolved(config) { command = config.command; },
     buildStart() { applied = false; },
+    load(id) {
+      if (!isTarget(id)) return null;
+      // Vite strips map comments before transform on its default filesystem path.
+      // Keep one pinned byte source for both build and serve, including its map.
+      this.addWatchFile(target); this.addWatchFile(target + ".map");
+      return { code: readFileSync(target, "utf8"), map: JSON.parse(readFileSync(target + ".map", "utf8")) };
+    },
     shouldTransformCachedModule({ id }) { return isTarget(id) ? true : null; },
     transform(source, id) {
       if (!isTarget(id)) return null;

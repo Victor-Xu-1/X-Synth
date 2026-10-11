@@ -12,13 +12,21 @@
     <section v-if="dataset" class="evidence-section saved-dataset-provenance">
       <h3>{{ $tr('已保存的数据集来源') }}</h3>
       <dl class="evidence-facts">
-        <template v-for="field in dataset.fields" :key="field.label">
+        <template v-for="field in datasetSummary" :key="field.label">
           <dt>{{ $tr(field.label) }}</dt><dd>{{ field.value }}</dd>
         </template>
       </dl>
       <a v-for="link in dataset.links" :key="link.key" :href="link.href" target="_blank" rel="noopener noreferrer">
         {{ $tr(link.label) }} · {{ link.value }}
       </a>
+      <details v-if="datasetMetadata.length" class="dataset-details">
+        <summary>{{ $tr('元数据') }}</summary>
+        <dl class="evidence-facts">
+          <template v-for="field in datasetMetadata" :key="field.label">
+            <dt>{{ $tr(field.label) }}</dt><dd>{{ field.value }}</dd>
+          </template>
+        </dl>
+      </details>
       <p class="evidence-boundary">{{ $tr('数据集引用仅说明数据来源，不证明该目标反应的文献匹配、条件或收率。') }}</p>
     </section>
     <section v-if="materials.length" class="evidence-section">
@@ -73,6 +81,8 @@ const dataset = computed(() => {
   const record = props.step || props.candidate;
   return buildReactionEvidence(createReactionEvidenceInput({ ...record?.metadata, ...record })).dataset;
 });
+const datasetSummary = computed(() => dataset.value?.fields.filter(field => ["数据集", "许可"].includes(field.label)) || []);
+const datasetMetadata = computed(() => dataset.value?.fields.filter(field => !["数据集", "许可"].includes(field.label)) || []);
 const metadata = computed(() => {
   const value = (props.step || props.candidate)?.metadata;
   return value && typeof value === "object" && Object.keys(value).length ? JSON.stringify(value, null, 2) : "";

@@ -15,6 +15,7 @@ test("reader-fix saved dataset attribution is readable without opening raw JSON 
   const before = JSON.stringify(step);
   const wrapper = mount(RouteEvidencePanel, { props: { step } });
   const section = wrapper.get(".saved-dataset-provenance");
+  expect(section.get('.dataset-details').attributes("open")).toBeUndefined();
   expect(section.text()).toContain(step.metadata.model_metadata[0].source.reaction_data.provenance.dataset_name);
   expect(section.get('a').attributes()).toMatchObject({
     href: "https://doi.org/10.1039/C8SC04228D", target: "_blank", rel: "noopener noreferrer",
