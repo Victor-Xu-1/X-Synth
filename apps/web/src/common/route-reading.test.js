@@ -131,10 +131,12 @@ test("material CSV carries the localized route receipt without changing scientif
     independent_review: { status: "missing" }, purchase_identity: { policy: "defined_purchase_identity_v1",
       status: "unresolved", unresolved_materials: [{ smiles: rows[0].smiles, reason: "undefined_purchase_form" }] } };
   const before = JSON.stringify({ rows, receipt });
-  for (const [locale, header, label] of [["en", "Review grade", "Purchase form unresolved"],
-      ["zh-CN", "核验等级", "采购形式未明确"]]) {
+  for (const [locale, headers, label] of [
+    ["en", ["Starting material", "Structure SMILES", "Used in steps", "Review grade"], "Purchase form unresolved"],
+    ["zh-CN", ["原料", "结构 SMILES", "使用步骤", "核验等级"], "采购形式未明确"],
+  ]) {
     setLocale(locale, { persist: false });
-    expect(Papa.parse(materialsCsv(rows, receipt)).data).toEqual([["原料", "结构 SMILES", "使用步骤", header],
+    expect(Papa.parse(materialsCsv(rows, receipt)).data).toEqual([headers,
       [rows[0].label, rows[0].smiles, "步骤 1", label]]);
   }
   expect(JSON.stringify({ rows, receipt })).toBe(before);

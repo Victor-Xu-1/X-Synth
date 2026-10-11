@@ -70,7 +70,7 @@ const csvCell = (value) => {
 export function materialsCsv(rows, deliveryReview = null) {
   const review = uiText(deliveryReviewLabels[deliveryReviewGrade(deliveryReview)]);
   return [
-    ["原料", "结构 SMILES", "使用步骤", uiText("核验等级")],
+    ["原料", "结构 SMILES", "使用步骤", "核验等级"].map((label) => uiText(label)),
     ...rows.map((row) => [row.label, row.smiles, row.usedIn.join("; "), review]),
   ]
     .map((row) => row.map(csvCell).join(","))

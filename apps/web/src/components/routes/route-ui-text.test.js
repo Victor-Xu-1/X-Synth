@@ -26,7 +26,7 @@ test("generated captions use complete phrases while unknown captions remain lite
   expect(materialUsesUiText({ usedIn: ["步骤 17"] }, {}, true)).toBe("Step 17");
 });
 
-test("material fallbacks localize without transforming user names, graph records or exported CSV", () => {
+test("material fallbacks and CSV headers localize without transforming user names, graph records or exported CSV rows", () => {
   const graph = {
     target_id: "target", nodes: [
       { id: "target", type: "molecule", smiles: "CCO" },
@@ -37,8 +37,9 @@ test("material fallbacks localize without transforming user names, graph records
     ],
     edges: [{ source: "m1", target: "r1" }, { source: "m2", target: "r2" }],
   };
-  const rows = materialRows(graph), before = JSON.stringify(graph), csv = materialsCsv(rows);
   initializeLocale(null);
+  const rows = materialRows(graph), before = JSON.stringify(graph), csv = Papa.parse(materialsCsv(rows)).data;
+  expect(csv[0]).toEqual(["Starting material", "Structure SMILES", "Used in steps", "Review grade"]);
   expect(materialUiLabel(rows[0], 0, graph)).toBe("Starting material 1");
   expect(materialUiLabel(rows[1], 1, graph)).toBe("原料 2");
   expect(materialUsesUiText(rows[0], graph)).toBe("Reaction step");
@@ -46,8 +47,10 @@ test("material fallbacks localize without transforming user names, graph records
   setLocale("zh-CN", { persist: false });
   expect(materialUiLabel(rows[0], 0, graph)).toBe("原料 1");
   expect(materialUsesUiText(rows[0], graph)).toBe("反应步骤");
-  expect(Papa.parse(materialsCsv(rows)).data.map(row => row.slice(0, 3))).toEqual(
-    Papa.parse(csv).data.map(row => row.slice(0, 3)),
+  const localizedCsv = Papa.parse(materialsCsv(rows)).data;
+  expect(localizedCsv[0]).toEqual(["原料", "结构 SMILES", "使用步骤", "核验等级"]);
+  expect(localizedCsv.slice(1).map(row => row.slice(0, 3))).toEqual(
+    csv.slice(1).map(row => row.slice(0, 3)),
   );
   expect(JSON.stringify(graph)).toBe(before);
 });
