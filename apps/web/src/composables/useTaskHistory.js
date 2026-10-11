@@ -2,6 +2,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { API } from "@/common/api";
 import { errorMessage } from "@/common/workspace-errors";
 import { activeTaskStates } from "@/common/task-state";
+import { taskDeliveryReviewPending } from "@/common/delivery-review";
 import {
   HISTORY_PAGE_SIZE,
   historyRouteQuery,
@@ -158,11 +159,14 @@ export function useTaskHistory({ api = API, route, router } = {}) {
       const previous = new Map(
         rows.value.map((task) => [task.result_id, task]),
       );
-      rows.value = result.results.map((task) =>
-        previous.has(task.result_id)
-          ? normalizeTaskInfo(previous.get(task.result_id), task)
-          : task,
-      );
+      rows.value = result.results.map((task) => {
+        const prior = previous.get(task.result_id);
+        if (!prior) return task;
+        const merged = normalizeTaskInfo(prior, task);
+        if (task.revision >= prior.revision && Object.hasOwn(task, "result_snapshot"))
+          merged.result_snapshot = task.result_snapshot;
+        return merged;
+      });
       groups.value = result.groups;
       total.value = result.total;
       allTotal.value = result.all_total;
@@ -309,8 +313,8 @@ export function useTaskHistory({ api = API, route, router } = {}) {
         !loading.value &&
         !polling &&
         !error.value &&
-        !archived.value &&
-        rows.value.some((task) => activeTaskStates.includes(task.result_state))
+        rows.value.some((task) => taskDeliveryReviewPending(task) ||
+          !archived.value && activeTaskStates.includes(task.result_state))
       )
         void refresh({ background: true });
     }, 6000);

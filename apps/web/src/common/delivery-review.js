@@ -1,4 +1,5 @@
 import { FORWARD_REVIEW_POLICY, ORIGINAL_RANK_BASIS, JOINT_DISPLAY_BASIS, reviewRankBasis } from "./forward-rank";
+import { deliveryReviewMatchesTask, readDeliveryReviewAggregate, routeReviewGrades } from "./delivery-review-aggregate";
 
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const count = (value) => Number.isSafeInteger(value) && value >= 0;
@@ -36,6 +37,7 @@ export const deliveryReviewLabels = {
 };
 
 export function deliveryReviewGrade(receipt) {
+  if (receipt?.basis === "selected_routes") return readDeliveryReviewAggregate(receipt)?.grade || unknown;
   if (!record(receipt) || receipt.version !== 1 || receipt.phase !== "automated_review" ||
       !["route_receipt", "stored_summary"].includes(receipt.basis)) return unknown;
   if ("operations" in receipt && !validOperationEvidence(receipt.operations)) return unknown;
@@ -68,7 +70,27 @@ export function deliveryReviewGrade(receipt) {
 }
 
 export function taskDeliveryReview(task) {
-  return (task?.summary || task?.unified_route_pool_summary)?.delivery_review;
+  const summary = record(task) && Object.hasOwn(task, "summary") ? task.summary : task?.unified_route_pool_summary;
+  const receipt = summary?.delivery_review;
+  return receipt?.basis === "selected_routes" && !deliveryReviewMatchesTask(receipt, task) ? null : receipt;
+}
+
+export function taskDeliveryReviewPending(task) {
+  return readDeliveryReviewAggregate(taskDeliveryReview(task))?.status === "pending";
+}
+
+export function deliveryReviewPresentation(receipt) {
+  const aggregate = readDeliveryReviewAggregate(receipt);
+  const grade = deliveryReviewGrade(receipt);
+  const status = aggregate?.status || null;
+  const label = status === "pending" ? "汇总待更新" : status === "unavailable" ? "汇总不可用"
+    : grade === "mixed_review" ? "混合核验"
+    : receipt?.basis === "stored_summary" && grade === "model_checked" ? "保存的模型核验"
+    : deliveryReviewLabels[grade];
+  const breakdown = grade === "mixed_review" ? routeReviewGrades
+    .filter(kind => aggregate.grade_counts[kind] > 0)
+    .map(kind => ({ grade: kind, label: deliveryReviewLabels[kind], count: aggregate.grade_counts[kind] })) : [];
+  return { grade, status, label, breakdown };
 }
 
 export function unresolvedOperationSteps(receipt) {

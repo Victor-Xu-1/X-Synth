@@ -17,7 +17,7 @@
           :class="taskStateClass(job.status)"
           >{{ taskStateLabel(job.status) }}</span
         >
-        <DeliveryReviewBadge v-if="job" :receipt="taskDeliveryReview(job)" />
+        <DeliveryReviewBadge v-if="job" :receipt="deliveryReview" />
       </div>
       <div class="page-actions">
         <v-btn
@@ -141,12 +141,12 @@ import { readTaskParameters } from "@/common/task-parameters";
 import { useTaskParameters } from "@/composables/useTaskParameters";
 import RouteReader from "@/components/routes/RouteReader.vue";
 import DeliveryReviewBadge from "@/components/routes/DeliveryReviewBadge.vue";
-import { taskDeliveryReview } from "@/common/delivery-review";
 import TaskInfoDialog from "@/components/workspace/TaskInfoDialog.vue";
 import TaskSearchProgress from "@/components/workspace/TaskSearchProgress.vue";
 const route = useRoute(),
   router = useRouter();
 const job = ref(null),
+  deliveryReview = ref(null),
   candidates = ref([]),
   selectedId = ref(""),
   view = ref("overview"),
@@ -186,6 +186,7 @@ const taskInfo = computed(() =>
   job.value
     ? {
         ...job.value,
+        summary: { ...job.value.summary, delivery_review: deliveryReview.value },
         ...(parameters.data.value?.job_id === identifier.value ? { settings: parameters.data.value.settings } : {}),
         result_id: job.value.job_id,
         result_state: job.value.status,
@@ -226,14 +227,17 @@ async function refresh(force = false) {
     const values = await detailLoader.load(id, { force, signal: request.signal });
     if (!values || disposed || current !== generation || id !== identifier.value) return;
     if (values.job) job.value = values.job;
+    deliveryReview.value = values.deliveryReview;
     candidates.value = values.candidates;
     artifactCurrent.value = values.artifactCurrent;
     if (values.artifactRefreshed) copyError.value = "";
     selectRequestedRoute();
     error.value = values.error;
   } catch (cause) {
-    if (!disposed && current === generation)
+    if (!disposed && current === generation) {
+      deliveryReview.value = null;
       error.value = errorMessage(cause, "任务详情加载失败。");
+    }
   } finally {
     if (!disposed && current === generation) loading.value = false;
     if (detailRequest === request) detailRequest = null;
@@ -314,6 +318,7 @@ watch(
     detailLoader.reset();
     requestedSelectionPending = true;
     job.value = null;
+    deliveryReview.value = null;
     candidates.value = [];
     selectedId.value = "";
     view.value = "overview";
@@ -339,7 +344,8 @@ watch(
 );
 onMounted(() => {
   timer = window.setInterval(() => {
-    if (active.value && !loading.value && !mutating.value) refresh();
+    if ((active.value || !error.value && deliveryReview.value?.status === "pending") &&
+        !loading.value && !mutating.value) refresh();
   }, 5000);
 });
 onBeforeUnmount(() => {

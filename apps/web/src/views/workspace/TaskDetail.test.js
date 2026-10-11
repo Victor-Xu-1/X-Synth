@@ -3,6 +3,8 @@ import { nextTick, reactive } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { API } from "@/common/api";
 import TaskDetail from "./TaskDetail.vue";
+import { taskDeliveryReview } from "@/common/delivery-review";
+import { initializeLocale, setLocale } from "@/i18n";
 
 jest.mock("vue-router", () => ({ useRoute: jest.fn(), useRouter: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn() } }));
@@ -10,7 +12,7 @@ jest.mock("@/components/routes/RouteReader.vue", () => ({
   name: "RouteReader", props: ["candidates", "busy", "loading", "selectedRoute", "view", "canEdit"],
   template: '<div class="reader">{{ candidates.length }}</div>',
 }));
-jest.mock("@/components/workspace/TaskInfoDialog.vue", () => ({ template: "<div />" }));
+jest.mock("@/components/workspace/TaskInfoDialog.vue", () => ({ name: "TaskInfoDialog", props: ["task"], template: "<div />" }));
 jest.mock("@/components/workspace/TaskSearchProgress.vue", () => ({ template: "<div />" }));
 
 const wrappers = [];
@@ -35,7 +37,7 @@ async function setup(patch = {}) {
     if (query?.include_settings) return { ...state.job, job_id: route.params.id, settings: state.settings };
     if (!url.includes("retrieve")) return { ...state.job, job_id: route.params.id };
     if (state.failArtifact) throw new Error("artifact unavailable");
-    return { result: { unified_route_pool: { selected_routes: state.routes } } };
+    return { result: { unified_route_pool: { selected_routes: state.routes, summary: { delivery_review: state.artifactReview } } } };
   });
   API.post.mockResolvedValue({});
   const wrapper = mount(TaskDetail, { global: { stubs: {
@@ -241,4 +243,115 @@ test.each(["edit", "resume"])("late %s responses cannot release a newer mutation
   await next;
   expect(wrapper.vm[flag]).toBe(false);
   expect(wrapper.vm.actionError).toBe("");
+});
+
+const aggregate = (grade = "operation_evidence_required", status = "ready", snapshot_id = snapshot) => ({
+  version: 1, phase: "automated_review", basis: "selected_routes", status,
+  grade: status === "ready" ? grade : "not_independently_reviewed", route_count: status === "ready" ? 1 : null,
+  grade_counts: status === "ready" ? { not_independently_reviewed: 0, model_checked: 0,
+    operation_evidence_required: 0, purchase_form_unresolved: 0, [grade]: 1 } : null,
+  source_binding: { job_id: idA, snapshot_id },
+});
+
+test("header and TaskInfo share confirmed current review, preserve user values and survive pending metadata", async () => {
+  localStorage.removeItem("x-synth.locale");
+  initializeLocale();
+  const current = aggregate(), before = JSON.stringify(current);
+  const { wrapper, state } = await setup({ artifactReview: current, job: {
+    job_id: idA, target_smiles: "[NH3+]CC.[Cl-]", description: "原始任务 25 °C", status: "searching", result_snapshot: snapshot,
+    summary: { delivery_review: { version: 1, phase: "automated_review", basis: "stored_summary", grade: "model_checked",
+      independent_review: { status: "checked", selected_routes: 1, accepted_routes: 2,
+        review_policy: "exact_stock_graph2smiles_connected_dag_family_queue_v3" },
+      purchase_identity: { policy: "defined_purchase_identity_v1", status: "defined", unresolved_materials: [] } } },
+  } });
+  expect(wrapper.get(".delivery-review-badge").text()).toBe("Reaction operations unverified");
+  const info = wrapper.findComponent({ name: "TaskInfoDialog" }).props("task");
+  expect(taskDeliveryReview(info)).toEqual(current);
+  expect(wrapper.get("h1").text()).toBe("原始任务 25 °C");
+  expect(info.target_smiles).toBe("[NH3+]CC.[Cl-]");
+  state.job.summary = { delivery_review: aggregate("not_independently_reviewed", "pending") };
+  await jest.advanceTimersByTimeAsync(5000);
+  await settle();
+  expect(wrapper.get(".delivery-review-badge").text()).toBe("Reaction operations unverified");
+  expect(taskDeliveryReview(wrapper.vm.taskInfo)).toEqual(current);
+  expect(API.get.mock.calls.filter(([url]) => url.includes("retrieve"))).toHaveLength(1);
+  setLocale("zh-CN");
+  await nextTick();
+  expect(wrapper.get(".delivery-review-badge").text()).toBe("反应操作待核验");
+  expect(wrapper.get("h1").text()).toBe("原始任务 25 °C");
+  expect(JSON.stringify(current)).toBe(before);
+});
+
+test("new-snapshot artifact failure clears both badges without removing the retained reader", async () => {
+  setLocale("en");
+  const { wrapper, state } = await setup({ artifactReview: aggregate("model_checked") });
+  expect(wrapper.get(".delivery-review-badge").text()).toBe("Model checked");
+  state.job.result_snapshot = "d".repeat(64);
+  state.job.summary = { delivery_review: aggregate("model_checked", "ready", "d".repeat(64)) };
+  state.failArtifact = true;
+  await wrapper.vm.refresh();
+  await settle();
+  expect(wrapper.get(".reader").text()).toBe("1");
+  expect(wrapper.get(".delivery-review-badge").text()).toBe("Not independently reviewed");
+  expect(taskDeliveryReview(wrapper.vm.taskInfo)).toBeNull();
+  expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+  expect(wrapper.findComponent({ name: "RouteReader" }).props("canEdit")).toBe(false);
+  state.failArtifact = false;
+  state.artifactReview = aggregate("operation_evidence_required", "ready", "d".repeat(64));
+  await wrapper.vm.refresh(true);
+  await settle();
+  expect(wrapper.get(".delivery-review-badge").text()).toBe("Reaction operations unverified");
+  expect(taskDeliveryReview(wrapper.vm.taskInfo).source_binding.snapshot_id).toBe("d".repeat(64));
+});
+
+test("metadata read failure suppresses the previously shown model grade in header and TaskInfo", async () => {
+  setLocale("en");
+  const { wrapper } = await setup({ artifactReview: aggregate("model_checked") });
+  API.get.mockRejectedValueOnce(new Error("metadata unavailable"));
+  await wrapper.vm.refresh();
+  await settle();
+  expect(wrapper.get(".delivery-review-badge").text()).toBe("Not independently reviewed");
+  expect(taskDeliveryReview(wrapper.vm.taskInfo)).toBeNull();
+  expect(wrapper.get(".reader").text()).toBe("1");
+});
+
+test("task navigation cannot lend a confirmed grade to the next task even when its snapshot is identical", async () => {
+  setLocale("en");
+  const { wrapper, route, state } = await setup({ artifactReview: aggregate("model_checked") });
+  state.failArtifact = true;
+  route.params.id = idB;
+  await settle();
+  expect(wrapper.get(".delivery-review-badge").text()).toBe("Not independently reviewed");
+  expect(taskDeliveryReview(wrapper.vm.taskInfo)).toBeNull();
+  expect(wrapper.find(".reader").exists()).toBe(false);
+});
+
+test("terminal details with no current result review poll pending metadata and stop on resolution", async () => {
+  setLocale("en");
+  const { wrapper, state } = await setup({ job: { job_id: idA, status: "completed", result_snapshot: snapshot,
+    summary: { delivery_review: aggregate("not_independently_reviewed", "pending") } } });
+  expect(wrapper.get(".delivery-review-badge").text()).toBe("Review pending");
+  const reads = API.get.mock.calls.length;
+  state.job.summary = { delivery_review: aggregate("operation_evidence_required") };
+  await jest.advanceTimersByTimeAsync(5000);
+  await settle();
+  expect(wrapper.get(".delivery-review-badge").text()).toBe("Reaction operations unverified");
+  expect(API.get.mock.calls.length).toBe(reads + 1);
+  await jest.advanceTimersByTimeAsync(20000);
+  expect(API.get.mock.calls.length).toBe(reads + 1);
+});
+
+test("terminal pending detail read errors stop automatic retries and retain routes without a grade", async () => {
+  setLocale("en");
+  const { wrapper } = await setup({ job: { job_id: idA, status: "completed", result_snapshot: snapshot,
+    summary: { delivery_review: aggregate("not_independently_reviewed", "pending") } } });
+  API.get.mockRejectedValueOnce(new Error("metadata unavailable"));
+  await jest.advanceTimersByTimeAsync(5000);
+  await settle();
+  const reads = API.get.mock.calls.length;
+  expect(wrapper.get(".delivery-review-badge").text()).toBe("Not independently reviewed");
+  expect(taskDeliveryReview(wrapper.vm.taskInfo)).toBeNull();
+  expect(wrapper.get(".reader").text()).toBe("1");
+  await jest.advanceTimersByTimeAsync(60000);
+  expect(API.get.mock.calls.length).toBe(reads);
 });
