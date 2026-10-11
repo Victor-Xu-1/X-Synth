@@ -6,6 +6,7 @@ from typing import Iterable
 from packages.route_schema.route_schema import RouteCandidate
 from packages.scoring.route_scoring import score_route
 from packages.validation.route_quality import RouteQualityPolicy
+from .strategy import StrategySelection, select_strategies
 
 
 class UnifiedRoutePool:
@@ -54,7 +55,7 @@ class UnifiedRoutePool:
             reverse=True,
         )
 
-    def final_candidates(self) -> list[RouteCandidate]:
+    def strategy_selection(self) -> StrategySelection:
         ranked = self.ranked_routes()
         if self.quality_policy is not None:
             ranked = [
@@ -62,6 +63,13 @@ class UnifiedRoutePool:
                 for route in ranked
                 if self.quality_policy.evaluate_route(route).accepted
             ]
+        if (self.quality_policy is not None and self.quality_policy.require_full_forward_validation
+                and self.quality_policy.require_operation_validation):
+            return select_strategies(ranked)
+        return StrategySelection(tuple(ranked), {}, {})
+
+    def final_candidates(self) -> list[RouteCandidate]:
+        ranked = list(self.strategy_selection().routes)
         if not ranked:
             return []
         selected: list[RouteCandidate] = []

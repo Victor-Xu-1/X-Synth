@@ -246,6 +246,27 @@ governance. See [version operations](operations.md#版本管理).
   original experimental conditions do not certify new conditions or a new experiment.
   Unmapped record-only first moves share a conservative target family, preventing
   leaving-group variants from inflating the requested diversity count.
+- Qualified route selection also compares exact single-step substitutions between
+  otherwise identical chemical DAGs. A checked direct step can suppress an
+  unsupported multi-step detour with the same product and a precursor-occurrence
+  frontier containing the direct inputs. Whole-compound salt grouping, isotope,
+  stereochemistry and repeated input counts remain part of identity. Shared
+  intermediates consumed elsewhere and source-bound recorded longer processes
+  cannot be removed this way. This is not length-only or MCS-based elimination,
+  nor experimental certification. Raw routes and their source records remain intact.
+  Family scheduling preserves source ranking, revisits a covered group for an
+  exact potential shortcut, retains alternatives if a representative becomes
+  redundant, and stops on the surviving qualified family count after checking
+  such improvements rather than the pre-filter count. Insufficient output uses the
+  existing single expanded search; detours cannot fill the requested minimum.
+  Every suppression uses a surviving exact witness; discarded intermediates do
+  not create unvalidated transitive proof chains. Selection receipts preserve
+  route digests, direct/replaced step identities and the policy without rewriting
+  source routes. Unknown or truncated process evidence is separately pending,
+  never a recorded-process exemption or an independent route slot. The source/
+  snapshot/outcome binder is shared with operation review. Its query identity
+  preserves compound groups and occurrence counts, but not reactant-list order;
+  the reference atom budget is independent of the forward-input atom budget.
 - The configured ORD bytes and proposal code belong to the native checkpoint
   identity. Readiness verifies that expansion and review use the same available
   ORD snapshot; an absent optional source stays absent in both processes. Changing

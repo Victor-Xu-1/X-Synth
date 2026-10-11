@@ -93,14 +93,15 @@ def current_review(route):
     return route
 
 
-def test_current_real_forward_receipt_requires_operation_ledger_not_a_boolean(reviewed):
+@pytest.mark.parametrize("policy", ["exact_stock_graph2smiles_operation_evidence_v5", REVIEW_POLICY])
+def test_current_real_forward_receipt_requires_operation_ledger_not_a_boolean(reviewed, policy):
     route = current_review(reviewed)
     assert operation_records_validated(route)
-    assert delivery_routes([route], job={"checkpoint": {"review_policy": REVIEW_POLICY}}, budget=BUDGET)
+    assert delivery_routes([route], job={"checkpoint": {"review_policy": policy}}, budget=BUDGET)
     del route["metadata"]["automated_review"]["operations"]
     assert not operation_records_validated(route)
     with pytest.raises(HTTPException) as error:
-        delivery_routes([route], job={"checkpoint": {"review_policy": REVIEW_POLICY}}, budget=BUDGET)
+        delivery_routes([route], job={"checkpoint": {"review_policy": policy}}, budget=BUDGET)
     assert error.value.status_code == 409
 
 

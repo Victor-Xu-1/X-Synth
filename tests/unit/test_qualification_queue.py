@@ -66,3 +66,46 @@ def test_pending_is_not_a_failed_scientific_result():
     assert summary["quality_rejected_route_count"] == 1
     assert summary["quality_rejection_counts"] == {"forward_validation_failed": 1}
     assert summary["meets_min_routes"] is False
+
+
+def test_missing_forward_and_operation_review_are_pending_not_rejected():
+    route = candidate(1)
+    pool = UnifiedRoutePool(min_routes=3, max_routes=10,
+        quality_policy=RouteQualityPolicy(require_full_forward_validation=True, require_operation_validation=True))
+    pool.add_routes([route])
+    summary = build_route_pool_result(id="unassessed", pool=pool, source_summaries=[]).summary
+    assert summary["quality_pending_route_count"] == 1
+    assert summary["quality_rejected_route_count"] == 0
+    assert summary["quality_rejection_counts"] == {}
+
+
+def test_covered_groups_remain_available_if_a_representative_is_later_dominated():
+    queue = QualificationQueue([candidate(0), candidate(1), candidate(2, "two")])
+    assert queue.next(set()).route_id == "route-0"
+    assert queue.next({"one"}).route_id == "route-2"
+    assert queue.next({"one", "two"}) is None
+    assert queue.next({"two"}).route_id == "route-1"
+    assert queue.next(set()) is None
+
+
+def test_source_ranking_is_preserved_but_an_exact_shortcut_can_revisit_a_covered_family():
+    from test_route_strategy import alternatives
+
+    shorter, longer = alternatives()
+    shorter = replace(shorter, family_key=longer.family_key)
+    queue = QualificationQueue([longer, shorter])
+    assert queue.next(set()) == longer
+    assert queue.next({longer.family_key}) is None
+    assert queue.next({longer.family_key}, representatives=[longer]) == shorter
+    assert queue.next(set()) is None
+
+
+def test_reaching_route_limit_still_checks_exact_improvements_without_exhausting_unrelated_variants():
+    from test_route_strategy import alternatives
+
+    shorter, longer = alternatives()
+    unrelated = candidate(0, "unrelated")
+    queue = QualificationQueue([unrelated, shorter])
+    assert queue.next({longer.family_key}, representatives=[longer], only_improvements=True) == shorter
+    assert queue.next({longer.family_key}, representatives=[longer], only_improvements=True) is None
+    assert queue.next(set()) == unrelated

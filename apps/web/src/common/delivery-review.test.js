@@ -14,6 +14,7 @@ const forwardPolicies = [
   "exact_stock_graph2smiles_connected_dag_family_queue_v3",
   "exact_stock_graph2smiles_pinned_record_family_queue_v4",
   "exact_stock_graph2smiles_operation_evidence_v5",
+  "exact_stock_graph2smiles_strategy_evidence_v6",
 ];
 const bases = ["route_receipt", "stored_summary"];
 const reviewStatuses = ["checked", "missing", "invalid", "incomplete"];

@@ -71,6 +71,16 @@ def test_review_upgrade_preserves_native_checkpoint_and_rejects_stock_changes():
         upgrade_review_checkpoint(previous, {**identity, "catalog_sha256": "b" * 64})
 
 
+def test_strategy_policy_upgrade_keeps_completed_native_search_and_previous_receipt_identity():
+    old = {"review_policy": "exact_stock_graph2smiles_operation_evidence_v5",
+           "catalog_sha256": "a" * 64, "children": {"2:retro_star": "saved-child"},
+           "pass_number": 2, "reviewed_model_records": {"one": "original"}}
+    identity = {"review_policy": REVIEW_POLICY, "catalog_sha256": "a" * 64}
+    upgraded = upgrade_review_checkpoint(old, identity)
+    assert upgraded == {**old, **identity}
+    assert old["review_policy"] == "exact_stock_graph2smiles_operation_evidence_v5"
+
+
 def test_new_job_publication_marker_does_not_masquerade_as_a_bound_search(tmp_path):
     from packages.orchestrator.job_repository import JobRepository
 
