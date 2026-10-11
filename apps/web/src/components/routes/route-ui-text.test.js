@@ -1,6 +1,6 @@
 import { initializeLocale, setLocale } from "@/i18n";
 import { materialRows, materialsCsv, routeLabel } from "@/common/route-reading";
-import { engineUiLabel, generatedReactionUiLabel, materialUiLabel, materialUsesUiText } from "./route-ui-text";
+import { engineUiLabel, generatedReactionUiLabel, materialUiLabel, materialUsesUiText, materialCsvRows } from "./route-ui-text";
 import Papa from "papaparse";
 
 test("engine display follows the locale without translating model identifiers or native route labels", () => {
@@ -39,16 +39,21 @@ test("material fallbacks and CSV headers localize without transforming user name
   };
   initializeLocale(null);
   const rows = materialRows(graph), before = JSON.stringify(graph), csv = Papa.parse(materialsCsv(rows)).data;
-  expect(csv[0]).toEqual(["Starting material", "Structure SMILES", "Used in steps", "Review grade"]);
+  expect(csv[0]).toEqual(["Starting material", "Structure SMILES", "Used in steps", "Route review grade", "Purchase form", "Purchase form reason"]);
   expect(materialUiLabel(rows[0], 0, graph)).toBe("Starting material 1");
   expect(materialUiLabel(rows[1], 1, graph)).toBe("原料 2");
   expect(materialUsesUiText(rows[0], graph)).toBe("Reaction step");
   expect(materialUsesUiText(rows[1], graph)).toBe("反应步骤");
+  const englishRows = materialCsvRows(graph);
+  expect(englishRows[0].label).toBe("Starting material 1");
+  expect(englishRows[0].usedIn).toEqual(["Reaction step"]);
+  expect(englishRows[1].label).toBe("原料 2");
+  expect(englishRows[1].usedIn).toEqual(["反应步骤"]);
   setLocale("zh-CN", { persist: false });
   expect(materialUiLabel(rows[0], 0, graph)).toBe("原料 1");
   expect(materialUsesUiText(rows[0], graph)).toBe("反应步骤");
   const localizedCsv = Papa.parse(materialsCsv(rows)).data;
-  expect(localizedCsv[0]).toEqual(["原料", "结构 SMILES", "使用步骤", "核验等级"]);
+  expect(localizedCsv[0]).toEqual(["原料", "结构 SMILES", "使用步骤", "路线核验等级", "采购形式", "采购形式原因"]);
   expect(localizedCsv.slice(1).map(row => row.slice(0, 3))).toEqual(
     csv.slice(1).map(row => row.slice(0, 3)),
   );

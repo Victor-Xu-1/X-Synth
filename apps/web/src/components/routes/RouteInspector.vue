@@ -69,6 +69,11 @@
       </label>
       <div v-if="Number.isFinite(score)" class="workspace-muted">{{ $tr('模型分数 {value}', { value: score.toFixed(3) }) }}
       </div>
+      <section v-if="purchaseForm?.status === 'unresolved'" class="inspector-purchase-review" data-purchase-status="unresolved">
+        <strong>{{ $tr(purchaseForm.label) }}</strong>
+        <span>{{ $tr(purchaseForm.reasonLabel) }}</span>
+      </section>
+      <RouteStepReview v-if="node.type === 'reaction'" :step-id="step?.step_id" :delivery-review="deliveryReview" />
       <RouteNodeContext
         :node="node"
         :graph="graph"
@@ -111,6 +116,8 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import StructurePreview from "@/components/workspace/StructurePreview.vue";
 import StructureInput from "@/components/workspace/StructureInput.vue";
 import RouteNodeContext from "./RouteNodeContext.vue";
+import RouteStepReview from "./RouteStepReview.vue";
+import { purchaseFormPresentation } from "@/common/delivery-review";
 import { API } from "@/common/api";
 import { errorMessage } from "@/common/workspace-errors";
 import { generatedReactionUiLabel } from "./route-ui-text";
@@ -125,6 +132,7 @@ const props = defineProps({
   contextId: String,
   generatedStepLabels: Boolean,
   displayStepNumber: Number,
+  deliveryReview: Object,
 });
 const emit = defineEmits(["update", "pending", "close", "remove", "navigate", "draft-change", "discard"]);
 const structureInput = ref(null);
@@ -139,6 +147,8 @@ const draftDirty = computed(() => !!props.node && (
 ));
 const headerStepNumber = computed(() => props.node?.type === "reaction" &&
   Number.isInteger(props.displayStepNumber) && props.displayStepNumber > 0 ? props.displayStepNumber : null);
+const purchaseForm = computed(() => props.node?.type === "molecule"
+  ? purchaseFormPresentation(props.deliveryReview, props.node.smiles) : null);
 let generation = 0, draftRevision = 0,
   disposed = false;
 const pending = computed(() => busy.value || !!structureInput.value?.pending);
@@ -242,6 +252,7 @@ onBeforeUnmount(() => {
 });
 </script>
 <style scoped>
+.inspector-purchase-review { display: grid; gap: 4px; color: var(--ws-warning); font-size: 12px; }
 .route-inspector {
   width: 340px;
   flex-shrink: 0;

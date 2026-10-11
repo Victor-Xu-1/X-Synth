@@ -1,6 +1,6 @@
 import { stepDetails } from "./route-details";
 import { uiText } from "@/i18n";
-import { deliveryReviewGrade, deliveryReviewLabels } from "./delivery-review";
+import { deliveryReviewGrade, deliveryReviewLabels, purchaseFormPresentation } from "./delivery-review";
 import {
   buildReactionEvidence,
   createReactionEvidenceInput,
@@ -70,8 +70,11 @@ const csvCell = (value) => {
 export function materialsCsv(rows, deliveryReview = null) {
   const review = uiText(deliveryReviewLabels[deliveryReviewGrade(deliveryReview)]);
   return [
-    ["原料", "结构 SMILES", "使用步骤", "核验等级"].map((label) => uiText(label)),
-    ...rows.map((row) => [row.label, row.smiles, row.usedIn.join("; "), review]),
+    ["原料", "结构 SMILES", "使用步骤", "路线核验等级", "采购形式", "采购形式原因"].map((label) => uiText(label)),
+    ...rows.map((row) => {
+      const form = purchaseFormPresentation(deliveryReview, row.smiles);
+      return [row.label, row.smiles, row.usedIn.join("; "), review, uiText(form.label), form.reasonLabel ? uiText(form.reasonLabel) : ""];
+    }),
   ]
     .map((row) => row.map(csvCell).join(","))
     .join("\r\n");

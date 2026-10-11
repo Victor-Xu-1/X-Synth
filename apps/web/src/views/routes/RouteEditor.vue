@@ -164,6 +164,7 @@
         :target="selected === graph.target_id"
         :score="scores[selected]"
         :display-step-number="stepNumbers[selected]"
+        :delivery-review="deliveryReview"
         @draft-change="draftGuard.receive"
         @discard="discardInspector"
         @close="closeInspector"

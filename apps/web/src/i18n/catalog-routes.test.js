@@ -57,3 +57,25 @@ test("review counters distinguish original decoder top one from historical joint
   setLocale("zh-CN", { persist: false });
   expect(uiText("联合首选 {value} · 原始首选 {value2} · 记录支持 {value3}", actualCounts)).toBe("联合首选 1 · 原始首选 0 · 记录支持 0");
 });
+
+test("inspection and CSV review scope use complete bilingual fixed labels", () => {
+  const phrases = [
+    ["路线核验等级", "Route review grade"], ["采购形式", "Purchase form"],
+    ["采购形式原因", "Purchase form reason"], ["采购形式未核验", "Purchase form unreviewed"],
+    ["采购形式明确", "Purchase form defined"],
+    ["完整采购形式未记录", "Complete purchase form not recorded"],
+    ["采购结构无法确定", "Purchase structure indeterminate"],
+    ["定位需过程依据的步骤", "Locate steps needing process evidence"],
+    ["定位采购形式未明确的原料", "Locate materials with unresolved purchase form"],
+    ["包含多个独立转化", "Includes multiple independent transformations"],
+    ["包含还原与成键转化", "Includes reduction and bond formation"],
+    ["原子对应关系未确定", "Atom correspondence unresolved"],
+    ["过程依据不完整", "Process evidence incomplete"],
+  ];
+  initializeLocale(null);
+  phrases.forEach(([source, english]) => expect(uiText(source)).toBe(english));
+  expect(uiText("{value} 个原料需明确采购形式", { value: 2 })).toBe("Materials with unresolved purchase form: 2");
+  setLocale("zh-CN", { persist: false });
+  phrases.forEach(([source]) => expect(uiText(source)).toBe(source));
+  expect(uiText("{value} 个原料需明确采购形式", { value: 2 })).toBe("2 个原料需明确采购形式");
+});

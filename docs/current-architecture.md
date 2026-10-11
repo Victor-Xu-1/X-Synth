@@ -203,6 +203,16 @@ governance. See [version operations](operations.md#版本管理).
   Retained entries bind their worker revision independently of queue eviction.
   Older completions cannot roll back newer confirmations; a checkpoint-free
   background failure cannot replace a still-valid, directly confirmed publication.
+  Inspection targets are a read-only projection of valid individual receipts and
+  exact members of the current route. Summary controls open the corresponding
+  operation or starting material; display numbering reuses synthetic step order
+  without rewriting source IDs. Selection and return-focus ownership retire with
+  route, view and source replacement. Concepts remain separate: the material CSV
+  identifies whole-route review grade and per-material purchase-form status/reason;
+  a defined form never implies supplier availability. Generated captions consume
+  the same UI language authority, while source/user names and chemical cells stay
+  verbatim. Source copies receive applicable molecular warnings through their
+  existing unchanged-chemistry receipt; missing old per-step bindings are not guessed.
   Preview/detail filters and JSON/PNG/CSV
   exports consume that same receipt. Source copies retain server-owned receipts
   only while chemical signatures are unchanged; layout-only edits preserve them,

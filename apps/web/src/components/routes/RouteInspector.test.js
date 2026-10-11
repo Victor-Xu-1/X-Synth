@@ -31,6 +31,29 @@ const node = () => ({
   position: { x: 0, y: 0 },
 });
 
+test("inspector keeps the raw step receipt bound while showing its synthetic number", async () => {
+  const receipt = { version: 1, phase: "automated_review", basis: "route_receipt", grade: "operation_evidence_required",
+    independent_review: { status: "missing" }, purchase_identity: { policy: "defined_purchase_identity_v1",
+      status: "defined", unresolved_materials: [] }, operations: { policy: "template_operation_evidence_v1",
+      status: "evidence_required", unresolved_steps: [{ step_id: "source-last", reasons: ["reduction_with_bond_formation"] }] } };
+  const wrapper = setup({ editable: false, node: { ...node(), type: "reaction" },
+    displayStepNumber: 1, step: { step_id: "source-last" }, deliveryReview: receipt });
+  expect(wrapper.get('header strong').text()).toBe("合成步骤 1");
+  expect(wrapper.get('[data-review="step-operations"]').text()).toContain("包含还原与成键转化");
+  await wrapper.setProps({ step: { step_id: "different-source" } });
+  expect(wrapper.find('[data-review="step-operations"]').exists()).toBe(false);
+});
+
+test("molecular purchase warning cannot be applied to other molecular nodes", async () => {
+  const receipt = { version: 1, phase: "automated_review", basis: "route_receipt", grade: "purchase_form_unresolved",
+    independent_review: { status: "missing" }, purchase_identity: { policy: "defined_purchase_identity_v1",
+      status: "unresolved", unresolved_materials: [{ smiles: "O=C([O-])[O-]", reason: "undefined_purchase_form" }] } };
+  const wrapper = setup({ editable: false, node: { ...node(), smiles: "O=C([O-])[O-]" }, deliveryReview: receipt });
+  expect(wrapper.get('[data-purchase-status="unresolved"]').text()).toContain("完整采购形式未记录");
+  await wrapper.setProps({ node: node() });
+  expect(wrapper.find('[data-purchase-status="unresolved"]').exists()).toBe(false);
+});
+
 test("pending chemical input locks close and cannot be discarded before synchronization finishes", async () => {
   const wrapper = setup();
   wrapper.getComponent({ name: "StructureInput" }).vm.pending = true;
