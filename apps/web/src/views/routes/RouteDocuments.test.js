@@ -135,6 +135,30 @@ test("an aborted sort navigation keeps the native control and URL on the same co
   expect(API.get).toHaveBeenCalledTimes(1);
 });
 
+test("overlapping filter and sort navigation preserves both latest intents", async () => {
+  const wrapper = await setup("/documents?other=keep");
+  const pending = [];
+  wrapper.vm.$router.beforeEach(() => new Promise(resolve => pending.push(resolve)));
+  await wrapper.get('.document-search').setValue("CCO"); await flushPromises();
+  await wrapper.get('.document-sort select').setValue("title"); await flushPromises();
+  expect(pending).toHaveLength(2);
+  pending[1](true); await flushPromises();
+  pending[0](true); await flushPromises();
+  expect(wrapper.vm.$router.currentRoute.value.query).toEqual({ query: "CCO", sort: "title", other: "keep" });
+  expect(wrapper.get('.document-search').element.value).toBe("CCO");
+  expect(wrapper.get('.document-title-cell').attributes('href')).toBe('/editor/document-a?library_query=CCO&library_sort=title');
+});
+
+test("a cancelled query is not resurrected by the next sort intent", async () => {
+  const wrapper = await setup();
+  const removeGuard = wrapper.vm.$router.beforeEach(() => false);
+  await wrapper.get('.document-search').setValue("cancelled"); await flushPromises();
+  removeGuard();
+  await wrapper.get('.document-sort select').setValue("title"); await flushPromises();
+  expect(wrapper.vm.$router.currentRoute.value.query).toEqual({ sort: "title" });
+  expect(wrapper.get('.document-search').element.value).toBe("");
+});
+
 test("a sort intent retires a pending preview before a navigation guard completes", async () => {
   const wrapper = await setup();
   let finishPreview, finishNavigation;

@@ -17,7 +17,7 @@
       </div>
     </header>
     <div v-if="rows.length" class="document-toolbar" role="search" :aria-label="$tr('筛选保存的路线')">
-      <v-text-field v-model="query" class="document-search" :label="$tr('搜索路线名称或 SMILES')"
+      <v-text-field :model-value="queryInput" @update:model-value="query = $event" class="document-search" :label="$tr('搜索路线名称或 SMILES')"
         :aria-label="$tr('搜索保存的路线')" prepend-inner-icon="mdi-magnify" variant="outlined"
         density="compact" hide-details clearable />
       <label class="document-sort">{{ $tr('排序') }}
@@ -141,17 +141,31 @@ const route = useRoute(), router = useRouter();
 const { locale } = useUiLanguage();
 const libraryQuery = computed(() => documentLibraryQuery(route.query));
 const sort = computed(() => documentSort(libraryQuery.value.sort));
+const queryInput = ref(libraryQuery.value.query || "");
+let pendingQuery = null;
+function replaceQuery(patch) {
+  retirePreview();
+  // Merge overlapping input intents before Vue Router commits the first URL.
+  const source = pendingQuery?.origin === route.fullPath ? pendingQuery.query : route.query;
+  const intent = { origin: route.fullPath, query: { ...source, ...patch } };
+  pendingQuery = intent;
+  return router.replace({ path: "/documents", query: intent.query }).finally(() => {
+    if (pendingQuery !== intent) return;
+    pendingQuery = null;
+    queryInput.value = libraryQuery.value.query || "";
+  });
+}
+watch(() => libraryQuery.value.query, value => { queryInput.value = value || ""; });
 function changeSort(event) {
   const next = documentSort(event.target.value);
   event.target.value = sort.value;
-  retirePreview();
-  return router.replace({ path: "/documents", query: { ...route.query, sort: next === "updated" ? undefined : next } });
+  return replaceQuery({ sort: next === "updated" ? undefined : next });
 }
 const query = computed({
   get: () => libraryQuery.value.query || "",
   set: (value) => {
-    retirePreview();
-    return router.replace({ path: "/documents", query: { ...route.query, query: value || undefined } });
+    queryInput.value = value || "";
+    return replaceQuery({ query: value || undefined });
   },
 });
 const rows = ref([]),
