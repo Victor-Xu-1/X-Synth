@@ -67,6 +67,19 @@ function candidate(route_id = "reviewed") {
 const legacy = () => ({ ...candidate("legacy"), metadata: {
   forward_validation_passed: true, forward_validation_method: "native_template_reconstruction",
 } });
+function inspectionCandidate() {
+  const value = candidate("inspection-control");
+  value.starting_materials = ["CC"];
+  value.metadata.delivery_review = {
+    version: 1, phase: "automated_review", basis: "route_receipt",
+    grade: "purchase_form_unresolved", independent_review: { status: "missing" },
+    purchase_identity: { policy: "defined_purchase_identity_v1", status: "unresolved",
+      unresolved_materials: ["CC", "N"].map(smiles => ({ smiles, reason: "indeterminate_purchase_structure" })) },
+    operations: { policy: "template_operation_evidence_v1", status: "evidence_required",
+      unresolved_steps: ["s2", "orphan"].map(step_id => ({ step_id, reasons: ["reduction_with_bond_formation"] })) },
+  };
+  return value;
+}
 const stubs = {
   VLazy: { template: '<div><slot /></div>' },
   VIcon: { props: ["icon"], template: '<span :data-icon="icon" />' },
@@ -288,6 +301,99 @@ test("version three model review and pending operations remain distinct in both 
   expect(JSON.stringify(value)).toBe(before);
 });
 
+test("inspection counts bind only exact current steps and starting materials and default to disabled", () => {
+  const value = inspectionCandidate(), before = JSON.stringify(value);
+  const wrapper = setup(RouteReviewSummary, { candidate: value });
+  expect(textOf(wrapper, "operations")).toContain("1 步需过程依据");
+  expect(textOf(wrapper, "purchase")).toContain("1 个原料需明确采购形式");
+  for (const kind of ["operations", "purchase"]) {
+    const button = wrapper.get(`[data-reader-action="review-${kind}"]`);
+    expect(button.element.tagName).toBe("BUTTON");
+    expect(button.attributes("type")).toBe("button");
+    expect(button.element.disabled).toBe(true);
+    expect(button.attributes("aria-label")).toBe(button.attributes("title"));
+    expect(button.find('[data-icon="mdi-magnify"]').exists()).toBe(true);
+  }
+  expect(wrapper.text()).toContain("模型预测不等于实测");
+  expect(wrapper.text()).not.toMatch(/reduction_with_bond_formation|orphan|有货|商购/);
+  expect(wrapper.find(".v-card, pre").exists()).toBe(false);
+  expect(JSON.stringify(value)).toBe(before);
+});
+
+test.each(["operations", "purchase"])("%s inspection forwards pointer and keyboard-click events only with current parent permission", async kind => {
+  const wrapper = setup(RouteReviewSummary, { candidate: inspectionCandidate() });
+  const button = wrapper.get(`[data-reader-action="review-${kind}"]`);
+  const click = detail => {
+    const event = new MouseEvent("click", { bubbles: true, detail });
+    button.element.dispatchEvent(event);
+    return event;
+  };
+  click(0);
+  expect(wrapper.emitted("inspect-review")).toBeUndefined();
+  await wrapper.setProps({ inspectionEnabled: { [kind]: true } });
+  expect(button.element.disabled).toBe(false);
+  const events = [click(0), click(1)];
+  events.forEach((event, index) => {
+    expect(wrapper.emitted("inspect-review")[index][0]).toBe(kind);
+    expect(wrapper.emitted("inspect-review")[index][1]).toBe(event);
+  });
+  await wrapper.setProps({ busy: true });
+  expect(button.element.disabled).toBe(true);
+  // Direct dispatch bypasses native disabled activation and exercises the handler guard.
+  click(0);
+  expect(wrapper.emitted("inspect-review")).toHaveLength(2);
+  await wrapper.setProps({ busy: false });
+  for (const permission of [false, undefined, 1, "true", null]) {
+    await wrapper.setProps({ inspectionEnabled: { [kind]: permission } });
+    click(0);
+    expect(button.element.disabled).toBe(true);
+    expect(wrapper.emitted("inspect-review")).toHaveLength(2);
+  }
+  await wrapper.setProps({ inspectionEnabled: null });
+  click(0);
+  expect(wrapper.emitted("inspect-review")).toHaveLength(2);
+});
+
+test("unbound issues retire controls and cannot emit from a former focus origin", async () => {
+  const value = inspectionCandidate(), before = JSON.stringify(value);
+  const wrapper = setup(RouteReviewSummary, { candidate: value, inspectionEnabled: { operations: true, purchase: true } });
+  const buttons = wrapper.findAll("button");
+  await wrapper.setProps({ candidate: { ...value, steps: [], starting_materials: ["C(C)"] } });
+  expect(wrapper.find('[data-review="operations"]').exists()).toBe(false);
+  expect(wrapper.find('[data-review="purchase"]').exists()).toBe(false);
+  buttons.forEach(button => button.element.dispatchEvent(new MouseEvent("click", { detail: 0 })));
+  expect(wrapper.emitted("inspect-review")).toBeUndefined();
+  expect(JSON.stringify(value)).toBe(before);
+});
+
+test.each(["missing", "future", "stored", "grade", "reason", "duplicate"])("%s delivery receipts cannot create inspection controls", variant => {
+  const value = inspectionCandidate(), receipt = value.metadata.delivery_review;
+  if (variant === "missing") delete value.metadata.delivery_review;
+  if (variant === "future") receipt.version = 2;
+  if (variant === "stored") receipt.basis = "stored_summary";
+  if (variant === "grade") receipt.grade = "model_checked";
+  if (variant === "reason") receipt.purchase_identity.unresolved_materials[0].reason = "unknown_form_code";
+  if (variant === "duplicate") receipt.operations.unresolved_steps[1].step_id = "s2";
+  const wrapper = setup(RouteReviewSummary, { candidate: value, inspectionEnabled: { operations: true, purchase: true } });
+  expect(wrapper.find('[data-reader-action="review-operations"]').exists()).toBe(false);
+  expect(wrapper.find('[data-reader-action="review-purchase"]').exists()).toBe(false);
+  expect(wrapper.emitted("inspect-review")).toBeUndefined();
+});
+
+test("inspection counts and control names switch languages without changing source data", async () => {
+  const value = inspectionCandidate(), before = JSON.stringify(value);
+  setLocale("en", { persist: false });
+  const wrapper = setup(RouteReviewSummary, { candidate: value });
+  expect(textOf(wrapper, "purchase")).toContain("Materials with unresolved purchase form: 1");
+  expect(wrapper.get('[data-reader-action="review-operations"]').attributes("aria-label")).toBe("Locate steps needing process evidence");
+  expect(wrapper.get('[data-reader-action="review-purchase"]').attributes("aria-label")).toBe("Locate materials with unresolved purchase form");
+  await wrapper.setProps({ inspectionEnabled: { operations: true, purchase: true } });
+  setLocale("zh-CN", { persist: false }); await wrapper.vm.$nextTick();
+  expect(textOf(wrapper, "purchase")).toContain("1 个原料需明确采购形式");
+  expect(wrapper.get('[data-reader-action="review-operations"]').element.disabled).toBe(false);
+  expect(JSON.stringify(value)).toBe(before);
+});
+
 test("the new summary compiles script, template and scoped CSS with the real Vue compiler", () => {
   const filename = resolve(__dirname, "RouteReviewSummary.vue");
   const { descriptor, errors } = parse(readFileSync(filename, "utf8"), { filename });
@@ -301,6 +407,8 @@ test("the new summary compiles script, template and scoped CSS with the real Vue
   expect(compileStyle({
     filename, id, source: descriptor.styles[0].content, scoped: true,
   }).errors).toEqual([]);
+  expect(descriptor.styles[0].content).toMatch(/\.review-inspect\s*\{[^}]*width:\s*44px;[^}]*height:\s*44px;/);
+  expect(descriptor.styles[0].content).toContain(".review-inspect:focus-visible");
 });
 
 test("v4 joint promotion is explicit and cannot claim original first in EN and CN", async () => {

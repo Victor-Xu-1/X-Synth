@@ -4,6 +4,7 @@ import { priceContractResponse } from "@/common/route-price-test-data";
 import RouteMaterials from "./RouteMaterials.vue";
 import * as routeReading from "@/common/route-reading";
 import Papa from "papaparse";
+import { initializeLocale, setLocale } from "@/i18n";
 
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 jest.mock("@/components/SmilesImage.vue", () => ({ template: "<span />" }));
@@ -13,16 +14,27 @@ const graph = { target_id: "target", nodes: [
   { id: "reaction", type: "reaction", label: "步骤 1" },
   { id: "target", type: "molecule", smiles: "CC=O" },
 ], edges: [{ source: "material", target: "reaction" }, { source: "reaction", target: "target" }] };
-const stubs = { MoleculeStockDialog: true, VBtn: { props: ["disabled"], template: '<button :disabled="disabled"><slot /></button>' } };
+const stubs = {
+  MoleculeStockDialog: true,
+  VBtn: { props: ["disabled"], template: '<button :disabled="disabled"><slot /></button>' },
+  VIcon: { props: ["icon"], template: '<span :data-icon="icon" />' },
+};
 const wrappers = [];
-function setup() {
-  const wrapper = mount(RouteMaterials, { props: { graph, expectedSnapshot: snapshot }, global: { stubs } });
+function setup(props = {}) {
+  const wrapper = mount(RouteMaterials, { props: { graph, expectedSnapshot: snapshot, ...props }, global: { stubs } });
   wrappers.push(wrapper);
   return wrapper;
 }
 beforeEach(() => API.post.mockReset());
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
 const response = () => priceContractResponse();
+// Receipt presentation controls, not scientific or supplier availability evidence.
+const formReview = (smiles = "CCO", reason = "undefined_purchase_form") => ({
+  version: 1, phase: "automated_review", basis: "route_receipt", grade: "purchase_form_unresolved",
+  independent_review: { status: "missing" }, purchase_identity: {
+    policy: "defined_purchase_identity_v1", status: "unresolved", unresolved_materials: [{ smiles, reason }],
+  },
+});
 
 test("material details forward original keyboard and pointer events without a lookup", () => {
   const wrapper = setup();
@@ -103,4 +115,67 @@ test("the materials download keeps the owner's unresolved route receipt without 
     expect(Papa.parse(download.mock.calls[0][0]).data[1]).toEqual(["原料", smiles, "步骤 1", "采购形式未明确"]);
     expect(API.post).not.toHaveBeenCalled();
   } finally { download.mockRestore(); }
+});
+
+test.each([
+  ["undefined_purchase_form", "完整采购形式未记录", "Complete purchase form not recorded"],
+  ["indeterminate_purchase_structure", "采购结构无法确定", "Purchase structure indeterminate"],
+])("%s adds only a short bound warning beside the structure in both languages", async (reason, chinese, english) => {
+  const receipt = formReview("CCO", reason);
+  const value = { ...graph, nodes: [...graph.nodes, { id: "other", type: "molecule", smiles: "N", label: "原始名称" }],
+    edges: [...graph.edges, { source: "other", target: "reaction" }] };
+  const before = JSON.stringify({ value, receipt });
+  initializeLocale(null);
+  const wrapper = setup({ graph: value, deliveryReview: receipt });
+  const warnings = wrapper.findAll('[data-purchase-status="unresolved"]');
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0].text()).toBe("Purchase form unresolved");
+  expect(warnings[0].attributes("title")).toBe(english);
+  expect(warnings[0].element.parentElement.querySelector(".material-structure")).not.toBeNull();
+  expect(wrapper.text()).toContain("原始名称");
+  expect(wrapper.text()).not.toMatch(/Purchase form defined|Purchase form unreviewed|available|in stock|undefined_purchase_form|indeterminate_purchase_structure/i);
+  setLocale("zh-CN", { persist: false }); await wrapper.vm.$nextTick();
+  expect(warnings[0].text()).toBe("采购形式未明确");
+  expect(warnings[0].attributes("title")).toBe(chinese);
+  expect(wrapper.text()).not.toMatch(/采购形式明确|商业有货|商品可购/);
+  expect(JSON.stringify({ value, receipt })).toBe(before);
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test.each(["alias", "orphan", "future", "stored", "grade", "reason", "defined", "unknown"])("%s procurement evidence does not add ordinary-row warnings", variant => {
+  const receipt = formReview();
+  if (variant === "alias") receipt.purchase_identity.unresolved_materials[0].smiles = "OCC";
+  if (variant === "orphan") receipt.purchase_identity.unresolved_materials[0].smiles = "N";
+  if (variant === "future") receipt.version = 2;
+  if (variant === "stored") receipt.basis = "stored_summary";
+  if (variant === "grade") receipt.grade = "model_checked";
+  if (variant === "reason") receipt.purchase_identity.unresolved_materials[0].reason = "future_reason";
+  if (["defined", "unknown"].includes(variant)) {
+    receipt.grade = "not_independently_reviewed";
+    receipt.purchase_identity.status = variant;
+    receipt.purchase_identity.unresolved_materials = [];
+  }
+  const wrapper = setup({ deliveryReview: receipt });
+  expect(wrapper.find("[data-purchase-status]").exists()).toBe(false);
+  expect(wrapper.text()).not.toMatch(/采购形式|商业有货|商品可购/);
+  expect(API.post).not.toHaveBeenCalled();
+});
+
+test("bound form warnings leave actual catalog records and explicit lookup behavior untouched", async () => {
+  const value = response(), receipt = formReview(), before = JSON.stringify({ value, receipt });
+  API.post.mockResolvedValueOnce(value);
+  const wrapper = setup({ deliveryReview: receipt });
+  expect(API.post).not.toHaveBeenCalled();
+  await wrapper.get("button").trigger("click"); await flushPromises();
+  expect(API.post).toHaveBeenCalledTimes(1);
+  expect(wrapper.text()).toContain("2.08 $/g");
+  expect(wrapper.find('[data-purchase-status="unresolved"]').exists()).toBe(true);
+  expect(JSON.stringify({ value, receipt })).toBe(before);
+  await wrapper.setProps({ deliveryReview: formReview("OCC") });
+  expect(wrapper.find("[data-purchase-status]").exists()).toBe(false);
+  expect(wrapper.text()).toContain("2.08 $/g");
+  await wrapper.setProps({ deliveryReview: receipt, graph: { ...graph, nodes: graph.nodes.map(node =>
+    node.id === "material" ? { ...node, smiles: "N" } : node) } });
+  expect(wrapper.find("[data-purchase-status]").exists()).toBe(false);
+  expect(API.post).toHaveBeenCalledTimes(1);
 });

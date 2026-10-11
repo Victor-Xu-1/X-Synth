@@ -54,6 +54,12 @@
                   :show-error-image="false"
                 /><strong>{{ materialUiLabel(row, index, graph) }}</strong>
               </button>
+              <span
+                v-if="purchaseWarnings.has(row.smiles)"
+                class="material-purchase-warning"
+                data-purchase-status="unresolved"
+                :title="$tr(purchaseWarnings.get(row.smiles).reasonLabel)"
+              ><v-icon icon="mdi-alert-outline" size="14" aria-hidden="true" />{{ $tr(purchaseWarnings.get(row.smiles).label) }}</span>
               <details>
                 <summary>SMILES</summary>
                 <code>{{ row.smiles }}</code>
@@ -122,6 +128,7 @@ import {
 import { safeExternalUrl } from "@/common/external-url";
 import { errorMessage } from "@/common/workspace-errors";
 import { catalogRecordsForInputs } from "@/common/route-price";
+import { purchaseFormPresentation } from "@/common/delivery-review";
 import SmilesImage from "@/components/SmilesImage.vue";
 import MoleculeStockDialog from "./MoleculeStockDialog.vue";
 import SupplierPrice from "./SupplierPrice.vue";
@@ -129,6 +136,9 @@ import { materialUiLabel, materialUsesUiText } from "./route-ui-text";
 const props = defineProps({ graph: Object, expectedSnapshot: String, generatedStepLabels: Boolean, deliveryReview: { default: null } });
 defineEmits(["select", "navigate"]);
 const rows = computed(() => materialRows(props.graph));
+const purchaseWarnings = computed(() => new Map(rows.value
+  .map(row => [row.smiles, purchaseFormPresentation(props.deliveryReview, row.smiles)])
+  .filter(([, form]) => form.status === "unresolved")));
 const records = ref({}),
   canonicalSmiles = ref({}),
   snapshot = ref(""),
@@ -222,6 +232,17 @@ td {
 }
 .material-structure:focus-visible {
   outline: 2px solid var(--ws-text);
+}
+.material-purchase-warning {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  max-width: 220px;
+  margin-top: 4px;
+  color: var(--ws-warning);
+  font-size: 11px;
+  overflow-wrap: anywhere;
 }
 .catalog-record {
   display: flex;
