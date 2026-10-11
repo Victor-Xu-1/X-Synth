@@ -13,7 +13,7 @@ from .job_history import (
     JobHistory,
     history_casefold,
 )
-from .job_history_schema import initialize_schema, progress_projection
+from .job_history_schema import initialize_schema, progress_projection, schema_initialization
 
 __all__ = [
     "ACTIVE_STATES",
@@ -56,7 +56,7 @@ class JobRepository:
     def __init__(self, path: Path | str):
         self.path = Path(path).resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.connect() as connection:
+        with schema_initialization(self.path), self.connect() as connection:
             initialize_schema(connection)
         self.history = JobHistory(self)
 

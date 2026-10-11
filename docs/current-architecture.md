@@ -246,6 +246,14 @@ governance. See [version operations](operations.md#版本管理).
   Missing/truncated evidence stays unresolved and is not a chemical blacklist.
   Qualification continues to later candidates and the existing single expanded
   search if output remains insufficient; unsupported candidates cannot fill slots.
+  That job's repair excludes both actual model mismatches and reviewed compound
+  operations still missing process evidence,even when the model matched. The
+  operation failure must rebind the concrete step/template/witness ledger and
+  have an actual completed forward record. Raw risk flags,missing providers and
+  unsupported inputs do not create exclusions. This is a per-job qualification
+  decision,not a permanent assertion that the chemistry is impossible. Raw
+  candidates remain saved;already-submitted native requests stay unchanged on
+  recovery,while the next repair uses the completed review feedback.
   The forward result captures every decoded hypothesis before invalid/duplicate
   filtering, all native candidates and per-candidate no-op/atom-inventory decisions.
   EOS termination and actual token count are retained. A length-limited unfinished
