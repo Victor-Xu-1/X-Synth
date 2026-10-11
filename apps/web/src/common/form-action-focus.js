@@ -1,6 +1,9 @@
+import { bindFormActionViewport } from "./form-action-viewport";
+
 export function bindFormActionFocus(surface) {
   const form = surface?.closest("form");
   if (!form) return () => {};
+  const releaseViewport = bindFormActionViewport(surface);
   function reveal(event) {
     const field = event.target;
     if (field !== document.activeElement || !surface.isConnected || surface.contains(field) ||
@@ -13,5 +16,5 @@ export function bindFormActionFocus(surface) {
       field.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
   }
   form.addEventListener("focusin", reveal);
-  return () => form.removeEventListener("focusin", reveal);
+  return () => { form.removeEventListener("focusin", reveal); releaseViewport(); };
 }
