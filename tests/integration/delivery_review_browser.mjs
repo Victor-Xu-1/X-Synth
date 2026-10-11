@@ -95,7 +95,10 @@ for (const [id, label] of cases) for (const width of [1440, 390]) {
           assert(index >= 0);
           const row = reader.locator(".route-step").filter({ has: page.locator(`.step-select[data-node-id="r-${index + 1}"]`) });
           await expect(row.locator(".step-operation-warning")).toHaveText("Reaction operations unverified");
+          await expect(row.locator(".step-validation")).toHaveText("Prediction and source consistency passed");
         }
+        await structures(reader.locator(".route-step-list"));
+        await reader.locator(".step-heading").first().scrollIntoViewIfNeeded();
         await noOverflow(page);
         await capture(page, `operations-${id.slice(0, 6)}-${width}`);
         await reader.getByRole("tab", { name: "Route diagram", exact: true }).click();

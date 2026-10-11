@@ -6,6 +6,18 @@ const list = (value) => (Array.isArray(value) ? value : []);
 const strings = (value) =>
   list(value).filter((item) => typeof item === "string" && item.trim());
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
+const forwardMethods = new Map([
+  ["native_template_reconstruction", "模板重构一致性"],
+  ["native_template_or_exact_record_consistency", "模板或原始反应记录一致性"],
+  ["native_template_and_graph2smiles_top1", "模板重构与独立正向预测"],
+  ["native_template_or_exact_record_and_graph2smiles_top1", "来源一致性与独立正向预测"],
+  ["graph2smiles_top1_or_record_supported_candidate", "正向预测与原始实验记录共同支持"],
+]);
+function stepCheckLabel(method) {
+  if (method === "native_template_reconstruction") return "模板重构";
+  if (method === "native_template_or_exact_record_consistency") return "来源一致性";
+  return forwardMethods.has(method) ? "预测与来源一致性" : "存储核验记录";
+}
 const fields = (value, names) =>
   names.flatMap(([key, label]) => {
     const item = value?.[key];
@@ -197,7 +209,7 @@ export function stepDetails(candidate, graph) {
       operationEvidenceRequired: operationSteps.has(step.step_id),
       validation:
         typeof check === "boolean"
-          ? `${method === "native_template_reconstruction" ? "模板重构" : "步骤验证"} ${check ? "通过" : "未通过"}`
+          ? `${stepCheckLabel(method)} ${check ? "通过" : "未通过"}`
           : "",
     };
   });
@@ -229,14 +241,7 @@ export function forwardEvidence(candidate) {
   if (typeof method === "string" && method.trim())
     facts.push({
       label: "验证方法",
-      value:
-        {
-          native_template_reconstruction: "模板重构一致性",
-          native_template_or_exact_record_consistency: "模板或原始反应记录一致性",
-          native_template_and_graph2smiles_top1: "模板重构与独立正向预测",
-          native_template_or_exact_record_and_graph2smiles_top1: "来源一致性与独立正向预测",
-          graph2smiles_top1_or_record_supported_candidate: "正向预测与原始实验记录共同支持",
-        }[method] || method,
+      value: forwardMethods.get(method) || method,
     });
   if (typeof metadata.forward_validation_passed === "boolean")
     facts.push({

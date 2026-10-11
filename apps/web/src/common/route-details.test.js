@@ -348,6 +348,27 @@ test("template reconstruction does not imply independent forward prediction", ()
     expect.arrayContaining([{ label: "独立正向预测", value: "已验证" }]),
   );
 });
+test.each([
+  ["native_template_reconstruction", "模板重构"],
+  ["native_template_or_exact_record_consistency", "来源一致性"],
+  ["native_template_and_graph2smiles_top1", "预测与来源一致性"],
+  ["native_template_or_exact_record_and_graph2smiles_top1", "预测与来源一致性"],
+  ["graph2smiles_top1_or_record_supported_candidate", "预测与来源一致性"],
+  ["unrecognized_method", "存储核验记录"],
+  ["constructor", "存储核验记录"],
+  [undefined, "存储核验记录"],
+])("step check %s states its evidence level, not experimental feasibility", (method, label) => {
+  for (const passed of [true, false]) {
+    const checked = { ...candidate, metadata: { ...candidate.metadata,
+      forward_validation_method: method, forward_validation_steps: [passed],
+    } };
+    const before = JSON.stringify(checked);
+    expect(stepDetails(checked, graphFromCandidate(checked)).map(step => step.validation))
+      .toEqual([`${label} ${passed ? "通过" : "未通过"}`]);
+    expect(JSON.stringify(checked)).toBe(before);
+  }
+});
+
 test("step-level reconstruction flags retain their source indices after synthetic ordering", () => {
   const checked = {
     ...branch,
@@ -365,6 +386,25 @@ test("step-level reconstruction flags retain their source indices after syntheti
       (step) => step.validation,
     ),
   ).toEqual(["", ""]);
+});
+
+test("step check labels are bilingual and an unknown method stays verbatim", () => {
+  const labels = [
+    ["来源一致性 通过", "Source consistency passed"],
+    ["来源一致性 未通过", "Source consistency not passed"],
+    ["预测与来源一致性 通过", "Prediction and source consistency passed"],
+    ["预测与来源一致性 未通过", "Prediction and source consistency not passed"],
+    ["存储核验记录 通过", "Stored check record passed"],
+    ["存储核验记录 未通过", "Stored check record not passed"],
+  ];
+  try {
+    setLocale("en", { persist: false });
+    labels.forEach(([zh, en]) => expect(uiText(zh)).toBe(en));
+    setLocale("zh-CN", { persist: false });
+    labels.forEach(([zh]) => expect(uiText(zh)).toBe(zh));
+    expect(forwardEvidence({ metadata: { forward_validation_method: "constructor" } }))
+      .toEqual([{ label: "验证方法", value: "constructor" }]);
+  } finally { setLocale("en", { persist: false }); }
 });
 test("model fields appear only when explicitly sourced, preserving actual zero values", () => {
   expect(modelEvidence(candidate.steps[0])[0]).toEqual(
