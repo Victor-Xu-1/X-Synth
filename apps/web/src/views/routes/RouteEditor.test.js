@@ -877,6 +877,18 @@ test("confirmed save-copy discards only the staged fields and never serializes u
   expect(API.put).not.toHaveBeenCalled();
 });
 
+test("save-copy retains only the validated library return query", async () => {
+  const { wrapper, router } = await setup("source_copy", documentId, {
+    library_query: "My source", library_sort: "title", returnUrl: "https://example.org",
+  });
+  API.post.mockImplementation(async (_, body) => ({ id: importedId, ...body, revision: 0, state: "draft" }));
+  await wrapper.vm.saveDocument(true);
+  await flushPromises();
+  expect(router.replace).toHaveBeenCalledWith({ path: `/editor/${importedId}`,
+    query: { library_query: "My source", library_sort: "title" } });
+  expect(API.put).not.toHaveBeenCalled();
+});
+
 const conflictMessage = "文档已被其他页面修改，请重新载入或另存副本。";
 test("only a deterministic revision conflict offers confirmed reload and cancellation preserves both draft layers", async () => {
   const { wrapper } = await setup();

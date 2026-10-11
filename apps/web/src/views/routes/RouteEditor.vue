@@ -234,7 +234,7 @@ import { routeImage, routeExportErrorMessage } from "@/common/route-export";
 import { useRouteDocument } from "@/composables/useRouteDocument";
 import { useInspectorDraftGuard } from "@/composables/useInspectorDraftGuard";
 import { documentStepDetails } from "@/common/document-step-details";
-import { documentLibraryLocation } from "@/common/document-library-view";
+import { documentEditorLocation, documentLibraryLocation } from "@/common/document-library-view";
 import RouteGraph from "@/components/routes/RouteGraph.vue";
 import RouteInspector from "@/components/routes/RouteInspector.vue";
 import ExpandMolecule from "@/components/routes/ExpandMolecule.vue";
@@ -526,7 +526,7 @@ async function createDocument() {
 async function saveDocument(asCopy) {
   if (editingLocked.value || !draftGuard.requestDiscard()) return;
   const value = await save(asCopy);
-  if (value && asCopy) router.replace(`/editor/${value.id}`);
+  if (value && asCopy) router.replace(documentEditorLocation(value.id, documentLibraryLocation(route.query).query));
 }
 async function reloadConflict() {
   if (editingLocked.value || !revisionConflict.value) return;

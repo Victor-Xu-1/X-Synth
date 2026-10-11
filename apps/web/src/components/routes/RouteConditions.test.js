@@ -23,3 +23,23 @@ test("reader-fix condition reader labels saved dataset citation without filling 
   expect(wrapper.find('.condition-fields').exists()).toBe(false);
   wrapper.unmount();
 });
+
+test("stored ORD attribution remains readable without a DOI and does not become experimental conditions", () => {
+  setLocale("en", { persist: false });
+  conditionRows.mockReturnValue([{ nodeId: "r-1", number: 1, confidence: "1.000", reactants: ["C"], product: "CO",
+    evidence: { conditions: [], links: [], dataset: { fields: [
+      { label: "数据集", value: "Original dataset title" },
+      { label: "许可", value: "CC-BY-SA-4.0" },
+      { label: "原始反应 ID", value: "original-record" },
+    ], links: [] } },
+  }]);
+  const wrapper = mount(RouteConditions, { global: { stubs: { VBtn: true } } });
+  const section = wrapper.get('.saved-dataset-provenance');
+  expect(section.text()).toContain("Original dataset title");
+  expect(section.text()).toContain("CC-BY-SA-4.0");
+  expect(section.get('.dataset-details').attributes("open")).toBeUndefined();
+  expect(section.get('.dataset-details').text()).toContain("original-record");
+  expect(section.find('a').exists()).toBe(false);
+  expect(wrapper.find('.condition-fields').exists()).toBe(false);
+  wrapper.unmount();
+});
