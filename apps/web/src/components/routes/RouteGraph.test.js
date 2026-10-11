@@ -44,7 +44,7 @@ function setup(graph, editable = false) {
   return wrapper;
 }
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
-beforeEach(() => { mockFitView.mockClear(); mockResize.mockClear(); mockFindNode.mockReset(); });
+beforeEach(() => { mockFitView.mockReset(); mockResize.mockClear(); mockFindNode.mockReset(); });
 
 test("native keyboard position changes commit once without mutating the source graph", async () => {
   const graph = { target_id: "m", nodes: [{ id: "m", type: "molecule", position: { x: 20, y: 20 } }], edges: [] };
@@ -203,6 +203,38 @@ test("an explicit step focus wins over a coalesced reveal and survives resize un
   await wrapper.vm.fit();
   expect(mockFitView).toHaveBeenLastCalledWith({ padding: 0.12, maxZoom: 1.25, duration: 0 });
   expect(wrapper.emitted("update:graph")).toBeUndefined();
+});
+
+test("a resize completing the same focus settles an interrupted native animation", async () => {
+  const graph = { target_id: "m", nodes: [{ id: "m", type: "molecule", position: { x: 20, y: 20 } }], edges: [] };
+  const wrapper = setup(graph), bounds = { width: 800, height: 400 };
+  jest.spyOn(wrapper.element, 'getBoundingClientRect').mockImplementation(() => bounds);
+  await flushPromises();
+  mockFitView.mockReturnValueOnce(new Promise(() => {}));
+  let completed = false;
+  const focus = wrapper.vm.focus(['m'], { padding: 0.45, maxZoom: 1, duration: 150 });
+  focus.then(() => { completed = true; }); await flushPromises();
+  mockFitView.mockResolvedValueOnce(true);
+  bounds.width = 900;
+  mockResize.mock.calls[0][1]([{ contentRect: { ...bounds } }]); await flushPromises();
+  expect(completed).toBe(true);
+  expect(mockFitView).toHaveBeenLastCalledWith({ nodes: ['m'], padding: 0.45, maxZoom: 1, duration: 0 });
+});
+
+test("explicit replacement and disposal release stale camera waiters", async () => {
+  const graph = { target_id: "m", nodes: [{ id: "m", type: "molecule", position: { x: 20, y: 20 } }], edges: [] };
+  const wrapper = setup(graph);
+  jest.spyOn(wrapper.element, 'getBoundingClientRect').mockReturnValue({ width: 800, height: 400 });
+  await flushPromises();
+  mockFitView.mockReturnValueOnce(new Promise(() => {}));
+  let first;
+  wrapper.vm.focus(['m'], { duration: 150 }).then(value => { first = value; }); await flushPromises();
+  mockFitView.mockResolvedValueOnce(true);
+  await wrapper.vm.fit(); await flushPromises(); expect(first).toBe(false);
+  mockFitView.mockReturnValueOnce(new Promise(() => {}));
+  let last;
+  wrapper.vm.focus(['m'], { duration: 150 }).then(value => { last = value; }); await flushPromises();
+  wrapper.unmount(); await flushPromises(); expect(last).toBe(false);
 });
 
 test.each(["overview", "reading", "editable"])(

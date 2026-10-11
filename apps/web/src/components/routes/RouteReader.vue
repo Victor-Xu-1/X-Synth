@@ -551,8 +551,8 @@ async function locateNode(id, event) {
   try {
     await nextTick();
     if (!current()) return;
-    await graphView.value?.focus([id], { padding: 0.45, maxZoom: 1, duration: 150 });
-    if (!current() || !request.keyboard ||
+    const applied = await graphView.value?.focus([id], { padding: 0.45, maxZoom: 1, duration: 150 });
+    if (applied === false || !current() || !request.keyboard ||
       (document.activeElement !== document.body && document.activeElement !== request.origin)) return;
     const node = [...(graphView.value?.$el?.querySelectorAll('.vue-flow__node[data-id]') || [])]
       .find(element => element.dataset.id === id);

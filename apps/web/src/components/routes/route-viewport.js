@@ -16,17 +16,45 @@ export function previewAspectRatio(graph, nodeSize) {
 }
 
 export function useRouteViewport(surface, fitView, options) {
-  let active = true, pending = null, lastSize = null, focusOptions = null, duration = 0;
+  let active = true, pending = null, running = null, lastSize = null, focusOptions = null, duration = 0;
+  function operation() {
+    let resolve, reject;
+    const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
+    return { promise, resolve, reject, intent: null };
+  }
   function schedule(animation = 0, explicit = false) {
-    if (!active) return Promise.resolve();
+    if (!active) return Promise.resolve(false);
     if (explicit || !pending) duration = animation;
-    if (!pending) pending = nextTick().then(() => {
-      pending = null;
-      if (!active) return;
-      const bounds = surface.value?.getBoundingClientRect();
-      if (bounds?.width > 0 && bounds.height > 0) return fitView({ ...options(), ...focusOptions, duration });
-    });
-    return pending;
+    if (!pending) {
+      const work = operation();
+      pending = work;
+      nextTick().then(() => {
+        if (pending !== work) return;
+        pending = null;
+        work.intent = focusOptions;
+        const previous = running;
+        running = work;
+        // Native interrupted animations may never settle. The latest matching intent completes their callers.
+        if (previous) {
+          if (previous.intent === work.intent) work.promise.then(previous.resolve, previous.reject);
+          else previous.resolve(false);
+        }
+        const bounds = surface.value?.getBoundingClientRect();
+        if (!active || !(bounds?.width > 0 && bounds.height > 0)) {
+          running = null; work.resolve(false); return;
+        }
+        try {
+          Promise.resolve(fitView({ ...options(), ...focusOptions, duration })).then(value => {
+            if (running !== work) return;
+            running = null; work.resolve(value !== false);
+          }, error => {
+            if (running !== work) return;
+            running = null; work.reject(error);
+          });
+        } catch (error) { running = null; work.reject(error); }
+      });
+    }
+    return pending.promise;
   }
   function fit() {
     focusOptions = null;
@@ -47,6 +75,8 @@ export function useRouteViewport(surface, fitView, options) {
     lastSize = size;
     schedule();
   });
-  onScopeDispose(() => { active = false; });
+  onScopeDispose(() => {
+    active = false; pending?.resolve(false); running?.resolve(false); pending = null; running = null;
+  });
   return { fit, focus };
 }
