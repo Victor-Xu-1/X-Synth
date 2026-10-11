@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
+from functools import partial
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -14,6 +15,7 @@ from packages.adapters.stock.stock_index import StockIndex, StockIndexError
 from packages.chemistry.assessment import AssessmentUnavailable, assess_molecule
 from packages.orchestrator.job_repository import JobRepository
 from packages.orchestrator.health_refresh import RuntimeHealthRefresh
+from packages.orchestrator.history_review import HistoryReviewIndex
 from packages.orchestrator.pipeline import RoutePipeline
 from packages.orchestrator.route_request import RouteJobRequest
 from packages.orchestrator.runtime_health import route_runtime_status
@@ -37,7 +39,7 @@ from .document_routes import document_router
 from .environment_routes import environment_router
 from .impurity_routes import impurity_router
 from .job_routes import job_router
-from .job_views import route_result
+from .job_views import route_result, load_history_review
 from .native_routes import native_router
 from .optimization_routes import optimization_router
 from .reaction_routes import reaction_router
@@ -112,10 +114,15 @@ def create_app(
     health_refresh = RuntimeHealthRefresh(
         lambda cancel: route_runtime_status(repo_root, force=True, _cancel=cancel), budget=budget
     )
+    history_review = HistoryReviewIndex(
+        artifacts=artifacts, loader=partial(load_history_review, artifacts=artifacts, budget=budget, jobs_path=repository.path),
+        idle=lambda: not repository.has_active_work(),
+    )
 
     @asynccontextmanager
     async def lifespan(app):
         try:
+            history_review.start()
             optimizer.health()
             health_refresh.start()
             if pipeline is not None:
@@ -123,10 +130,13 @@ def create_app(
             yield
         finally:
             try:
-                health_refresh.stop()
+                history_review.close()
             finally:
-                if pipeline is not None:
-                    pipeline.stop()
+                try:
+                    health_refresh.stop()
+                finally:
+                    if pipeline is not None:
+                        pipeline.stop()
 
     app = FastAPI(
         title="X-Synth",
@@ -141,6 +151,7 @@ def create_app(
     app.state.documents = documents
     app.state.pipeline = pipeline
     app.state.health_refresh = health_refresh
+    app.state.history_review = history_review
 
     def readiness():
         health_refresh.check()
@@ -236,6 +247,7 @@ def create_app(
         readiness=readiness,
         artifacts=artifacts,
         budget=budget,
+        review_index=history_review,
     )
     app.include_router(router, prefix="/api/v1")
     app.include_router(
@@ -314,7 +326,7 @@ def create_app(
         structure_router(transport=transport, budget=budget), prefix="/api/v1"
     )
     app.include_router(
-        result_router(repository=repository, transport=transport), prefix="/api"
+        result_router(repository=repository, transport=transport, review_index=history_review), prefix="/api"
     )
 
     @app.get("/api/results/retrieve")
@@ -323,7 +335,7 @@ def create_app(
         job = repository.get(result_id, owner=principal.owner)
         if job is None:
             raise HTTPException(404, "Task does not exist")
-        return route_result(job, artifacts=artifacts, budget=budget)
+        return route_result(job, artifacts=artifacts, budget=budget, review_index=history_review)
 
     app.include_router(native_router(transport=transport, budget=budget), prefix="/api")
     web_directory = os.environ.get("X_SYNTH_WEB_DIST")

@@ -2,6 +2,7 @@ import { defineComponent } from "vue";
 import { mount, flushPromises } from "@vue/test-utils";
 import { createMemoryHistory, createRouter, useRoute } from "vue-router";
 import { useTaskHistory } from "./useTaskHistory";
+import { deliveryReviewGrade, taskDeliveryReview, taskDeliveryReviewPending } from "@/common/delivery-review";
 
 const row = (id = "task-a", patch = {}) => ({
   result_id: id,
@@ -419,4 +420,121 @@ test("empty results, errors, malformed snapshots and invalid URL context stay di
   expect(invalid.state.error.value).toContain("页码无效");
   expect(await invalid.state.refresh()).toBe(false);
   expect(invalid.api.get).not.toHaveBeenCalled();
+});
+
+const snapshot = "a".repeat(64);
+const reviewRow = (status = "pending", patch = {}) => row("task-a", {
+  result_snapshot: snapshot,
+  unified_route_pool_summary: { delivery_review: {
+    version: 1, phase: "automated_review", basis: "selected_routes", status,
+    grade: status === "ready" ? "operation_evidence_required" : "not_independently_reviewed",
+    route_count: status === "ready" ? 3 : null,
+    grade_counts: status === "ready" ? { not_independently_reviewed: 0, model_checked: 0,
+      operation_evidence_required: 3, purchase_form_unresolved: 0 } : null,
+    source_binding: { job_id: "task-a", snapshot_id: snapshot },
+  } },
+  ...patch,
+});
+
+test.each(["ready", "unavailable"])("terminal review pending polls quietly until %s, then stops", async (status) => {
+  const waiting = reviewRow(), pending = deferred();
+  const api = { get: jest.fn().mockResolvedValueOnce(data([waiting])).mockReturnValueOnce(pending.promise) };
+  const { state, router } = await setup(api, "/results?query=CCO&status=completed&group=ungrouped");
+  state.togglePage(true);
+  const selected = [...state.selection.value], location = { ...router.currentRoute.value.query };
+  jest.advanceTimersByTime(6000);
+  await flushPromises();
+  expect(state.loading.value).toBe(false);
+  expect(state.selection.value).toEqual(selected);
+  jest.advanceTimersByTime(12000);
+  await flushPromises();
+  expect(api.get).toHaveBeenCalledTimes(2);
+  pending.resolve(data([reviewRow(status)]));
+  await flushPromises();
+  expect(state.rows.value[0].result_state).toBe("completed");
+  expect(taskDeliveryReviewPending(state.rows.value[0])).toBe(false);
+  expect(taskDeliveryReview(state.rows.value[0]).status).toBe(status);
+  expect(state.selection.value).toEqual(selected);
+  expect(router.currentRoute.value.query).toEqual(location);
+  expect(api.get.mock.calls[1][1]).toMatchObject({ query: "CCO", status: "completed", group: "ungrouped", limit: 24 });
+  jest.advanceTimersByTime(60000);
+  await flushPromises();
+  expect(api.get).toHaveBeenCalledTimes(2);
+});
+
+test("archived terminal pending reviews refresh without enabling active-task polling in the archive", async () => {
+  const api = { get: jest.fn().mockResolvedValueOnce(data([reviewRow("pending", { archived: true })]))
+    .mockResolvedValueOnce(data([reviewRow("ready", { archived: true, result_state: "searching" })])) };
+  const { state } = await setup(api, "/results?archived=true");
+  jest.advanceTimersByTime(6000);
+  await flushPromises();
+  expect(deliveryReviewGrade(taskDeliveryReview(state.rows.value[0]))).toBe("operation_evidence_required");
+  expect(api.get.mock.calls[1][1].archived).toBe(true);
+  jest.advanceTimersByTime(18000);
+  await flushPromises();
+  expect(api.get).toHaveBeenCalledTimes(2);
+});
+
+test("pending-review errors preserve the last page and stop automatic retries until explicit refresh", async () => {
+  const api = { get: jest.fn().mockResolvedValueOnce(data([reviewRow()]))
+    .mockRejectedValueOnce(new Error(JSON.stringify({ detail: "Review temporarily unavailable" })))
+    .mockResolvedValueOnce(data([reviewRow("ready")])) };
+  const { state } = await setup(api);
+  jest.advanceTimersByTime(6000);
+  await flushPromises();
+  expect(state.error.value).toContain("Review temporarily unavailable");
+  expect(taskDeliveryReviewPending(state.rows.value[0])).toBe(true);
+  jest.advanceTimersByTime(60000);
+  await flushPromises();
+  expect(api.get).toHaveBeenCalledTimes(2);
+  expect(await state.refresh()).toBe(true);
+  expect(state.error.value).toBe("");
+  expect(taskDeliveryReviewPending(state.rows.value[0])).toBe(false);
+});
+
+test("history snapshot binding follows the execution revision, including equal-revision derived updates", async () => {
+  const initial = reviewRow(), nextSnapshot = "b".repeat(64);
+  const next = reviewRow("pending", { result_snapshot: nextSnapshot, revision: 8 });
+  next.unified_route_pool_summary.delivery_review.source_binding.snapshot_id = nextSnapshot;
+  const ready = reviewRow("ready", { result_snapshot: nextSnapshot, revision: 8 });
+  ready.unified_route_pool_summary.delivery_review.source_binding.snapshot_id = nextSnapshot;
+  const api = { get: jest.fn().mockResolvedValueOnce(data([initial])).mockResolvedValueOnce(data([next]))
+    .mockResolvedValueOnce(data([initial])).mockResolvedValueOnce(data([ready])) };
+  const { state } = await setup(api);
+  await state.refresh();
+  expect(state.rows.value[0].result_snapshot).toBe(nextSnapshot);
+  expect(taskDeliveryReviewPending(state.rows.value[0])).toBe(true);
+  await state.refresh();
+  expect(state.rows.value[0].result_snapshot).toBe(nextSnapshot);
+  expect(state.rows.value[0].revision).toBe(8);
+  await state.refresh();
+  expect(deliveryReviewGrade(taskDeliveryReview(state.rows.value[0]))).toBe("operation_evidence_required");
+  expect(taskDeliveryReviewPending(state.rows.value[0])).toBe(false);
+});
+
+test.each(["job", "snapshot", "counts"])("malformed or mismatched pending %s cannot keep polling a terminal page", async (kind) => {
+  const value = reviewRow();
+  const review = value.unified_route_pool_summary.delivery_review;
+  if (kind === "job") review.source_binding.job_id = "task-b";
+  if (kind === "snapshot") review.source_binding.snapshot_id = "b".repeat(64);
+  if (kind === "counts") review.route_count = 0;
+  const { api, state } = await setup({ get: jest.fn().mockResolvedValue(data([value])) });
+  expect(taskDeliveryReviewPending(state.rows.value[0])).toBe(false);
+  jest.advanceTimersByTime(60000);
+  await flushPromises();
+  expect(api.get).toHaveBeenCalledTimes(1);
+});
+
+test("unmount invalidates a late pending-review projection and disposes its timer", async () => {
+  const pending = deferred();
+  const { state, wrapper, api } = await setup({ get: jest.fn().mockResolvedValueOnce(data([reviewRow()]))
+    .mockReturnValueOnce(pending.promise) });
+  jest.advanceTimersByTime(6000);
+  await flushPromises();
+  wrapper.unmount();
+  pending.resolve(data([reviewRow("ready")]));
+  await flushPromises();
+  expect(taskDeliveryReviewPending(state.rows.value[0])).toBe(true);
+  jest.advanceTimersByTime(60000);
+  expect(api.get).toHaveBeenCalledTimes(2);
 });

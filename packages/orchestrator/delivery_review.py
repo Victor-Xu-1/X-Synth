@@ -11,6 +11,8 @@ from .forward_review import forward_support_valid
 
 
 MODEL = "graph2smiles_uspto_stereo"
+ROUTE_GRADES = ("not_independently_reviewed", "model_checked",
+                "operation_evidence_required", "purchase_form_unresolved")
 
 
 def _count(value):
@@ -171,3 +173,45 @@ def history_delivery_review(summary: dict) -> dict:
         else:
             review = {"status": "invalid"}
     return _receipt(review, {"policy": POLICY, "status": "unknown", "unresolved_materials": []}, "stored_summary")
+
+
+def selected_routes_review(routes, *, job_id, snapshot_id):
+    """Aggregate current route receipts, not a saved count-only success label."""
+    if (not _text(job_id) or len(job_id) > 128 or snapshot_id is not None and not _hex(snapshot_id, 64)
+            or not isinstance(routes, list) or not all(isinstance(route, dict) for route in routes)):
+        raise ValueError("Invalid selected-route review binding")
+    counts = dict.fromkeys(ROUTE_GRADES, 0)
+    for route in routes:
+        counts[delivery_review(route)["grade"]] += 1
+    present = [grade for grade, count in counts.items() if count]
+    return {"version": 1, "phase": "automated_review", "basis": "selected_routes", "status": "ready",
+            "grade": present[0] if len(present) == 1 else "mixed_review" if present else ROUTE_GRADES[0],
+            "route_count": len(routes), "grade_counts": counts,
+            "source_binding": {"job_id": job_id, "snapshot_id": snapshot_id}}
+
+
+def pending_routes_review(job_id, snapshot_id, *, unavailable=False):
+    if not _text(job_id) or snapshot_id is not None and not _hex(snapshot_id, 64):
+        raise ValueError("Invalid review projection binding")
+    return {"version": 1, "phase": "automated_review", "basis": "selected_routes",
+            "status": "unavailable" if unavailable else "pending", "grade": ROUTE_GRADES[0],
+            "route_count": None, "grade_counts": None,
+            "source_binding": {"job_id": job_id, "snapshot_id": snapshot_id}}
+
+
+def selected_review_valid(receipt, *, job_id, snapshot_id):
+    if (not _text(job_id) or snapshot_id is not None and not _hex(snapshot_id, 64)
+            or not isinstance(receipt, dict) or type(receipt.get("version")) is not int or receipt["version"] != 1
+            or receipt.get("phase") != "automated_review" or receipt.get("basis") != "selected_routes"
+            or receipt.get("source_binding") != {"job_id": job_id, "snapshot_id": snapshot_id}):
+        return False
+    if receipt.get("status") in {"pending", "unavailable"}:
+        return receipt.get("grade") == ROUTE_GRADES[0] and receipt.get("route_count") is None and receipt.get("grade_counts") is None
+    total, counts = receipt.get("route_count"), receipt.get("grade_counts")
+    if (receipt.get("status") != "ready" or not _count(total) or not isinstance(counts, dict)
+            or set(counts) != set(ROUTE_GRADES) or not all(_count(value) for value in counts.values())
+            or sum(counts.values()) != total):
+        return False
+    present = [grade for grade in ROUTE_GRADES if counts[grade]]
+    expected = present[0] if len(present) == 1 else "mixed_review" if present else ROUTE_GRADES[0]
+    return receipt.get("grade") == expected

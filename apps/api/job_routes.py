@@ -10,9 +10,12 @@ from .job_views import job_response, original_search_settings, route_result, sel
 from .security import authenticate
 
 
-def job_router(*, repository, transport, readiness, artifacts: Path, budget):
+def job_router(*, repository, transport, readiness, artifacts: Path, budget, review_index=None):
     router = APIRouter()
     commands = RouteJobCommands(repository=repository, readiness=readiness, budget=budget)
+
+    def response(job):
+        return job_response(job, review=review_index.read(job) if review_index is not None else None)
 
     def guarded(operation):
         try:
@@ -54,7 +57,7 @@ def job_router(*, repository, transport, readiness, artifacts: Path, budget):
     ):
         principal = authenticate(request, transport)
         jobs = [
-            job_response(job)
+            response(job)
             for job in repository.list(principal.owner, limit=limit, offset=offset)
         ]
         return {
@@ -66,22 +69,22 @@ def job_router(*, repository, transport, readiness, artifacts: Path, budget):
     @router.get("/unified-route/jobs/{job_id}")
     def detail(job_id: str, request: Request, include_settings: bool = False):
         job = owned(request, job_id)
-        response = job_response(job)
+        value = response(job)
         if include_settings:
-            response["settings"] = original_search_settings(job)
-        return response
+            value["settings"] = original_search_settings(job)
+        return value
 
     @router.post("/unified-route/jobs/{job_id}/resume")
     def resume(job_id: str, request: Request):
         principal = authenticate(request, transport)
         updated = guarded(lambda: commands.resume(job_id, principal.owner))
-        return job_response(updated)
+        return response(updated)
 
     @router.post("/unified-route/jobs/{job_id}/cancel")
     def cancel(job_id: str, request: Request):
         principal = authenticate(request, transport)
         updated = guarded(lambda: commands.cancel(job_id, principal.owner))
-        return job_response(updated)
+        return response(updated)
 
     @router.get("/unified-route/jobs/{job_id}/routes")
     def routes(job_id: str, request: Request):
@@ -94,6 +97,6 @@ def job_router(*, repository, transport, readiness, artifacts: Path, budget):
     @router.get("/unified-route/jobs/{job_id}/result")
     def result(job_id: str, request: Request):
         job = owned(request, job_id)
-        return route_result(job, artifacts=artifacts, budget=budget)
+        return route_result(job, artifacts=artifacts, budget=budget, review_index=review_index)
 
     return router

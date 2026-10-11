@@ -171,6 +171,8 @@ TEMPLATE_FILES = {
     "packages/knowledge_base/template_paging.py",
 }
 HISTORY_FILES = {
+    "packages/orchestrator/history_review.py",
+    "packages/orchestrator/history_review_identity.py",
     "packages/orchestrator/delivery_review.py",
     "apps/api/job_views.py",
     "apps/api/result_routes.py",
@@ -508,6 +510,9 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
         selected.update(
             {
                 "tests/unit/test_delivery_review.py",
+                "tests/unit/test_review_summary.py",
+                "tests/unit/test_history_review.py",
+                "tests/unit/test_review_execution.py",
                 "tests/unit/test_history_projection.py",
                 "tests/unit/test_route_document_api.py",
                 "tests/unit/test_product_api_security.py",

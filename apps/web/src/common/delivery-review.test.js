@@ -80,6 +80,21 @@ test("history summary uses stored policy/count evidence, not lifecycle success",
   expect(deliveryReviewGrade(taskDeliveryReview({ result_state: "completed", archived: true }))).toBe("not_independently_reviewed");
 });
 
+test("selected-route aggregates use current grades only with the matching task and snapshot", () => {
+  const value = {
+    version: 1, phase: "automated_review", basis: "selected_routes", status: "ready",
+    grade: "operation_evidence_required", route_count: 2,
+    grade_counts: { not_independently_reviewed: 0, model_checked: 0,
+      operation_evidence_required: 2, purchase_form_unresolved: 0 },
+    source_binding: { job_id: "task-a", snapshot_id: "a".repeat(64) },
+  };
+  const task = { result_id: "task-a", result_snapshot: "a".repeat(64), summary: { delivery_review: value } };
+  expect(deliveryReviewGrade(taskDeliveryReview(task))).toBe("operation_evidence_required");
+  expect(taskDeliveryReview({ ...task, result_id: "task-b" })).toBeNull();
+  expect(taskDeliveryReview({ ...task, result_snapshot: "b".repeat(64) })).toBeNull();
+  expect(taskDeliveryReview({ ...task, job_id: "task-b" })).toBeNull();
+});
+
 test("detail refresh retains the receipt under the execution revision clock", () => {
   const prior = receipt();
   const task = { result_id: "stored", result_state: "completed", revision: 8, history_revision: 3,

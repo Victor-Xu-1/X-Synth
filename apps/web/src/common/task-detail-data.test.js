@@ -3,6 +3,14 @@ import { createTaskDetailLoader } from "./task-detail-data";
 const snapshot = "a".repeat(64);
 const route = { route_id: "route-a", target_smiles: "CCO", steps: [] };
 const artifact = (routes = [route]) => ({ result: { unified_route_pool: { selected_routes: routes } } });
+const aggregate = (grade = "operation_evidence_required", snapshot_id = snapshot, job_id = "task-a") => ({
+  version: 1, phase: "automated_review", basis: "selected_routes", status: "ready", grade, route_count: 1,
+  grade_counts: { not_independently_reviewed: 0, model_checked: 0, operation_evidence_required: 0,
+    purchase_form_unresolved: 0, [grade]: 1 }, source_binding: { job_id, snapshot_id },
+});
+const reviewedArtifact = (review = aggregate(), routes = [route]) => ({
+  result: { unified_route_pool: { selected_routes: routes, summary: { delivery_review: review } } },
+});
 
 function setup(job = { status: "searching", result_snapshot: snapshot }) {
   const state = { job, artifact: artifact(), failure: null };
@@ -147,7 +155,7 @@ test.each(["fetch", "decode"])("a %s failure retains the last good routes and re
   expect(recovered.artifactRefreshed).toBe(true);
 });
 
-test.each(["not-a-sha256", "", "g".repeat(64), "a".repeat(63), 42, {}, [], [snapshot]])("invalid snapshot metadata cannot replace the last successful artifact: %p", async (invalid) => {
+test.each(["not-a-sha256", "", "g".repeat(64), "a".repeat(63), snapshot + "\n", 42, {}, [], [snapshot]])("invalid snapshot metadata cannot replace the last successful artifact: %p", async (invalid) => {
   const { state, loader, reads } = setup();
   const first = await loader.load("task-a");
   state.job.result_snapshot = invalid;
@@ -229,4 +237,146 @@ test("reset and a different task invalidate late results without leaking cached 
   expect((await loader.load("task-b")).candidates).toEqual([]);
   resolve({ status: "completed", result_snapshot: snapshot });
   expect(await previous).toBeNull();
+});
+
+test("confirmed result review overrides stored counts and survives same-generation pending metadata", async () => {
+  const { state, loader, reads, api } = setup({ job_id: "task-a", status: "completed", result_snapshot: snapshot,
+    summary: { delivery_review: { basis: "stored_summary", grade: "model_checked" } } });
+  const current = aggregate();
+  state.artifact = reviewedArtifact(current);
+  const first = await loader.load("task-a");
+  expect(first.deliveryReview).toEqual(current);
+  expect(first.deliveryReview).not.toBe(current);
+  expect(api.get.mock.calls.filter(([url]) => !url.includes("retrieve"))).toHaveLength(2);
+  expect(first.error).toBe("");
+  const pending = { ...current, status: "pending", grade: "not_independently_reviewed", route_count: null, grade_counts: null };
+  state.job = { ...state.job, summary: { delivery_review: pending } };
+  const next = await loader.load("task-a");
+  expect(next.deliveryReview).toBe(first.deliveryReview);
+  expect(next.job.summary.delivery_review).toBe(pending);
+  expect(reads()).toHaveLength(1);
+  expect(next.artifactRefreshed).toBe(false);
+  expect(next.artifactCurrent).toBe(true);
+  expect(current).toEqual(aggregate());
+});
+
+test("new snapshot errors retain routes but never reuse the old review, then recover with the new receipt", async () => {
+  const { state, loader } = setup({ job_id: "task-a", status: "completed", result_snapshot: snapshot });
+  state.artifact = reviewedArtifact();
+  const first = await loader.load("task-a");
+  const nextSnapshot = "b".repeat(64);
+  state.job = { ...state.job, result_snapshot: nextSnapshot, summary: { delivery_review: aggregate("model_checked", nextSnapshot) } };
+  state.failure = new Error("new artifact unavailable");
+  const failed = await loader.load("task-a");
+  expect(failed.candidates).toBe(first.candidates);
+  expect(failed.deliveryReview).toBeNull();
+  expect(failed.artifactCurrent).toBe(false);
+  state.failure = null;
+  state.artifact = reviewedArtifact(aggregate("purchase_form_unresolved", nextSnapshot));
+  const recovered = await loader.load("task-a");
+  expect(recovered.deliveryReview.grade).toBe("purchase_form_unresolved");
+  expect(recovered.deliveryReview.source_binding.snapshot_id).toBe(nextSnapshot);
+  expect(recovered.error).toBe("");
+});
+
+test.each([
+  null, true, false, {}, { grade: "model_checked" }, { ...aggregate(), basis: "route_receipt" },
+  { ...aggregate(), route_count: 2, grade_counts: { ...aggregate().grade_counts, operation_evidence_required: 2 } },
+  aggregate("model_checked", "b".repeat(64)), aggregate("model_checked", snapshot, "task-b"),
+  { ...aggregate(), grade: "model_checked" }, { ...aggregate(), source_binding: null },
+  { ...aggregate(), grade_counts: null },
+  { ...aggregate(), status: "pending", grade: "not_independently_reviewed", route_count: null, grade_counts: null },
+])("inconsistent current aggregate retains routes and clears certification: %j", async (invalid) => {
+  const { state, loader } = setup({ job_id: "task-a", status: "completed", result_snapshot: snapshot });
+  state.artifact = reviewedArtifact();
+  const first = await loader.load("task-a");
+  state.artifact = reviewedArtifact(invalid);
+  const result = await loader.load("task-a", { force: true });
+  expect(result.candidates).toBe(first.candidates);
+  expect(result.deliveryReview).toBeNull();
+  expect(result.error).toContain("审查汇总");
+  expect(result.artifactCurrent).toBe(false);
+});
+
+test("legacy null-snapshot review is confirmed and invalidated with its artifact generation", async () => {
+  const { state, loader, reads } = setup({ job_id: "task-a", status: "legacy_completed", result_snapshot: null,
+    summary: { selected_route_count: 1 } });
+  state.artifact = reviewedArtifact(aggregate("operation_evidence_required", null));
+  expect((await loader.load("task-a")).deliveryReview.grade).toBe("operation_evidence_required");
+  state.job = { ...state.job, summary: { selected_route_count: 0 } };
+  state.artifact = reviewedArtifact({ ...aggregate("not_independently_reviewed", null), route_count: 0,
+    grade_counts: { not_independently_reviewed: 0, model_checked: 0, operation_evidence_required: 0, purchase_form_unresolved: 0 } }, []);
+  const empty = await loader.load("task-a");
+  expect(empty.deliveryReview.grade).toBe("not_independently_reviewed");
+  expect(empty.candidates).toEqual([]);
+  expect(reads()).toHaveLength(2);
+});
+
+test("a legacy publication change during retrieve cannot cache a grade under its old identity", async () => {
+  const { state, api, loader } = setup({ job_id: "task-a", status: "legacy_completed", result_snapshot: null,
+    summary: { selected_route_count: 1 } });
+  state.artifact = reviewedArtifact(aggregate("model_checked", null));
+  api.get.mockImplementation(async (url) => {
+    if (!url.includes("retrieve")) return state.job;
+    state.job = { ...state.job, summary: { selected_route_count: 2 } };
+    return state.artifact;
+  });
+  const changed = await loader.load("task-a");
+  expect(changed.deliveryReview).toBeNull();
+  expect(changed.candidates).toEqual([]);
+  expect(changed.error).toBeTruthy();
+});
+
+test("task binding is confirmed again even if the publication digest is unchanged", async () => {
+  const { state, api, loader } = setup({ job_id: "task-a", status: "completed", result_snapshot: snapshot });
+  api.get.mockImplementation(async (url) => {
+    if (!url.includes("retrieve")) return state.job;
+    state.job = { ...state.job, job_id: "task-b" };
+    return reviewedArtifact(aggregate("model_checked"));
+  });
+  const result = await loader.load("task-a");
+  expect(result.deliveryReview).toBeNull();
+  expect(result.artifactCurrent).toBe(false);
+  expect(result.candidates).toEqual([]);
+  expect(result.error).toContain("已变化");
+});
+
+test("metadata failure suppresses even the previously confirmed same-snapshot receipt", async () => {
+  const { state, api, loader } = setup({ job_id: "task-a", status: "completed", result_snapshot: snapshot });
+  state.artifact = reviewedArtifact(aggregate("model_checked"));
+  const first = await loader.load("task-a");
+  api.get.mockRejectedValueOnce(new Error("status unavailable"));
+  const failed = await loader.load("task-a");
+  expect(failed.candidates).toBe(first.candidates);
+  expect(failed.deliveryReview).toBeNull();
+  expect(failed.error).toBeTruthy();
+});
+
+test("a task switch or explicit reset cannot reuse another task's review", async () => {
+  const { state, loader } = setup({ job_id: "task-a", status: "completed", result_snapshot: snapshot });
+  state.artifact = reviewedArtifact(aggregate("model_checked"));
+  await loader.load("task-a");
+  state.job = { job_id: "task-b", status: "completed", result_snapshot: snapshot };
+  state.failure = new Error("task b unavailable");
+  const next = await loader.load("task-b");
+  expect(next.deliveryReview).toBeNull();
+  expect(next.candidates).toEqual([]);
+  loader.reset();
+  state.job = { ...state.job, job_id: "task-a" };
+  expect((await loader.load("task-a")).deliveryReview).toBeNull();
+});
+
+test("an aborted artifact read cannot publish a late grade", async () => {
+  const { state, api, loader } = setup({ job_id: "task-a", status: "completed", result_snapshot: snapshot });
+  const controller = new AbortController();
+  let resolve;
+  api.get.mockImplementation(async (url) => url.includes("retrieve")
+    ? new Promise(yes => { resolve = yes; }) : state.job);
+  const pending = loader.load("task-a", { signal: controller.signal });
+  await Promise.resolve();
+  controller.abort();
+  resolve(reviewedArtifact(aggregate("model_checked")));
+  expect(await pending).toBeNull();
+  api.get.mockImplementation(async (url) => url.includes("retrieve") ? artifact() : state.job);
+  expect((await loader.load("task-a")).deliveryReview).toBeUndefined();
 });

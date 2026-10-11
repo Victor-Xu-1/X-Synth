@@ -22,7 +22,7 @@ const options = { global: { stubs: { VIcon: { props: ["icon"], template: "<i :da
 test("every grade icon resolves through the existing production catalog", () => {
   const source = readFileSync(resolve(__dirname, "DeliveryReviewBadge.vue"), "utf8");
   const names = source.match(/mdi-[a-z-]+/g);
-  expect(names).toHaveLength(4);
+  expect(names).toHaveLength(7);
   const catalog = parse(readFileSync(resolve(__dirname, "../../plugins/icons-catalog.js"), "utf8"), { sourceType: "module" });
   const declaration = catalog.program.body.find(node => node.type === "ExportNamedDeclaration"
     && node.declaration?.declarations?.some(item => item.id.name === "iconPaths"));
@@ -120,4 +120,81 @@ test("operation badge reacts to priority, malformed evidence and removal without
   await wrapper.setProps({ receipt: null });
   expect(wrapper.text()).toBe("Not independently reviewed");
   wrapper.unmount();
+});
+
+const selectedReview = (status = "ready") => ({
+  version: 1, phase: "automated_review", basis: "selected_routes", status,
+  grade: status === "ready" ? "mixed_review" : "not_independently_reviewed",
+  route_count: status === "ready" ? 3 : null,
+  grade_counts: status === "ready" ? { not_independently_reviewed: 0, model_checked: 1,
+    operation_evidence_required: 2, purchase_form_unresolved: 0 } : null,
+  source_binding: { job_id: "private-task-id", snapshot_id: "a".repeat(64) },
+});
+
+test.each([
+  ["pending", "Review pending", "汇总待更新", "mdi-progress-clock"],
+  ["unavailable", "Review unavailable", "汇总不可用", "mdi-alert-circle-outline"],
+  ["ready", "Mixed review", "混合核验", "mdi-shield-outline"],
+])("%s aggregate remains compact, bilingual and free of engineering identifiers", async (status, en, zh, icon) => {
+  localStorage.setItem("x-synth.locale", "invalid-choice");
+  initializeLocale();
+  const value = selectedReview(status), before = JSON.stringify(value);
+  let wrapper = mount(DeliveryReviewBadge, { ...options, props: { receipt: value } });
+  expect(wrapper.text()).toBe(en);
+  expect(wrapper.get("i").attributes("data-icon")).toBe(icon);
+  expect(wrapper.attributes("data-delivery-status")).toBe(status);
+  expect(wrapper.html()).not.toContain("private-task-id");
+  expect(wrapper.html()).not.toContain("a".repeat(64));
+  expect(wrapper.text()).not.toMatch(/experiment|certified|approved|success|cache|hash/i);
+  setLocale("zh-CN");
+  await wrapper.vm.$nextTick();
+  expect(wrapper.text()).toBe(zh);
+  wrapper.unmount();
+  initializeLocale();
+  wrapper = mount(DeliveryReviewBadge, { ...options, props: { receipt: value } });
+  expect(wrapper.text()).toBe(zh);
+  expect(JSON.stringify(value)).toBe(before);
+  wrapper.unmount();
+});
+
+test("mixed tooltip names only nonzero selected-route counts and reacts to language and grade changes", async () => {
+  setLocale("en");
+  const wrapper = mount(DeliveryReviewBadge, { ...options, props: { receipt: selectedReview() } });
+  expect(wrapper.text()).toBe("Mixed review");
+  expect(wrapper.attributes("title")).toBe("Selected routes: Model checked: 1; Reaction operations unverified: 2");
+  expect(wrapper.attributes("aria-label")).toContain("Mixed review");
+  expect(wrapper.attributes("tabindex")).toBe("0");
+  setLocale("zh-CN");
+  await wrapper.vm.$nextTick();
+  expect(wrapper.attributes("title")).toBe("已选路线: 模型已核验: 1; 反应操作待核验: 2");
+  await wrapper.setProps({ receipt: selectedReview("pending") });
+  expect(wrapper.attributes("title")).toBeUndefined();
+  expect(wrapper.attributes("tabindex")).toBeUndefined();
+  await wrapper.setProps({ receipt: { ...selectedReview(), route_count: 4 } });
+  expect(wrapper.text()).toBe("未独立核验");
+  expect(wrapper.attributes("data-delivery-status")).toBeUndefined();
+  expect(wrapper.attributes("title")).toBeUndefined();
+  wrapper.unmount();
+});
+
+test("legacy model summaries are explicitly saved reviews, not current comprehensive checks", async () => {
+  const value = { ...modelReceipt(), basis: "stored_summary", independent_review: {
+    status: "checked", selected_routes: 1, accepted_routes: 2,
+    review_policy: "exact_stock_graph2smiles_connected_dag_family_queue_v3",
+  } };
+  setLocale("en");
+  const wrapper = mount(DeliveryReviewBadge, { ...options, props: { receipt: value } });
+  expect(wrapper.text()).toBe("Saved model review");
+  setLocale("zh-CN");
+  await wrapper.vm.$nextTick();
+  expect(wrapper.text()).toBe("保存的模型核验");
+  await wrapper.setProps({ receipt: modelReceipt() });
+  expect(wrapper.text()).toBe("模型已核验");
+  wrapper.unmount();
+});
+
+test("aggregate and saved-review labels have one exact bilingual catalog authority", () => {
+  for (const entry of [["保存的模型核验", "Saved model review"], ["汇总待更新", "Review pending"],
+    ["汇总不可用", "Review unavailable"], ["混合核验", "Mixed review"], ["已选路线", "Selected routes"]])
+    expect(readerMessages.filter(([key]) => key === entry[0])).toEqual([entry]);
 });

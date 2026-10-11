@@ -292,6 +292,14 @@ class JobRepository:
             connection.commit()
         return self.get(row["id"])
 
+    def has_active_work(self):
+        """Background read-only projections yield to an active route calculation."""
+        with self.connect() as connection:
+            connection.execute("PRAGMA busy_timeout=1000")
+            return connection.execute(
+                "SELECT 1 FROM jobs WHERE status IN ('preparing','searching','evaluating') LIMIT 1"
+            ).fetchone() is not None
+
     def recover_interrupted(self) -> int:
         """Call only while holding the sole worker lock; preserve all checkpoints."""
         with self.connect() as connection:
