@@ -49,7 +49,7 @@ const wrappers = [];
 function setup(props = {}) {
   const wrapper = mount(TaskInfoDialog, {
     props: { modelValue: true, task, ...props },
-    global: { stubs },
+    global: { stubs: { ...stubs, VIcon: true } },
   });
   wrappers.push(wrapper);
   return wrapper;

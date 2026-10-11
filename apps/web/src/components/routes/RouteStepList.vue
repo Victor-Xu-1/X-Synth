@@ -16,11 +16,7 @@
           @click="$emit('choose', choice.route.route_id)"
         ><strong>{{ routeLabel(choice.originalIndex) }}</strong></button>
         <span>{{ engineUiLabel(choice.route.engine) }}</span>
-        <span
-          class="state-badge"
-          :class="{ success: choice.route.closed === true, warning: choice.route.closed === false }"
-          >{{ $tr(closureLabel(choice.route)) }}</span
-        >
+        <DeliveryReviewBadge :receipt="choice.route.metadata?.delivery_review" />
         <div class="overview-actions">
           <v-tooltip :text="$tr('查看完整路线')"
             ><template #activator="{ props }">
@@ -203,6 +199,7 @@ import { uiText } from "@/i18n";
 import { engineUiLabel } from "./route-ui-text";
 import SmilesImage from "@/components/SmilesImage.vue";
 import RouteEvidencePanel from "./RouteEvidencePanel.vue";
+import DeliveryReviewBadge from "./DeliveryReviewBadge.vue";
 import RouteGraph from "./RouteGraph.vue";
 import RouteStepStructure from "./RouteStepStructure.vue";
 import {
@@ -211,7 +208,6 @@ import {
 } from "@/common/route-graph";
 import { routeLabel } from "@/common/route-reading";
 import {
-  closureLabel,
   longestLinearSteps,
   stepDetails,
 } from "@/common/route-details";

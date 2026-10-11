@@ -139,6 +139,9 @@ export function normalizeTaskInfo(task, response = {}) {
         (Array.isArray(routes) ? routes.length : task.num_trees)),
     settings: isRecord(value.settings) ? value.settings : task.settings || null,
     error_code: value.error_code ?? task.error_code,
+    unified_route_pool_summary: stale ? task.unified_route_pool_summary
+      : snapshot.unified_route_pool_summary || (Object.keys(summary).length ? summary : task.unified_route_pool_summary),
+    summary: stale ? task.summary : snapshot.summary || (task.summary ? summary : undefined),
   };
 }
 

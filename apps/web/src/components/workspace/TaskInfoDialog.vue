@@ -116,6 +116,10 @@
               <dd>{{ count === null ? $tr('未记录') : count }}</dd>
             </div>
             <div>
+              <dt>{{ $tr('软件自动核验') }}</dt>
+              <dd><DeliveryReviewBadge :receipt="taskDeliveryReview(task)" /></dd>
+            </div>
+            <div>
               <dt>{{ $tr('任务分组') }}</dt>
               <dd>{{ groupName || $tr('未分组') }}</dd>
             </div>
@@ -236,6 +240,8 @@
 <script setup>
 import { computed } from "vue";
 import SmilesImage from "@/components/SmilesImage.vue";
+import DeliveryReviewBadge from "@/components/routes/DeliveryReviewBadge.vue";
+import { taskDeliveryReview } from "@/common/delivery-review";
 import {
   activeTaskStates,
   taskStateClass,

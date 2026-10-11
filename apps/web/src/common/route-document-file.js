@@ -1,12 +1,13 @@
 import { cleanGraph } from "./route-graph";
 
 export const MAX_ROUTE_FILE_BYTES = 10 * 1024 * 1024;
-export function routeDocumentPayload(title, graph) {
+export function routeDocumentPayload(title, graph, deliveryReview = null) {
   return {
     format: "x-synth-route",
     version: 1,
     title: String(title || "合成路线").slice(0, 160),
     graph: cleanGraph(graph),
+    metadata: { delivery_review: deliveryReview },
   };
 }
 export function parseRouteDocument(text) {

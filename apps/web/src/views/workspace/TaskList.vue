@@ -308,6 +308,7 @@
                     :class="taskStateClass(task.result_state)"
                     >{{ taskStateLabel(task.result_state) }}</span
                   >
+                  <DeliveryReviewBadge :receipt="taskDeliveryReview(task)" />
                 </td>
                 <td class="task-count-cell">
                   <span class="task-mobile-label" aria-hidden="true">{{ $tr('路线') }}</span>
@@ -431,6 +432,8 @@ import {
 import SmilesImage from "@/components/SmilesImage.vue";
 import RoutePreview from "@/components/routes/RoutePreview.vue";
 import TaskCard from "@/components/workspace/TaskCard.vue";
+import DeliveryReviewBadge from "@/components/routes/DeliveryReviewBadge.vue";
+import { taskDeliveryReview } from "@/common/delivery-review";
 import TaskActions from "@/components/workspace/TaskActions.vue";
 import TaskInfoDialog from "@/components/workspace/TaskInfoDialog.vue";
 import TaskGroups from "@/components/workspace/TaskGroups.vue";

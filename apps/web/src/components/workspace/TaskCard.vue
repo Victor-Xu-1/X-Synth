@@ -48,6 +48,7 @@
         <span v-if="hasSource" class="task-card-source" :title="sourceLabel">{{ sourceLabel }}</span>
       </div>
     </router-link>
+    <DeliveryReviewBadge class="task-card-review" :receipt="taskDeliveryReview(task)" />
     <footer class="task-card-footer">
       <time :datetime="task.modified" :title="$tr('更新时间：{name}', { name: taskTimestampLabel(task.modified) })">
         {{ task.modified ? displayTime(task.modified) : $tr('时间未记录') }}
@@ -76,6 +77,8 @@
 import { computed } from "vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import TaskActions from "./TaskActions.vue";
+import DeliveryReviewBadge from "@/components/routes/DeliveryReviewBadge.vue";
+import { taskDeliveryReview } from "@/common/delivery-review";
 import {
   activeTaskStates,
   displayTime,
@@ -126,7 +129,7 @@ const active = computed(() =>
 <style scoped>
 .task-card {
   display: grid;
-  grid-template-rows: 92px minmax(0, 1fr) 44px;
+  grid-template-rows: 92px minmax(0, 1fr) 44px 44px;
   height: 352px;
   min-width: 0;
   border: 1px solid var(--ws-border);
@@ -138,6 +141,7 @@ const active = computed(() =>
 .task-card:hover {
   border-color: var(--ws-muted);
 }
+.task-card-review { margin: 0 14px; justify-self: start; align-self: center; }
 .task-card.selected {
   border-color: var(--ws-accent);
   outline: 1px solid var(--ws-accent);

@@ -188,7 +188,7 @@ test("thumbnail, detail, steps, filters and reordered candidates share each prep
     .trigger("click");
   const filters = wrapper.getComponent({ name: "RouteFilters" });
   filters.vm.$emit("update:modelValue", {
-    query: "native-b", engine: "", closure: "", sort: "score",
+    query: "native-b", engine: "", grade: "", sort: "score",
   });
   await flushPromises();
   expect(
@@ -196,7 +196,7 @@ test("thumbnail, detail, steps, filters and reordered candidates share each prep
       .props("choices")[0].originalIndex,
   ).toBe(1);
   filters.vm.$emit("update:modelValue", {
-    query: "", engine: "", closure: "", sort: "rank",
+    query: "", engine: "", grade: "", sort: "rank",
   });
   await wrapper.setProps({ candidates: [second, first] });
   expect(

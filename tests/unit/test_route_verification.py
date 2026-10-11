@@ -102,7 +102,9 @@ def test_all_public_selected_readers_refuse_template_only_new_results(tmp_path, 
     with pytest.raises(HTTPException) as error:
         selected_route_data(path, budget=PerformanceBudget(), job={"checkpoint": {"review_policy": REVIEW_POLICY}})
     assert error.value.status_code == 409
-    assert selected_route_data(path, budget=PerformanceBudget(), job={"checkpoint": {"review_policy": PREVIOUS_REVIEW_POLICY}}) == [route]
+    legacy = selected_route_data(path, budget=PerformanceBudget(), job={"checkpoint": {"review_policy": PREVIOUS_REVIEW_POLICY}})[0]
+    assert legacy["metadata"].pop("delivery_review")["grade"] == "not_independently_reviewed"
+    assert legacy == route
 
 
 def test_interruption_is_checked_at_the_publication_boundary(tmp_path):

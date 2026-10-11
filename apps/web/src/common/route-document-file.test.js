@@ -44,3 +44,12 @@ test("wrong format and version cannot become imported route documents", () => {
   expect(() => parseRouteDocument("invalid")).toThrow();
   expect(MAX_ROUTE_FILE_BYTES).toBe(10485760);
 });
+
+test("JSON export retains the delivery receipt but import never inherits certification", () => {
+  const graph = graphFromCandidate({ target_smiles: "CCO", steps: [] });
+  const receipt = { version: 1, phase: "automated_review", grade: "not_independently_reviewed" };
+  const value = routeDocumentPayload("R001", graph, receipt);
+  expect(JSON.parse(JSON.stringify(value)).metadata.delivery_review).toEqual(receipt);
+  expect(parseRouteDocument(JSON.stringify(value))).toEqual({ title: "R001", graph: cleanGraph(graph) });
+  expect(routeDocumentPayload("R001", graph).metadata.delivery_review).toBeNull();
+});
