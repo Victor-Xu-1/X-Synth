@@ -15,6 +15,7 @@ const forwardPolicies = [
   "exact_stock_graph2smiles_pinned_record_family_queue_v4",
   "exact_stock_graph2smiles_operation_evidence_v5",
   "exact_stock_graph2smiles_strategy_evidence_v6",
+  "exact_stock_graph2smiles_rank_provenance_v7",
 ];
 const bases = ["route_receipt", "stored_summary"];
 const reviewStatuses = ["checked", "missing", "invalid", "incomplete"];
@@ -209,4 +210,37 @@ test("unresolved step projections reject duplicate IDs and cannot mutate the sou
   value.operations.unresolved_steps.push({ ...value.operations.unresolved_steps[0] });
   expect(deliveryReviewGrade(value)).toBe("not_independently_reviewed");
   expect(unresolvedOperationSteps(value)).toEqual([]);
+});
+
+test("v4 accepts only its explicit original decoder basis and retains operation gates", () => {
+  const value = receipt();
+  Object.assign(value.independent_review, { review_version: 4, rank_basis: "original_decoder_ordinal" });
+  const before = JSON.stringify(value);
+  expect(deliveryReviewGrade(value)).toBe("model_checked");
+  expect(JSON.stringify(value)).toBe(before);
+  value.operations = operationEvidence(); value.grade = "operation_evidence_required";
+  expect(deliveryReviewGrade(value)).toBe("operation_evidence_required");
+  for (const rank_basis of [undefined, null, true, "joint_display_ordinal", "native_rank", "unknown"]) {
+    expect(deliveryReviewGrade({ ...value, independent_review: { ...value.independent_review, rank_basis } })).toBe("not_independently_reviewed");
+  }
+});
+
+test.each([1, 2, 3])("legacy receipt v%s accepts additive joint basis but cannot claim original decoder provenance", (version) => {
+  const value = receipt();
+  Object.assign(value.independent_review, { review_version: version, rank_basis: "joint_display_ordinal" });
+  expect(deliveryReviewGrade(value)).toBe("model_checked");
+  value.independent_review.rank_basis = "original_decoder_ordinal";
+  expect(deliveryReviewGrade(value)).toBe("not_independently_reviewed");
+});
+
+test("stored v7 summary and old v5/v6 keep operation evidence requirements and reject contradictory optional basis", () => {
+  for (const policy of forwardPolicies.slice(-3)) {
+    const value = reviewedReceipt("stored_summary", "operation_evidence_required");
+    value.independent_review.review_policy = policy;
+    value.independent_review.rank_basis = policy.endsWith("_v7") ? "original_decoder_ordinal" : "joint_display_ordinal";
+    value.operations = operationEvidence();
+    expect(deliveryReviewGrade(value)).toBe("operation_evidence_required");
+    value.independent_review.rank_basis = policy.endsWith("_v7") ? "joint_display_ordinal" : "original_decoder_ordinal";
+    expect(deliveryReviewGrade(value)).toBe("not_independently_reviewed");
+  }
 });

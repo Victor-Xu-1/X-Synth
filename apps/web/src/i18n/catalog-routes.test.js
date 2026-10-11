@@ -45,3 +45,15 @@ test("reference record counts retain source identity without singular/plural gra
   setLocale("zh-CN", { persist: false });
   expect(uiText("{name} · {count} 条", { name: "ORD", count: 1 })).toBe("ORD · 1 条");
 });
+
+test("review counters distinguish original decoder top one from historical joint top one without changing counts", () => {
+  initializeLocale(null);
+  expect(uiText("步骤核验（联合模型）：")).toBe("Step verification (joint models):");
+  expect(uiText("步骤核验（联合排序）：")).toBe("Step verification (joint order):");
+  const counts = { value: 0, value2: 1 };
+  const actualCounts = { value: 1, value2: 0, value3: 0 };
+  expect(uiText("联合首选 {value} · 原始首选 {value2} · 记录支持 {value3}", actualCounts)).toBe("Joint first: 1 · Original first: 0 · Record support: 0");
+  expect(uiText("联合首选 {value} 步 · 实验记录支持 {value2} 步", counts)).toBe("Joint top-1: 0 · Record support: 1");
+  setLocale("zh-CN", { persist: false });
+  expect(uiText("联合首选 {value} · 原始首选 {value2} · 记录支持 {value3}", actualCounts)).toBe("联合首选 1 · 原始首选 0 · 记录支持 0");
+});

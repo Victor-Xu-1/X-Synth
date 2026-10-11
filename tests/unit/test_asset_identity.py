@@ -1,4 +1,4 @@
-from packages.platform.asset_identity import content_digest
+from packages.platform.asset_identity import content_digest, saved_model_identity
 
 import hashlib
 import os
@@ -42,6 +42,35 @@ def test_asset_change_during_hashing_is_rejected(tmp_path, monkeypatch):
     monkeypatch.setattr(asset_identity.hashlib, "file_digest", changed)
     with pytest.raises(ValueError, match="changed"):
         content_digest(path)
+
+
+def test_saved_model_identity_includes_graph_and_variable_content(tmp_path):
+    graph = tmp_path / "saved_model.pb"
+    variables = tmp_path / "variables/variables.data-00000-of-00001"
+    variables.parent.mkdir()
+    graph.write_bytes(b"graph-identity-control")
+    variables.write_bytes(b"weight-identity-control")
+    before = saved_model_identity(tmp_path)
+    assert saved_model_identity(tmp_path) == before
+    variables.write_bytes(b"changed-weight-identity-control")
+    assert saved_model_identity(tmp_path) != before
+
+
+def test_saved_model_bundle_rejects_files_changing_after_their_hash(tmp_path, monkeypatch):
+    graph, weights = tmp_path / "saved_model.pb", tmp_path / "z-weights"
+    graph.write_bytes(b"graph-identity-control")
+    weights.write_bytes(b"weight-identity-control")
+    original = asset_identity.content_digest
+
+    def changed(path):
+        value = original(path)
+        if path == weights:
+            graph.write_bytes(b"changed-graph")
+        return value
+
+    monkeypatch.setattr(asset_identity, "content_digest", changed)
+    with pytest.raises(ValueError, match="changed"):
+        saved_model_identity(tmp_path)
 
 
 @pytest.mark.parametrize("directory", [

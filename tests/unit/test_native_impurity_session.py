@@ -9,7 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "apps/askcos-v2/impurity_predictor"))
 from native_mapper import configured_model_threads
 from native_runtime import ImpurityRuntime
-from native_session import PredictionSession
+from native_session import PredictionSession, validate_prediction_assets
 from packages.adapters.askcos.native_models import NativeModelError
 from packages.adapters.askcos.impurities import origin_ranking_score
 
@@ -27,6 +27,22 @@ class UnavailableForward:
 def session():
     forward = UnavailableForward()
     return PredictionSession(None, forward, None), forward
+
+
+@pytest.mark.parametrize("actual,expected,accepted", [
+    ("b" * 64, "b" * 64, True), ("b" * 64, "c" * 64, False),
+    ("b" * 64, None, False), (None, "b" * 64, True),
+])
+def test_impurity_binds_actual_scoring_bundle_without_fabricating_legacy_hash(actual, expected, accepted):
+    # Identity controls only; no molecule, probability or provider output is faked.
+    prediction = SimpleNamespace(asset_identity="a" * 64,
+                                 provenance=SimpleNamespace(fast_filter_asset_identity=actual))
+    provenance = SimpleNamespace(forward_asset_identity="a" * 64, fast_filter_asset_identity=expected)
+    if accepted:
+        validate_prediction_assets(prediction, provenance)
+    else:
+        with pytest.raises(ValueError, match="Fast-filter"):
+            validate_prediction_assets(prediction, provenance)
 
 
 def test_only_atom_only_subsets_skip_with_a_run_log_and_no_provider_call():

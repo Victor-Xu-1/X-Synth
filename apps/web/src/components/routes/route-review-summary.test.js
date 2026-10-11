@@ -1,5 +1,6 @@
 /** @jest-environment node */
 import { readRouteReviewSummary } from "./route-review-summary";
+import { rankedReviewFixture } from "./route-review-summary.test-support";
 
 // API-contract fixtures only, not a provider or experimental route evidence.
 function candidate() {
@@ -44,7 +45,7 @@ test("the v1 summary preserves aggregate coverage even when records are abbrevia
   const value = candidate();
   const before = JSON.stringify(value);
   expect(readRouteReviewSummary(value)).toEqual({
-    forward: { status: "ready", matched: 4, total: 4 },
+    forward: { status: "ready", matched: 4, total: 4, rankBasis: "joint_display_ordinal" },
     references: {
       status: "ready", reaction: 1, product: 2, unmatched: 1, total: 4,
     },
@@ -74,7 +75,7 @@ function supportedCandidate() {
 test("v2 counts keep model-first and record-supported candidates separate", () => {
   const value = supportedCandidate();
   expect(readRouteReviewSummary(value).forward).toEqual({
-    status: "ready", matched: 4, total: 4, top1: 3, recorded: 1,
+    status: "ready", matched: 4, total: 4, top1: 3, recorded: 1, rankBasis: "joint_display_ordinal",
   });
 });
 
@@ -142,7 +143,7 @@ test.each([true, [], "review", {}, { version: "1" }])(
 
 test("unknown versions cannot be interpreted as a completed v1 review", () => {
   const value = candidate();
-  value.metadata.automated_review.version = 4;
+  value.metadata.automated_review.version = 5;
   expect(readRouteReviewSummary(value)).toEqual({
     forward: { status: "unsupported" }, references: { status: "unsupported" },
   });
@@ -182,7 +183,7 @@ test("summary counts cannot contradict an explicitly unmatched forward record", 
   expect(readRouteReviewSummary(value).forward.status).toBe("invalid");
   value.metadata.automated_review.forward.matched_steps = 3;
   expect(readRouteReviewSummary(value).forward).toEqual({
-    status: "ready", matched: 3, total: 4,
+    status: "ready", matched: 3, total: 4, rankBasis: "joint_display_ordinal",
   });
 });
 
@@ -267,7 +268,7 @@ test("empty routes preserve zero counts without inventing successful reactions",
     reaction_matched_steps: 0, product_matched_steps: 0, unmatched_steps: 0, records: [],
   };
   expect(readRouteReviewSummary(value)).toEqual({
-    forward: { status: "ready", matched: 0, total: 0 },
+    forward: { status: "ready", matched: 0, total: 0, rankBasis: "joint_display_ordinal" },
     references: { status: "ready", reaction: 0, product: 0, unmatched: 0, total: 0 },
   });
 });
@@ -278,7 +279,7 @@ test("a ranked product alone does not mean the producer accepted its feasibility
   forward.matched_steps = 0;
   forward.records[0].expected_rank = 2;
   expect(readRouteReviewSummary(value).forward).toEqual({
-    status: "ready", matched: 0, total: 4,
+    status: "ready", matched: 0, total: 4, rankBasis: "joint_display_ordinal",
   });
   forward.records[0].matched = false;
   forward.records[0].expected_rank = 1;
@@ -301,4 +302,85 @@ test("full reference records must support both inclusive scope counters", () => 
   expect(readRouteReviewSummary(value).references.status).toBe("ready");
   refs.reaction_matched_steps = 1;
   expect(readRouteReviewSummary(value).references.status).toBe("invalid");
+});
+
+test.each([1, 2, 30])("v4 accepts a source-bound decoder rank %s independently of the displayed top ten", (rank) => {
+  const value = rankedReviewFixture(rank), before = JSON.stringify(value);
+  expect(readRouteReviewSummary(value).forward).toEqual({
+    status: "ready", matched: 1, total: 1, top1: rank === 1 ? 1 : 0,
+    recorded: rank === 30 ? 1 : 0, joint: rank === 30 ? 0 : 1,
+    rankBasis: "original_decoder_ordinal",
+  });
+  expect(JSON.stringify(value)).toBe(before);
+});
+
+test("v4 joint-first decoder-second cannot falsely claim original model_top1", () => {
+  const value = rankedReviewFixture();
+  const forward = value.metadata.automated_review.forward, row = forward.records[0];
+  expect(row.rank_provenance).toMatchObject({ decoder_rank: 2, joint_rank: 1 });
+  row.support_kind = "model_top1"; row.model_top1_matched = true; row.record_support = [];
+  forward.model_top1_matched_steps = 1; forward.record_supported_steps = 0;
+  expect(readRouteReviewSummary(value).forward.status).toBe("invalid");
+});
+
+test.each([
+  ["no provenance", (v) => { delete v.metadata.automated_review.forward.records[0].rank_provenance; }],
+  ["null provenance", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance = null; }],
+  ["wrong version", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance.version = true; }],
+  ["legacy basis", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance.rank_basis = "joint_display_ordinal"; }],
+  ["unknown policy", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance.ranking_policy = "rank_by_score"; }],
+  ["broken receipt hash", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance.provenance_sha256 = "invalid"; }],
+  ["broken reaction hash", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance.reaction_sha256 = null; }],
+  ["missing forward asset", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance.forward_asset_identity = null; }],
+  ["missing FF asset", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance.fast_filter_asset_identity = null; }],
+  ["string count", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance.decoder_count = "30"; }],
+  ["too many candidates", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance.decoder_count = 31; }],
+  ["native count exceeds decoder", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance.native_count = 31; }],
+  ["ranked count exceeds native", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance.ranked_count = 28; }],
+  ["native rank exceeds decoder", (v) => { const p = v.metadata.automated_review.forward.records[0].rank_provenance; p.native_rank = p.decoder_rank + 1; }],
+  ["joint rank exceeds total", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance.joint_rank = 26; }],
+  ["string rank", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance.decoder_rank = "2"; }],
+  ["expected rank takes joint ordinal", (v) => { v.metadata.automated_review.forward.records[0].expected_rank = 1; }],
+  ["wrong joint score", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance.joint_score = 0; }],
+  ["positive log probability", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance.log_probability = 0.2; }],
+  ["negative feasibility", (v) => { v.metadata.automated_review.forward.records[0].feasibility_score = -1; }],
+  ["truncated records", (v) => { v.metadata.automated_review.forward.records = []; }],
+  ["missing support", (v) => { v.metadata.automated_review.forward.records[0].record_support = []; }],
+  ["no observations", (v) => { v.metadata.automated_review.forward.records[0].record_support[0].recorded_outcomes = []; }],
+  ["zero yield", (v) => { v.metadata.automated_review.forward.records[0].record_support[0].recorded_outcomes[0].yield_value = 0; }],
+  ["foreign outcome", (v) => { v.metadata.automated_review.forward.records[0].record_support[0].recorded_outcomes[0].outcome_index = 1; }],
+  ["unbound yield", (v) => { v.metadata.automated_review.forward.records[0].record_support[0].recorded_outcomes[0].yield_value = 50; }],
+  ["foreign product", (v) => { v.metadata.automated_review.forward.records[0].record_support[0].recorded_outcomes[0].product_smiles = "C"; }],
+  ["product-only reference", (v) => { v.metadata.automated_review.references.records[0].refs[0].match_scope = "product_identity"; }],
+  ["incomplete reference", (v) => { v.metadata.automated_review.references.records[0].complete = false; }],
+  ["malformed references", (v) => { v.metadata.automated_review.references.records = {}; }],
+  ["unbound snapshot", (v) => { v.metadata.automated_review.references.records[0].sources[0].snapshot = "0".repeat(64); }],
+  ["unbound source file", (v) => { v.metadata.automated_review.references.records[0].refs[0].provenance.source_sha256 = "0".repeat(64); }],
+  ["score below recorded threshold", (v) => { v.metadata.automated_review.forward.records[0].rank_provenance.minimum_plausibility = .99; }],
+])("v4 malformed rank or experimental support fails closed: %s", (_name, mutate) => {
+  const value = rankedReviewFixture(30);
+  mutate(value);
+  expect(readRouteReviewSummary(value).forward.status).toBe("invalid");
+});
+
+test("an unmatched v4 product has null ranks and scores, never rank inferred from another score", () => {
+  const value = rankedReviewFixture(), f = value.metadata.automated_review.forward, row = f.records[0];
+  Object.assign(f, { matched_steps: 0, model_top1_matched_steps: 0, joint_top1_matched_steps: 0, record_supported_steps: 0 });
+  Object.assign(row, { expected_rank: null, feasibility_score: null, matched: false,
+    support_kind: "unsupported", model_top1_matched: false, joint_top1_matched: false, record_support: [] });
+  Object.assign(row.rank_provenance, { decoder_rank: null, native_rank: null, joint_rank: null, log_probability: null, joint_score: null });
+  expect(readRouteReviewSummary(value).forward).toMatchObject({ status: "ready", matched: 0, rankBasis: "original_decoder_ordinal" });
+  row.rank_provenance.joint_rank = 1;
+  expect(readRouteReviewSummary(value).forward.status).toBe("invalid");
+});
+
+test.each([1, 2, 3])("old review version %s with or without additive basis never becomes original-model top one", (version) => {
+  const value = version === 1 ? candidate() : supportedCandidate();
+  const review = value.metadata.automated_review;
+  review.version = version;
+  expect(readRouteReviewSummary(value).forward.rankBasis).toBe("joint_display_ordinal");
+  review.forward.rank_basis = "joint_display_ordinal";
+  expect(readRouteReviewSummary(value).forward.status).toBe("ready");
+  review.forward.rank_basis = "original_decoder_ordinal";
+  expect(readRouteReviewSummary(value).forward.status).toBe("invalid");
 });

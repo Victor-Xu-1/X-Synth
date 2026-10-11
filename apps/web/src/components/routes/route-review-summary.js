@@ -1,3 +1,8 @@
+import {
+  ORIGINAL_RANK_BASIS, JOINT_DISPLAY_BASIS, validForwardRankReceipt, reviewRankBasis,
+} from "@/common/forward-rank";
+import { recordedForwardSupportBound } from "./route-forward-support";
+
 const record = (value) =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 const text = (value) => typeof value === "string" && value.trim().length > 0;
@@ -24,7 +29,7 @@ function stepRecords(records, total, stepIds) {
   });
 }
 
-function forwardSummary(value, stepCount, stepIds, version) {
+function forwardSummary(value, stepCount, stepIds, version, steps, references) {
   if (value == null) return state("missing");
   if (
     !record(value) ||
@@ -35,6 +40,10 @@ function forwardSummary(value, stepCount, stepIds, version) {
     !stepRecords(value.records, value.total_steps, stepIds)
   )
     return state("invalid");
+  const basis = version === 4 ? ORIGINAL_RANK_BASIS : JOINT_DISPLAY_BASIS;
+  const referenceRows = Array.isArray(references?.records) ? references.records : [];
+  if (value.rank_basis !== undefined && !reviewRankBasis(version, value.rank_basis)) return state("invalid");
+  if (version === 4 && value.records.length !== value.total_steps) return state("invalid");
   let matched = 0,
     unmatched = 0;
   for (const row of value.records) {
@@ -48,6 +57,7 @@ function forwardSummary(value, stepCount, stepIds, version) {
       (row.matched === true && row.expected_rank === null)
     )
       return state("invalid");
+    if (version === 4 && !validForwardRankReceipt(row)) return state("invalid");
     // Rank alone does not encode the producer's rank/feasibility acceptance gate.
     if (row.matched === true) matched++;
     else if (row.matched === false || row.expected_rank === null) unmatched++;
@@ -57,7 +67,32 @@ function forwardSummary(value, stepCount, stepIds, version) {
     unmatched > value.total_steps - value.matched_steps
   )
     return state("invalid");
-  if ([2, 3].includes(version)) {
+  if (version === 4) {
+    if (!count(value.model_top1_matched_steps) || !count(value.joint_top1_matched_steps) ||
+        !count(value.record_supported_steps) || value.joint_top1_matched_steps + value.record_supported_steps !== value.matched_steps)
+      return state("invalid");
+    let model = 0, joint = 0, supported = 0;
+    for (const row of value.records) {
+      const p = row.rank_provenance;
+      const eligible = row.feasibility_score !== null && row.feasibility_score >= p.minimum_plausibility;
+      const modelFirst = p.decoder_rank === 1 && eligible, jointFirst = p.joint_rank === 1 && eligible;
+      if (typeof row.model_top1_matched !== "boolean" || row.model_top1_matched !== modelFirst ||
+          typeof row.joint_top1_matched !== "boolean" || row.joint_top1_matched !== jointFirst ||
+          !Array.isArray(row.record_support)) return state("invalid");
+      model += modelFirst; joint += jointFirst;
+      if (row.support_kind === "joint_ranked_top1") {
+        if (!row.matched || !jointFirst || row.record_support.length) return state("invalid");
+      } else if (row.support_kind === "record_supported_model_candidate") {
+        if (!row.matched || !eligible || jointFirst || !recordedForwardSupportBound(row.record_support,
+          steps?.find((step) => step.step_id === row.step_id),
+          referenceRows.find((ref) => ref?.step_id === row.step_id))) return state("invalid");
+        supported++;
+      } else if (row.support_kind !== "unsupported" || row.matched || jointFirst || row.record_support.length)
+        return state("invalid");
+    }
+    if (model !== value.model_top1_matched_steps || joint !== value.joint_top1_matched_steps ||
+        supported !== value.record_supported_steps) return state("invalid");
+  } else if ([2, 3].includes(version)) {
     if (!count(value.model_top1_matched_steps) || !count(value.record_supported_steps) ||
         value.model_top1_matched_steps + value.record_supported_steps !== value.matched_steps)
       return state("invalid");
@@ -87,7 +122,9 @@ function forwardSummary(value, stepCount, stepIds, version) {
     status: "ready",
     matched: value.matched_steps,
     total: value.total_steps,
-    ...([2, 3].includes(version) ? { top1: value.model_top1_matched_steps, recorded: value.record_supported_steps } : {}),
+    rankBasis: basis,
+    ...([2, 3, 4].includes(version) ? { top1: value.model_top1_matched_steps, recorded: value.record_supported_steps } : {}),
+    ...(version === 4 ? { joint: value.joint_top1_matched_steps } : {}),
   };
 }
 
@@ -175,14 +212,16 @@ export function readRouteReviewSummary(candidate) {
   const review = candidate?.metadata?.automated_review;
   if (review == null) return emptySummary("missing");
   if (!record(review) || !count(review.version)) return emptySummary("invalid");
-  if (![1, 2, 3].includes(review.version)) return emptySummary("unsupported");
+  if (![1, 2, 3, 4].includes(review.version)) return emptySummary("unsupported");
+  if (review.rank_basis !== undefined && !reviewRankBasis(review.version, review.rank_basis))
+    return emptySummary("invalid");
   const steps = Array.isArray(candidate?.steps) ? candidate.steps : null;
   const stepCount = steps ? steps.length : null;
   const stepIds =
     steps?.every((step) => text(step?.step_id))
       ? new Set(steps.map((step) => step.step_id))
       : null;
-  const forward = forwardSummary(review.forward, stepCount, stepIds, review.version);
+  const forward = forwardSummary(review.forward, stepCount, stepIds, review.version, steps, review.references);
   return {
     forward,
     references: referenceSummary(

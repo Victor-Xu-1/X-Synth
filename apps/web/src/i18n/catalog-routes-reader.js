@@ -1,4 +1,6 @@
 export default [
+  ["步骤核验（联合模型）：", "Step verification (joint models):"],
+  ["联合首选 {value} · 原始首选 {value2} · 记录支持 {value3}", "Joint first: {value} · Original first: {value2} · Record support: {value3}"],
   ["未独立核验", "Not independently reviewed"],
   ["模型已核验", "Model checked"],
   ["采购形式未明确", "Purchase form unresolved"],
@@ -67,6 +69,8 @@ export default [
   ["步骤核验", "Step verification"], ["独立正向预测：", "Independent forward prediction:"],
   ["步骤核验：", "Step verification:"], ["{matched}/{total} 步核验匹配", "{matched}/{total} steps matched in verification"],
   ["（模型首选 {value} 步，原始实验记录支持 {value2} 步）", "(Model top choice: {value} steps; original experimental-record support: {value2} steps)"],
+  ["步骤核验（联合排序）：", "Step verification (joint order):"],
+  ["联合首选 {value} 步 · 实验记录支持 {value2} 步", "Joint top-1: {value} · Record support: {value2}"],
   ["无反应步骤", "No reaction steps"], ["参考覆盖：", "Reference coverage:"],
   ["同反应 {value} 步 · 同产物资料 {value2} 步 · 检索未匹配 {value3} 步", "Same reaction: {value} steps · Same-product records: {value2} steps · No search match: {value3} steps"],
   ["· 未检索 {value} 步", "· {value} steps not searched"],

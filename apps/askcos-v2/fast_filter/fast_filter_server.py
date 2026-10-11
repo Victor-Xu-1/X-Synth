@@ -38,7 +38,7 @@ def ready():
     scorer = globals().get("fast_filter")
     if scorer is None or scorer.model is None:
         raise HTTPException(503, "Fast-filter checkpoint is not loaded")
-    return {"status": "ready", "model": "askcos_fast_filter"}
+    return {"status": "ready", "model": "askcos_fast_filter", "asset_identity": scorer.asset_identity}
 
 INFERENCE_TIME = Histogram(
     "inference_duration_seconds",
@@ -103,7 +103,8 @@ def execute(operation):
         start = time.perf_counter()
         try:
             output = operation()
-            response = bounded_response({"status": "SUCCESS", "error": "", "results": output})
+            response = bounded_response({"status": "SUCCESS", "error": "", "results": output,
+                                         "model": "askcos_fast_filter", "asset_identity": fast_filter.asset_identity})
         except HTTPException:
             raise
         except (ValueError, TypeError, KeyError, IndexError):

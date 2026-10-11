@@ -2,6 +2,8 @@ import { mount } from "@vue/test-utils";
 import { saveAs } from "file-saver";
 import Papa from "papaparse";
 import SynthesisPrediction from "./SynthesisPrediction.vue";
+import { rankedForwardFixture, incompleteForwardFixture, leadingIncompleteForwardFixture } from "@/common/forward-result.test-support";
+import { setLocale } from "@/i18n";
 
 jest.mock("file-saver", () => ({ saveAs: jest.fn() }));
 jest.mock("@/components/SmilesImage.vue", () => ({
@@ -78,4 +80,110 @@ test("implementation identity is only in collapsed details", () => {
   const wrapper = setup({ results: rows, prediction });
   expect(wrapper.get("details").attributes("open")).toBeUndefined();
   expect(wrapper.get("details").text()).toContain("graph2smiles_uspto_stereo");
+});
+
+test("FF promotion keeps decoder 2 and joint 1 in separate concise columns in EN and CN", async () => {
+  const value = rankedForwardFixture(), before = JSON.stringify(value);
+  const wrapper = setup({ prediction: value, results: value.products });
+  expect(wrapper.get(".forward-product-table tbody tr").findAll("td, th").slice(0, 2).map((cell) => cell.text())).toEqual(["2", "1"]);
+  expect(wrapper.get(".forward-product-table thead").text()).toContain("模型排名");
+  expect(wrapper.get(".forward-product-table thead").text()).toContain("联合排名");
+  setLocale("en", { persist: false }); await wrapper.vm.$nextTick();
+  expect(wrapper.get(".forward-product-table thead").text()).toContain("Model rank");
+  expect(wrapper.get(".forward-product-table thead").text()).toContain("Joint rank");
+  expect(wrapper.get(".forward-product-table").text()).not.toMatch(/reliability|success rate|experimentally/);
+  expect(JSON.stringify(value)).toBe(before);
+});
+
+test("legacy displays recorded joint order without suggesting model or native ranks in either language", async () => {
+  const wrapper = setup({ results: rows, prediction }), before = JSON.stringify(rows);
+  expect(wrapper.get('[role="note"]').text()).toBe("原生排名未记录；按已保存的联合顺序显示。");
+  expect(wrapper.findAll(".forward-product-table tbody tr td:first-child").map((cell) => cell.text())).toEqual(["未记录", "未记录"]);
+  setLocale("en", { persist: false }); await wrapper.vm.$nextTick();
+  expect(wrapper.get('[role="note"]').text()).toBe("Native rank not recorded; saved joint order.");
+  expect(wrapper.findAll(".forward-product-table tbody th").map((cell) => cell.text())).toEqual(["1", "2"]);
+  expect(JSON.stringify(rows)).toBe(before);
+});
+
+test("run details retain the complete ledger beyond the 10 displayed candidates and both assets", () => {
+  const value = rankedForwardFixture(), wrapper = setup({ prediction: value, results: value.products });
+  expect(wrapper.findAll(".forward-product-table tbody tr")).toHaveLength(10);
+  expect(wrapper.findAll(".forward-ledger-table tbody tr")).toHaveLength(30);
+  expect(wrapper.get(".forward-ledger-table tbody tr:last-child").findAll("td, th").slice(0, 3).map((cell) => cell.text())).toEqual(["30", "27", "25"]);
+  expect(wrapper.get("details").text()).toContain(value.asset_identity);
+  expect(wrapper.get("details").text()).toContain(value.provenance.fast_filter_asset_identity);
+  expect(wrapper.get("details").text()).toContain(value.provenance.ranking_policy);
+  expect(wrapper.get("details").text()).toContain("beam_size");
+  expect(wrapper.get("details").attributes("open")).toBeUndefined();
+});
+
+test("a malformed modern record shows an error without legacy fallback, ranks or export", () => {
+  const value = rankedForwardFixture();
+  value.products[0].decoder_rank = 1;
+  const wrapper = setup({ prediction: value, results: value.products });
+  expect(wrapper.get('[role="alert"]').text()).toContain("格式无效");
+  expect(wrapper.find("table").exists()).toBe(false);
+  expect(wrapper.find('[role="note"]').exists()).toBe(false);
+  expect(wrapper.find('[aria-label="导出产物候选"]').exists()).toBe(false);
+});
+
+test("the actual CSV button exports all 30 ledger rows instead of the display slice", async () => {
+  const value = rankedForwardFixture(), wrapper = setup({ prediction: value, results: value.products });
+  await wrapper.get('[aria-label="导出产物候选"]').trigger("click");
+  const csv = await new Promise((resolve) => {
+    const reader = new FileReader(); reader.onload = () => resolve(reader.result);
+    reader.readAsText(saveAs.mock.calls[0][0]);
+  });
+  const records = Papa.parse(csv, { header: true }).data;
+  expect(records).toHaveLength(30);
+  expect(records[1]).toMatchObject({ decoder_rank: "2", native_rank: "2", joint_rank: "1" });
+  expect(records[29].decoder_rank).toBe("30");
+});
+
+test("EOS run details localize unfinished status and retain all raw characters and the recorded token count in EN and CN", async () => {
+  const value = incompleteForwardFixture(), before = JSON.stringify(value);
+  const wrapper = setup({ prediction: value, results: value.products });
+  const row = wrapper.get(".forward-ledger-table tbody tr:nth-child(4)");
+  expect(row.text()).toContain(value.provenance.decoder.hypotheses[3].decoded_product);
+  expect(row.text()).toContain("解码未完成");
+  expect(row.text()).toContain("未终止");
+  expect(row.text()).toContain("512");
+  expect(wrapper.get(".forward-ledger-table thead").text()).toContain("EOS");
+  expect(wrapper.get(".forward-ledger-table thead").text()).toContain("含 EOS");
+  expect(wrapper.findAll(".forward-product-table tbody tr")).toHaveLength(10);
+  setLocale("en", { persist: false }); await wrapper.vm.$nextTick();
+  expect(row.text()).toContain("Incomplete decoding");
+  expect(row.text()).toContain("Unfinished");
+  expect(row.text()).toContain(value.provenance.decoder.hypotheses[3].decoded_product);
+  expect(wrapper.get(".forward-ledger-table thead").text()).toContain("Decoded tokens (incl. EOS)");
+  expect(JSON.stringify(value)).toBe(before);
+});
+
+test("EOS the actual export button retains termination fields for the full ledger including unfinished hypotheses", async () => {
+  const value = incompleteForwardFixture(), wrapper = setup({ prediction: value, results: value.products });
+  await wrapper.get('[aria-label="导出产物候选"]').trigger("click");
+  const csv = await new Promise((resolve) => {
+    const reader = new FileReader(); reader.onload = () => resolve(reader.result);
+    reader.readAsText(saveAs.mock.calls[0][0]);
+  });
+  const records = Papa.parse(csv, { header: true }).data;
+  expect(records).toHaveLength(30);
+  expect(records[3]).toMatchObject({ terminated_by_eos: "false", decoded_token_count: "512",
+    decoded_product: value.provenance.decoder.hypotheses[3].decoded_product, product: "", native_rank: "", joint_rank: "" });
+});
+
+test("EOS an un-terminated native candidate is a visible error with no legacy repair or export", () => {
+  const value = rankedForwardFixture();
+  value.provenance.decoder.hypotheses[0].terminated_by_eos = false;
+  const wrapper = setup({ prediction: value, results: value.products });
+  expect(wrapper.get('[role="alert"]').text()).toContain("格式无效");
+  expect(wrapper.find("table").exists()).toBe(false);
+  expect(wrapper.find('[aria-label="导出产物候选"]').exists()).toBe(false);
+});
+
+test("EOS an unfinished first decoder cannot turn decoder two into the model's first choice in the visible table", () => {
+  const value = leadingIncompleteForwardFixture(), wrapper = setup({ prediction: value, results: value.products });
+  expect(wrapper.get(".forward-product-table tbody tr").findAll("td, th").slice(0, 2).map((cell) => cell.text())).toEqual(["2", "1"]);
+  expect(wrapper.get(".forward-ledger-table tbody tr:first-child").text()).toContain("解码未完成");
+  expect(wrapper.findAll(".forward-product-table tbody tr")).toHaveLength(1);
 });

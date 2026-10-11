@@ -33,7 +33,12 @@ def health(tmp_path, monkeypatch):
 
     def probe(url, timeout, *, require_ready, _cancel=None):
         calls.append(url)
-        return True, {"status": "ready", "stock_snapshot": snapshot, "models": {"pistachio": {}, "pistachio_ringbreaker": {}}}
+        body = {"status": "ready", "stock_snapshot": snapshot, "models": {"pistachio": {}, "pistachio_ringbreaker": {}}}
+        if url == resolve_native_endpoints()["forward_predictor"].readiness_url:
+            body.update(model="graph2smiles_uspto_stereo", asset_identity="a" * 64, provenance_version=1)
+        elif url == resolve_native_endpoints()["fast_filter"].readiness_url:
+            body.update(model="askcos_fast_filter", asset_identity="b" * 64)
+        return True, body
 
     monkeypatch.setattr(runtime_health, "_probe", probe)
 
@@ -69,6 +74,30 @@ def test_cache_is_scoped_to_runtime_generation_and_lifecycle_revision(health):
     write_json(state / "native/runtime.json", manifest)
     runtime_health.route_runtime_status(state)
     assert len(calls) == 3 * count
+
+
+@pytest.mark.parametrize("name,field,value", [
+    ("forward_predictor", "provenance_version", None),
+    ("forward_predictor", "provenance_version", True),
+    ("forward_predictor", "asset_identity", "not-recorded"),
+    ("fast_filter", "asset_identity", None),
+    ("fast_filter", "model", "unexpected-model"),
+])
+def test_ready_service_with_incompatible_review_protocol_cannot_admit_a_job(health, monkeypatch, name, field, value):
+    state, _, _ = health
+    original = runtime_health._probe
+
+    def incompatible(url, *args, **kwargs):
+        ready, body = original(url, *args, **kwargs)
+        if url == resolve_native_endpoints()[name].readiness_url:
+            body[field] = value
+        return ready, body
+
+    monkeypatch.setattr(runtime_health, "_probe", incompatible)
+    result = runtime_health.route_runtime_status(state, force=True)
+    assert result["route_search_ready"] is False
+    assert result["service_checks"][name] is False
+    assert result["dependency_errors"][name] == "model_protocol_incompatible"
 
 
 @pytest.mark.parametrize("status", ["starting", "stopping", "stopped", "failed"])

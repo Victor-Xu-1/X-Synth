@@ -1,3 +1,5 @@
+import { FORWARD_REVIEW_POLICY, ORIGINAL_RANK_BASIS, JOINT_DISPLAY_BASIS, reviewRankBasis } from "./forward-rank";
+
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const count = (value) => Number.isSafeInteger(value) && value >= 0;
 const unknown = "not_independently_reviewed";
@@ -7,6 +9,7 @@ const forwardPolicies = new Set([
   "exact_stock_graph2smiles_pinned_record_family_queue_v4",
   "exact_stock_graph2smiles_operation_evidence_v5",
   "exact_stock_graph2smiles_strategy_evidence_v6",
+  FORWARD_REVIEW_POLICY,
 ]);
 
 function validOperationEvidence(value) {
@@ -41,17 +44,22 @@ export function deliveryReviewGrade(receipt) {
       !record(purchase) || purchase.policy !== "defined_purchase_identity_v1" ||
       !["defined", "unresolved", "unknown"].includes(purchase.status) ||
       !Array.isArray(purchase.unresolved_materials)) return unknown;
+  if (receipt.basis === "route_receipt" && review.review_version !== undefined &&
+      !reviewRankBasis(review.review_version, review.rank_basis)) return unknown;
   const unresolved = purchase.unresolved_materials;
   if (unresolved.some((item) => !record(item) || typeof item.smiles !== "string" || !item.smiles.trim() ||
       !["undefined_purchase_form", "indeterminate_purchase_structure"].includes(item.reason)) ||
       (purchase.status === "unresolved") !== (unresolved.length > 0)) return unknown;
   if (review.status === "checked") {
     if (receipt.basis === "route_receipt") {
-      if (![1, 2, 3].includes(review.review_version) || review.model !== "graph2smiles_uspto_stereo" ||
+      if (!reviewRankBasis(review.review_version, review.rank_basis) || review.model !== "graph2smiles_uspto_stereo" ||
           !count(review.total_steps) || !review.total_steps || review.matched_steps !== review.total_steps) return unknown;
     } else if (!count(review.selected_routes) || !review.selected_routes ||
         !count(review.accepted_routes) || review.selected_routes > review.accepted_routes ||
         !forwardPolicies.has(review.review_policy)) return unknown;
+    if (receipt.basis === "stored_summary" && review.rank_basis !== undefined &&
+        review.rank_basis !== (review.review_policy === FORWARD_REVIEW_POLICY ? ORIGINAL_RANK_BASIS : JOINT_DISPLAY_BASIS))
+      return unknown;
   }
   const expected = purchase.status === "unresolved" ? "purchase_form_unresolved"
     : receipt.operations?.status === "evidence_required" ? "operation_evidence_required"

@@ -50,6 +50,8 @@ export function acceptsImpurities(value) {
         Number.isFinite(origin.log_probability) && origin.log_probability <= 0 && probability(origin.feasibility_score) &&
         probability(origin.mapping_confidence) && origin.mapping?.mode_consistent === true &&
         typeof origin.mapping.mapped_reaction === "string" && [1, 2, 3, 4, 5].includes(origin.mode))) &&
+    (value.provenance?.fast_filter_asset_identity == null ||
+      typeof value.provenance.fast_filter_asset_identity === "string" && /^[a-f0-9]{64}$/.test(value.provenance.fast_filter_asset_identity)) &&
     value.provenance?.mapper_model === "rxnmapper_albert_uspto_all_1310k" && value.provenance.mapper_package_version === "0.4.3" &&
     value.provenance.ranking_strategy === IMPURITY_RANKING_STRATEGY &&
     JSON.stringify(value.execution?.modes_completed) === "[1,2,3,4,5]" && Array.isArray(value.notices);

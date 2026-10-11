@@ -75,6 +75,8 @@ SCIENTIFIC_FILES = {
     "packages/adapters/askcos/native_models.py",
     "packages/adapters/askcos/conditions.py",
     "packages/adapters/askcos/forward.py",
+    "packages/adapters/askcos/forward_models.py",
+    "packages/adapters/askcos/forward_provenance.py",
     "packages/chemistry/forward_evaluation.py",
     "packages/adapters/askcos/impurities.py",
     "apps/api/impurity_routes.py",
@@ -148,6 +150,11 @@ SCIENTIFIC_TESTS = {
     "tests/unit/test_optimization_runtime.py",
     "tests/unit/test_impurity_boundaries.py",
 }
+FORWARD_RANK_FILES = {
+    "packages/adapters/askcos/forward.py",
+    "packages/adapters/askcos/forward_models.py",
+    "packages/adapters/askcos/forward_provenance.py",
+}
 ENVIRONMENT_FILES = {
     "packages/platform/environments.py",
     "apps/api/environment_routes.py",
@@ -181,6 +188,7 @@ SEARCH_ROUND_FILES = {
     "packages/orchestrator/review_worker.py",
     "packages/orchestrator/review_policy.py",
     "packages/orchestrator/route_verification.py",
+    "packages/orchestrator/forward_review.py",
     "packages/orchestrator/verification_cache.py",
     "packages/orchestrator/qualification_queue.py",
     "packages/orchestrator/reference_evidence.py",
@@ -455,7 +463,11 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
             "tests/unit/test_native_scientific_boundaries.py",
             "tests/unit/test_product_api_security.py",
         })
-    if roots & (SCIENTIFIC_FILES - {"apps/api/condition_routes.py"}) or any(
+    if roots & FORWARD_RANK_FILES:
+        selected.update({"tests/unit/test_forward_provenance.py", "tests/unit/test_route_verification.py",
+                         "tests/unit/test_analysis_records.py", "tests/unit/test_native_scientific_boundaries.py",
+                         "tests/unit/test_product_api_security.py", "tests/unit/test_native_impurity_session.py"})
+    if roots & (SCIENTIFIC_FILES - {"apps/api/condition_routes.py"} - FORWARD_RANK_FILES) or any(
         path.startswith("packages/adapters/optimization/") for path in roots
     ):
         selected.update(SCIENTIFIC_TESTS)

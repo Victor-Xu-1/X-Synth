@@ -77,7 +77,7 @@ def operation_receipt(route):
             screened.append(screen["status"])
             if screen["status"] != "evidence_required":
                 continue
-            if (type(review.get("version")) is int and review["version"] == 3 and ledger.get("policy") == POLICY
+            if (type(review.get("version")) is int and review["version"] in {3, 4} and ledger.get("policy") == POLICY
                     and _valid_record(records.get(step.step_id), screen, step, refs.get(step.step_id))):
                 supported = True
             else:
@@ -96,7 +96,7 @@ def operation_records_validated(route):
         ledger = review.get("operations") or {}
         steps = [_step(raw) for raw in route.get("steps", [])]
         rows, references = ledger.get("records"), review.get("references", {}).get("records")
-        if (type(review.get("version")) is not int or review["version"] != 3
+        if (type(review.get("version")) is not int or review["version"] not in {3, 4}
                 or ledger.get("policy") != POLICY or type(ledger.get("total_steps")) is not int
                 or ledger["total_steps"] != len(steps) or not steps
                 or not isinstance(rows, list) or len(rows) != len(steps)

@@ -245,6 +245,7 @@ class ImpurityProvenance(ImpurityModel):
     forward_model: Literal["graph2smiles_uspto_stereo"]
     forward_asset_identity: Hash
     fast_filter_model: Literal["askcos_fast_filter"]
+    fast_filter_asset_identity: Hash | None = None
     mapper_model: Literal["rxnmapper_albert_uspto_all_1310k"]
     mapper_asset_identity: Hash
     mapper_package_version: Literal["0.4.3"]

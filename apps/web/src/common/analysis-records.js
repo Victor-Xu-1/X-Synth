@@ -1,4 +1,5 @@
 import { formatUiDate, uiText } from "@/i18n";
+import { acceptsForwardResult } from "./forward-provenance";
 
 export const analysisKinds = Object.freeze({
   conditions: { title: "反应条件", to: "/forward?tab=context" },
@@ -76,8 +77,7 @@ export function analysisResultError(kind, result, accepts) {
         return identity.status !== "not_predicted" || identity.label !== "" || identity.smiles !== null;
       }))) return invalid;
   } else if (kind === "forward") {
-    if (typeof result.reactants !== "string" || !Array.isArray(result.products) || result.products.some((row) =>
-      !isRecordObject(row) || typeof row.product !== "string" || !Number.isFinite(row.log_probability) || !Number.isFinite(row.feasibility_score))) return invalid;
+    if (!acceptsForwardResult(result)) return invalid;
   } else if (kind === "optimization") {
     if (!Array.isArray(result.recommendations) || !isRecordObject(result.target) || !isRecordObject(result.versions) ||
       !Array.isArray(result.selected_rows) || result.recommendations.some((row) => !isRecordObject(row) || !isRecordObject(row.conditions))) return invalid;

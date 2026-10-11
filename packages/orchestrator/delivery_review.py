@@ -7,6 +7,7 @@ from packages.adapters.stock.procurement_identity import POLICY, procurement_ide
 from .review_policy import FORWARD_REVIEW_POLICIES
 from .operation_review import operation_receipt, forward_support_bound
 from .reference_evidence import recorded_support_proofs_are_valid
+from .forward_review import forward_support_valid
 
 
 MODEL = "graph2smiles_uspto_stereo"
@@ -36,7 +37,7 @@ def independent_review(route: dict) -> dict:
     if review is None:
         return {"status": "missing"}
     invalid = {"status": "invalid"}
-    if not isinstance(review, dict) or type(review.get("version")) is not int or review["version"] not in {1, 2, 3}:
+    if not isinstance(review, dict) or type(review.get("version")) is not int or review["version"] not in {1, 2, 3, 4}:
         return invalid
     steps, forward = route.get("steps"), review.get("forward")
     if not isinstance(steps, list) or not steps or not isinstance(forward, dict):
@@ -48,7 +49,7 @@ def independent_review(route: dict) -> dict:
     if (not _count(total) or total != len(ids) or not _count(matched) or matched > total
             or not isinstance(rows, list) or len(rows) > total):
         return invalid
-    seen, accepted, top1, supported = set(), 0, 0, 0
+    seen, accepted, top1, joint_top1, supported = set(), 0, 0, 0, 0
     for row in rows:
         if not isinstance(row, dict):
             return invalid
@@ -56,12 +57,20 @@ def independent_review(route: dict) -> dict:
         if (not _text(identifier) or identifier not in ids or identifier in seen
                 or row.get("model") != MODEL or not _hex(row.get("record_id"), 32)
                 or type(row.get("matched")) is not bool
-                or not (rank is None or _count(rank) and 1 <= rank <= 10)
-                or type(score) not in {int, float} or not 0 <= score <= 1 or not isfinite(score)):
+                or not (rank is None or _count(rank) and 1 <= rank <= (30 if review["version"] == 4 else 10))
+                or not (review["version"] == 4 and rank is None and score is None
+                        or type(score) in {int, float} and 0 <= score <= 1 and isfinite(score))):
             return invalid
+        step = next(step for step in steps if step["step_id"] == identifier)
         seen.add(identifier)
         accepted += row["matched"]
-        if review["version"] == 1:
+        if review["version"] == 4:
+            if not forward_support_valid(row, step, review):
+                return invalid
+            top1 += row["model_top1_matched"]
+            joint_top1 += row["joint_top1_matched"]
+            supported += bool(row["record_support"])
+        elif review["version"] == 1:
             if row["matched"] and rank != 1:
                 return invalid
         else:
@@ -75,8 +84,8 @@ def independent_review(route: dict) -> dict:
             elif kind == "record_supported_model_candidate":
                 if not row["matched"] or row["model_top1_matched"] or rank is None or rank < 2 or not _supported_candidate(row):
                     return invalid
-                if review["version"] == 3 and not forward_support_bound(
-                    row["record_support"], next(step for step in steps if step["step_id"] == identifier), review,
+                if review["version"] >= 3 and not forward_support_bound(
+                    row["record_support"], step, review,
                 ):
                     return invalid
                 supported += 1
@@ -90,12 +99,23 @@ def independent_review(route: dict) -> dict:
         or top1 + supported != matched
     ):
         return invalid
+    if review["version"] == 4 and (
+        top1 != forward.get("model_top1_matched_steps")
+        or not _count(forward.get("model_top1_matched_steps"))
+        or not _count(forward.get("joint_top1_matched_steps"))
+        or not _count(forward.get("record_supported_steps"))
+        or joint_top1 != forward["joint_top1_matched_steps"] or supported != forward["record_supported_steps"]
+        or joint_top1 + supported != matched
+    ):
+        return invalid
     complete = len(seen) == total and matched == total
     if complete and (metadata.get("full_forward_prediction_validated") is not True
                      or metadata.get("forward_validation_passed") is False):
         return invalid
     return {"status": "checked" if complete else "incomplete", "review_version": review["version"],
-            "model": MODEL, "matched_steps": matched, "total_steps": total}
+            "model": MODEL, "matched_steps": matched, "total_steps": total,
+            "rank_basis": "original_decoder_ordinal" if review["version"] == 4 else "joint_display_ordinal",
+            "acceptance_basis": "joint_sequence_fast_filter_top1_or_exact_record"}
 
 
 def purchase_identity(route: dict) -> dict:

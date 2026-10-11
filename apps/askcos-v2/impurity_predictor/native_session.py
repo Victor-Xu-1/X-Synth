@@ -26,6 +26,16 @@ from packages.chemistry.forward_evaluation import validate_forward_input
 from packages.workspace.structure_validation import canonical_structure
 
 
+def validate_prediction_assets(prediction, provenance):
+    if prediction.asset_identity != provenance.forward_asset_identity:
+        raise ValueError("Forward model assets changed during impurity analysis.")
+    if prediction.provenance is None:
+        raise ValueError("Forward prediction provenance was not recorded.")
+    identity = prediction.provenance.fast_filter_asset_identity
+    if identity is not None and identity != provenance.fast_filter_asset_identity:
+        raise ValueError("Fast-filter model assets changed during impurity analysis.")
+
+
 class PredictionSession:
     """Per-request bounded caches, model evidence and a single execution deadline."""
 
@@ -78,10 +88,7 @@ class PredictionSession:
             self.forward.model.timeout = min(30, self.check_deadline())
             self.forward.filter.timeout = min(30, self.check_deadline())
             prediction = self.forward.predict(reactants=canonical, count=3)
-            if prediction.asset_identity != self.provenance.forward_asset_identity:
-                raise ValueError(
-                    "Forward model assets changed during impurity analysis."
-                )
+            validate_prediction_assets(prediction, self.provenance)
             self.predictions[canonical] = prediction.products
             for row in prediction.products:
                 self.rows[canonical, row.product] = row
@@ -222,8 +229,9 @@ def predict_impurities(body, models):
         "按最佳来源的序列对数评分 + ln(max(FF, 1e-30)) 启发式排序；结构相似度仅作同分次排序。",
         "联合评分不是经校准的成功率、风险、浓度或检出概率。",
         "FF 对重复单体的指纹区分有限；该边界不被映射检查或相似度消除。",
-        "FF 服务当前不返回模型文件哈希；记录实际服务模型名称，不编造资产标识。",
     ]
+    if provenance.fast_filter_asset_identity is None:
+        notices.append("FF 资产哈希未记录；仅保留服务模型名称。")
     result = ImpurityResult(
         inputs=body,
         known_major_product=KnownMajorProduct(smiles=body.known_product),

@@ -10,7 +10,8 @@ import sys
 from pathlib import Path
 from urllib import parse, request
 
-from packages.adapters.askcos.forward import ForwardAdapter
+from packages.adapters.askcos.forward import ForwardAdapter, ForwardResult
+from packages.adapters.askcos.forward_provenance import decoded_tokens
 from packages.adapters.askcos.impurities import (
     RANKING_STRATEGY,
     RXNMAPPER_VERSION,
@@ -195,7 +196,7 @@ def load_models():
     forward_url = os.environ.get("X_SYNTH_FORWARD_URL", "http://127.0.0.1:9911")
     filter_url = os.environ.get("X_SYNTH_FAST_FILTER_URL", "http://127.0.0.1:9611")
     forward = service_ready(forward_url, "graph2smiles_uspto_stereo")
-    service_ready(filter_url, "askcos_fast_filter")
+    fast_filter = service_ready(filter_url, "askcos_fast_filter")
     provenance = ImpurityProvenance(
         algorithm_source_sha256=_hash(SOURCE),
         integration_source_sha256=hashlib.sha256(
@@ -214,6 +215,8 @@ def load_models():
                     for module in [
                         sys.modules[ImpurityInput.__module__],
                         sys.modules[ForwardAdapter.__module__],
+                        sys.modules[ForwardResult.__module__],
+                        sys.modules[decoded_tokens.__module__],
                         sys.modules[validate_forward_input.__module__],
                         sys.modules[NativeModelError.__module__],
                     ]
@@ -223,6 +226,7 @@ def load_models():
         forward_model="graph2smiles_uspto_stereo",
         forward_asset_identity=forward["asset_identity"],
         fast_filter_model="askcos_fast_filter",
+        fast_filter_asset_identity=fast_filter.get("asset_identity"),
         mapper_model="rxnmapper_albert_uspto_all_1310k",
         mapper_asset_identity=asset_identity,
         mapper_package_version=RXNMAPPER_VERSION,

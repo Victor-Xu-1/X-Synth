@@ -70,6 +70,25 @@ def content_digest(path: Path) -> str:
     return result
 
 
+def saved_model_identity(directory: Path) -> str:
+    """Fingerprint the complete loaded TensorFlow bundle, not only its graph."""
+    directory = directory.resolve(strict=True)
+    files = sorted(path for path in directory.rglob("*") if path.is_file())
+    if not files or len(files) > 10000 or directory / "saved_model.pb" not in files:
+        raise ValueError("Invalid SavedModel asset bundle")
+    entries = {}
+    identities = {path: file_identity(path) for path in files}
+    for path in files:
+        if not path.resolve(strict=True).is_relative_to(directory):
+            raise ValueError("SavedModel asset escapes its bundle")
+        entries[path.relative_to(directory).as_posix()] = content_digest(path)
+    if files != sorted(path for path in directory.rglob("*") if path.is_file()):
+        raise ValueError("SavedModel bundle changed while hashing")
+    if any(file_identity(path) != identity for path, identity in identities.items()):
+        raise ValueError("SavedModel bundle changed while hashing")
+    return hashlib.sha256(json.dumps(entries, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
 def native_asset_identity(source: Path, assets: Path, stock, models: list[str], *, reaction_library: Path | None = None) -> str:
     installed = {}
     for name in models:

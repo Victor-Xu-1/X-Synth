@@ -2,10 +2,32 @@
 
 import json
 import math
+import re
 from urllib import error, parse, request
 
 from .transport import NoRedirect
 from packages.platform.performance import PerformanceBudget
+
+MODEL_RESPONSE_BYTES = {"/predict": 1024**2, "/fast_filter_evaluate_batch": 262144}
+PROVENANCE_MODELS = {"forward_predictor": "graph2smiles_uspto_stereo", "fast_filter": "askcos_fast_filter"}
+
+
+def model_response_limit(path):
+    """The complete decoder ledger has a different contract from a score batch."""
+    return min(MODEL_RESPONSE_BYTES[path], PerformanceBudget.from_environment().response_bytes)
+
+
+def model_service_compatible(name, payload):
+    """Admission checks the protocol needed by review, not an inference result."""
+    if name not in PROVENANCE_MODELS:
+        return True
+    asset = payload.get("asset_identity")
+    if (payload.get("model") != PROVENANCE_MODELS[name] or not isinstance(asset, str)
+            or re.fullmatch(r"[a-f0-9]{64}", asset) is None):
+        return False
+    return name != "forward_predictor" or (
+        type(payload.get("provenance_version")) is int and payload["provenance_version"] == 1
+    )
 
 
 class NativeModelError(RuntimeError):
@@ -47,9 +69,10 @@ class NativeModelClient:
             method="POST",
         )
         try:
+            limit = model_response_limit(path)
             with self.opener.open(query, timeout=self.timeout) as response:
-                raw = response.read(262145)
-            if len(raw) > 262144:
+                raw = response.read(limit + 1)
+            if len(raw) > limit:
                 raise ValueError("Oversized native model output")
             result = json.loads(raw)
             if not isinstance(result, dict):
