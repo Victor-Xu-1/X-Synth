@@ -1,4 +1,4 @@
-import { deliveryReviewGrade, taskDeliveryReview } from "./delivery-review";
+import { deliveryReviewGrade, taskDeliveryReview, unresolvedOperationSteps } from "./delivery-review";
 import { normalizeTaskInfo } from "./task-history-view";
 
 function receipt(grade = "model_checked") {
@@ -197,4 +197,15 @@ test("operation checks preserve original identifiers, reason strings and scienti
   const before = JSON.stringify(value);
   expect(deliveryReviewGrade(value)).toBe("operation_evidence_required");
   expect(JSON.stringify(value)).toBe(before);
+});
+
+test("unresolved step projections reject duplicate IDs and cannot mutate the source receipt", () => {
+  const value = reviewedReceipt("route_receipt", "operation_evidence_required");
+  value.operations = operationEvidence();
+  const projected = unresolvedOperationSteps(value);
+  projected[0].reasons.push("local annotation");
+  expect(value.operations.unresolved_steps[0].reasons).toEqual(["operation_record_missing"]);
+  value.operations.unresolved_steps.push({ ...value.operations.unresolved_steps[0] });
+  expect(deliveryReviewGrade(value)).toBe("not_independently_reviewed");
+  expect(unresolvedOperationSteps(value)).toEqual([]);
 });

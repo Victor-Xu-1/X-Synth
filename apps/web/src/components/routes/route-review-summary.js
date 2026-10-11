@@ -57,7 +57,7 @@ function forwardSummary(value, stepCount, stepIds, version) {
     unmatched > value.total_steps - value.matched_steps
   )
     return state("invalid");
-  if (version === 2) {
+  if ([2, 3].includes(version)) {
     if (!count(value.model_top1_matched_steps) || !count(value.record_supported_steps) ||
         value.model_top1_matched_steps + value.record_supported_steps !== value.matched_steps)
       return state("invalid");
@@ -87,7 +87,7 @@ function forwardSummary(value, stepCount, stepIds, version) {
     status: "ready",
     matched: value.matched_steps,
     total: value.total_steps,
-    ...(version === 2 ? { top1: value.model_top1_matched_steps, recorded: value.record_supported_steps } : {}),
+    ...([2, 3].includes(version) ? { top1: value.model_top1_matched_steps, recorded: value.record_supported_steps } : {}),
   };
 }
 
@@ -175,7 +175,7 @@ export function readRouteReviewSummary(candidate) {
   const review = candidate?.metadata?.automated_review;
   if (review == null) return emptySummary("missing");
   if (!record(review) || !count(review.version)) return emptySummary("invalid");
-  if (![1, 2].includes(review.version)) return emptySummary("unsupported");
+  if (![1, 2, 3].includes(review.version)) return emptySummary("unsupported");
   const steps = Array.isArray(candidate?.steps) ? candidate.steps : null;
   const stepCount = steps ? steps.length : null;
   const stepIds =

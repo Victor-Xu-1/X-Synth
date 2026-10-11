@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from packages.orchestrator.search_progress import begin_search_round, remaining_search_rounds
+from packages.orchestrator.search_progress import begin_search_round, remaining_search_rounds, final_route_status
 
 
 def test_second_round_resets_only_live_counters_and_retains_previous_artifacts():
@@ -30,6 +30,18 @@ def test_second_round_resets_only_live_counters_and_retains_previous_artifacts()
 def test_resume_same_round_keeps_current_progress():
     checkpoint = {"pass_number": 2, "native_progress": {"retro_star": {"iterations": 15}}}
     assert begin_search_round(checkpoint, 2) == checkpoint
+
+
+@pytest.mark.parametrize("closed,selected,failed,sources,expected", [
+    (True, False, False, True, "completed_not_enough_routes"),
+    (True, False, True, True, "completed_not_enough_routes"),
+    (False, True, False, True, "completed_not_enough_routes"),
+    (False, False, False, True, "failed_unclosed"),
+    (False, False, True, False, "failed"),
+])
+def test_quality_shortage_is_not_misreported_as_a_stock_closure_failure(closed, selected, failed, sources, expected):
+    pool = SimpleNamespace(selected_routes=[object()] if selected else [], all_routes=[SimpleNamespace(closed=closed)])
+    assert final_route_status(pool, had_failures=failed, had_sources=sources) == expected
 
 
 def test_resume_cannot_regress_to_previous_round():

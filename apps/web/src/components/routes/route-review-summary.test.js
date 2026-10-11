@@ -142,7 +142,7 @@ test.each([true, [], "review", {}, { version: "1" }])(
 
 test("unknown versions cannot be interpreted as a completed v1 review", () => {
   const value = candidate();
-  value.metadata.automated_review.version = 3;
+  value.metadata.automated_review.version = 4;
   expect(readRouteReviewSummary(value)).toEqual({
     forward: { status: "unsupported" }, references: { status: "unsupported" },
   });

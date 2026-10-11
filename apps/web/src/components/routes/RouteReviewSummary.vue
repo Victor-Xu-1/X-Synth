@@ -30,6 +30,10 @@
         <template v-else>{{ $tr(stateLabels[summary.references.status]) }}</template>
         </dd>
       </div>
+      <div v-if="unresolved.length" class="review-item" data-review="operations">
+        <dt>{{ $tr('反应操作：') }}</dt>
+        <dd class="review-operation-warning">{{ $tr('{value} 步需过程依据', { value: unresolved.length }) }}</dd>
+      </div>
     </dl>
     <p v-if="summary.references.coverage && (summary.references.coverage.truncated || summary.references.coverage.unavailable || summary.references.coverage.unknown)" class="review-boundary" data-review="coverage">
       <span v-if="summary.references.coverage.truncated">
@@ -45,9 +49,14 @@
 <script setup>
 import { computed } from "vue";
 import { readRouteReviewSummary } from "./route-review-summary";
+import { unresolvedOperationSteps } from "@/common/delivery-review";
 
 const props = defineProps({ candidate: Object });
 const summary = computed(() => readRouteReviewSummary(props.candidate));
+const unresolved = computed(() => {
+  const ids = new Set((props.candidate?.steps || []).map(step => step.step_id));
+  return unresolvedOperationSteps(props.candidate?.metadata?.delivery_review).filter(step => ids.has(step.step_id));
+});
 const stateLabels = {
   missing: "未记录",
   invalid: "记录格式无效",
@@ -90,6 +99,7 @@ const stateLabels = {
   color: var(--ws-muted);
 }
 .review-item dd { margin: 0; font-size: 13px; }
+.review-item dd.review-operation-warning { color: var(--ws-warning); }
 .review-support { display: block; color: var(--ws-muted); font-size: 12px; }
 .review-boundary[data-review="coverage"] { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .review-boundary {

@@ -227,7 +227,22 @@ governance. See [version operations](operations.md#版本管理).
   is supported only by an exact ORD reaction with positive target yield, recorded
   conditions, ready pinned sources and untruncated retrieval. Product-only matches,
   missing/zero yields or a target absent from model candidates cannot pass.
-  Review version 2 distinguishes model top-1 from recorded-reaction support;
+  Review version 3 retains the model/record distinction and adds a separate
+  compound-operation ledger. Actual RDChiral reconstruction witnesses, not query
+  charge/H getters, establish local changed-atom regions. Distinct disconnected
+  regions or nitro reduction combined with bond formation require exact recorded
+  process evidence even for a top-ranked model match. Generic context is resolved
+  by the concrete witness; missing reaction-center correspondence is not screened
+  ordinary chemistry. Equivalent multisite transformations and connected local
+  changes are not rejected merely for editing several bonds. This is evidence
+  escalation, not mechanistic certification or an exhaustive operation classifier.
+  Support binds the source snapshot, template/witness hashes, exact step, positive
+  target-yield field and matching outcome's reaction parameters/procedure. Addition
+  timestamps and another outcome's duration are not supporting reaction conditions.
+  Missing/truncated evidence stays unresolved and is not a chemical blacklist.
+  Qualification continues to later candidates and the existing single expanded
+  search if output remains insufficient; unsupported candidates cannot fill slots.
+  Version 1/2 archives remain readable with their original model-review scope;
   original experimental conditions do not certify new conditions or a new experiment.
   Unmapped record-only first moves share a conservative target family, preventing
   leaving-group variants from inflating the requested diversity count.

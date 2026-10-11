@@ -141,6 +141,9 @@
         <span v-if="step.validation" class="step-validation">{{
           $tr(step.validation)
         }}</span>
+        <span v-if="step.operationEvidenceRequired" class="step-operation-warning">
+          <v-icon icon="mdi-flask-outline" size="14" aria-hidden="true" />{{ $tr('反应操作待核验') }}
+        </span>
         <v-tooltip :text="$tr('在路线图中定位')"
           ><template #activator="{ props }">
             <v-btn

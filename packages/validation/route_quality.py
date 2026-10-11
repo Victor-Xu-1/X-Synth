@@ -20,6 +20,7 @@ class RouteQualityDecision:
 @dataclass(frozen=True)
 class RouteQualityPolicy:
     require_full_forward_validation: bool = False
+    require_operation_validation: bool = False
     max_steps: int | None = None
     ultra_low_confidence_threshold: float = 0.05
     min_first_step_confidence: float = 0.05
@@ -107,6 +108,8 @@ class RouteQualityPolicy:
             reasons.append("full_forward_validation_required")
         if self.require_full_forward_validation:
             reasons.extend(topology_reasons(route))
+        if self.require_operation_validation and route.metadata.get("operation_validation_passed") is not True:
+            reasons.append("operation_evidence_required")
 
         recursive_atom_growth = 0
         graft = route.metadata.get("recursive_graft")

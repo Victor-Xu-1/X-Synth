@@ -12,9 +12,11 @@ function validOperationEvidence(value) {
   if (!record(value) || value.policy !== "template_operation_evidence_v1" ||
       !["not_assessed", "screened", "evidence_required", "record_supported"].includes(value.status) ||
       !Array.isArray(value.unresolved_steps)) return false;
+  const seen = new Set();
   for (const step of value.unresolved_steps) {
     if (!record(step) || typeof step.step_id !== "string" || !step.step_id.trim() ||
-        !Array.isArray(step.reasons) || !step.reasons.length) return false;
+        seen.has(step.step_id) || !Array.isArray(step.reasons) || !step.reasons.length) return false;
+    seen.add(step.step_id);
     for (const reason of step.reasons) {
       if (typeof reason !== "string" || !reason.trim()) return false;
     }
@@ -58,4 +60,10 @@ export function deliveryReviewGrade(receipt) {
 
 export function taskDeliveryReview(task) {
   return (task?.summary || task?.unified_route_pool_summary)?.delivery_review;
+}
+
+export function unresolvedOperationSteps(receipt) {
+  if (!["operation_evidence_required", "purchase_form_unresolved"].includes(deliveryReviewGrade(receipt)) ||
+      receipt.operations?.status !== "evidence_required") return [];
+  return receipt.operations.unresolved_steps.map(step => ({ step_id: step.step_id, reasons: [...step.reasons] }));
 }

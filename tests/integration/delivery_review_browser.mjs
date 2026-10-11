@@ -45,7 +45,7 @@ async function verifyExports(page, reader, route, label) {
 
 const cases = JSON.parse(process.env.X_SYNTH_DELIVERY_BROWSER_CASES || "[]");
 assert(Array.isArray(cases) && cases.length > 0 && cases.every(item => Array.isArray(item) && item.length === 2
-  && /^[a-f0-9]{32}$/.test(item[0]) && ["Not independently reviewed", "Model checked", "Purchase form unresolved"].includes(item[1])),
+  && /^[a-f0-9]{32}$/.test(item[0]) && ["Not independently reviewed", "Model checked", "Purchase form unresolved", "Reaction operations unverified"].includes(item[1])),
 "Explicitly supply existing read-only case IDs and expected labels in X_SYNTH_DELIVERY_BROWSER_CASES.");
 let browser, historyId, localeChecked = false;
 const records = new Map();
@@ -85,6 +85,21 @@ for (const [id, label] of cases) for (const width of [1440, 390]) {
       await noOverflow(page);
       await capture(page, `delivery-${id.slice(0, 6)}-${width}`);
       if (width === 1440) await verifyExports(page, reader, routes[0], label);
+      if (label === "Reaction operations unverified") {
+        const unresolved = routes[0].metadata.delivery_review.operations.unresolved_steps;
+        assert(unresolved.length > 0);
+        await expect(reader.locator('[data-review="operations"]')).toContainText(`${unresolved.length} steps need process evidence`);
+        await reader.getByRole("button", { name: "Steps", exact: true }).click();
+        for (const entry of unresolved) {
+          const index = routes[0].steps.findIndex(step => step.step_id === entry.step_id);
+          assert(index >= 0);
+          const row = reader.locator(".route-step").filter({ has: reader.locator(`.step-select[data-node-id="r-${index + 1}"]`) });
+          await expect(row.locator(".step-operation-warning")).toHaveText("Reaction operations unverified");
+        }
+        await noOverflow(page);
+        await capture(page, `operations-${id.slice(0, 6)}-${width}`);
+        await reader.getByRole("button", { name: "Route diagram", exact: true }).click();
+      }
       const index = routes.findIndex(route => route.metadata.delivery_review.grade === "purchase_form_unresolved");
       if (index >= 0) {
         await reader.locator('.reader-route-tabs [role="tab"]').nth(index).click();

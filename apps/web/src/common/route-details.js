@@ -1,7 +1,7 @@
 import dagre from "@dagrejs/dagre";
 import { topologyFromCandidate } from "./route-graph.js";
 import { syntheticStepOrder } from "./synthetic-step-order";
-import { deliveryReviewGrade } from "./delivery-review";
+import { deliveryReviewGrade, unresolvedOperationSteps } from "./delivery-review";
 const list = (value) => (Array.isArray(value) ? value : []);
 const strings = (value) =>
   list(value).filter((item) => typeof item === "string" && item.trim());
@@ -160,6 +160,7 @@ export function stepDetails(candidate, graph) {
   const nodes = list(graph?.nodes),
     edges = list(graph?.edges);
   const sourceSteps = list(candidate?.steps);
+  const operationSteps = new Set(unresolvedOperationSteps(candidate?.metadata?.delivery_review).map(step => step.step_id));
   const order = syntheticStepOrder(sourceSteps);
   if (order === null)
     throw new Error("路线含有循环或重复产物，无法确定合成步骤顺序。");
@@ -193,6 +194,7 @@ export function stepDetails(candidate, graph) {
           )?.id || null,
       })),
       confidence: confidenceText(step.confidence),
+      operationEvidenceRequired: operationSteps.has(step.step_id),
       validation:
         typeof check === "boolean"
           ? `${method === "native_template_reconstruction" ? "模板重构" : "步骤验证"} ${check ? "通过" : "未通过"}`

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from packages.adapters.askcos.reference_models import ReferenceSearchResponse
 from packages.knowledge_base.reaction_models import (
     EvidenceSourceStatus,
@@ -9,6 +11,18 @@ from packages.knowledge_base.reaction_models import (
 )
 from packages.knowledge_base.reaction_library import verify_evidence_record
 from packages.adapters.askcos.evidence_proposals import recorded_candidate_exclusion
+from .process_support import process_observations, process_fields
+
+
+def recorded_support_proofs_are_valid(proofs):
+    return isinstance(proofs, list) and bool(proofs) and all(
+        isinstance(proof, dict) and isinstance(proof.get("id"), str) and proof["id"].strip()
+        and proof.get("source") == "ORD"
+        and isinstance(proof.get("snapshot"), str) and re.fullmatch(r"[a-f0-9]{64}", proof["snapshot"])
+        and isinstance(proof.get("source_sha256"), str) and re.fullmatch(r"[a-f0-9]{64}", proof["source_sha256"])
+        and proof.get("basis") == "exact_recorded_reaction_with_positive_yield"
+        for proof in proofs
+    )
 
 
 def recorded_reaction_support(response: ReferenceSearchResponse) -> list[dict]:
@@ -25,20 +39,14 @@ def recorded_reaction_support(response: ReferenceSearchResponse) -> list[dict]:
         if (
             record.provenance.source != "ORD" or record.match_scope != "reaction_identity"
             or recorded_candidate_exclusion(record)
-            or not record.conditions or not (
-                record.conditions.temperature or record.conditions.time or record.conditions.pressure
-                or record.procedure and record.procedure.strip()
-            )
         ):
             continue
         verify_evidence_record(record, response.query)
-        measured = [item for item in record.reported_yields if item.unit == "%"
-                    and item.method == "ord_product_measurement" and item.value is not None
-                    and item.measurement_type == "YIELD" and item.source_field
-                    and 0 < item.value <= 100 and item.product_smiles == response.query.product]
-        if measured:
+        observations = process_observations(record, response.query.product)
+        if observations:
             supported.append({"id": record.id, "source": "ORD", "snapshot": source.snapshot,
                               "source_sha256": record.provenance.source_sha256,
+                              "recorded_outcomes": observations,
                               "basis": "exact_recorded_reaction_with_positive_yield"})
     return supported
 
@@ -83,6 +91,8 @@ def reference_evidence(response: ReferenceSearchResponse) -> dict:
             "provenance": row.provenance.model_dump(mode="json"),
             "reaction_conditions_recorded": conditions_recorded,
             "reaction_yields_recorded": exact and bool(row.reported_yields),
+            "reaction_procedure_recorded": exact and bool(getattr(row, "procedure", None) and row.procedure.strip()),
+            **(process_fields(row) if exact and row.provenance.source == "ORD" else {}),
         })
     return {
         "reaction_count": sum(
