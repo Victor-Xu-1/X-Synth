@@ -12,6 +12,28 @@ export function prepareKetcherDocument(doc) {
       width: 100% !important; height: 100% !important; min-width: 0 !important; min-height: 0 !important;
     }
     [class*="App-module_canvas"] { min-width: 0 !important; min-height: 0 !important; }
+    @media (max-width: 360px) {
+      [class*="App-module_top"] {
+        padding-inline: 6px !important;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scrollbar-width: thin;
+      }
+      [class*="App-module_top"] > *, [class*="BottomToolbar-module_group"] { flex-shrink: 0; }
+      [class*="BottomToolbar-module_root"] {
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scrollbar-width: thin;
+      }
+    }
+    @media (max-width: 480px) {
+      [class*="Dialog-module_dialog"] {
+        min-width: 0 !important;
+        max-width: calc(100% - 16px) !important;
+        max-height: calc(100% - 16px) !important;
+      }
+      [class*="Dialog-module_body"] { min-width: 0; overflow: auto; }
+    }
   `;
   doc.head.appendChild(style);
 }

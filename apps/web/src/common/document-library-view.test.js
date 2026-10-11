@@ -1,4 +1,5 @@
-import { documentSort, readDocumentSummaries, mergeDocumentSummaries, documentLibraryRows } from "./document-library-view";
+import { documentSort, readDocumentSummaries, mergeDocumentSummaries, documentLibraryRows,
+  documentLibraryQuery, documentLibraryLocation, documentEditorLocation } from "./document-library-view";
 const row = (id, title, count = 0) => ({ id, title, target_smiles: "[13CH3][C@H](O)Cl.[Na+]", reaction_count: count, modified: "2026-10-10T00:00:00Z" });
 
 test("sort defaults are presentation-only and invalid URL values cannot create a second mode", () => {
@@ -36,4 +37,32 @@ test("recent updates preserve API microseconds, numeric fractional precision and
   expect(documentLibraryRows([newer, older], "", "updated", "en").map(row => row.id)).toEqual(["a", "f"]);
   expect(documentLibraryRows([{ ...older, modified: "2026-10-10T08:00:00.1231+08:00" }, newer], "", "updated", "en").map(row => row.id)).toEqual(["a", "f"]);
   expect(documentLibraryRows([newer, { ...older, modified: "2026-10-10T00:00:00.1239000Z" }], "", "updated", "en").map(row => row.id)).toEqual(["f", "a"]);
+});
+
+test("reader-fix library context has one validated query projection and preserves scientific filter text verbatim", () => {
+  const query = { query: " [13CH3][C@H](O)Cl.[Na+] / Original title ", sort: "reactions", other: "ignored" };
+  const before = JSON.stringify(query);
+  const selection = documentLibraryQuery(query);
+  expect(selection).toEqual({ query: query.query, sort: "reactions" });
+  const editor = documentEditorLocation("document-a", query);
+  expect(editor).toEqual({ path: "/editor/document-a", query: { library_query: query.query, library_sort: "reactions" } });
+  expect(documentLibraryLocation(editor.query)).toEqual({ path: "/documents", query: selection });
+  expect(JSON.stringify(query)).toBe(before);
+});
+
+test.each([undefined, null, {}, { query: ["duplicate"], sort: ["title"] }, { query: 42, sort: "unsafe" }])(
+  "reader-fix invalid library context and direct entry fall back to documents", query => {
+    expect(documentLibraryQuery(query)).toEqual({});
+    expect(documentLibraryLocation(query)).toBe("/documents");
+    expect(documentEditorLocation("document-a", query)).toBe("/editor/document-a");
+  },
+);
+
+test("reader-fix library return is a fixed internal location and never accepts a return URL", () => {
+  expect(documentLibraryLocation({ returnUrl: "https://evil.example", path: "//evil.example", library_query: "https://evil.example", library_sort: "title" }))
+    .toEqual({ path: "/documents", query: { query: "https://evil.example", sort: "title" } });
+  expect(documentLibraryLocation({ library_query: ["first", "second"], library_sort: ["title"], returnUrl: "/results" }))
+    .toBe("/documents");
+  for (const identifier of [null, "../other", "/unsafe", ["document-a"], "id?returnUrl=https://evil.example"])
+    expect(documentEditorLocation(identifier, { query: "raw" })).toBeNull();
 });

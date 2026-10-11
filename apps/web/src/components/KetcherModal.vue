@@ -59,6 +59,7 @@ import {
   fitKetcherCanvas,
 } from "@/common/ketcher-layout";
 import { runKetcherOperation } from "@/common/ketcher-native-operations";
+import { bindKetcherDialogAccess } from "@/common/ketcher-dialog-access";
 
 export default {
   name: "KetcherModal",
@@ -85,9 +86,14 @@ export default {
     const frameKey = ref(0);
     const editorLifetime = new AbortController();
     let generation = 0;
+    let dialogOwner, releaseDialogAccess;
+    function releaseDialogs() {
+      releaseDialogAccess?.(); releaseDialogAccess = undefined; dialogOwner = undefined;
+    }
     onBeforeUnmount(() => {
       generation++;
       editorLifetime.abort();
+      releaseDialogs();
     });
 
     const propShow = computed({
@@ -104,6 +110,10 @@ export default {
         signal: editorLifetime.signal,
       });
       prepareKetcherDocument(ketcherIframe.value?.contentDocument);
+      const doc = ketcherIframe.value?.contentDocument;
+      if (propShow.value && doc && doc !== dialogOwner) {
+        releaseDialogs(); dialogOwner = doc; releaseDialogAccess = bindKetcherDialogAccess(doc);
+      }
       return editor;
     };
     const writeMolecule = createKetcherWriter(getEditor, {
@@ -114,6 +124,7 @@ export default {
       () => [propShow.value, props.smiles],
       async ([show, smiles]) => {
         const current = ++generation;
+        releaseDialogs();
         loading.value = false;
         busy.value = false;
         if (!show) return;

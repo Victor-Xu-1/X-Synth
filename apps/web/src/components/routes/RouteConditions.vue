@@ -39,6 +39,7 @@
         rel="noopener noreferrer"
         >{{ $tr(link.label) }} · {{ link.value }}</a
       >
+      <SavedDatasetProvenance v-if="step.evidence.dataset" :dataset="step.evidence.dataset" />
       <ReactionReferences :product="step.product" :reactants="step.reactants" />
     </article>
     <RouteConditionDialog
@@ -61,6 +62,7 @@ import { useWorkspaceStore } from "@/store/workspace";
 import SmilesImage from "@/components/SmilesImage.vue";
 import ReactionReferences from "@/components/references/ReactionReferences.vue";
 import RouteConditionDialog from "./RouteConditionDialog.vue";
+import SavedDatasetProvenance from "./SavedDatasetProvenance.vue";
 const props = defineProps({ candidate: Object, graph: Object });
 defineEmits(["select", "navigate"]);
 const workspace = useWorkspaceStore();

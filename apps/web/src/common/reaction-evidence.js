@@ -1,3 +1,5 @@
+import { safeExternalUrl } from "./external-url";
+
 const PUBLIC_PATENT_COUNTRIES = new Set(["WO", "US", "EP", "CN", "JP", "KR"]);
 
 const isBlank = (value) =>
@@ -95,12 +97,52 @@ const pushCondition = (conditions, label, value) => {
 
 const dedupeLinks = (links) => {
   const seen = new Set();
-  return links.filter((link) => {
-    if (!link || !link.href || seen.has(link.href)) return false;
-    seen.add(link.href);
-    return true;
+  return links.flatMap((link) => {
+    const href = safeExternalUrl(link?.href);
+    if (!href || seen.has(href)) return [];
+    seen.add(href);
+    return [{ ...link, href }];
   });
 };
+
+function datasetCitationLinks(name) {
+  if (typeof name !== "string") return [];
+  const links = [];
+  // Only explicit DOI URLs in the saved dataset caption are dataset citations.
+  for (const match of name.matchAll(/(?:^|\s)(https?:\/\/[^\s<>"']+)/gi)) {
+    const href = safeExternalUrl(match[1]);
+    if (!href) continue;
+    const url = new URL(href);
+    if (!["doi.org", "dx.doi.org"].includes(url.hostname) || url.port || url.search || url.hash) continue;
+    let doi;
+    try {
+      const value = decodeURIComponent(url.pathname.slice(1));
+      if (/[?#\\]/.test(value) || [...value].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) continue;
+      doi = createDoiLink(value);
+    }
+    catch { continue; }
+    if (doi) links.push({ ...doi, key: `dataset-${doi.key}`, label: "数据集引用", type: "dataset" });
+  }
+  return dedupeLinks(links);
+}
+
+function savedDatasetEvidence(reactionData) {
+  const source = reactionData?.provenance;
+  if (!source || typeof source !== "object" || Array.isArray(source) || source.source !== "ORD") return null;
+  const text = (value, max) => typeof value === "string" && value.trim() && value.length <= max ? value : null;
+  const name = text(source.dataset_name, 4096), identifier = text(source.dataset_id, 160);
+  if (!name && !identifier) return null;
+  const fields = [];
+  for (const [label, value] of [
+    ["数据集", name], ["数据集 ID", identifier], ["原始反应 ID", text(source.original_reaction_id, 160)],
+    ["许可", text(source.license, 256)], ["原始文件", text(source.source_path, 1024)],
+    ["数据源快照 SHA256", reactionData.snapshot], ["源文件 SHA256", source.source_sha256],
+  ]) {
+    if (!value || (label.endsWith("SHA256") && (typeof value !== "string" || !/^[a-f0-9]{64}$/i.test(value)))) continue;
+    fields.push({ label, value });
+  }
+  return { fields, links: datasetCitationLinks(name) };
+}
 
 const buildReactionEvidence = ({
   reactionData = {},
@@ -225,11 +267,13 @@ const buildReactionEvidence = ({
     ]),
   );
 
+  const safeLinks = dedupeLinks(links), dataset = savedDatasetEvidence(reactionData);
   return {
-    links: dedupeLinks(links),
+    links: safeLinks,
     fields,
     conditions,
-    hasEvidence: links.length > 0 || fields.length > 0 || conditions.length > 0,
+    dataset,
+    hasEvidence: safeLinks.length > 0 || fields.length > 0 || conditions.length > 0 || Boolean(dataset),
   };
 };
 

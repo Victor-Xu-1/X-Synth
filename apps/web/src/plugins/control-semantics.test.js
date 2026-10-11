@@ -82,6 +82,16 @@ test("cached watch rebuilds revalidate only the actual field module", () => {
   expect(() => plugin.buildEnd.call(context)).not.toThrow();
 });
 
+test("the native file loader preserves pinned bytes and upstream source maps before Vite dev transforms", () => {
+  const plugin = vuetifyControlSemantics(workspaceUrl), files = [];
+  const loaded = plugin.load.call({ addWatchFile: value => files.push(value) }, nativeField + "?v=dev");
+  expect(loaded.code).toBe(original);
+  expect(loaded.map).toEqual(JSON.parse(readFileSync(nativeField + ".map", "utf8")));
+  expect(files).toEqual([nativeField, nativeField + ".map"]);
+  expect(plugin.load.call({}, nativeField.replace("VTextField.js", "VSelect.js"))).toBeNull();
+  expect(plugin.transform(loaded.code, nativeField + "?v=dev").code).toContain('"aria-invalid"');
+});
+
 test("real Rollup cache rebuilds keep the reviewed source adaptation active", async () => {
   const plugin = vuetifyControlSemantics(workspaceUrl);
   plugin.configResolved({ command: "build" });

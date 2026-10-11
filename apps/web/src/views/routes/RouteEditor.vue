@@ -3,6 +3,11 @@
     <h1 v-if="document" class="document-heading">{{ title || $tr('未命名路线') }}</h1>
     <header class="route-editor-toolbar">
       <div class="route-editor-name">
+        <v-tooltip :text="$tr('返回保存的路线')"><template #activator="{ props }">
+          <v-btn v-bind="props" data-cy="document-library-return" :to="libraryLocation" icon="mdi-arrow-left"
+            width="44" height="44" variant="text" :disabled="editingLocked"
+            :aria-label="$tr('返回保存的路线')" />
+        </template></v-tooltip>
         <input
           v-if="document"
           v-model="title"
@@ -92,7 +97,7 @@
       <div class="page-actions">
         <v-btn variant="outlined" prepend-icon="mdi-refresh" data-cy="document-load-retry"
           @click="load(route.params.id)">{{ $tr('重试') }}</v-btn>
-        <v-btn variant="text" to="/documents">{{ $tr('已保存路线') }}</v-btn>
+        <v-btn variant="text" :to="libraryLocation">{{ $tr('已保存路线') }}</v-btn>
       </div>
     </div>
     <div v-else-if="!document" class="editor-start">
@@ -130,7 +135,7 @@
           >
         </div>
       </form>
-      <router-link to="/documents" class="workspace-muted"
+      <router-link :to="libraryLocation" class="workspace-muted"
         >{{ $tr('已保存路线') }}</router-link
       >
     </div>
@@ -229,6 +234,7 @@ import { routeImage, routeExportErrorMessage } from "@/common/route-export";
 import { useRouteDocument } from "@/composables/useRouteDocument";
 import { useInspectorDraftGuard } from "@/composables/useInspectorDraftGuard";
 import { documentStepDetails } from "@/common/document-step-details";
+import { documentEditorLocation, documentLibraryLocation } from "@/common/document-library-view";
 import RouteGraph from "@/components/routes/RouteGraph.vue";
 import RouteInspector from "@/components/routes/RouteInspector.vue";
 import ExpandMolecule from "@/components/routes/ExpandMolecule.vue";
@@ -259,6 +265,7 @@ import {
 } from "@/common/manual-reaction";
 const route = useRoute(),
   router = useRouter();
+const libraryLocation = computed(() => documentLibraryLocation(route.query));
 const newStructure = ref(null),
   moleculeStructure = ref(null);
 const moleculeTitleId = useId();
@@ -519,7 +526,7 @@ async function createDocument() {
 async function saveDocument(asCopy) {
   if (editingLocked.value || !draftGuard.requestDiscard()) return;
   const value = await save(asCopy);
-  if (value && asCopy) router.replace(`/editor/${value.id}`);
+  if (value && asCopy) router.replace(documentEditorLocation(value.id, documentLibraryLocation(route.query).query));
 }
 async function reloadConflict() {
   if (editingLocked.value || !revisionConflict.value) return;

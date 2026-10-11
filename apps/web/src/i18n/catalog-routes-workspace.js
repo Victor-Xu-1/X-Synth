@@ -99,6 +99,7 @@ export default [
   ["重新载入文档", "Reload document"],
   ["新建路线文档", "New route document"], ["目标化合物结构", "Target compound structure"],
   ["创建路线", "Create route"], ["打开路线文档", "Open route document"], ["已保存路线", "Saved routes"],
+  ["返回保存的路线", "Back to saved routes"],
   ["添加中间体或原料", "Add intermediate or starting material"], ["中间体或原料结构", "Intermediate or starting-material structure"],
   ["添加", "Add"], ["撤销", "Undo"], ["重做", "Redo"], ["删除所选结构或反应步骤", "Delete selected structure or reaction step"],
   ["自动布局", "Auto layout"], ["永久删除“{name}”？此操作不可撤销。", "Permanently delete “{name}”? This cannot be undone."],

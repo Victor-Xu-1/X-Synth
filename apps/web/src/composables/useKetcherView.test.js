@@ -3,16 +3,17 @@ import { nextTick, ref } from "vue";
 import { useKetcherView } from "./useKetcherView";
 
 let api, active, ready, blocked, owner, change;
-function create() {
+function create(host = document.body, frameDocument = null) {
   active = ref(true); ready = ref(true); blocked = ref(false); change = jest.fn(); owner = null;
   Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => owner });
   Object.defineProperty(document, "fullscreenEnabled", { configurable: true, value: true });
   document.exitFullscreen = jest.fn(async () => { owner = null; document.dispatchEvent(new Event("fullscreenchange")); });
   const wrapper = mount({ setup() {
     const root = ref(null);
-    api = useKetcherView({ root, active, ready, blocked, onChange: change });
+    api = useKetcherView({ root, active, ready, blocked, onChange: change,
+      getFrame: () => frameDocument ? { contentDocument: frameDocument } : null });
     return { root, pending: api.pending };
-  }, template: '<div ref="root" tabindex="-1"><button type="button" :disabled="pending">View</button></div>' }, { attachTo: document.body });
+  }, template: '<div ref="root" tabindex="-1"><button type="button" :disabled="pending">View</button></div>' }, { attachTo: host });
   wrapper.element.requestFullscreen = jest.fn(async () => { owner = wrapper.element; document.dispatchEvent(new Event("fullscreenchange")); });
   api.observe();
   return wrapper;
@@ -26,6 +27,152 @@ test("actual document state owns the expanded flag and exit restores the current
   await api.toggle(button); await nextTick();
   expect(api.expanded.value).toBe(false); expect(document.activeElement).toBe(button);
   wrapper.unmount();
+});
+
+function scrollHost() {
+  const host = document.createElement("main");
+  host.style.overflow = "auto";
+  Object.defineProperties(host, { scrollHeight: { value: 1200 }, clientHeight: { value: 480 },
+    scrollWidth: { value: 800 }, clientWidth: { value: 600 } });
+  host.scrollTo = jest.fn(({ top, left }) => { host.scrollTop = top; host.scrollLeft = left; });
+  document.body.appendChild(host);
+  return host;
+}
+
+test("return restores owned ancestor scroll only after viewport adjustment and preserves invoker focus", async () => {
+  const host = scrollHost(), wrapper = create(host), button = wrapper.get("button").element;
+  host.scrollTop = 240; host.scrollLeft = 17;
+  wrapper.element.requestFullscreen.mockImplementation(async () => {
+    host.scrollTop = 0; host.scrollLeft = 0;
+    owner = wrapper.element; document.dispatchEvent(new Event("fullscreenchange"));
+  });
+  await api.toggle(button);
+  let finish;
+  change.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const close = api.toggle(button);
+  await nextTick(); await Promise.resolve();
+  expect(api.pending.value).toBe(true); expect(host.scrollTop).toBe(0);
+  finish(); await close; await nextTick();
+  expect(host.scrollTop).toBe(240); expect(host.scrollLeft).toBe(17);
+  expect(host.scrollTo).toHaveBeenCalledWith({ top: 240, left: 17, behavior: "instant" });
+  expect(document.activeElement).toBe(button);
+  wrapper.unmount();
+});
+
+test("Escape return restores the same source position without another fullscreen request", async () => {
+  const host = scrollHost(), wrapper = create(host);
+  host.scrollTop = 300;
+  wrapper.element.requestFullscreen.mockImplementation(async () => {
+    host.scrollTop = 0; owner = wrapper.element; document.dispatchEvent(new Event("fullscreenchange"));
+  });
+  await api.toggle(wrapper.get("button").element);
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", cancelable: true }));
+  await nextTick(); await Promise.resolve(); await nextTick();
+  expect(host.scrollTop).toBe(300);
+  expect(wrapper.element.requestFullscreen).toHaveBeenCalledTimes(1);
+  wrapper.unmount();
+});
+
+test("a failed entry retry snapshots the current position rather than the abandoned attempt", async () => {
+  const host = scrollHost(), wrapper = create(host);
+  host.scrollTop = 100;
+  wrapper.element.requestFullscreen.mockRejectedValueOnce(new Error("entry denied"));
+  await api.toggle(wrapper.get("button").element);
+  host.scrollTop = 220;
+  wrapper.element.requestFullscreen.mockImplementation(async () => {
+    host.scrollTop = 0; owner = wrapper.element; document.dispatchEvent(new Event("fullscreenchange"));
+  });
+  await api.retry(); await api.toggle(wrapper.get("button").element);
+  expect(host.scrollTop).toBe(220);
+  wrapper.unmount();
+});
+
+test("scope retirement prevents a late exit adjustment from restoring another page's position", async () => {
+  const host = scrollHost(), wrapper = create(host);
+  host.scrollTop = 180; await api.toggle(wrapper.get("button").element);
+  let finish;
+  change.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const close = api.toggle(wrapper.get("button").element);
+  await nextTick(); await Promise.resolve();
+  active.value = false; host.scrollTop = 35;
+  finish(); await close; await nextTick();
+  expect(host.scrollTop).toBe(35); expect(host.scrollTo).not.toHaveBeenCalled();
+  wrapper.unmount();
+});
+
+test("failed scroll restoration releases pending state and retries the same owned position", async () => {
+  const host = scrollHost(), wrapper = create(host);
+  host.scrollTop = 250;
+  wrapper.element.requestFullscreen.mockImplementation(async () => {
+    host.scrollTop = 0; owner = wrapper.element; document.dispatchEvent(new Event("fullscreenchange"));
+  });
+  await api.toggle(wrapper.get("button").element);
+  host.scrollTo.mockImplementationOnce(() => { throw new Error("scroll unavailable"); });
+  await api.toggle(wrapper.get("button").element);
+  expect(api.pending.value).toBe(false); expect(api.error.value).toBe("画板视图操作失败，请重试。");
+  await api.retry(); expect(host.scrollTop).toBe(250); expect(api.error.value).toBe("");
+  expect(wrapper.element.requestFullscreen).toHaveBeenCalledTimes(1);
+  wrapper.unmount();
+});
+
+test("another fullscreen owner during exit adjustment keeps its own scroll and focus", async () => {
+  const host = scrollHost(), wrapper = create(host);
+  host.scrollTop = 175; await api.toggle(wrapper.get("button").element);
+  let finish;
+  change.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const close = api.toggle(wrapper.get("button").element);
+  await nextTick(); await Promise.resolve();
+  owner = document.createElement("video"); owner.tabIndex = 0;
+  document.body.appendChild(owner); owner.focus(); host.scrollTop = 28;
+  document.dispatchEvent(new Event("fullscreenchange"));
+  finish(); await close; await nextTick();
+  expect(host.scrollTop).toBe(28); expect(host.scrollTo).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(owner);
+  wrapper.unmount();
+});
+
+test("new navigation intent during a delayed return retires the old scroll and focus", async () => {
+  const host = scrollHost(), wrapper = create(host), other = document.createElement("button");
+  host.appendChild(other); host.scrollTop = 190;
+  await api.toggle(wrapper.get("button").element);
+  let finish;
+  change.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const close = api.toggle(wrapper.get("button").element);
+  await nextTick(); await Promise.resolve();
+  host.dispatchEvent(new Event("wheel", { bubbles: true }));
+  host.scrollTop = 27; other.focus();
+  finish(); await close; await nextTick();
+  expect(host.scrollTop).toBe(27); expect(host.scrollTo).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(other);
+  wrapper.unmount();
+});
+
+test("native iframe interaction retires a delayed return without bubbling to the host document", async () => {
+  const host = scrollHost(), frameDocument = document.implementation.createHTMLDocument();
+  const wrapper = create(host, frameDocument);
+  host.scrollTop = 240; await api.toggle(wrapper.get("button").element);
+  let finish;
+  change.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const close = api.toggle(wrapper.get("button").element);
+  await nextTick(); await Promise.resolve();
+  frameDocument.dispatchEvent(new Event("wheel", { bubbles: true })); host.scrollTop = 32;
+  finish(); await close; await nextTick();
+  expect(host.scrollTop).toBe(32); expect(host.scrollTo).not.toHaveBeenCalled();
+  wrapper.unmount();
+});
+
+test("a foreign fullscreen takeover retires the old snapshot even if it exits before adjustment completion", async () => {
+  const host = scrollHost(), wrapper = create(host);
+  host.scrollTop = 230; await api.toggle(wrapper.get("button").element);
+  let finish;
+  change.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const close = api.toggle(wrapper.get("button").element);
+  await nextTick(); await Promise.resolve();
+  owner = document.createElement("video"); document.dispatchEvent(new Event("fullscreenchange"));
+  owner = null; document.dispatchEvent(new Event("fullscreenchange")); host.scrollTop = 44;
+  finish(); await close; await nextTick();
+  expect(host.scrollTop).toBe(44); expect(host.scrollTo).not.toHaveBeenCalled();
+  expect(api.pending.value).toBe(false); wrapper.unmount();
 });
 
 test("pending or inactive editors cannot issue native requests", async () => {

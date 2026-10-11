@@ -120,3 +120,76 @@ test("builds condition recommendation URLs from route reaction smiles", () => {
     "/forward?tab=context&rxnsmiles=CCO%3E%3ECC%3DO",
   );
 });
+
+const savedOrd = (datasetName = "Training data from https://doi.org/10.1039/C8SC04228D") => ({
+  snapshot: "5".repeat(64),
+  provenance: {
+    source: "ORD", evidence_type: "structured_reaction_record",
+    dataset_id: "ord_dataset-e7830cd6b11158b43994ccfb5ee9acb3",
+    dataset_name: datasetName, source_sha256: "4".repeat(64),
+    original_reaction_id: "ord-59c178d093644ada8b89fd56b0d7d294",
+    license: "CC-BY-SA-4.0",
+  },
+});
+
+test("reader-fix saved dataset attribution is separate from target-reaction evidence and does not mutate the record", () => {
+  const reaction = { metadata: { model_metadata: [{ source: { reaction_data: savedOrd() } }] } };
+  const before = JSON.stringify(reaction);
+  const input = createReactionEvidenceInput({ ...reaction.metadata, ...reaction });
+  const evidence = buildReactionEvidence(input);
+  expect(evidence.links).toEqual([]);
+  expect(evidence.conditions).toEqual([]);
+  expect(evidence.dataset.fields).toEqual(expect.arrayContaining([
+    { label: "数据集", value: reaction.metadata.model_metadata[0].source.reaction_data.provenance.dataset_name },
+    { label: "数据集 ID", value: "ord_dataset-e7830cd6b11158b43994ccfb5ee9acb3" },
+    { label: "数据源快照 SHA256", value: "5".repeat(64) },
+    { label: "源文件 SHA256", value: "4".repeat(64) },
+  ]));
+  expect(evidence.dataset.links).toEqual([
+    expect.objectContaining({ label: "数据集引用", href: "https://doi.org/10.1039/C8SC04228D", type: "dataset" }),
+  ]);
+  expect(JSON.stringify(reaction)).toBe(before);
+});
+
+test("reader-fix dataset DOI links are explicit, deduplicated and never guessed from names or identifiers", () => {
+  const name = "Stored https://doi.org/10.1039/C8SC04228D https://dx.doi.org/10.1039/C8SC04228D";
+  expect(buildReactionEvidence({ reactionData: savedOrd(name) }).dataset.links).toHaveLength(1);
+  const unlinked = buildReactionEvidence({ reactionData: savedOrd("Unlinked original dataset 10.1039/C8SC04228D") });
+  expect(unlinked.dataset.links).toEqual([]);
+  expect(unlinked.dataset.fields[0].value).toBe("Unlinked original dataset 10.1039/C8SC04228D");
+  expect(unlinked.links).toEqual([]);
+});
+
+test.each([
+  "javascript:https://doi.org/10.1039/C8SC04228D",
+  "https://doi.org.evil.example/10.1039/C8SC04228D",
+  "https://name:password@doi.org/10.1039/C8SC04228D",
+  "https://doi.org/10.1039/C8SC04228D?redirect=https://evil.example",
+  "https://doi.org/10.1039/C8SC04228D#untrusted",
+  "https://doi.org/10.1039/C8SC04228D%0Aevil",
+  "https://doi.org/10.1039/C8SC04228D%3Fredirect=untrusted",
+  "https://doi.org/10.1039/C8SC04228D%23untrusted",
+  "https://doi.org/10.1039/C8SC04228D%00untrusted",
+  "https://evil.example/10.1039/C8SC04228D",
+])("reader-fix dataset URL projection rejects unsafe or unsupported citations: %s", name => {
+  const evidence = buildReactionEvidence({ reactionData: savedOrd(name) });
+  expect(evidence.dataset.links).toEqual([]);
+  expect(evidence.conditions).toEqual([]);
+});
+
+test.each([undefined, null, [], { source: "OTHER", dataset_name: "https://doi.org/10.1039/C8SC04228D" }])(
+  "reader-fix missing or unrecognized dataset provenance cannot acquire a citation", provenance => {
+    const evidence = buildReactionEvidence({ reactionData: { provenance } });
+    expect(evidence.dataset).toBeNull();
+    expect(evidence.links).toEqual([]);
+    expect(evidence.conditions).toEqual([]);
+  },
+);
+
+test("reader-fix ordinary evidence rejects unsafe explicit URLs without rewriting valid conditions", () => {
+  const evidence = buildReactionEvidence({ reactionData: {
+    reference_url: "javascript:alert(1)", solvent: "DCM", yield: 0,
+  } });
+  expect(evidence.links).toEqual([]);
+  expect(evidence.conditions).toEqual([{ label: "溶剂", value: "DCM" }, { label: "收率", value: 0 }]);
+});

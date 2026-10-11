@@ -2,12 +2,47 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 
 const failureText = "画板视图操作失败，请重试。";
 
+// Native fullscreen can clamp the ancestor's scroll while its contents leave flow.
+function captureScroll(element) {
+  const positions = [];
+  for (let target = element.parentElement; target; target = target.parentElement) {
+    if (target.scrollHeight > target.clientHeight || target.scrollWidth > target.clientWidth)
+      positions.push({ target, top: target.scrollTop, left: target.scrollLeft });
+  }
+  return { owner: element, positions };
+}
+function restoreScroll(snapshot) {
+  for (const { target, top, left } of snapshot.positions) {
+    if (!target.isConnected || target.ownerDocument !== snapshot.owner.ownerDocument) continue;
+    if (typeof target.scrollTo === "function") target.scrollTo({ top, left, behavior: "instant" });
+    else { target.scrollTop = top; target.scrollLeft = left; }
+  }
+}
+
 export function useKetcherView({ root, active, ready, blocked, onChange, getFrame = () => null }) {
   const expanded = ref(false), supported = ref(false), commands = ref(false), adjustments = ref(0), error = ref("");
   const pending = computed(() => commands.value || adjustments.value > 0);
   let document, frameDocument, disposed = false, epoch = 0, operationEpoch = 0, invoker, lastCommand;
   let changeTask = Promise.resolve();
-  let focusReturn;
+  let focusReturn, scrollReturn;
+  const returnReaders = new Set();
+  function watchReturnIntent() {
+    const owners = new Set([document, getFrame()?.contentDocument].filter(Boolean));
+    const state = { interrupted: false };
+    const events = ["wheel", "touchstart", "pointerdown", "keydown"];
+    const interrupt = event => {
+      if (event.type === "keydown" && !["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", "Tab"].includes(event.key)) return;
+      state.interrupted = true;
+    };
+    state.stop = () => { for (const owner of owners) for (const event of events) owner.removeEventListener(event, interrupt, true); returnReaders.delete(state.stop); };
+    for (const owner of owners) for (const event of events) owner.addEventListener(event, interrupt, { capture: true, passive: true });
+    returnReaders.add(state.stop);
+    return state;
+  }
+  function retireReturn() {
+    for (const stop of returnReaders) stop();
+    focusReturn = null; scrollReturn = null;
+  }
   const owns = element => !!element && document?.fullscreenElement === element;
   const admitted = () => !disposed && active.value && ready.value && !blocked.value && !pending.value;
 
@@ -31,15 +66,32 @@ export function useKetcherView({ root, active, ready, blocked, onChange, getFram
   async function adjust(context, returnFocus = false, command = onChange) {
     if (!context.current()) return;
     adjustments.value++;
+    const intent = returnFocus ? watchReturnIntent() : null;
     try {
-      await command(context); await nextTick();
-      if (returnFocus && context.current()) focusReturn = { context, target: invoker };
+      await command(context);
     } catch {
       if (context.current()) { error.value = failureText; lastCommand = next => adjust(next, false, command); }
-    } finally { adjustments.value--; }
+    } finally {
+      await nextTick();
+      try {
+        intent?.stop();
+        if (intent?.interrupted) { scrollReturn = null; focusReturn = null; }
+        if (returnFocus && !intent?.interrupted && context.current() && !document.fullscreenElement
+          && scrollReturn?.owner === root.value && root.value.isConnected) {
+          restoreScroll(scrollReturn); scrollReturn = null;
+          focusReturn = { context, owner: root.value, target: invoker };
+        }
+      } catch {
+        if (context.current()) { error.value = failureText; lastCommand = next => adjust(next, true, command); }
+      } finally { adjustments.value--; }
+    }
   }
   function changed() {
     const next = owns(root.value);
+    if (document.fullscreenElement && !next) {
+      epoch++; retireReturn(); invoker = null; expanded.value = false;
+      return;
+    }
     if (next && (!active.value || pending.value && operationEpoch !== epoch)) {
       void release();
       return;
@@ -71,6 +123,7 @@ export function useKetcherView({ root, active, ready, blocked, onChange, getFram
       if (document.fullscreenElement && !owns(element)) return;
       if (owns(element)) await document.exitFullscreen();
       else {
+        scrollReturn = captureScroll(element);
         // Keep transient user activation: no await precedes the native request.
         await element.requestFullscreen();
         if (!context.current() || element !== root.value) await release(element);
@@ -95,7 +148,7 @@ export function useKetcherView({ root, active, ready, blocked, onChange, getFram
   }
   watch(active, value => {
     if (value) return;
-    epoch++; error.value = ""; lastCommand = null; invoker = null; focusReturn = null;
+    epoch++; error.value = ""; lastCommand = null; invoker = null; retireReturn();
     void release();
   }, { flush: "sync" });
   watch(pending, async value => {
@@ -104,12 +157,13 @@ export function useKetcherView({ root, active, ready, blocked, onChange, getFram
     await nextTick();
     if (requested !== focusReturn) return;
     focusReturn = null;
-    if (requested.context.current() && requested.target?.isConnected && !requested.target.disabled)
+    if (requested.context.current() && requested.owner === root.value && !document.fullscreenElement
+      && requested.target?.isConnected && !requested.target.disabled)
       requested.target.focus({ preventScroll: true });
   }, { flush: "post" });
   onMounted(observe);
   onBeforeUnmount(() => {
-    disposed = true; epoch++; invoker = null; lastCommand = null; focusReturn = null; expanded.value = false;
+    disposed = true; epoch++; invoker = null; lastCommand = null; retireReturn(); expanded.value = false;
     document?.removeEventListener("fullscreenchange", changed);
     document?.removeEventListener("keydown", keydown, true);
     frameDocument?.removeEventListener("keydown", keydown, true);

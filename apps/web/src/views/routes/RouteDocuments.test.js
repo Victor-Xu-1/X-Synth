@@ -15,7 +15,7 @@ jest.mock("@/components/SmilesImage.vue", () => ({
   props: ["smiles"], template: '<div :data-smiles="smiles"><button aria-label="重试结构加载" /></div>',
 }));
 jest.mock("@/components/routes/DocumentPreview.vue", () => ({
-  props: ["modelValue", "document", "focusTicket"], template: "<div />",
+  props: ["modelValue", "document", "focusTicket", "libraryQuery"], template: "<div />",
 }));
 
 const stubs = {
@@ -87,6 +87,20 @@ test("one page reads once; long names, chemical identity and all operations rema
   expect(wrapper.getComponent(StructurePreview).props()).toMatchObject({ compact: true, width: 180, height: 96 });
 });
 
+test("reader-fix library context reaches editor title, menu and preview entry through the same projection", async () => {
+  const wrapper = await setup("/documents?query=CCO&sort=title&returnUrl=https%3A%2F%2Fevil.example");
+  expect(wrapper.get(".document-title-cell").attributes("href"))
+    .toBe("/editor/document-a?library_query=CCO&library_sort=title");
+  expect(wrapper.getComponent(".document-action-menu button").props("to"))
+    .toEqual({ path: "/editor/document-a", query: { library_query: "CCO", library_sort: "title" } });
+  API.get.mockResolvedValueOnce(savedDocument());
+  await wrapper.get('[aria-label="预览文档：先导系列路线"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.getComponent(DocumentPreview).props("libraryQuery")).toEqual({ query: "CCO", sort: "title" });
+  expect(API.post).not.toHaveBeenCalled();
+  expect(API.delete).not.toHaveBeenCalled();
+});
+
 test("sorting is URL-owned, scoped to loaded rows and preserves the original title and chemical data", async () => {
   const documents = [row("a", { title: "Beta", reaction_count: 3 }), row("b", { title: "Alpha", reaction_count: 0 })];
   const original = JSON.stringify(documents); API.get.mockResolvedValueOnce(documents);
@@ -119,6 +133,30 @@ test("an aborted sort navigation keeps the native control and URL on the same co
   expect(wrapper.vm.$router.currentRoute.value.query.sort).toBe("title");
   expect(wrapper.get('.document-sort select').element.value).toBe("title");
   expect(API.get).toHaveBeenCalledTimes(1);
+});
+
+test("overlapping filter and sort navigation preserves both latest intents", async () => {
+  const wrapper = await setup("/documents?other=keep");
+  const pending = [];
+  wrapper.vm.$router.beforeEach(() => new Promise(resolve => pending.push(resolve)));
+  await wrapper.get('.document-search').setValue("CCO"); await flushPromises();
+  await wrapper.get('.document-sort select').setValue("title"); await flushPromises();
+  expect(pending).toHaveLength(2);
+  pending[1](true); await flushPromises();
+  pending[0](true); await flushPromises();
+  expect(wrapper.vm.$router.currentRoute.value.query).toEqual({ query: "CCO", sort: "title", other: "keep" });
+  expect(wrapper.get('.document-search').element.value).toBe("CCO");
+  expect(wrapper.get('.document-title-cell').attributes('href')).toBe('/editor/document-a?library_query=CCO&library_sort=title');
+});
+
+test("a cancelled query is not resurrected by the next sort intent", async () => {
+  const wrapper = await setup();
+  const removeGuard = wrapper.vm.$router.beforeEach(() => false);
+  await wrapper.get('.document-search').setValue("cancelled"); await flushPromises();
+  removeGuard();
+  await wrapper.get('.document-sort select').setValue("title"); await flushPromises();
+  expect(wrapper.vm.$router.currentRoute.value.query).toEqual({ sort: "title" });
+  expect(wrapper.get('.document-search').element.value).toBe("");
 });
 
 test("a sort intent retires a pending preview before a navigation guard completes", async () => {

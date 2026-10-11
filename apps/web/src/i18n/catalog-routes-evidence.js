@@ -71,5 +71,8 @@ export default [
   ["专利", "Patent"], ["段落", "Paragraph"], ["年份", "Year"], ["收率字段", "Yield fields"],
   ["专利链接依据", "Patent link basis"], ["数据集", "Dataset"], ["数据集 ID", "Dataset ID"],
   ["原始文件", "Original file"], ["原始反应 ID", "Original reaction ID"],
+  ["已保存的数据集来源", "Saved dataset provenance"], ["数据集引用", "Dataset citation"],
+  ["数据源快照 SHA256", "Dataset snapshot SHA256"],
+  ["数据集引用仅说明数据来源，不证明该目标反应的文献匹配、条件或收率。", "Dataset citations describe data provenance, not a publication match, conditions or yield for this target reaction."],
   ["源 outcome 索引", "Source outcome indices"], ["源文件 SHA256", "Source file SHA256"],
 ];

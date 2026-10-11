@@ -3,6 +3,7 @@ import { mount } from "@vue/test-utils";
 import { defineComponent, h, nextTick, reactive } from "vue";
 import KetcherModal from "./KetcherModal.vue";
 import WorkbenchScope from "./workspace/WorkbenchScope.vue";
+import { setLocale } from "@/i18n";
 
 global.CSS = { supports: () => false };
 const { createVuetify, components } = require("vuetify/dist/vuetify.js");
@@ -31,7 +32,7 @@ async function settle() {
   await nextTick();
 }
 
-async function setup(scoped = true) {
+async function setup(scoped = true, dialogDocument = false) {
   const state = reactive({ active: true, open: true, smiles: "CCO" });
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -44,6 +45,11 @@ async function setup(scoped = true) {
   });
   await nextTick();
   const frame = document.querySelector('[data-cy="ketcher-iframe"]');
+  if (dialogDocument) {
+    frame.contentDocument.open();
+    frame.contentDocument.write("<!doctype html><html><head></head><body></body></html>");
+    frame.contentDocument.close();
+  }
   const fixture = editorFixture();
   frame.contentWindow.ketcher = fixture.editor;
   await settle();
@@ -101,4 +107,18 @@ test.each([true, false])("normal close releases the iframe and reopen initialize
   expect(nextFixture.editor.setMolecule).toHaveBeenCalledWith(state.smiles);
   expect(fixture.editor.setMolecule).toHaveBeenCalledTimes(1);
   expect(modal.vm.loading).toBe(false);
+});
+
+test("modal native close labels follow the shared locale and stop when the owner closes", async () => {
+  setLocale("en", { persist: false });
+  const { state, frame } = await setup(true, true);
+  const close = frame.contentDocument.createElement("button");
+  close.className = "Dialog-module_buttonTop__pinned";
+  frame.contentDocument.body.appendChild(close); await settle();
+  expect(close.getAttribute("aria-label")).toBe("Close");
+  setLocale("zh-CN", { persist: false }); await settle();
+  expect(close.getAttribute("aria-label")).toBe("关闭");
+  state.open = false; await settle();
+  setLocale("en", { persist: false }); await settle();
+  expect(close.getAttribute("aria-label")).toBe("关闭");
 });
