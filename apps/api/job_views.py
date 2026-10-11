@@ -5,6 +5,7 @@ from copy import deepcopy
 from fastapi import HTTPException
 
 from packages.workspace.history_projection import historical_routes
+from packages.workspace.public_evidence import public_evidence as public_summary
 from packages.chemistry.material_scope import stored_route_scope_exclusions
 from packages.orchestrator.review_policy import FORWARD_REVIEW_POLICIES, OPERATION_REVIEW_POLICIES, ORIGINAL_RANK_REVIEW_POLICIES
 from packages.orchestrator.operation_review import operation_records_validated
@@ -103,18 +104,6 @@ def result_record(job: dict, *, review=None) -> dict:
         "public": False,
         "unified_route_pool_summary": {"id": data["job_id"], **data["summary"]},
     }
-
-
-def public_summary(value):
-    if isinstance(value, dict):
-        return {
-            key: public_summary(item)
-            for key, item in value.items()
-            if key not in {"path", "repo_root", "run_dir"} and not key.endswith("_path")
-        }
-    if isinstance(value, list):
-        return [public_summary(item) for item in value]
-    return value
 
 
 def delivery_summary(summary, *, review=None):

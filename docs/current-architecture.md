@@ -674,6 +674,18 @@ archive contract and is labeled accordingly.
 
 `from-task` copies only a real selected route owned by the caller. Provenance and
 scores are set by the server, never an imported JSON or client-supplied flag.
+Detail-only `/api/v1/route-documents/{id}/source-evidence` reads that owned source.
+The source job must have the same owner. Pinned copies verify the original sealed
+publication, independent of later result pointers; older unpinned copies are
+explicitly current matching sources, not original immutable evidence. Route
+ID/index, canonical chemistry signature, unique original step IDs, reaction sides
+and external leaves must agree before original records bind to reaction nodes.
+The same topology and read-time delivery review authorities are reused; this is
+not new inference, experimental certification or a rewrite of stored records.
+Runtime paths are stripped through the shared public-evidence projection. Local
+chemical changes retire evidence immediately; title, note and layout changes do
+not constitute chemistry. A changed server revision during reading is rejected.
+One shared document-context reader owns UI cancellation and late-response guards.
 Current clients bind the selected index to its route ID; a changed selection is
 rejected rather than copied as a different route. Published source provenance also
 retains the immutable result snapshot. Legacy index-only callers remain compatible.
@@ -735,6 +747,7 @@ chemical validation or mark unfinished searches complete.
 | Readiness cache             | 10 seconds     | Lifespan-owned refresh at half TTL; only valid identity-matched entries bypass refresh locks |
 | Dependency probe timeout    | 2 seconds      | Parallel, cancellable HTTP probes with one total connection/header/body deadline |
 | History query deadline      | 1 second       | Abort oversized indexed history reads with 503; never return a false empty page |
+| Document source inspection  | 1 child / 12 seconds | Cancellable read-only projection, byte/atom budgets reused; busy/timeout is retriable, never a chemistry success |
 | Request budget              | 10 MiB         | Bounded untrusted input                                                |
 | Native response budget      | 32 MiB         | Explicit oversized-response handling, no silent truncation             |
 

@@ -46,6 +46,15 @@ class HistoryReviewLimits:
 
 
 @dataclass(frozen=True)
+class DocumentSourceLimits:
+    read_seconds: float = 12.0
+
+    def __post_init__(self):
+        if not math.isfinite(self.read_seconds) or self.read_seconds <= 0:
+            raise ValueError("Document source read limit must be positive and finite")
+
+
+@dataclass(frozen=True)
 class PerformanceBudget:
     """Resource ceilings are independent of chemistry quality or search depth."""
 
