@@ -283,7 +283,7 @@ test("version three model review and pending operations remain distinct in both 
   expect(textOf(wrapper, "forward")).toContain("4/4");
   expect(textOf(wrapper, "operations")).toContain("1 步需过程依据");
   setLocale("en", { persist: false }); await wrapper.vm.$nextTick();
-  expect(textOf(wrapper, "operations")).toContain("1 steps need process evidence");
+  expect(textOf(wrapper, "operations")).toContain("Steps needing process evidence: 1");
   expect(JSON.stringify(value)).toBe(before);
 });
 

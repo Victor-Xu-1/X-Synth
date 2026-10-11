@@ -88,17 +88,17 @@ for (const [id, label] of cases) for (const width of [1440, 390]) {
       if (label === "Reaction operations unverified") {
         const unresolved = routes[0].metadata.delivery_review.operations.unresolved_steps;
         assert(unresolved.length > 0);
-        await expect(reader.locator('[data-review="operations"]')).toContainText(`${unresolved.length} steps need process evidence`);
-        await reader.getByRole("button", { name: "Steps", exact: true }).click();
+        await expect(reader.locator('[data-review="operations"]')).toContainText(`Steps needing process evidence: ${unresolved.length}`);
+        await reader.getByRole("tab", { name: "Steps", exact: true }).click();
         for (const entry of unresolved) {
           const index = routes[0].steps.findIndex(step => step.step_id === entry.step_id);
           assert(index >= 0);
-          const row = reader.locator(".route-step").filter({ has: reader.locator(`.step-select[data-node-id="r-${index + 1}"]`) });
+          const row = reader.locator(".route-step").filter({ has: page.locator(`.step-select[data-node-id="r-${index + 1}"]`) });
           await expect(row.locator(".step-operation-warning")).toHaveText("Reaction operations unverified");
         }
         await noOverflow(page);
         await capture(page, `operations-${id.slice(0, 6)}-${width}`);
-        await reader.getByRole("button", { name: "Route diagram", exact: true }).click();
+        await reader.getByRole("tab", { name: "Route diagram", exact: true }).click();
       }
       const index = routes.findIndex(route => route.metadata.delivery_review.grade === "purchase_form_unresolved");
       if (index >= 0) {
