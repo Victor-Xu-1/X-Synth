@@ -67,7 +67,8 @@ test("English loading, record states and selectors switch reactively without ref
 test("one mount reads one page only; history never executes or deletes", async () => {
   API.get.mockResolvedValue(data());
   const { wrapper } = await setup();
-  expect(API.get.mock.calls).toEqual([["/api/v1/analyses", { limit: 25, offset: 0 }]]);
+  expect(API.get.mock.calls).toEqual([["/api/v1/analyses", { limit: 25, offset: 0 }, true,
+    { signal: expect.any(AbortSignal), timeoutMs: 15000 }]]);
   expect(wrapper.get("tbody tr").attributes("data-record-id")).toBe("record-a");
   expect(API.post).not.toHaveBeenCalled(); expect(API.delete).not.toHaveBeenCalled();
 });
@@ -174,7 +175,8 @@ test("filtered empty records have an explicit reset without submitting or deleti
   await wrapper.get(".analysis-empty button").trigger("click");
   await flushPromises();
   expect(router.currentRoute.value.query.kind).toBeUndefined();
-  expect(API.get.mock.calls.at(-1)).toEqual(["/api/v1/analyses", { limit: 25, offset: 0 }]);
+  expect(API.get.mock.calls.at(-1)).toEqual(["/api/v1/analyses", { limit: 25, offset: 0 }, true,
+    { signal: expect.any(AbortSignal), timeoutMs: 15000 }]);
   expect(API.post).not.toHaveBeenCalled();
   expect(API.delete).not.toHaveBeenCalled();
 });
@@ -292,4 +294,93 @@ test("invalid URL parameters fail before a request; running pages poll and relea
   current.wrapper.unmount();
   jest.advanceTimersByTime(10000); await flushPromises();
   expect(API.get).toHaveBeenCalledTimes(2);
+});
+
+test.each(["network", "malformed"])("%s refresh labels retained counts and open details as previously loaded, without rewriting records", async failure => {
+  initializeLocale(null);
+  const original = data([{ ...row("chemical"), kind: "conditions", structure: "CCO" }], 26);
+  const before = JSON.stringify(original);
+  API.get.mockResolvedValueOnce(original);
+  const { wrapper } = await setup();
+  await wrapper.get(".analysis-summary").trigger("click");
+  if (failure === "network") API.get.mockRejectedValueOnce(new Error("read failed"));
+  else API.get.mockResolvedValueOnce({ items: null, total: 26 });
+  await wrapper.get('[aria-label="Refresh analysis record"]').trigger("click"); await flushPromises();
+  expect(wrapper.attributes("data-history-freshness")).toBe("stale");
+  expect(wrapper.get(".analysis-filters [role=status]").text()).toBe("Last loaded calculations: 26");
+  expect(wrapper.get(".history-record-status").text()).toBe("Completed");
+  expect(wrapper.get('[data-history-stale]').text()).toBe("Showing last loaded records; status has not been refreshed.");
+  setLocale("zh-CN", { persist: false }); await flushPromises();
+  expect(wrapper.get(".analysis-filters [role=status]").text()).toBe("上次读取：26 次计算");
+  expect(wrapper.get('[data-history-stale]').text()).toBe("显示上次读取的记录，状态尚未刷新。");
+  expect(JSON.stringify(original)).toBe(before);
+  expect(API.post).not.toHaveBeenCalled(); expect(API.delete).not.toHaveBeenCalled();
+});
+
+test("retry remains stale until a successful response, including a validated empty page", async () => {
+  API.get.mockResolvedValueOnce(data()).mockRejectedValueOnce(new Error("failed"));
+  const { wrapper } = await setup();
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  let finish;
+  API.get.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  await wrapper.get('[role="alert"] button').trigger("click");
+  expect(wrapper.attributes("data-history-freshness")).toBe("stale");
+  expect(wrapper.findAll("tbody tr")).toHaveLength(1);
+  finish(data([])); await flushPromises();
+  expect(wrapper.attributes("data-history-freshness")).toBe("fresh");
+  expect(wrapper.find("[data-history-stale]").exists()).toBe(false);
+  expect(wrapper.get(".analysis-filters [role=status]").text()).toBe("共 0 次计算");
+});
+
+test("a failed running-page poll stops repeated reads until explicit recovery", async () => {
+  jest.useFakeTimers();
+  API.get.mockResolvedValueOnce(data([row("running", "running")])).mockRejectedValueOnce(new Error("failed"));
+  const { wrapper } = await setup();
+  jest.advanceTimersByTime(10000); await flushPromises();
+  expect(API.get).toHaveBeenCalledTimes(2);
+  jest.advanceTimersByTime(30000); await flushPromises();
+  expect(API.get).toHaveBeenCalledTimes(2);
+  API.get.mockResolvedValue(data([row("running", "running")]));
+  await wrapper.get('[role="alert"] button').trigger("click"); await flushPromises();
+  jest.advanceTimersByTime(10000); await flushPromises();
+  expect(API.get).toHaveBeenCalledTimes(4);
+});
+
+test.each(["query", "unmount"])("%s retires an in-flight history read and uses the bounded existing API transport", async change => {
+  API.get.mockReturnValueOnce(new Promise(() => {}));
+  const { wrapper, router } = await setup();
+  const options = API.get.mock.calls[0][3];
+  expect(options).toEqual({ signal: expect.any(AbortSignal), timeoutMs: 15000 });
+  expect(options.signal.aborted).toBe(false);
+  if (change === "query") {
+    API.get.mockResolvedValueOnce(data([{ ...row(), kind: "conditions" }]));
+    await router.replace("/analyses?kind=conditions"); await flushPromises();
+  } else {
+    wrappers.splice(wrappers.indexOf(wrapper), 1); wrapper.unmount();
+  }
+  expect(options.signal.aborted).toBe(true);
+});
+
+test("a prior failed read cannot mark a new successful filter stale", async () => {
+  let fail;
+  API.get.mockReturnValueOnce(new Promise((resolve, reject) => { fail = reject; }));
+  const { wrapper, router } = await setup();
+  API.get.mockResolvedValueOnce(data([{ ...row("new"), kind: "conditions" }]));
+  await router.replace("/analyses?kind=conditions"); await flushPromises();
+  fail(new Error("old failure")); await flushPromises();
+  expect(wrapper.attributes("data-history-freshness")).toBe("fresh");
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  expect(wrapper.get('tbody tr').attributes('data-record-id')).toBe("new");
+});
+
+test("an accepted refresh retires a disappeared summary so reappearing records do not reopen it", async () => {
+  API.get.mockResolvedValueOnce(data()).mockResolvedValueOnce(data([])).mockResolvedValueOnce(data());
+  const { wrapper } = await setup();
+  await wrapper.get(".analysis-summary").trigger("click");
+  expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+  await wrapper.get('[aria-label="刷新研究记录"]').trigger("click"); await flushPromises();
+  expect(wrapper.findAll("tbody tr")).toHaveLength(1);
+  expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
 });

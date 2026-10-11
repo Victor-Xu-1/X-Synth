@@ -6,6 +6,8 @@
         <div>
           <h2 :id="titleId">{{ $tr('{name}记录', { name: $tr(analysisKinds[record.kind].title) }) }}</h2>
           <span class="history-record-status">{{ $tr(analysisStatuses[record.status]) }}</span>
+          <p v-if="stale" class="history-record-freshness" role="status" data-history-stale>{{ $tr('显示上次读取的记录，状态尚未刷新。') }}</p>
+          <p v-else-if="refreshing" class="history-record-refreshing" role="status">{{ $tr('正在更新记录状态。') }}</p>
         </div>
         <v-btn icon="mdi-close" variant="text" :aria-label="$tr('关闭')" :title="$tr('关闭')"
           @click="$emit('update:modelValue', false)" />
@@ -31,7 +33,7 @@ import { useId } from "vue";
 import { analysisKinds, analysisStatuses, recordDate } from "@/common/analysis-records";
 import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
 import SmilesImage from "@/components/SmilesImage.vue";
-defineProps({ modelValue: Boolean, record: { type: Object, default: null } });
+defineProps({ modelValue: Boolean, record: { type: Object, default: null }, stale: Boolean, refreshing: Boolean });
 defineEmits(["update:modelValue", "afterLeave"]);
 const titleId = useId();
 </script>
@@ -41,6 +43,9 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 header > div { min-width: 0; }
 h2 { margin: 0 0 4px; font-size: 18px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
 .history-record-status { color: var(--ws-muted); font-size: 12px; }
+.history-record-freshness, .history-record-refreshing { margin: 6px 0 0; font-size: 12px; line-height: 1.5; }
+.history-record-freshness { color: var(--ws-warning); }
+.history-record-refreshing { color: var(--ws-muted); }
 header :deep(.v-btn) { flex-shrink: 0; width: 44px; height: 44px; min-width: 44px; color: var(--ws-muted); border-radius: 6px; }
 .history-record-details :deep(.v-btn:focus-visible) { outline: 2px solid var(--ws-accent); outline-offset: 2px; }
 .history-record-body { overflow-y: auto; padding: 20px; }
