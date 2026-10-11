@@ -2,7 +2,8 @@
   <div class="reference-yields">
     <p v-if="!measurements.length" class="reference-yield-empty">{{ $tr('未记录') }}</p>
     <div v-for="(measurement, index) in visibleMeasurements" :key="index" class="reference-yield">
-      <strong>{{ referenceYieldValue(measurement) }}</strong>
+      <strong :class="{ 'reference-yield-text': referenceYieldTextOnly(measurement) }">{{ referenceYieldValue(measurement) }}</strong>
+      <small v-if="referenceYieldTextOnly(measurement)">{{ $tr('原文记录，未作数值解析') }}</small>
       <small>{{ $tr(reportedYieldMethod(measurement.method)) }}</small>
       <small v-if="measurement.method === 'ord_product_measurement'">{{ analysisLabel(measurement) }}</small>
       <small v-if="compact && products.length > 1">{{ referenceYieldProduct(measurement, products) }}</small>
@@ -27,7 +28,10 @@
 import { computed } from "vue";
 import { uiText } from "@/i18n";
 import { reportedYieldMethod } from "@/common/reaction-references";
-import { referenceRecordedValue as recordedValue, referenceYieldAnalysisLabel, referenceYieldProduct, referenceYieldValue } from "./reference-record";
+import {
+  referenceRecordedValue as recordedValue, referenceYieldAnalysisLabel,
+  referenceYieldProduct, referenceYieldTextOnly, referenceYieldValue,
+} from "./reference-record";
 const props = defineProps({
   measurements: { type: Array, required: true },
   products: { type: Array, required: true },
@@ -43,6 +47,7 @@ function analysisLabel(measurement) {
 .reference-yields { min-width: 0; }
 .reference-yield { display: grid; gap: 3px; padding: 5px 0; font-size: 12px; overflow-wrap: anywhere; }
 .reference-yield strong { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.reference-yield-text { white-space: pre-wrap; }
 .reference-yield small, .reference-yields-more, .reference-yield-empty { color: var(--ws-muted); font-size: 11px; }
 .reference-yield-empty { margin: 5px 0; }
 summary { cursor: pointer; padding: 7px 0; color: var(--ws-muted); }
