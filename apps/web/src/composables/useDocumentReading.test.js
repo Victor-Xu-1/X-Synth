@@ -107,3 +107,12 @@ test("a stale graph-ready signal or location completion cannot change the curren
   state.selectNode("m"); finish(); await location;
   expect(document.activeElement).toBe(entry);
 });
+
+test("a cancelled camera operation does not hand keyboard focus to an unapplied location", async () => {
+  const root = control('div'), entry = control(), target = document.createElement('button');
+  root.innerHTML = '<div class="vue-flow__node" data-id="r"></div>'; root.firstChild.append(target);
+  state.graphView.value = { focus: jest.fn().mockResolvedValue(false), $el: root };
+  state.graphInitialized(); entry.focus();
+  await state.locateStep('r', { detail: 0 });
+  expect(document.activeElement).toBe(entry);
+});

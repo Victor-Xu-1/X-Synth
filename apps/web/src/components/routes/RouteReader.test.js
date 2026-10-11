@@ -774,6 +774,14 @@ test("unmount before a requested reading layer settles cannot focus a detached r
   focus.mockRestore();
 });
 
+test("cancelled camera placement preserves the current keyboard control", async () => {
+  const frame = scrollFrame(), outside = document.createElement('button'); frame.append(outside);
+  const wrapper = await setup([candidate('native-a')], { view: 'steps' }, false, frame);
+  outside.focus(); mockFocus.mockResolvedValueOnce(false);
+  await wrapper.vm.locateNode('r-1', { detail: 0 }); await flushPromises();
+  expect(document.activeElement).toBe(outside);
+});
+
 test("a replacement source invalidates a pending entry focus before the new layer settles", async () => {
   const frame = scrollFrame();
   const outside = document.createElement("button");
