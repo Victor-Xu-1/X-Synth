@@ -117,7 +117,7 @@ function datasetCitationLinks(name) {
     let doi;
     try {
       const value = decodeURIComponent(url.pathname.slice(1));
-      if (/[\u0000-\u001f\u007f?#\\]/.test(value)) continue;
+      if (/[?#\\]/.test(value) || [...value].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) continue;
       doi = createDoiLink(value);
     }
     catch { continue; }
