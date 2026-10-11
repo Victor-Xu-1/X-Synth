@@ -16,7 +16,7 @@ export function stockProcurementPresentation(record, context = {}) {
   const value = record.procurement;
   if (!recordObject(value) || value.policy !== POLICY || !supplierPriceView(record, context).basis
     || !(value.status === "defined" && value.reason === null && value.eligible_for_closure === true
-      || value.status === "unresolved" && Object.hasOwn(reasonLabels, value.reason)
+      || value.status === "unresolved" && typeof value.reason === "string" && Object.hasOwn(reasonLabels, value.reason)
         && value.eligible_for_closure === false)) {
     return { ...result, status: "invalid", label: "采购依据无效" };
   }

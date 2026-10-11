@@ -22,7 +22,8 @@ test.each([undefined, {}, { ppg: 2.08 }, priceContractRecord()])("missing decisi
 test.each([null, [], {}, { ...defined, policy: "future" }, { ...defined, reason: "undefined_purchase_form" },
   { ...defined, eligible_for_closure: false }, { ...defined, eligible_for_closure: "true" },
   { ...defined, status: "unresolved", reason: null, eligible_for_closure: false },
-  { ...defined, status: "unresolved", reason: "other", eligible_for_closure: false }])("malformed or contradictory decision is not a purchase fact (%#)", decision => {
+  { ...defined, status: "unresolved", reason: "other", eligible_for_closure: false },
+  { ...defined, status: "unresolved", reason: ["undefined_purchase_form"], eligible_for_closure: false }])("malformed or contradictory decision is not a purchase fact (%#)", decision => {
   expect(stockProcurementPresentation(row(decision), context)).toMatchObject({status: "invalid", eligibleForClosure: false});
 });
 test.each([{ smiles: "O" }, { snapshot: "c".repeat(64) }])("decision cannot move across structure/snapshot (%#)", overrides => {
