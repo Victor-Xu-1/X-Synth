@@ -166,6 +166,8 @@ class RouteDocumentRepository:
         )
         require_document_scope(graph)
         provenance = json.loads(source)
+        if not isinstance(provenance, dict):
+            raise ValueError("Invalid stored document provenance")
         original = (
             bool(provenance)
             and not provenance.get("_chemistry_edited", False)

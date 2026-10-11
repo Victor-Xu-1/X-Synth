@@ -58,6 +58,8 @@ def document_router(*, documents, repository, transport, artifacts, budget, sour
             raise HTTPException(503, "路线文档存储格式不受支持。") from exc
         except MaterialScopeError as exc:
             raise HTTPException(409, str(exc)) from exc
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(409, "路线文档数据无效或已损坏。") from exc
 
     @router.get("")
     def list_documents(

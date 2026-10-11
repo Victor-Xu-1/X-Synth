@@ -229,6 +229,19 @@ def test_disconnect_interrupts_only_owned_source_child_and_releases_admission(ap
     assert api.client.get(endpoint).json()["status"] == "available"
 
 
+def test_corrupt_document_provenance_is_explicit_and_never_rewritten(api):
+    document = api.client.post("/api/v1/route-documents", json=document_body()).json()
+    with api.app.state.documents.connect() as connection:
+        connection.execute("UPDATE route_documents SET source='[]' WHERE id=?", (document["id"],))
+        connection.commit()
+    for suffix in ("", "/source-evidence"):
+        response = api.client.get(f"/api/v1/route-documents/{document['id']}{suffix}")
+        assert response.status_code == 409
+        assert "binding" not in response.json() and "source_closed" not in response.json()
+    with api.app.state.documents.connect() as connection:
+        assert connection.execute("SELECT source FROM route_documents WHERE id=?", (document["id"],)).fetchone() == ("[]",)
+
+
 def test_editable_copy_uses_display_title_without_rewriting_scientific_request(api):
     job, _, candidates = captured_task(api)
     repository = api.app.state.repository
