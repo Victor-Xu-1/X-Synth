@@ -1,5 +1,6 @@
 import { analysisKinds, analysisQuery, analysisResultError, listQuery, readAnalysisList,
   readAnalysisRecord, recordDate, recordPath, analysisIngredient } from "./analysis-records";
+import { rankedForwardFixture, incompleteForwardFixture } from "./forward-result.test-support";
 
 const row = { id: "record-a", kind: "optimization", status: "completed", created: "2026-10-04T00:00:00Z", structure: "" };
 test.each([undefined, null, "", "invalid", 0])("missing date %s never becomes an epoch date", (value) => {
@@ -37,6 +38,32 @@ test("empty arrays are legitimate outputs, but absent arrays are schema failures
   expect(analysisResultError("conditions", { reactants: "", product: "", conditions: [] })).toBe("");
   expect(analysisResultError("forward", {})).toContain("格式无效");
   expect(analysisResultError("optimization", { recommendations: [] })).toContain("格式无效");
+});
+
+test("saved modern forward results use the same complete-provenance contract as live predictions", () => {
+  const result = rankedForwardFixture(), before = JSON.stringify(result);
+  expect(analysisResultError("forward", result)).toBe("");
+  expect(JSON.stringify(result)).toBe(before);
+  result.provenance.decisions.at(-1).joint_rank = 1;
+  expect(analysisResultError("forward", result)).toContain("格式无效");
+});
+
+test("saved legacy results reject invented model ranks instead of repairing scientific records", () => {
+  const result = { reactants: "CCO", products: [{ product: "CO", log_probability: -1, feasibility_score: 0.9 }] };
+  expect(analysisResultError("forward", result)).toBe("");
+  result.products[0].native_rank = 1;
+  expect(analysisResultError("forward", result)).toContain("格式无效");
+});
+
+test("EOS history accepts recorded incomplete decoding but rejects coercion or a forged native disposition", () => {
+  const result = incompleteForwardFixture(), before = JSON.stringify(result);
+  expect(analysisResultError("forward", result)).toBe("");
+  expect(JSON.stringify(result)).toBe(before);
+  result.provenance.decoder.hypotheses[3].disposition = "returned";
+  expect(analysisResultError("forward", result)).toContain("格式无效");
+  const coerced = rankedForwardFixture();
+  coerced.provenance.decoder.hypotheses[0].decoded_token_count = "16";
+  expect(analysisResultError("forward", coerced)).toContain("格式无效");
 });
 test.each(["CCO", "Reaxys 12345", "DIPEA", "not a structure"])("legacy ingredient %s stays a label, never a guessed structure", (label) => {
   expect(analysisIngredient({ reagent: label }, "reagent")).toEqual({ label, smiles: null, status: "label_only" });

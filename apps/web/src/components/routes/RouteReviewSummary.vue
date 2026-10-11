@@ -8,12 +8,12 @@
     </div>
     <dl class="review-row">
       <div class="review-item" data-review="forward">
-        <dt>{{ summary.forward.top1 === undefined ? $tr('独立正向预测：') : $tr('步骤核验：') }}</dt>
+        <dt>{{ $tr(summary.forward.status === 'ready' ? forwardTitle : '独立正向预测：') }}</dt>
         <dd>
         <template v-if="summary.forward.status === 'ready'">
           <template v-if="summary.forward.total">
             <strong>{{ $tr('{matched}/{total} 步核验匹配', { matched: summary.forward.matched, total: summary.forward.total }) }}</strong>
-            <span v-if="summary.forward.recorded" class="review-support">{{ $tr('（模型首选 {value} 步，原始实验记录支持 {value2} 步）', { value: summary.forward.top1, value2: summary.forward.recorded }) }}</span>
+            <span v-if="summary.forward.top1 !== undefined" class="review-support">{{ $tr(forwardCounts, forwardCountValues) }}</span>
           </template>
           <template v-else>{{ $tr('无反应步骤') }}</template>
         </template>
@@ -50,9 +50,19 @@
 import { computed } from "vue";
 import { readRouteReviewSummary } from "./route-review-summary";
 import { unresolvedOperationSteps } from "@/common/delivery-review";
+import { ORIGINAL_RANK_BASIS } from "@/common/forward-rank";
 
 const props = defineProps({ candidate: Object });
 const summary = computed(() => readRouteReviewSummary(props.candidate));
+const originalRanks = computed(() => summary.value.forward.rankBasis === ORIGINAL_RANK_BASIS);
+const forwardTitle = computed(() => originalRanks.value ? "步骤核验（联合模型）："
+  : "步骤核验（联合排序）：");
+const forwardCounts = computed(() => originalRanks.value
+  ? "联合首选 {value} · 原始首选 {value2} · 记录支持 {value3}"
+  : "联合首选 {value} 步 · 实验记录支持 {value2} 步");
+const forwardCountValues = computed(() => originalRanks.value
+  ? { value: summary.value.forward.joint, value2: summary.value.forward.top1, value3: summary.value.forward.recorded }
+  : { value: summary.value.forward.top1, value2: summary.value.forward.recorded });
 const unresolved = computed(() => {
   const ids = new Set((props.candidate?.steps || []).map(step => step.step_id));
   return unresolvedOperationSteps(props.candidate?.metadata?.delivery_review).filter(step => ids.has(step.step_id));

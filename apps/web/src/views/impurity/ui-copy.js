@@ -12,6 +12,7 @@ const nativeNotices = new Set([
   "联合评分不是经校准的成功率、风险、浓度或检出概率。",
   "FF 对重复单体的指纹区分有限；该边界不被映射检查或相似度消除。",
   "FF 服务当前不返回模型文件哈希；记录实际服务模型名称，不编造资产标识。",
+  "FF 资产哈希未记录；仅保留服务模型名称。",
 ]);
 
 export function impurityModeLabel(origin) {

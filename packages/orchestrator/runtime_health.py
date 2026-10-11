@@ -15,6 +15,7 @@ from threading import Event, Lock
 from urllib import request
 
 from packages.adapters.stock.stock_index import StockIndex, StockIndexError
+from packages.adapters.askcos.native_models import model_service_compatible
 from packages.orchestrator.health_probe import (
     CANCEL_POLL_SECONDS, HealthCancellation, read_http,
 )
@@ -237,6 +238,10 @@ def _probe_status(context: _HealthContext, cancel: Event | None) -> dict:
         replies = {name: future.result() for name, future in futures.items()}
     checks = {name: reply[0] for name, reply in replies.items()}
     errors = {name: "dependency_unavailable" for name, ready in checks.items() if not ready}
+    for name in ("forward_predictor", "fast_filter"):
+        if checks[name] and not model_service_compatible(name, replies[name][1]):
+            checks[name] = False
+            errors[name] = "model_protocol_incompatible"
     snapshot = None
     try:
         snapshot = StockIndex(context.stock_path).summary if context.stock_path else None

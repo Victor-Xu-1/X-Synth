@@ -25,7 +25,7 @@ def model_epoch(runtime_path: Path, revision: str, forward_url: str, filter_url:
 class VerificationCache:
     def __init__(self, path: Path, owner: str, epoch: str):
         self.path = path
-        self.identity = {"version": 1, "owner": owner, "epoch": epoch}
+        self.identity = {"version": 2, "owner": owner, "epoch": epoch}
         self.records = {}
         if path.is_file():
             if path.stat().st_size > 4 * 1024**2:

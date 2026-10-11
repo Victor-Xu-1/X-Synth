@@ -1,7 +1,9 @@
 """One authority for downstream qualification, independent of search inputs."""
 
-REVIEW_POLICY = "exact_stock_graph2smiles_strategy_evidence_v6"
-OPERATION_REVIEW_POLICIES = {"exact_stock_graph2smiles_operation_evidence_v5", REVIEW_POLICY}
+REVIEW_POLICY = "exact_stock_graph2smiles_rank_provenance_v7"
+ORIGINAL_RANK_REVIEW_POLICIES = {REVIEW_POLICY}
+OPERATION_REVIEW_POLICIES = {"exact_stock_graph2smiles_operation_evidence_v5",
+                             "exact_stock_graph2smiles_strategy_evidence_v6", REVIEW_POLICY}
 FORWARD_REVIEW_POLICIES = {
     "exact_stock_graph2smiles_references_target_bond_families_v2",
     "exact_stock_graph2smiles_connected_dag_family_queue_v3",

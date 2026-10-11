@@ -223,6 +223,7 @@ class G2SHandler:
     def inference(self, data: List) -> List[Dict[str, Any]]:
         # adapted from predict.get_predictions()
         from utils.data_utils import canonicalize_smiles
+        from packages.adapters.askcos.forward_provenance import decoded_tokens
 
         results = []
 
@@ -242,12 +243,14 @@ class G2SHandler:
                 for predictions, scores in zip(batch_predictions["predictions"], batch_predictions["scores"]):
                     valid_products = []
                     valid_scores = []
-                    for prediction, score in zip(predictions, scores):
+                    hypotheses = []
+                    for decoder_rank, (prediction, score) in enumerate(zip(predictions, scores, strict=True), 1):
                         predicted_idx = prediction.detach().cpu().numpy()
                         score = score.item()
-                        predicted_tokens = [self.vocab_tokens[idx] for idx in predicted_idx[:-1]]
-                        smi = "".join(predicted_tokens)
-                        smi = canonicalize_smiles(smi, trim=False, suppress_warning=True)
+                        decoding = decoded_tokens(predicted_idx.tolist(), self.vocab_tokens)
+                        smi = canonicalize_smiles(decoding["decoded_product"], trim=False, suppress_warning=True) if decoding["terminated_by_eos"] else ""
+                        hypotheses.append({"decoder_rank": decoder_rank, **decoding,
+                                           "normalized_product": smi or None, "log_probability": score})
 
                         if not smi or smi in valid_products:
                             continue
@@ -257,7 +260,12 @@ class G2SHandler:
 
                     result = {
                         "products": valid_products,
-                        "scores": valid_scores
+                        "scores": valid_scores,
+                        "hypotheses": hypotheses,
+                        "parameters": {name: getattr(self.args, name) for name in (
+                            "beam_size", "n_best", "temperature", "predict_min_len",
+                            "predict_max_len", "mask_rel_chirality",
+                        )},
                     }
                     results.append(result)
 

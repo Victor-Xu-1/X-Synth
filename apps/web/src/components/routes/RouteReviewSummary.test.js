@@ -6,6 +6,7 @@ import { compileScript, compileStyle, compileTemplate, parse } from "@vue/compil
 import RouteReviewSummary from "./RouteReviewSummary.vue";
 import RouteReader from "./RouteReader.vue";
 import { setLocale } from "@/i18n";
+import { rankedReviewFixture } from "./route-review-summary.test-support";
 
 jest.mock("@vue-flow/core", () => ({ useVueFlow: () => ({ fitView: jest.fn() }) }));
 jest.mock("@/common/route-export", () => ({ routeImage: jest.fn() }));
@@ -122,7 +123,7 @@ test("review facts have separate labelled terms and values in both languages wit
   const facts = wrapper.get("dl.review-row");
   expect(facts.findAll("dt")).toHaveLength(2);
   expect(facts.findAll("dd")).toHaveLength(2);
-  expect(facts.get('[data-review="forward"] dt').text()).toBe("独立正向预测：");
+  expect(facts.get('[data-review="forward"] dt').text()).toBe("步骤核验（联合排序）：");
   expect(facts.get('[data-review="forward"] dd').text()).toContain("4/4 步核验匹配");
   expect(facts.get('[data-review="references"] dt').text()).toBe("参考覆盖：");
   setLocale("en", { persist: false }); await wrapper.vm.$nextTick();
@@ -192,7 +193,7 @@ test("overlapping reference scopes are separate counters, not a summed coverage 
 test("unsupported and malformed records do not become verified after reactive updates", async () => {
   const wrapper = setup(RouteReviewSummary, { candidate: candidate() });
   const future = candidate();
-  future.metadata.automated_review.version = 4;
+  future.metadata.automated_review.version = 5;
   await wrapper.setProps({ candidate: future });
   expect(textOf(wrapper, "forward")).toContain("记录版本不支持");
   const invalid = candidate();
@@ -300,4 +301,31 @@ test("the new summary compiles script, template and scoped CSS with the real Vue
   expect(compileStyle({
     filename, id, source: descriptor.styles[0].content, scoped: true,
   }).errors).toEqual([]);
+});
+
+test("v4 joint promotion is explicit and cannot claim original first in EN and CN", async () => {
+  const value = rankedReviewFixture(), before = JSON.stringify(value);
+  const wrapper = setup(RouteReviewSummary, { candidate: value });
+  expect(wrapper.get('[data-review="forward"] dt').text()).toBe("步骤核验（联合模型）：");
+  expect(textOf(wrapper, "forward")).toContain("联合首选 1 · 原始首选 0 · 记录支持 0");
+  setLocale("en", { persist: false }); await wrapper.vm.$nextTick();
+  expect(wrapper.get('[data-review="forward"] dt').text()).toBe("Step verification (joint models):");
+  expect(textOf(wrapper, "forward")).toContain("Joint first: 1 · Original first: 0 · Record support: 0");
+  expect(JSON.stringify(value)).toBe(before);
+});
+
+test("v2/v3 top-one counters are labelled joint order with missing or explicit legacy basis", async () => {
+  const value = rankedReviewFixture(30);
+  const review = value.metadata.automated_review;
+  review.version = 3; delete review.forward.records[0].rank_provenance;
+  review.forward.records[0].expected_rank = 2; // Explicit legacy joint ordinal, not inferred original rank.
+  const wrapper = setup(RouteReviewSummary, { candidate: value });
+  expect(wrapper.get('[data-review="forward"] dt').text()).toBe("步骤核验（联合排序）：");
+  expect(textOf(wrapper, "forward")).toContain("联合首选 0 步");
+  setLocale("en", { persist: false }); await wrapper.vm.$nextTick();
+  expect(textOf(wrapper, "forward")).toContain("Joint top-1: 0");
+  expect(textOf(wrapper, "forward")).not.toContain("Model top-1");
+  review.forward.rank_basis = "joint_display_ordinal";
+  await wrapper.setProps({ candidate: { ...value } });
+  expect(textOf(wrapper, "forward")).toContain("joint order");
 });

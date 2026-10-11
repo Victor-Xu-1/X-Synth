@@ -7,6 +7,8 @@ from logger import MyLogger
 from scorer import Scorer
 from typing import List
 from packages.adapters.askcos.native_service_limits import FINGERPRINT_BATCH_SIZE
+from packages.platform.asset_identity import saved_model_identity
+from pathlib import Path
 
 fast_filter_loc = "fast_filter"
 
@@ -21,6 +23,7 @@ class FastFilterScorer(Scorer):
     def __init__(self):
         """Initializes FastFilterScorer."""
         self.model = None
+        self.asset_identity = None
 
     def load(self, model_path=gc.FAST_FILTER_MODEL["model_path"]):
         """Loads model from a file.
@@ -29,11 +32,15 @@ class FastFilterScorer(Scorer):
             model_path (str): Path to file specifying model.
         """
         MyLogger.print_and_log("Starting to load fast filter", fast_filter_loc)
-        self.model = tf.saved_model.load(model_path)
-        self._signature = self.model.signatures["serving_default"]
+        identity = saved_model_identity(Path(model_path))
+        model = tf.saved_model.load(model_path)
+        self._signature = model.signatures["serving_default"]
         self._input_names = sorted(self._signature.structured_input_signature[1])
         if len(self._input_names) != 2:
             raise ValueError("Fast-filter checkpoint must expose the trained two-input signature")
+        if saved_model_identity(Path(model_path)) != identity:
+            raise ValueError("Fast-filter checkpoint changed while loading")
+        self.model, self.asset_identity = model, identity
         MyLogger.print_and_log("Done loading fast filter", fast_filter_loc)
 
     def smiles_to_fp(self, reactant_smiles, target):

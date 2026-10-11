@@ -51,3 +51,16 @@ test("known native modes and scientific limitations translate only in presentati
     expect(JSON.stringify(value)).toBe(original);
   } finally { wrapper.unmount(); }
 });
+
+test("FF asset identity is shown only when this record actually contains it", async () => {
+  setLocale(DEFAULT_LOCALE, { persist: false });
+  const wrapper = mount(ImpurityResults, { props: { result }, global: { stubs: { VIcon: true, RouterLink: true } } });
+  try {
+    expect(wrapper.text()).toContain("Not recorded");
+    const asset = "e".repeat(64), value = { ...result, provenance: { ...result.provenance, fast_filter_asset_identity: asset } };
+    const before = JSON.stringify(value);
+    await wrapper.setProps({ result: value });
+    expect(wrapper.text()).toContain(asset);
+    expect(JSON.stringify(value)).toBe(before);
+  } finally { wrapper.unmount(); }
+});

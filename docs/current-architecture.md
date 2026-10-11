@@ -223,11 +223,15 @@ governance. See [version operations](operations.md#版本管理).
   Exact record identity is checked again against the pinned source during review,
   separately from template reconstruction; both still require an independent
   Graph2SMILES candidate, the unchanged FF threshold, exact stock closure and DAG
-  checks. Model top-1 agreement is the default. A lower-ranked target candidate
+  checks. The existing joint sequence/FF first-choice gate is preserved; original
+  decoder agreement is recorded separately, not imposed as a new hard chemistry
+  constraint. A joint promotion cannot claim original-model top-1 agreement.
+  A lower joint-ranked target candidate
   is supported only by an exact ORD reaction with positive target yield, recorded
   conditions, ready pinned sources and untruncated retrieval. Product-only matches,
   missing/zero yields or a target absent from model candidates cannot pass.
-  Review version 3 retains the model/record distinction and adds a separate
+  Review version 4 retains the model/record distinction and adds complete original
+  decoder, native-filter and FF-ranking provenance to the version 3
   compound-operation ledger. Actual RDChiral reconstruction witnesses, not query
   charge/H getters, establish local changed-atom regions. Distinct disconnected
   regions or nitro reduction combined with bond formation require exact recorded
@@ -242,7 +246,28 @@ governance. See [version operations](operations.md#版本管理).
   Missing/truncated evidence stays unresolved and is not a chemical blacklist.
   Qualification continues to later candidates and the existing single expanded
   search if output remains insufficient; unsupported candidates cannot fill slots.
-  Version 1/2 archives remain readable with their original model-review scope;
+  The forward result captures every decoded hypothesis before invalid/duplicate
+  filtering, all native candidates and per-candidate no-op/atom-inventory decisions.
+  EOS termination and actual token count are retained. A length-limited unfinished
+  hypothesis keeps its full decoding and cannot become a scored product; only a
+  real EOS is removed. This avoids silently truncating a valid-looking structure.
+  Display count limits only the joint-ranked prefix, not verification visibility.
+  The complete forward wire ledger has a shared 1 MiB producer/transport ceiling;
+  FF-only batches retain 256 KiB. A lower operator byte budget remains authoritative.
+  Oversized envelopes fail explicitly, never by dropping hypotheses or provenance.
+  Job admission requires forward provenance protocol v1 and the loaded forward/FF
+  asset identities, not just a generic ready status. Incompatible dependencies
+  stay unavailable for new searches; an ordinary health read does not run inference.
+  Original decoding parameters, forward and full loaded FF asset identities,
+  ranking policy, acceptance threshold and candidate ranks bind the immutable research record and step
+  receipt. FF is an independent heuristic score, not experimental success probability.
+  New qualification requires this provenance and uses a new cache identity. Legacy
+  records without original ranks are not backfilled or reused as current evidence.
+  The existing impurity consumer also captures the FF bundle identity at readiness
+  and checks each scored forward result against that identity; legacy impurity
+  records without it stay explicitly unrecorded. Its integration fingerprint
+  includes the shared forward schema and projection/ranking implementation.
+  Version 1/2/3 archives remain readable with their original joint-display review scope;
   original experimental conditions do not certify new conditions or a new experiment.
   Unmapped record-only first moves share a conservative target family, preventing
   leaving-group variants from inflating the requested diversity count.

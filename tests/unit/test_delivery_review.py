@@ -14,7 +14,6 @@ from packages.orchestrator.route_artifacts import RouteArtifactStore
 from packages.orchestrator.delivery_review import delivery_review, history_delivery_review
 from packages.workspace.history_projection import historical_routes
 from packages.adapters.askcos.forward import RankedResult
-from packages.orchestrator.route_verification import forward_match
 from packages.workspace.analysis_repository import AnalysisRepository
 
 
@@ -33,7 +32,8 @@ def reviewed(tmp_path):
     retained = analyses.get(identifier, "owner")
     assert retained["status"] == "completed"
     product = output.products[0].product
-    rank, score, matched = forward_match(RankedResult.model_validate(retained["result"]), product, .75)
+    # Preserve the historical joint-prefix receipt, never infer an original rank.
+    rank, score, matched = 1, retained["result"]["products"][0]["feasibility_score"], True
     assert matched
     inputs = output.reactants.split(".")
     return {"route_id": "public-captured-forward", "engine": "askcos", "target_smiles": product,
@@ -69,6 +69,7 @@ def test_captured_forward_receipts_grade_without_demanding_exact_literature(revi
     assert receipt["grade"] == "model_checked"
     assert receipt["version"] == 1 and receipt["phase"] == "automated_review"
     assert receipt["independent_review"]["review_version"] == version
+    assert receipt["independent_review"]["rank_basis"] == "joint_display_ordinal"
     assert reviewed == original
 
 

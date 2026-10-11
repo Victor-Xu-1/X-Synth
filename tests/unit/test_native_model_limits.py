@@ -22,6 +22,7 @@ class ControlledWork:
     """Counts callback execution only; it never loads a trained model."""
     def __init__(self):
         self.model = object()
+        self.asset_identity = "a" * 64  # File-identity control, not a model fixture.
         self.active = self.peak = self.calls = 0
         self.lock = threading.Lock()
         self.entered, self.release = threading.Event(), threading.Event()
@@ -119,10 +120,9 @@ def test_native_service_limits_input_and_output_without_executing_oversized_inpu
         assert client.post(path, content=b"x" * 1001, headers={"Content-Type": "application/json"}).status_code == 413
         assert controlled.calls == 0
         reply = client.post(path, json=payload)
-        if path == "/pathway_ranker":
-            assert reply.status_code == 413
-        else:
-            assert reply.status_code == 200
+        # Both complete responses (including scorer identity) exceed this tiny limit.
+        assert reply.status_code == 413
+        if path == "/fast_filter_evaluate_batch":
             reply = client.post(path, json={"rxn_smiles": ["CCO>>CC=O"] * 20})
             assert reply.status_code == 413
 

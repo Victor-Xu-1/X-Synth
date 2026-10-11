@@ -15,6 +15,7 @@ from packages.validation.route_quality import RouteQualityPolicy
 from packages.validation.reaction_operations import screen_step_operations
 
 from .verification_cache import VerificationCache
+from .forward_review import forward_rank_receipt
 from .qualification_queue import QualificationQueue, family_key
 from .reference_evidence import reference_evidence, recorded_reaction_support
 from .operation_review import operation_record, operations_summary
@@ -23,9 +24,11 @@ from .operation_review import operation_record, operations_summary
 def forward_match(output, product, minimum):
     if output.model != "graph2smiles_uspto_stereo" or output.evidence_type != "model_prediction":
         raise ValueError("Unexpected qualification model")
-    for index, row in enumerate(output.products, 1):
+    if output.provenance is None:
+        raise ValueError("Original forward provenance was not recorded")
+    for row in output.all_ranked_products():
         if row.product == product:
-            return index, row.feasibility_score, index == 1 and row.feasibility_score >= minimum
+            return row.decoder_rank, row.feasibility_score, row.joint_rank == 1 and row.feasibility_score >= minimum
     return None, None, False
 
 
@@ -51,7 +54,8 @@ class RouteVerifier:
                 output = RankedResult.model_validate(saved["result"])
                 if output.reactants != reactants:
                     raise ValueError("Cached qualification result inputs changed")
-                return output, identifier
+                if output.provenance is not None:
+                    return output, identifier
         result = self.run_analysis(
             owner=owner, kind="forward", inputs={"reactants": reactants, "count": 10},
             execute=lambda: self.forward.predict(reactants=reactants, count=10),
@@ -60,6 +64,8 @@ class RouteVerifier:
         output = RankedResult.model_validate(result)
         if output.reactants != reactants:
             raise ValueError("Qualification result inputs changed")
+        if output.provenance is None:
+            raise NativeModelError("Original forward provenance was not recorded", 502, recoverable=False)
         cache.save(reactants, identifier)
         return output, identifier
 
@@ -111,16 +117,18 @@ class RouteVerifier:
                     ReferenceSearchInput(product=step.product, reactants=step.precursors, limit=10),
                     max_atoms=self.max_atoms,
                 )
-                top1 = matched
+                joint_top1 = matched
+                model_top1 = rank == 1 and score >= plausibility
                 recorded_process = recorded_reaction_support(evidence)
                 process_support = recorded_process if rank is not None and score >= plausibility else []
-                support = process_support if rank is not None and rank > 1 else []
+                support = process_support if rank is not None and not joint_top1 else []
                 matched = matched or bool(support)
                 forward.append({"step_id": step.step_id, "record_id": identifier, "expected_rank": rank,
                                 "model": output.model, "feasibility_score": score, "matched": matched,
-                                "model_top1_matched": top1,
-                                "support_kind": "model_top1" if top1 else "record_supported_model_candidate" if support else "unsupported",
-                                "record_support": support})
+                                "model_top1_matched": model_top1, "joint_top1_matched": joint_top1,
+                                "support_kind": "joint_ranked_top1" if joint_top1 else "record_supported_model_candidate" if support else "unsupported",
+                                "record_support": support,
+                                "rank_provenance": forward_rank_receipt(output, step.product, plausibility=plausibility)})
                 references.append({"step_id": step.step_id, **reference_evidence(evidence),
                                    "recorded_process_support": recorded_process})
                 operations.append(operation_record(step, screening, process_support))
@@ -137,10 +145,11 @@ class RouteVerifier:
             operation_passed = len(operations) == len(route.steps) and all(row["status"] != "evidence_required" for row in operations)
             passed = forward_passed and operation_passed
             review = {
-                "version": 3,
+                "version": 4,
                 "operations": operations_summary(operations, len(route.steps)),
                 "forward": {"matched_steps": sum(row["matched"] for row in forward),
                             "model_top1_matched_steps": sum(row.get("model_top1_matched", False) for row in forward),
+                            "joint_top1_matched_steps": sum(row.get("joint_top1_matched", False) for row in forward),
                             "record_supported_steps": sum(bool(row.get("record_support")) for row in forward),
                             "total_steps": len(route.steps), "records": forward},
                 "references": {"reaction_matched_steps": sum(row["reaction_count"] > 0 for row in references),
@@ -156,11 +165,11 @@ class RouteVerifier:
                 **route.metadata, "full_forward_prediction_validated": forward_passed,
                 "forward_validation_passed": forward_passed,
                 "operation_validation_passed": operation_passed,
-                "forward_validation_method": "graph2smiles_top1_or_record_supported_candidate"
+                "forward_validation_method": "joint_sequence_fast_filter_top1_or_record_supported_candidate"
                 if any(row.get("record_support") for row in forward)
-                else "native_template_or_exact_record_and_graph2smiles_top1"
+                else "native_template_or_exact_record_and_joint_sequence_fast_filter_top1"
                 if "exact_record_identity" in route.metadata.get("proposal_consistency_methods", [])
-                else "native_template_and_graph2smiles_top1",
+                else "native_template_and_joint_sequence_fast_filter_top1",
                 "automated_review": review,
                 "qualification_status": "qualified" if passed else (
                     "operation_evidence_required" if any(row["status"] == "evidence_required" for row in operations)

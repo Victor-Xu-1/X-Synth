@@ -1,8 +1,8 @@
 """Bounded native forward inference; scientific output stays typed and traceable."""
 
-import math
 import os
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from pathlib import Path
 from threading import BoundedSemaphore
 
@@ -11,7 +11,10 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from model_runtime import Graph2SmilesRuntime
-from packages.workspace.structure_validation import canonical_structure
+from packages.adapters.askcos.forward_provenance import build_native_result
+from packages.adapters.askcos.native_models import model_response_limit
+from packages.adapters.askcos.native_service_limits import bounded_response
+from packages.platform.performance import PerformanceBudget
 from packages.chemistry.forward_evaluation import validate_forward_input
 
 
@@ -44,7 +47,8 @@ def ready():
     runtime = getattr(app.state, "runtime", None)
     if runtime is None or not runtime.initialized:
         raise HTTPException(503, "Forward model is not loaded")
-    return {"status": "ready", "model": "graph2smiles_uspto_stereo", "asset_identity": runtime.identity}
+    return {"status": "ready", "model": "graph2smiles_uspto_stereo", "asset_identity": runtime.identity,
+            "provenance_version": 1}
 
 
 @app.post("/predict")
@@ -58,18 +62,12 @@ def predict(body: PredictBody):
     try:
         runtime = app.state.runtime
         output = runtime.predict(reactants)
-        products = []
-        for smiles, score in zip(output["products"], output["scores"], strict=True):
-            if not math.isfinite(score) or score > 0:
-                raise ValueError("Invalid model score")
-            try:
-                canonical = canonical_structure(smiles, max_atoms=300)[0]
-            except ValueError:
-                continue
-            if canonical not in {row["product"] for row in products}:
-                products.append({"product": canonical, "log_probability": score})
-        return {"reactants": reactants, "products": products,
-                "model": "graph2smiles_uspto_stereo", "asset_identity": runtime.identity,
-                "evidence_type": "model_prediction"}
+        result = build_native_result(
+            reactants=reactants, asset_identity=runtime.identity,
+            parameters=output["parameters"], hypotheses=output["hypotheses"],
+        ).model_dump(mode="json", exclude_none=True)
+        return bounded_response(result, budget=replace(
+            PerformanceBudget.from_environment(), response_bytes=model_response_limit("/predict"),
+        ))
     finally:
         guard.release()

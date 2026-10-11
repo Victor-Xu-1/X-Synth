@@ -5,7 +5,7 @@ from fastapi import HTTPException
 
 from packages.workspace.history_projection import historical_routes
 from packages.chemistry.material_scope import stored_route_scope_exclusions
-from packages.orchestrator.review_policy import FORWARD_REVIEW_POLICIES, OPERATION_REVIEW_POLICIES
+from packages.orchestrator.review_policy import FORWARD_REVIEW_POLICIES, OPERATION_REVIEW_POLICIES, ORIGINAL_RANK_REVIEW_POLICIES
 from packages.orchestrator.operation_review import operation_records_validated
 from packages.orchestrator.route_artifacts import RouteArtifactError, RouteArtifactStore
 from packages.orchestrator.delivery_review import history_delivery_review, with_delivery_review
@@ -143,6 +143,11 @@ def delivery_routes(selected, *, job=None, budget):
         not operation_records_validated(route) for route in projected
     ):
         raise HTTPException(409, "反应操作证据审查尚未完成，路线不能作为已核验结果发布。")
+    if isinstance(policy, str) and policy in ORIGINAL_RANK_REVIEW_POLICIES and any(
+        route["metadata"]["delivery_review"]["independent_review"].get("rank_basis") != "original_decoder_ordinal"
+        for route in projected
+    ):
+        raise HTTPException(409, "正向模型原始候选来源尚未核验，路线不能作为已核验结果发布。")
     if len(json.dumps(projected, ensure_ascii=False).encode("utf-8")) > budget.response_bytes:
         raise HTTPException(413, "Route data exceeds the response budget")
     return projected

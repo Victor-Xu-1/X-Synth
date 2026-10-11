@@ -2,6 +2,7 @@ import { defineComponent, ref } from "vue";
 import { mount } from "@vue/test-utils";
 import { API } from "@/common/api";
 import { useForwardPrediction } from "./useForwardPrediction";
+import { rankedForwardFixture, incompleteForwardFixture } from "@/common/forward-result.test-support";
 
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 const wrappers = [];
@@ -39,6 +40,47 @@ test("only explicit prediction uses the product endpoint, with no legacy backend
   expect(state.prediction.value.record_id).toBe("unit-forward-record");
   expect(state.results.value[0].log_probability).toBe(-1.2);
   expect(state.results.value[0].feasibility_score).toBe(0);
+});
+
+test("live predictions accept the full ledger while limiting only the displayed product slice", async () => {
+  const state = setup(), value = { ...rankedForwardFixture(5), record_id: "unit-forward-record" };
+  API.post.mockResolvedValue(value);
+  await state.predict();
+  expect(state.reportError).not.toHaveBeenCalled();
+  expect(state.results.value).toHaveLength(5);
+  expect(state.results.value[0]).toMatchObject({ decoder_rank: 2, native_rank: 2, joint_rank: 1 });
+  expect(state.prediction.value.provenance.decoder.hypotheses).toHaveLength(30);
+});
+
+test("live validation rejects a broken ledger outside the display slice rather than accepting a legacy result", async () => {
+  const state = setup(), value = rankedForwardFixture(5);
+  value.provenance.decisions.at(-1).joint_rank = 1;
+  API.post.mockResolvedValue(value);
+  await state.predict();
+  expect(state.reportError).toHaveBeenCalled();
+  expect(state.prediction.value).toBeNull();
+  expect(state.results.value).toEqual([]);
+});
+
+test("EOS live validation preserves an unfinished raw ledger row but never ranks it as a product", async () => {
+  const state = setup(), value = incompleteForwardFixture(5);
+  API.post.mockResolvedValue(value);
+  await state.predict();
+  expect(state.reportError).not.toHaveBeenCalled();
+  expect(state.results.value).toHaveLength(5);
+  expect(state.results.value.every((row) => row.decoder_rank !== 4)).toBe(true);
+  expect(state.prediction.value.provenance.decoder.hypotheses[3]).toMatchObject({
+    terminated_by_eos: false, decoded_token_count: 512, disposition: "incomplete_decoding", product: null, native_rank: null,
+  });
+});
+
+test("EOS live validation rejects a native candidate without recorded termination", async () => {
+  const state = setup(), value = rankedForwardFixture(5);
+  delete value.provenance.decoder.hypotheses[0].terminated_by_eos;
+  API.post.mockResolvedValue(value);
+  await state.predict();
+  expect(state.reportError).toHaveBeenCalled();
+  expect(state.prediction.value).toBeNull();
 });
 test.each([1, "10"])("accepts count boundary %s and honest empty candidates", async (count) => {
   const state = setup();

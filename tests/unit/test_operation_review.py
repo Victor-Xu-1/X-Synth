@@ -93,7 +93,7 @@ def current_review(route):
     return route
 
 
-@pytest.mark.parametrize("policy", ["exact_stock_graph2smiles_operation_evidence_v5", REVIEW_POLICY])
+@pytest.mark.parametrize("policy", ["exact_stock_graph2smiles_operation_evidence_v5", "exact_stock_graph2smiles_strategy_evidence_v6"])
 def test_current_real_forward_receipt_requires_operation_ledger_not_a_boolean(reviewed, policy):
     route = current_review(reviewed)
     assert operation_records_validated(route)

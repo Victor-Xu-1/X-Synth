@@ -10,6 +10,7 @@ from packages.workspace.analysis_execution import analysis_runner
 from apps.api.job_views import selected_route_data
 from packages.adapters.askcos.engine import build_search_options
 from packages.adapters.askcos.forward import ForwardAdapter, RankedResult
+from packages.adapters.askcos.native_models import NativeModelError
 from packages.adapters.askcos.transport import EngineUnavailable
 from packages.orchestrator.review_policy import (
     PREVIOUS_REVIEW_POLICY, REVIEW_POLICY, upgrade_review_checkpoint,
@@ -32,14 +33,14 @@ def captured():
     return RankedResult.model_validate(value["result"])
 
 
-def test_independent_rank_and_threshold_use_the_actual_model_result(captured):
-    rank, score, accepted = forward_match(captured, captured.products[0].product, .75)
-    assert rank == 1 and score > .99 and accepted is True
-    assert forward_match(captured, captured.products[1].product, .75)[2] is False
-    assert forward_match(captured, "CCO", .75) == (None, None, False)
+def test_legacy_real_model_result_does_not_invent_original_decoder_rank(captured):
+    assert captured.products[0].feasibility_score > .99
+    assert captured.provenance is None
+    with pytest.raises(ValueError, match="provenance"):
+        forward_match(captured, captured.products[0].product, .75)
 
 
-def test_completed_owned_records_resume_without_a_provider(captured, tmp_path):
+def test_legacy_owned_record_is_preserved_but_current_qualification_requires_a_provider(captured, tmp_path):
     analyses = AnalysisRepository(tmp_path / "analyses.sqlite")
     inputs = {"reactants": captured.reactants, "count": 10}
     identifier = analyses.start("owner", "forward", inputs)
@@ -53,8 +54,10 @@ def test_completed_owned_records_resume_without_a_provider(captured, tmp_path):
         analyses=analyses, run_analysis=analysis_runner(analyses), references=None,
         epoch=lambda: "a" * 64, max_atoms=300,
     )
-    output, record = verifier.prediction(captured.reactants, "owner", restored)
-    assert output == captured and record == identifier
+    verifier.forward.model.timeout = .1
+    with pytest.raises(NativeModelError):
+        verifier.prediction(captured.reactants, "owner", restored)
+    assert analyses.get(identifier, "owner")["result"] == captured.model_dump(mode="json")
     assert VerificationCache(path, "other_owner", "a" * 64).records == {}
     assert VerificationCache(path, "owner", "b" * 64).records == {}
     assert VerificationCache(path, "owner", "unmanaged:one").records == {}
@@ -134,7 +137,7 @@ def test_interruption_is_checked_at_the_publication_boundary(tmp_path):
     assert not (tmp_path / "summary.json").exists()
 
 
-def test_complete_qualification_replays_real_prediction_and_real_public_sqlite(captured, tmp_path):
+def test_legacy_real_inference_and_real_ord_cannot_silently_qualify_current_rank_policy(captured, tmp_path):
     from datetime import UTC, datetime
     from packages.adapters.askcos.references import canonical_reference_query
     from packages.knowledge_base.reaction_library import ReactionLibrary, compile_reaction_library
@@ -170,12 +173,8 @@ def test_complete_qualification_replays_real_prediction_and_real_public_sqlite(c
     verifier = RouteVerifier(forward=ForwardAdapter("http://127.0.0.1:1", "http://127.0.0.1:1"),
         analyses=analyses, run_analysis=analysis_runner(analyses), references=LocalReferences(),
         epoch=lambda: "a" * 64, max_atoms=300)
-    result = verifier.review(report, owner="owner", minimum=1, maximum=3, plausibility=.75,
-        directory=tmp_path, interrupted=lambda: False, progress=lambda value: None)
-    assert len(result.selected_routes) == 1
-    assert result.summary["verification_budget"]["routes_checked"] == 1
-    selected = result.selected_routes[0]
-    assert selected.metadata["qualification_status"] == "qualified"
-    assert selected.metadata["automated_review"]["forward"]["records"][0]["record_id"] == identifier
-    # A genuine but unrelated ORD entry is not literature for this step.
-    assert selected.metadata["automated_review"]["references"]["unmatched_steps"] == 1
+    verifier.forward.model.timeout = .1
+    with pytest.raises(EngineUnavailable, match="route_verification_provider_unavailable"):
+        verifier.review(report, owner="owner", minimum=1, maximum=3, plausibility=.75,
+            directory=tmp_path, interrupted=lambda: False, progress=lambda value: None)
+    assert analyses.get(identifier, "owner")["result"] == captured.model_dump(mode="json")

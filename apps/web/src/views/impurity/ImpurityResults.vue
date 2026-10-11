@@ -20,6 +20,7 @@
       <dt>{{ $tr('原生算法') }}</dt><dd>{{ $tr('ASKCOS 五模式（MIT）') }}</dd><dt>{{ $tr('原生算法 SHA256') }}</dt><dd>{{ result.provenance.algorithm_source_sha256 }}</dd>
       <dt>{{ $tr('集成源码 SHA256') }}</dt><dd>{{ result.provenance.integration_source_sha256 }}</dd><dt>{{ $tr('正向模型') }}</dt><dd>{{ result.provenance.forward_model }}</dd>
       <dt>{{ $tr('正向资产 SHA256') }}</dt><dd>{{ result.provenance.forward_asset_identity }}</dd><dt>{{ $tr('FF 模型') }}</dt><dd>{{ result.provenance.fast_filter_model }}</dd>
+      <dt>{{ $tr('FF 资产') }}</dt><dd>{{ result.provenance.fast_filter_asset_identity ?? $tr('未记录') }}</dd>
       <dt>{{ $tr('原子映射') }}</dt><dd>{{ result.provenance.mapper_model }} · {{ result.provenance.mapper_package_version }} · {{ result.provenance.mapper_license }}</dd>
       <dt>{{ $tr('映射资产 SHA256') }}</dt><dd>{{ result.provenance.mapper_asset_identity }}</dd><dt>{{ $tr('实际调用') }}</dt><dd>{{ $tr('正向 {forward} · 映射 {mapping} · 模式不匹配 {rejected}', { forward: result.execution.forward_calls, mapping: result.execution.mapping_calls, rejected: result.execution.mapping_rejected }) }}</dd>
       <dt>{{ $tr('排序启发式') }}</dt><dd>{{ result.provenance.ranking_strategy || $tr('历史版本：结构相似度主排序') }}</dd>
