@@ -33,6 +33,7 @@ export default [
   ["测量方法未记录", "Measurement method not recorded"], ["分析记录未关联", "Analysis record not linked"],
   ["分析方法未记录", "Analysis method not recorded"], ["分离产品", "Isolated product"],
   ["原文提取收率", "Yield extracted from source text"], ["计算收率字段", "Calculated yield field"],
+  ["原文记录，未作数值解析", "Reported text; not numerically interpreted"],
   ["ORD 原始收率字段", "Original ORD yield field"],
   ["目录基准 · 币种未标注", "Catalogue basis · Currency not specified"], ["价格依据", "Price basis"],
   ["原始字段", "Original field"], ["币种 ISO", "ISO currency"], ["未标注", "Not specified"],

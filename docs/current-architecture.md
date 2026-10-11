@@ -217,6 +217,10 @@ governance. See [version operations](operations.md#版本管理).
   exports consume that same receipt. Source copies retain server-owned receipts
   only while chemical signatures are unchanged; layout-only edits preserve them,
   chemistry edits invalidate them, and external imports cannot create them.
+  PNG resource caching retains the full drawing URL, including chemical identity
+  and rendering options in its query. Repeated captures cannot reuse a different
+  compound merely because it shares the same drawing endpoint; cache-busting a
+  path-only key is not an identity check.
 - Search and final closure must use the same immutable stock snapshot. Snapshot
   identity is retained in the checkpoint and delivered result.
 - A CID, CAS, supplier name or Mongo internal ID alone is not commercial evidence.
@@ -380,6 +384,9 @@ governance. See [version operations](operations.md#版本管理).
   truncation. Returned no-match is not proof of absent literature. Reactant/product
   identity excludes agents, conditions and outcomes; recorded conditions/yields
   are counted only for that identity and are not copied onto a predicted step.
+  Text-only reported yield is shown verbatim with an explicit unparsed qualifier,
+  not converted to a number, given an inferred unit or replaced by a no-record
+  label. Numeric zero, unknown units and original source fields remain distinct.
 - CPU-heavy route review runs in one owned, cancellable child process. Cancellation
   interrupts that child without a chemistry time limit or signalling unrelated
   processes; API handling and task observation remain available.

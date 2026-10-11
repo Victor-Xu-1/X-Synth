@@ -9,6 +9,15 @@ const additions = [
   ["目录记录不代表实时供货、纯度或实验可用性。", "Catalogue records do not establish live supply, purity or experimental usability."],
 ];
 
+test("source-only yield qualifier follows UI language without changing raw reported text", () => {
+  const key = "原文记录，未作数值解析";
+  initializeLocale(null);
+  expect(uiText(key)).toBe("Reported text; not numerically interpreted");
+  expect(uiText("70-80%\r\nsource prose")).toBe("70-80%\r\nsource prose");
+  setLocale("zh-CN", { persist: false });
+  expect(uiText(key)).toBe(key);
+});
+
 test("procurement additions belong to the existing evidence catalog and reuse the existing form labels", () => {
   const messages = buildCatalog([reader, evidence]);
   for (const pair of additions) {

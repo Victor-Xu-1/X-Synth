@@ -56,7 +56,12 @@ export function referenceRecordEvidence(row) {
   }[row.provenance.evidence_type] || "来源记录");
 }
 
+export function referenceYieldTextOnly(measurement) {
+  return measurement.value === null && typeof measurement.text === "string" && !!measurement.text.trim();
+}
+
 export function referenceYieldValue(measurement) {
+  if (referenceYieldTextOnly(measurement)) return measurement.text;
   if (!Number.isFinite(measurement.value)) return uiText("未记录");
   const value = measurement.method === "ord_product_measurement"
     ? recordedNumber(measurement.value) : recordedValue(measurement.value);

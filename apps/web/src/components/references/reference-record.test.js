@@ -9,6 +9,7 @@ import {
   referenceYieldProduct,
   referenceYieldValue,
   referenceYieldAnalysisLabel,
+  referenceYieldTextOnly,
 } from "./reference-record";
 import { initializeLocale, setLocale } from "@/i18n";
 
@@ -19,7 +20,45 @@ test.each([
   [65.38999938964844, "%", "ord_product_measurement", "65.39 %"],
   [0.01, "%", "calculated_yield", "0.01 %"],
 ])("yield formatting keeps numeric and unknown states: %s %s", (value, unit, method, expected) => {
-  expect(referenceYieldValue({ value, unit, method, text: "not a numeric authority" })).toBe(expected);
+  expect(referenceYieldValue({ value, unit, method, text: value === null ? "" : "not a numeric authority" })).toBe(expected);
+});
+
+test.each([
+  ["text_mined_yield", " 70-80 \r\n"],
+  ["text_mined_yield", "85"],
+  ["calculated_yield", "0"],
+  ["calculated_yield", "approximately 85%"],
+  ["ord_product_measurement", '{"type":"YIELD","string_value":"trace"}'],
+])("text-only yield keeps the exact %s source string without parsing or adding units", (method, text) => {
+  const measurement = Object.freeze({ value: null, unit: null, method, text });
+  expect(referenceYieldTextOnly(measurement)).toBe(true);
+  expect(referenceYieldValue(measurement)).toBe(text);
+});
+
+test.each([undefined, null, "", " \r\n\t"])("absent source text remains unknown: %s", text => {
+  const measurement = { value: null, unit: null, method: "text_mined_yield", text };
+  expect(referenceYieldTextOnly(measurement)).toBe(false);
+  expect(referenceYieldValue(measurement)).toBe("未记录");
+});
+
+test.each([undefined, NaN, Infinity, "85"])("invalid numeric fields do not gain a text-only interpretation: %s", value => {
+  const measurement = { value, unit: null, method: "text_mined_yield", text: "85%" };
+  expect(referenceYieldTextOnly(measurement)).toBe(false);
+  expect(referenceYieldValue(measurement)).toBe("未记录");
+});
+
+test("numeric zero stays numeric even when the preserved source text differs", () => {
+  const measurement = Object.freeze({ value: 0, unit: null, method: "text_mined_yield", text: "85%" });
+  expect(referenceYieldTextOnly(measurement)).toBe(false);
+  expect(referenceYieldValue(measurement)).toBe("0 单位未记录");
+});
+
+test("text-only yield remains literal across languages, including text that matches a UI key", () => {
+  const measurement = Object.freeze({ value: null, unit: "%", method: "text_mined_yield", text: "未记录" });
+  initializeLocale(null);
+  expect(referenceYieldValue(measurement)).toBe("未记录");
+  setLocale("zh-CN", { persist: false });
+  expect(referenceYieldValue(measurement)).toBe("未记录");
 });
 
 test("known quantity and analysis states translate without translating raw details, types or source prose", () => {

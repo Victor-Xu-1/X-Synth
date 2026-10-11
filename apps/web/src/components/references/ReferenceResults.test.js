@@ -357,7 +357,7 @@ test("selected-record detail retains all deposited materials, procedure and sour
   links.forEach((link) => expect(link.attributes("rel")).toBe("noopener noreferrer"));
 });
 
-test("comparison caps repeated measurements without losing zero, unknown, or full detail", async () => {
+test("comparison caps repeated measurements without losing zero, source text, or full detail", async () => {
   const record = clone(deposited);
   record.reported_yields = [0, null, 82, 90].map((value, index) => ({
     ...record.reported_yields[0], value, text: `measurement-${index}`,
@@ -371,8 +371,8 @@ test("comparison caps repeated measurements without losing zero, unknown, or ful
   const wrapper = setup(packet([record]));
   const row = wrapper.get('[data-cy="reference-row"]');
   expect(row.findAll(".reference-yield")).toHaveLength(2);
-  expect(row.text()).toContain("0 %");
-  expect(row.text()).toContain("未记录");
+  expect(row.findAll(".reference-yield strong").map(item => item.text())).toEqual(["0 %", "measurement-1"]);
+  expect(row.text()).toContain("原文记录，未作数值解析");
   expect(row.text()).not.toContain("82 %");
   expect(row.text()).toContain("另 2 项");
   expect(row.text()).toContain("加料时间点 0 min");

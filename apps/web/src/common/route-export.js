@@ -108,6 +108,7 @@ export async function routeImage(surface, graph, deliveryReview = null, { isCurr
   if (bounds.height + headerHeight > 8192 || bounds.width * (bounds.height + headerHeight) > 16_000_000)
     throw new RouteExportError("路线图超出图像导出尺寸，请使用路线 JSON。");
   const diagram = await toPng(viewport, {
+    includeQueryParams: true,
     backgroundColor: background,
     width: bounds.width,
     height: bounds.height,
