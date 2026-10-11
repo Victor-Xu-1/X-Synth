@@ -17,6 +17,7 @@ import {
 import { querySeed } from "./workbench-model";
 import { buildUnifiedRouteRequestBody } from "./unified-route";
 import { setLocale } from "@/i18n";
+import { deliveryReviewGrade, taskDeliveryReview } from "./delivery-review";
 
 const row = {
   result_id: "history-task",
@@ -97,6 +98,96 @@ test("a list refresh preserves fetched settings and follows the real status", ()
   expect(updated.settings).toEqual(settings);
   expect(updated.result_id).toBe(row.result_id);
   expect(taskEndedAt(updated)).toBe(updated.modified);
+});
+
+function reviewSummary(checked = true) {
+  return {
+    selected_route_count: checked ? 3 : 0,
+    delivery_review: {
+      version: 1, phase: "automated_review", basis: "stored_summary",
+      grade: checked ? "model_checked" : "not_independently_reviewed",
+      independent_review: checked ? {
+        status: "checked", selected_routes: 3, accepted_routes: 5,
+        review_policy: "exact_stock_graph2smiles_pinned_record_family_queue_v4",
+      } : { status: "missing" },
+      purchase_identity: {
+        policy: "defined_purchase_identity_v1", status: "unknown", unresolved_materials: [],
+      },
+    },
+  };
+}
+const taskGrade = (task) => deliveryReviewGrade(taskDeliveryReview(task));
+const summaryResponses = [
+  ["status", (summary) => ({ summary })],
+  ["history", (summary) => ({ unified_route_pool_summary: summary })],
+  ["route pool", (summary) => ({ result: { unified_route_pool: { summary } } })],
+  ["result stats", (summary) => ({ result: { stats: summary } })],
+];
+
+test("status response followed by history refresh preserves one real review summary", () => {
+  const summary = reviewSummary();
+  const history = { ...row, revision: 8, history_revision: 3, unified_route_pool_summary: summary };
+  const before = JSON.stringify(history);
+  const info = normalizeTaskInfo(history, { job_id: row.result_id, revision: 8, summary, settings });
+  const updated = normalizeTaskInfo(info, history);
+  expect(taskGrade(info)).toBe("model_checked");
+  expect(taskGrade(updated)).toBe("model_checked");
+  expect(updated.summary).toBe(summary);
+  expect(updated.unified_route_pool_summary).toBe(updated.summary);
+  expect(updated.settings).toEqual(settings);
+  expect(JSON.stringify(history)).toBe(before);
+});
+
+test.each(summaryResponses)("a changed %s summary replaces the prior grade and count", (_, response) => {
+  for (const checked of [false, true]) {
+    const previous = reviewSummary(!checked), incoming = reviewSummary(checked);
+    const task = { ...row, revision: 8, summary: previous, unified_route_pool_summary: previous };
+    const updated = normalizeTaskInfo(task, { revision: 9, ...response(incoming) });
+    expect(taskGrade(updated)).toBe(checked ? "model_checked" : "not_independently_reviewed");
+    expect(updated.summary).toBe(incoming);
+    expect(updated.unified_route_pool_summary).toBe(incoming);
+    expect(updated.num_trees).toBe(checked ? 3 : 0);
+    expect(taskGrade(task)).toBe(checked ? "not_independently_reviewed" : "model_checked");
+  }
+});
+
+test.each(summaryResponses)("invalid current %s summaries never restore an older valid receipt", (_, response) => {
+  const previous = reviewSummary();
+  const task = { ...row, revision: 8, summary: previous, unified_route_pool_summary: previous };
+  for (const incoming of [null, false, [], "invalid", {}, { delivery_review: null },
+    { delivery_review: { ...previous.delivery_review, independent_review: { status: "checked" } } }]) {
+    const updated = normalizeTaskInfo(task, { revision: 9, ...response(incoming) });
+    expect(taskGrade(updated)).toBe("not_independently_reviewed");
+    expect(updated.unified_route_pool_summary).toBe(updated.summary);
+    expect(updated.summary).not.toBe(previous);
+  }
+});
+
+test("an explicit invalid route-pool summary cannot borrow a competing valid stats or status summary", () => {
+  const previous = reviewSummary();
+  const updated = normalizeTaskInfo({ ...row, summary: previous }, {
+    summary: previous, result: { unified_route_pool: { summary: null }, stats: previous },
+  });
+  expect(taskGrade(updated)).toBe("not_independently_reviewed");
+  expect(updated.summary).toEqual({});
+  expect(updated.unified_route_pool_summary).toBe(updated.summary);
+});
+
+test("metadata-only patches preserve the review authority, while stale execution summaries cannot replace it", () => {
+  const summary = reviewSummary();
+  const task = { ...row, revision: 8, history_revision: 3, num_trees: 8, unified_route_pool_summary: summary };
+  const updated = normalizeTaskInfo(task, { description: "Renamed task", history_revision: 4, archived: true });
+  expect(taskGrade(updated)).toBe("model_checked");
+  expect(updated.summary).toBe(summary);
+  expect(updated.unified_route_pool_summary).toBe(summary);
+  expect(updated.num_trees).toBe(8);
+  const stale = normalizeTaskInfo(updated, {
+    revision: 7, history_revision: 5, description: "Newer title", summary: reviewSummary(false),
+  });
+  expect(taskGrade(stale)).toBe("model_checked");
+  expect(stale.summary).toBe(summary);
+  expect(stale.unified_route_pool_summary).toBe(summary);
+  expect(stale.description).toBe("Newer title");
 });
 
 test("a late retrieve snapshot cannot roll back a newer polled status or end time", () => {
