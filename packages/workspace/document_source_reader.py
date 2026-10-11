@@ -1,5 +1,6 @@
 """Single admitted, cancellable source read, independent of route inference."""
 
+import logging
 from time import monotonic
 
 from packages.adapters.askcos.transport import EngineUnavailable
@@ -57,6 +58,7 @@ class DocumentSourceReader:
                 raise EngineUnavailable("review_interrupted", recoverable=True)
             return result
         except EngineUnavailable as exc:
+            logging.getLogger(__name__).warning("document_source_read_failed:%s", exc.code)
             if exc.code == "review_busy":
                 code = "document_source_busy"
             elif monotonic() >= deadline:
