@@ -5,6 +5,7 @@ from collections import defaultdict, deque
 from packages.validation.route_quality import RouteQualityPolicy
 from packages.validation.route_topology import route_signature, topology_reasons
 from packages.route_pool.strategy import potential_shortcut
+from .operation_review import operation_rejection_ids
 
 
 def family_key(route):
@@ -52,11 +53,18 @@ class QualificationQueue:
 
 
 def rejected_reactions(routes):
-    """Ban only actual model mismatches, not unsupported inputs or missing providers."""
+    """Avoid reviewed failures in this job's repair, never blacklist chemistry.
+
+    Unsupported inputs and missing providers cannot create search exclusions.
+    """
     reactions = set()
     for route in routes:
-        records = route.metadata.get("automated_review", {}).get("forward", {}).get("records", [])
+        review = route.metadata.get("automated_review", {})
+        records = review.get("forward", {}).get("records", [])
+        checked = {row["step_id"] for row in records if type(row.get("matched")) is bool
+                   and isinstance(row.get("record_id"), str) and row["record_id"] and not row.get("reason")}
         failed = {row["step_id"] for row in records if row.get("matched") is False
                   and row.get("record_id") and not row.get("reason")}
+        failed.update(operation_rejection_ids(route.steps, review) & checked)
         reactions.update(step.reaction_smiles for step in route.steps if step.step_id in failed)
     return sorted(reactions)

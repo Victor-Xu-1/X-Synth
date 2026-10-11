@@ -2,11 +2,16 @@
 
 from dataclasses import replace
 
+import pytest
+
+from packages.orchestrator.operation_review import operation_record, operations_summary
 from packages.orchestrator.qualification_queue import QualificationQueue, rejected_reactions
 from packages.route_pool.pool import UnifiedRoutePool
 from packages.route_pool.workflow import build_route_pool_result
 from packages.route_schema.route_schema import RouteCandidate, RouteStep
 from packages.validation.route_quality import RouteQualityPolicy
+from packages.validation.reaction_operations import screen_step_operations
+from test_reaction_operations import REDUCTIVE_COUPLING, step
 
 
 def candidate(index, family="one", precursor=None):
@@ -51,6 +56,58 @@ def test_unsupported_inputs_are_not_global_chemical_bans():
                 {**mismatch, "reason": "unsupported_forward_input"},
                 {**mismatch, "matched": True}):
         assert rejected_reactions([reviewed(row)]) == []
+
+
+def operation_reviewed_candidate(version=4):
+    # Real RDChiral screening; the record pointer is a feedback-boundary control,
+    # not simulated inference or experimental evidence for this transformation.
+    source = step(REDUCTIVE_COUPLING)
+    screen = screen_step_operations(source)
+    assert screen["status"] == "evidence_required"
+    review = {"version": version, "forward": {"records": [
+        {"step_id": source.step_id, "matched": True, "record_id": "a" * 32}
+    ]}, "operations": operations_summary([operation_record(source, screen, [])], 1)}
+    return RouteCandidate(
+        "compound", "askcos_mcts", source.product, [source], source.precursors,
+        closed=True, metadata={"automated_review": review,
+                               "qualification_status": "operation_evidence_required"},
+    )
+
+
+@pytest.mark.parametrize("version", [3, 4])
+def test_reviewed_compound_operation_reaches_current_job_repair_even_after_model_match(version):
+    route = operation_reviewed_candidate(version)
+    assert rejected_reactions([route]) == [route.steps[0].reaction_smiles]
+
+
+@pytest.mark.parametrize("tamper", ["missing_record", "boolean_record", "missing_match", "unsupported_input", "template_hash", "witness_hash",
+                                   "wrong_step", "duplicate", "policy", "unreviewed", "status", "bool_center"])
+def test_only_actual_step_bound_operation_failure_creates_repair_feedback(tamper):
+    route = operation_reviewed_candidate()
+    review = route.metadata["automated_review"]
+    row = review["operations"]["records"][0]
+    if tamper == "missing_record": review["forward"]["records"][0]["record_id"] = None
+    elif tamper == "boolean_record": review["forward"]["records"][0]["record_id"] = True
+    elif tamper == "missing_match": del review["forward"]["records"][0]["matched"]
+    elif tamper == "unsupported_input": review["forward"]["records"][0]["reason"] = "unsupported_forward_input"
+    elif tamper == "template_hash": row["template_sha256"] = ["b" * 64]
+    elif tamper == "witness_hash": row["witness_sha256"] = ["b" * 64]
+    elif tamper == "wrong_step": row["step_id"] = "not-this-step"
+    elif tamper == "duplicate": review["operations"]["records"].append(row)
+    elif tamper == "policy": review["operations"]["policy"] = "unknown"
+    elif tamper == "unreviewed": review["version"] = 2
+    elif tamper == "status": row["status"] = "not_assessed"
+    elif tamper == "bool_center": row["center_count"] = True
+    assert rejected_reactions([route]) == []
+
+
+def test_repair_feedback_keeps_valid_alternatives_and_original_review_data():
+    from copy import deepcopy
+    route = operation_reviewed_candidate()
+    original = deepcopy(route)
+    ordinary = candidate(1)
+    assert rejected_reactions([ordinary, route, route]) == [route.steps[0].reaction_smiles]
+    assert route == original
 
 
 def test_pending_is_not_a_failed_scientific_result():

@@ -28,10 +28,15 @@ def _step(raw):
     return RouteStep(**{key: raw[key] for key in RouteStep.__dataclass_fields__ if key in raw})
 
 
+def _screening_bound(row, screen, step):
+    return (isinstance(row, dict) and type(row.get("center_count")) is int
+            and row.get("step_id") == step.step_id and all(
+                row.get(key) == screen[key]
+                for key in ("policy", "reasons", "center_count", "template_sha256", "witness_sha256")))
+
+
 def _valid_record(row, screen, step, reference):
-    if not isinstance(row, dict) or type(row.get("center_count")) is not int or row.get("step_id") != step.step_id or any(
-        row.get(key) != screen[key] for key in ("policy", "reasons", "center_count", "template_sha256", "witness_sha256")
-    ):
+    if not _screening_bound(row, screen, step):
         return False
     if screen["status"] == "evidence_required":
         try:
@@ -46,6 +51,30 @@ def _records(value):
         return {}
     records = {row["step_id"]: row for row in value}
     return records if len(records) == len(value) else {}
+
+
+def operation_rejection_ids(steps, review):
+    """Return actual reviewed evidence gaps for this job's next search only.
+
+    Recompute the same witness binding used for approval. A raw risk flag,
+    malformed ledger or unreviewed step is not a chemical blacklist.
+    """
+    if (not isinstance(review, dict) or type(review.get("version")) is not int
+            or review["version"] not in {3, 4}):
+        return set()
+    ledger = review.get("operations")
+    if not isinstance(ledger, dict) or ledger.get("policy") != POLICY:
+        return set()
+    records = _records(ledger.get("records"))
+    rejected = set()
+    for step in steps:
+        row = records.get(step.step_id)
+        if not row or row.get("status") != "evidence_required" or row.get("record_support") != []:
+            continue
+        screen = screen_step_operations(step)
+        if screen["status"] == "evidence_required" and _screening_bound(row, screen, step):
+            rejected.add(step.step_id)
+    return rejected
 
 
 def forward_support_bound(proofs, raw_step, review):
