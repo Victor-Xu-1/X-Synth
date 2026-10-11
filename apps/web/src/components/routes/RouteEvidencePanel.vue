@@ -20,7 +20,7 @@
         {{ $tr(link.label) }} · {{ link.value }}
       </a>
       <details v-if="datasetMetadata.length" class="dataset-details">
-        <summary>{{ $tr('元数据') }}</summary>
+        <summary>{{ $tr('技术详情') }}</summary>
         <dl class="evidence-facts">
           <template v-for="field in datasetMetadata" :key="field.label">
             <dt>{{ $tr(field.label) }}</dt><dd>{{ field.value }}</dd>

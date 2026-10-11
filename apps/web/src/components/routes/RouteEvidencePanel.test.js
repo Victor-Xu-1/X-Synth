@@ -26,6 +26,7 @@ test("reader-fix saved dataset attribution is readable without opening raw JSON 
   expect(section.text()).toContain("Saved dataset provenance");
   expect(section.text()).toContain("not a publication match, conditions or yield for this target reaction");
   expect(section.get('a').text()).toContain("Dataset citation");
+  expect(section.get('.dataset-details > summary').text()).toBe("Technical details");
   expect(JSON.stringify(step)).toBe(before);
   wrapper.unmount();
 });
