@@ -3,7 +3,9 @@
 import json
 from copy import deepcopy
 from dataclasses import asdict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from time import monotonic, sleep
 
 import pytest
 
@@ -193,3 +195,39 @@ def test_spawn_read_cancellation_timeout_and_close_release_resources(evidence):
 def test_source_read_limits_are_finite_and_positive(seconds):
     with pytest.raises(ValueError):
         DocumentSourceLimits(read_seconds=seconds)
+
+
+def test_current_source_pointer_switch_during_real_worker_cannot_return_old_publication(evidence):
+    jobs, job = evidence["jobs"], evidence["job"]
+    for status in ("preparing", "searching", "evaluating"):
+        job = jobs.transition(job["id"], status, expected_revision=job["revision"])
+    pointer, pinned_context = seal(evidence)
+    store = RouteArtifactStore(evidence["root"])
+    _, summary = store.read_publication(job["id"], pointer, target_smiles=job["request"]["smiles"], limit=LIMIT)
+    job = jobs.transition(job["id"], "evaluating", expected_revision=job["revision"], summary=summary,
+                          checkpoint={"result_artifact_schema": 1, "published_result": pointer})
+    later_routes = deepcopy(evidence["routes"])
+    later_routes[0]["route_id"] = "askcos_retro_star:new-publication"
+    later_summary = {**summary, "label": "Later publication"}
+    later_pointer = store.stage(job["id"], all_routes=later_routes, selected_routes=later_routes, summary=later_summary)
+    reader = DocumentSourceReader(documents=evidence["documents"], repository=jobs,
+                                  artifacts=evidence["root"], budget=PerformanceBudget())
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pending = pool.submit(reader.read, evidence["document"]["id"], "chemist", cancelled=lambda: False)
+            deadline = monotonic() + 3
+            while monotonic() < deadline:
+                with reader.executor._lock:
+                    if reader.executor._process is not None and reader.executor._process.pid is not None:
+                        break
+                sleep(0.001)
+            else:
+                pytest.fail("Source child did not start")
+            jobs.transition(job["id"], "evaluating", expected_revision=job["revision"], summary=later_summary,
+                            checkpoint={"result_artifact_schema": 1, "published_result": later_pointer})
+            result = pending.result(timeout=5)
+        assert result["status"] == "unavailable" and result["reason"] == "source_publication_changed"
+        pinned = reader.read(pinned_context["document"]["id"], "chemist", cancelled=lambda: False)
+        assert pinned["status"] == "available" and pinned["binding"]["result_snapshot"] == pointer["snapshot_id"]
+    finally:
+        reader.close()

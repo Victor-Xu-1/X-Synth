@@ -134,6 +134,8 @@ def document_router(*, documents, repository, transport, artifacts, budget, sour
             raise HTTPException(503, {"code": exc.code}) from exc
         finally:
             cancelled.set()
+            # ASGI cancellation may occur before the request can await the worker.
+            task.add_done_callback(lambda done: None if done.cancelled() else done.exception())
 
     @router.put("/{identifier}")
     def update_document(
