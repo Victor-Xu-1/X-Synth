@@ -24,5 +24,11 @@ export function bindKetcherDialogAccess(doc) {
   observer.observe(doc.body, { childList: true, subtree: true });
   const stop = watch(locale, apply, { flush: "sync" });
   apply();
-  return () => { observer.disconnect(); stop(); };
+  let active = true;
+  function release() {
+    if (!active) return;
+    active = false; observer.disconnect(); stop(); doc.defaultView?.removeEventListener("pagehide", release);
+  }
+  doc.defaultView?.addEventListener("pagehide", release, { once: true });
+  return release;
 }
