@@ -78,6 +78,7 @@
         :node="node"
         :graph="graph"
         :step="step"
+        :automated-review="automatedReview"
         :snapshot="snapshot"
         @navigate="$emit('navigate')"
       />
@@ -133,6 +134,7 @@ const props = defineProps({
   generatedStepLabels: Boolean,
   displayStepNumber: Number,
   deliveryReview: Object,
+  automatedReview: Object,
 });
 const emit = defineEmits(["update", "pending", "close", "remove", "navigate", "draft-change", "discard"]);
 const structureInput = ref(null);
@@ -141,9 +143,12 @@ const label = ref(""),
   note = ref(""),
   busy = ref(false),
   message = ref("");
-const draftEpoch = ref(0);
+const draftEpoch = ref(0), resettingDraft = ref(false);
 const draftDirty = computed(() => !!props.node && (
   label.value !== (props.node.label || "") || smiles.value !== (props.node.smiles || "") || note.value !== (props.node.note || "")
+));
+const chemistryDirty = computed(() => !resettingDraft.value && props.editable && props.node?.type === "molecule" && (
+  smiles.value !== (props.node.smiles || "") || Boolean(structureInput.value?.hasUnconfirmedDraft)
 ));
 const headerStepNumber = computed(() => props.node?.type === "reaction" &&
   Number.isInteger(props.displayStepNumber) && props.displayStepNumber > 0 ? props.displayStepNumber : null);
@@ -156,10 +161,14 @@ watch(pending, (value) => emit("pending", value), { flush: "sync" });
 function resetDraft() {
   generation++;
   busy.value = false;
-  label.value = props.node?.label || "";
-  smiles.value = props.node?.smiles || "";
-  note.value = props.node?.note || "";
-  message.value = "";
+  // Selecting another node is not a user chemistry edit.
+  resettingDraft.value = true;
+  try {
+    label.value = props.node?.label || "";
+    smiles.value = props.node?.smiles || "";
+    note.value = props.node?.note || "";
+    message.value = "";
+  } finally { resettingDraft.value = false; }
 }
 function discardDraft() {
   if (pending.value) return false;
@@ -179,9 +188,10 @@ watch(
   resetDraft,
   { immediate: true, flush: "sync" },
 );
-watch([() => props.contextId, () => props.node?.id, draftDirty, label, smiles, note], () => {
+watch([() => props.contextId, () => props.node?.id, draftDirty, chemistryDirty, label, smiles, note], () => {
   if (!disposed) emit("draft-change", {
-    contextId: props.contextId, nodeId: props.node?.id, dirty: draftDirty.value, revision: ++draftRevision,
+    contextId: props.contextId, nodeId: props.node?.id, dirty: draftDirty.value,
+    chemistryDirty: chemistryDirty.value, revision: ++draftRevision,
   });
 }, { immediate: true, flush: "sync" });
 watch(

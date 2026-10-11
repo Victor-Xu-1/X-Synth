@@ -93,7 +93,7 @@ export function documentStateLabel(document, graph) {
   if (document.state !== "source_copy") return "来源状态未记录";
   return sourceChemistryUnchanged(document, graph) ? "计算结果副本" : "草稿";
 }
-function sourceChemistryUnchanged(document, graph) {
+export function sourceChemistryUnchanged(document, graph) {
   if (document?.state !== "source_copy") return false;
   const original = chemistry(document.graph);
   return Boolean(original) && original === chemistry(graph);

@@ -6,17 +6,22 @@ import { resolve } from "node:path";
 import { parse } from "@vue/compiler-sfc";
 import postcss from "postcss";
 import { ref, toRaw } from "vue";
+import { API } from "@/common/api";
+import { deferred, sourceDocument, sourceEvidence, sourceReceipt } from "@/common/document-source-evidence.test-support";
+
+jest.mock("@/common/api", () => ({ API: { get: jest.fn() } }));
 
 jest.mock("@vueuse/core", () => ({ useWindowSize: () => ({ width: mockWidth }), useResizeObserver: jest.fn() }));
 jest.mock("./RouteGraph.vue", () => ({ name: "RouteGraph", props: ["graph", "scores", "stepNumbers"], emits: ["select", "ready"], methods: { focus: (...args) => mockFocus(...args) }, template: '<div class="preview-graph" />' }));
-jest.mock("./RouteInspector.vue", () => ({ name: "RouteInspector", props: ["graph", "node", "displayStepNumber"], template: '<aside class="route-inspector" />' }));
+jest.mock("./RouteInspector.vue", () => ({ name: "RouteInspector", props: ["graph", "node", "displayStepNumber", "step", "automatedReview", "deliveryReview"], template: '<aside class="route-inspector" />' }));
 jest.mock("./DocumentStepList.vue", () => ({ name: "DocumentStepList", props: ["steps", "selectedNode"], emits: ["select", "locate"], template: '<div class="document-step-list" />' }));
 const mockWidth = ref(1440), mockFocus = jest.fn();
-beforeEach(() => { mockWidth.value = 1440; mockFocus.mockClear(); });
+beforeEach(() => { mockWidth.value = 1440; mockFocus.mockClear(); API.get.mockReset(); });
 const document = { id: "a".repeat(32), title: "原始研究路线", graph: { target_id: "m1",
   nodes: [{ id: "m1", type: "molecule", smiles: "[13CH3][C@H](O)C(=O)[O-].[Na+]", position: { x: 20, y: 20 } }], edges: [] } };
 const stubs = {
   VIcon: true,
+  VProgressCircular: true,
   VDefaultsProvider: { template: "<slot />" },
   VDialog: { name: "VDialog", props: ["modelValue"], emits: ["update:modelValue", "afterLeave"], template: '<div v-if="modelValue" role="dialog"><slot /></div>' },
   VCard: { template: '<section><slot /></section>' },
@@ -25,6 +30,52 @@ const stubs = {
   VTab: { props: ["value"], template: '<button role="tab" :data-view="value"><slot /></button>' },
   VSelect: { props: ["modelValue", "items"], template: '<select />' },
 };
+
+test("source preview selects the DTO's actual node step even when source and synthetic orders differ", async () => {
+  const value = sourceDocument(), evidence = sourceEvidence(value); API.get.mockResolvedValue(evidence);
+  const before = JSON.stringify(value);
+  const wrapper = mount(DocumentPreview, { props: { modelValue: true, document: value }, global: { stubs } });
+  await flushPromises();
+  wrapper.getComponent({ name: "RouteGraph" }).vm.$emit("select", "r-2"); await flushPromises();
+  const inspector = wrapper.getComponent({ name: "RouteInspector" });
+  expect(inspector.props("displayStepNumber")).toBe(1); expect(inspector.props("step")).toEqual(evidence.steps_by_node["r-2"]);
+  expect(inspector.props("step").step_id).toBe("early-original");
+  expect(inspector.props("deliveryReview")).toBe(evidence.metadata.delivery_review);
+  expect(inspector.props("automatedReview")).toBe(evidence.metadata.automated_review);
+  expect(wrapper.get(".delivery-review-badge").attributes("data-delivery-grade")).toBe("operation_evidence_required");
+  expect(JSON.stringify(value)).toBe(before); expect(API.get).toHaveBeenCalledTimes(1); wrapper.unmount();
+});
+test("legacy source preview retains the current unreviewed receipt even when no receipt was saved", async () => {
+  const value = sourceDocument(); value.metadata.delivery_review = null; value.source.result_snapshot = null;
+  const evidence = sourceEvidence(value); evidence.metadata.delivery_review = sourceReceipt("not_independently_reviewed");
+  evidence.metadata.automated_review = null; API.get.mockResolvedValue(evidence);
+  const wrapper = mount(DocumentPreview, { props: { modelValue: true, document: value }, global: { stubs } });
+  await flushPromises(); wrapper.getComponent({ name: "RouteGraph" }).vm.$emit("select", "r-2"); await flushPromises();
+  expect(wrapper.getComponent({ name: "RouteInspector" }).props("deliveryReview")).toBe(evidence.metadata.delivery_review);
+  expect(wrapper.get(".delivery-review-badge").attributes("data-delivery-grade")).toBe("not_independently_reviewed");
+  expect(wrapper.get(".document-source-status").attributes("data-source-state")).toBe("available"); wrapper.unmount();
+});
+test("switching and closing a preview aborts source reads and ignores late responses", async () => {
+  const first = sourceDocument(), second = sourceDocument({ id: "e".repeat(32) }), old = deferred(), next = deferred();
+  API.get.mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise);
+  const wrapper = mount(DocumentPreview, { props: { modelValue: true, document: first }, global: { stubs } });
+  const signal = API.get.mock.calls[0][3].signal;
+  await wrapper.setProps({ document: second }); expect(signal.aborted).toBe(true);
+  old.resolve(sourceEvidence(first)); await flushPromises();
+  expect(wrapper.get(".document-source-status").attributes("data-source-state")).toBe("loading");
+  const nextSignal = API.get.mock.calls[1][3].signal;
+  await wrapper.setProps({ modelValue: false }); expect(nextSignal.aborted).toBe(true);
+  next.resolve(sourceEvidence(second)); await flushPromises(); wrapper.unmount();
+});
+test("source read failure keeps the saved badge and exposes an explicit successful retry", async () => {
+  const value = sourceDocument(); API.get.mockRejectedValueOnce(new Error(JSON.stringify({ detail: { code: "document_source_busy" } })));
+  const wrapper = mount(DocumentPreview, { props: { modelValue: true, document: value }, global: { stubs } });
+  await flushPromises(); expect(wrapper.get(".delivery-review-badge").attributes("data-delivery-grade")).toBe("model_checked");
+  expect(wrapper.get(".document-source-status").text()).toContain("繁忙");
+  API.get.mockResolvedValueOnce(sourceEvidence(value)); await wrapper.get(".document-source-status button").trigger("click"); await flushPromises();
+  expect(API.get).toHaveBeenCalledTimes(2); expect(wrapper.get(".delivery-review-badge").attributes("data-delivery-grade")).toBe("operation_evidence_required");
+  wrapper.unmount();
+});
 
 test("saved preview uses only the server's current source receipt", async () => {
   const receipt = { version: 1, phase: "automated_review", basis: "route_receipt", grade: "model_checked",

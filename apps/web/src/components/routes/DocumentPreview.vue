@@ -7,6 +7,8 @@
           <div class="document-preview-status">
             <span class="state-badge">{{ $tr(documentStateLabel(document, document?.graph)) }}</span>
             <DeliveryReviewBadge :receipt="deliveryReview" />
+            <DocumentSourceStatus :loaded="sourceEvidence" :loading="sourceLoading" :unavailable="sourceUnavailable"
+              :error="sourceError" :retired="sourceRetired" @retry="retrySource" />
           </div>
         </div>
         <div class="page-actions">
@@ -61,6 +63,8 @@
           :score="document.prediction_scores?.[selected]"
           :target="selected === graph.target_id"
           :display-step-number="stepNumbers[selected]"
+          :step="sourceSteps[selected]"
+          :automated-review="automatedReview"
           :delivery-review="deliveryReview"
           @close="closeDetails"
           @navigate="navigate"
@@ -75,9 +79,11 @@ import RouteInspector from "./RouteInspector.vue";
 import DocumentStepList from "./DocumentStepList.vue";
 import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
 import DeliveryReviewBadge from "./DeliveryReviewBadge.vue";
-import { computed, onBeforeUnmount, toRef, useId } from "vue";
+import DocumentSourceStatus from "./DocumentSourceStatus.vue";
+import { onBeforeUnmount, toRef, useId } from "vue";
 import { useDocumentReading } from "@/composables/useDocumentReading";
-import { documentDeliveryReview, documentStateLabel } from "@/common/document-navigation";
+import { useDocumentSourceEvidence } from "@/composables/useDocumentSourceEvidence";
+import { documentStateLabel } from "@/common/document-navigation";
 import { documentEditorLocation } from "@/common/document-library-view";
 const open = defineModel({ type: Boolean, default: false });
 const props = defineProps({ document: Object, focusTicket: { type: Number, default: null }, libraryQuery: Object });
@@ -91,7 +97,9 @@ const titleId = useId();
 const { selected, detailsOpen, view, views, graphActive, graphView, readingMain, inspectorView,
   graph, node, steps, stepNumbers, stepError, stepChoices, reactionSelection, mobileDetails,
   changeView, selectNode, closeDetails, locateStep, graphInitialized } = useDocumentReading(open, toRef(props, "document"));
-const deliveryReview = computed(() => documentDeliveryReview(props.document, graph.value));
+const { loaded: sourceEvidence, loading: sourceLoading, unavailable: sourceUnavailable, error: sourceError,
+  retired: sourceRetired, deliveryReview, automatedReview, stepsByNode: sourceSteps, retry: retrySource }
+  = useDocumentSourceEvidence(toRef(props, "document"), graph, { active: open });
 </script>
 <style scoped>
 .document-preview-dialog {

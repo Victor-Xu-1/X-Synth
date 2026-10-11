@@ -71,6 +71,8 @@
     <div v-if="document" class="route-document-source">
       <span class="state-badge">{{ $tr(sourceStateLabel) }}</span>
       <DeliveryReviewBadge :receipt="deliveryReview" />
+      <DocumentSourceStatus :loaded="sourceEvidence" :loading="sourceLoading" :unavailable="sourceUnavailable"
+        :error="sourceError" :retired="sourceRetired" @retry="retrySource" />
       <router-link v-if="origin" :to="origin.to">
         {{ origin.label }} <v-icon icon="mdi-arrow-top-right" size="14" />
       </router-link>
@@ -164,8 +166,10 @@
         :target="selected === graph.target_id"
         :score="scores[selected]"
         :display-step-number="stepNumbers[selected]"
+        :step="sourceSteps[selected]"
+        :automated-review="automatedReview"
         :delivery-review="deliveryReview"
-        @draft-change="draftGuard.receive"
+        @draft-change="receiveInspectorDraft"
         @discard="discardInspector"
         @close="closeInspector"
         @remove="removeNode"
@@ -236,12 +240,14 @@ import {
 } from "vue-router";
 import { routeImage, routeExportErrorMessage } from "@/common/route-export";
 import { useRouteDocument } from "@/composables/useRouteDocument";
+import { useDocumentSourceEvidence } from "@/composables/useDocumentSourceEvidence";
 import { useInspectorDraftGuard } from "@/composables/useInspectorDraftGuard";
 import { useEditorInspectorFocus } from "@/composables/useEditorInspectorFocus";
 import { documentStepDetails } from "@/common/document-step-details";
 import { documentEditorLocation, documentLibraryLocation } from "@/common/document-library-view";
 import RouteGraph from "@/components/routes/RouteGraph.vue";
 import DeliveryReviewBadge from "@/components/routes/DeliveryReviewBadge.vue";
+import DocumentSourceStatus from "@/components/routes/DocumentSourceStatus.vue";
 import RouteInspector from "@/components/routes/RouteInspector.vue";
 import ExpandMolecule from "@/components/routes/ExpandMolecule.vue";
 import ManualReactionDialog from "@/components/routes/ManualReactionDialog.vue";
@@ -258,7 +264,6 @@ import {
   documentOrigin,
   documentPersistenceLabel,
   documentStateLabel,
-  documentDeliveryReview,
 } from "@/common/document-navigation";
 import {
   cleanGraph,
@@ -406,7 +411,10 @@ const persistenceLabel = computed(() =>
 const sourceStateLabel = computed(() =>
   documentStateLabel(document.value, graph.value),
 );
-const deliveryReview = computed(() => documentDeliveryReview(document.value, graph.value));
+const sourceActive = computed(() => !loading.value && !reloading.value && !importing.value);
+const { loaded: sourceEvidence, loading: sourceLoading, unavailable: sourceUnavailable, error: sourceError,
+  retired: sourceRetired, deliveryReview, automatedReview, stepsByNode: sourceSteps, retry: retrySource, retire: retireSource }
+  = useDocumentSourceEvidence(document, graph, { active: sourceActive });
 let imageGeneration = 0;
 watch([() => document.value?.id, graph, deliveryReview], () => { imageGeneration++; }, { deep: true, flush: "sync" });
 const origin = computed(() => documentOrigin(document.value));
@@ -421,6 +429,11 @@ function selectNode(value, event) {
 }
 function discardInspector() {
   if (!editingLocked.value) draftGuard.requestDiscard();
+}
+function receiveInspectorDraft(value) {
+  draftGuard.receive(value);
+  if (value?.contextId === document.value?.id && value?.nodeId === selectedNode.value?.id
+    && value?.chemistryDirty === true) retireSource();
 }
 function closeInspector() {
   if (!editingLocked.value && draftGuard.requestDiscard()) return inspectorFocus.close();

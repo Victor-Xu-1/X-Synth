@@ -34,6 +34,7 @@ test("application-owned document conflicts and unapplied edits use complete bili
     .toBe("This document was changed in another page. Reload it or save a copy.");
   expect(uiText("未应用修改")).toBe("Unapplied changes");
   expect(uiText("重新载入文档")).toBe("Reload document");
+  expect(uiText("路线文档数据无效或已损坏。")).toBe("Route document data is invalid or damaged.");
   setLocale("zh-CN", { persist: false });
   expect(uiText("未应用修改")).toBe("未应用修改");
   expect(uiText("TEST ONLY 原文标签")).toBe("TEST ONLY 原文标签");
