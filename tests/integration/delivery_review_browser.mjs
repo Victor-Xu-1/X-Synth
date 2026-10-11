@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { after, before, test } from "node:test";
+import Papa from "../../apps/web/node_modules/papaparse/papaparse.js";
 import { chromium, expect, capture, noOverflow, structures, readOnlyPage } from "./route_reading_browser_support.mjs";
 
 const root = process.env.X_SYNTH_PROJECTION_ROOT;
@@ -84,14 +85,20 @@ async function verifyExports(page, reader, route, label) {
   }, { source: `data:image/png;base64,${png.toString("base64")}`, label });
   assert(checked.equal, "The PNG header must contain the displayed grade, not silently omit it.");
   assert(checked.width > 200 && checked.height > 200);
+  const csv = Papa.parse((await download(page, reader, "Starting materials CSV")).toString("utf8"));
+  assert.deepEqual(csv.errors, []);
+  assert.equal(csv.data[0][3], "Review grade");
+  assert(csv.data.length > 1 && csv.data.slice(1).every(row => row[3] === label));
+  if (label === "Purchase form unresolved")
+    for (const material of route.metadata.delivery_review.purchase_identity.unresolved_materials)
+      assert(csv.data.slice(1).some(row => row[1] === material.smiles), "CSV must retain each unresolved purchase identity.");
 }
 
-const cases = [
-  ["110515bcaa4c437b9a51930225649249", "Not independently reviewed"],
-  ["64997fb571744993b7511c6428f0e4f7", "Model checked"],
-  ["a4d86b7d5dfa43a8a0a8aae58b28d854", "Model checked"],
-];
-let browser, historyId;
+const cases = JSON.parse(process.env.X_SYNTH_DELIVERY_BROWSER_CASES || "[]");
+assert(Array.isArray(cases) && cases.length > 0 && cases.every(item => Array.isArray(item) && item.length === 2
+  && /^[a-f0-9]{32}$/.test(item[0]) && ["Not independently reviewed", "Model checked", "Purchase form unresolved"].includes(item[1])),
+"Explicitly supply existing read-only case IDs and expected labels in X_SYNTH_DELIVERY_BROWSER_CASES.");
+let browser, historyId, localeChecked = false;
 const records = new Map(), originals = new Map();
 before(async () => {
   const paths = cases.flatMap(([id]) => [`/api/results/retrieve?result_id=${id}`, `/api/v1/unified-route/jobs/${id}`]);
@@ -111,7 +118,7 @@ before(async () => {
 after(async () => { await browser?.close(); });
 
 for (const [id, label] of cases) for (const width of [1440, 390]) {
-  test(`bounded delivery grade ${id} ${width}px`, { timeout: 120000 }, async () => {
+  test(`projected delivery grade ${id} ${width}px`, { timeout: 120000 }, async () => {
     const { page, context, errors, blocked } = await readOnlyPage(browser, { width, height: 960 }, "light");
     try {
       await context.route("**/api/v1/stock/lookup", async (route) => {
@@ -145,20 +152,20 @@ for (const [id, label] of cases) for (const width of [1440, 390]) {
       await noOverflow(page);
       await capture(page, `delivery-${id.slice(0, 6)}-${width}`);
       if (width === 1440) await verifyExports(page, reader, routes[0], label);
-      if (id.startsWith("110515")) {
-        const index = routes.findIndex(route => route.metadata.delivery_review.grade === "purchase_form_unresolved");
-        assert(index >= 0);
+      const index = routes.findIndex(route => route.metadata.delivery_review.grade === "purchase_form_unresolved");
+      if (index >= 0) {
         await reader.locator('.reader-route-tabs [role="tab"]').nth(index).click();
         await expect(reader.locator(".reader-route-summary .delivery-review-badge")).toHaveText("Purchase form unresolved");
         await structures(reader.locator(".reader-graph"));
         if (width === 1440) await verifyExports(page, reader, routes[index], "Purchase form unresolved");
       }
-      if (width === 1440 && id.startsWith("64997")) {
+      if (width === 1440 && label === "Model checked" && !localeChecked) {
         await page.locator('[data-cy="ui-language-menu"]').click();
         await page.locator('[data-locale="zh-CN"]').click();
         await expect(reader.locator(".reader-route-summary .delivery-review-badge")).toHaveText("模型已核验");
         await page.reload();
         await expect(reader.locator(".reader-overview-entry .delivery-review-badge").first()).toHaveText("模型已核验");
+        localeChecked = true;
       }
       assert.deepEqual(errors, []);
       assert.deepEqual(blocked, [], "No task, model call or saved copy is allowed.");

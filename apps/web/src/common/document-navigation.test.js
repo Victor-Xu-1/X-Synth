@@ -3,6 +3,7 @@ import {
   documentOrigin,
   documentPersistenceLabel,
   documentStateLabel,
+  documentDeliveryReview,
 } from "./document-navigation";
 import { setLocale } from "@/i18n";
 
@@ -212,6 +213,17 @@ test("annotations and layout do not change source state, but chemistry does", ()
   expect(documentStateLabel(copy, edited)).toBe("草稿");
   expect(documentStateLabel({ state: "draft", graph }, graph)).toBe("草稿");
   expect(documentStateLabel({ graph }, graph)).toBe("来源状态未记录");
+});
+
+test("server source receipt survives layout-only edits but not changed chemistry or imports", () => {
+  const receipt = { version: 1, phase: "automated_review", grade: "model_checked" };
+  const saved = { ...copy, metadata: { delivery_review: receipt } };
+  const annotated = { ...graph, nodes: graph.nodes.map(node => ({ ...node, note: "raw", position: { x: 10, y: 20 } })) };
+  expect(documentDeliveryReview(saved, annotated)).toBe(receipt);
+  expect(documentDeliveryReview(saved, { ...graph, nodes: [{ ...graph.nodes[0], smiles: "O" }] })).toBeNull();
+  expect(documentDeliveryReview({ ...saved, state: "draft" }, graph)).toBeNull();
+  expect(documentDeliveryReview({ ...saved, state: undefined }, graph)).toBeNull();
+  expect(documentDeliveryReview({ ...copy, source: { delivery_review: receipt } }, graph)).toBeNull();
 });
 test("origin links expose only bounded server-reported task and route identifiers", () => {
   const source = { job_id: id, route_id: "askcos_mcts:record", route_index: 0 };

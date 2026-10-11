@@ -224,6 +224,7 @@
           :graph="sourceGraph"
           generated-step-labels
           :expected-snapshot="stockSnapshot"
+          :delivery-review="candidate.metadata?.delivery_review"
           @select="selectStepNode"
           @navigate="$emit('navigate')"
         />
@@ -577,7 +578,7 @@ function exportJson() {
 }
 function exportMaterials() {
   downloadRouteBlob(
-    "\uFEFF" + materialsCsv(materialRows(sourceGraph.value)),
+    "\uFEFF" + materialsCsv(materialRows(sourceGraph.value), candidate.value?.metadata?.delivery_review),
     `${labelFor(selectedChoice.value)}-materials.csv`,
     "text/csv;charset=utf-8",
   );

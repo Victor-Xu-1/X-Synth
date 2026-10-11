@@ -1,6 +1,7 @@
 import { initializeLocale, setLocale } from "@/i18n";
 import { materialRows, materialsCsv, routeLabel } from "@/common/route-reading";
 import { engineUiLabel, generatedReactionUiLabel, materialUiLabel, materialUsesUiText } from "./route-ui-text";
+import Papa from "papaparse";
 
 test("engine display follows the locale without translating model identifiers or native route labels", () => {
   initializeLocale(null);
@@ -45,6 +46,8 @@ test("material fallbacks localize without transforming user names, graph records
   setLocale("zh-CN", { persist: false });
   expect(materialUiLabel(rows[0], 0, graph)).toBe("原料 1");
   expect(materialUsesUiText(rows[0], graph)).toBe("反应步骤");
-  expect(materialsCsv(rows)).toBe(csv);
+  expect(Papa.parse(materialsCsv(rows)).data.map(row => row.slice(0, 3))).toEqual(
+    Papa.parse(csv).data.map(row => row.slice(0, 3)),
+  );
   expect(JSON.stringify(graph)).toBe(before);
 });

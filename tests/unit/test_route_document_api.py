@@ -173,12 +173,40 @@ def test_editable_copy_checks_the_stable_route_id_not_only_a_stale_index(api):
     assert response.json()["source"]["route_id"] == candidates[0].route_id
 
 
+def test_source_copy_stores_only_the_server_projected_review_and_reopens_it(api):
+    job, artifact, _ = captured_task(api)
+    selected = json.loads(artifact.read_text())
+    selected[0]["metadata"]["delivery_review"] = {"version": 1, "grade": "model_checked"}
+    artifact.write_text(json.dumps(selected))
+    response = api.client.post("/api/v1/route-documents/from-task", json={"job_id": job["id"], "route_index": 0})
+    assert response.status_code == 200
+    saved = response.json()
+    receipt = saved["metadata"]["delivery_review"]
+    assert receipt["independent_review"]["status"] == "missing"
+    assert receipt["grade"] != "model_checked"
+    assert api.client.get(f"/api/v1/route-documents/{saved['id']}").json()["metadata"]["delivery_review"] == receipt
+    assert json.loads(artifact.read_text()) == selected
+
+
+def test_client_document_create_and_update_cannot_supply_review_receipts(api):
+    body = document_body()
+    body["metadata"] = {"delivery_review": {"version": 1, "grade": "model_checked"}}
+    assert api.client.post("/api/v1/route-documents", json=body).status_code == 422
+    body.pop("metadata")
+    saved = api.client.post("/api/v1/route-documents", json=body).json()
+    assert saved["metadata"]["delivery_review"] is None
+    body.update(revision=saved["revision"], metadata={"delivery_review": {"version": 1, "grade": "model_checked"}})
+    assert api.client.put(f"/api/v1/route-documents/{saved['id']}", json=body).status_code == 422
+    assert api.client.get(f"/api/v1/route-documents/{saved['id']}").json()["metadata"]["delivery_review"] is None
+
+
 def test_http_crud_has_stable_fields_canonicalization_revisions_and_true_deletion(api):
     client = api.client
     response = client.post("/api/v1/route-documents", json=document_body())
     assert response.status_code == 200
     saved = response.json()
     assert set(saved) == {
+        "metadata",
         "id",
         "title",
         "graph",

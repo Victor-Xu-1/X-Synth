@@ -5,6 +5,8 @@ import { API } from "@/common/api";
 import { oneStepCandidate } from "@/common/workbench-model";
 import { originalRouteIndex, stepDetails } from "@/common/route-details";
 import { routeLabel } from "@/common/route-reading";
+import * as routeReading from "@/common/route-reading";
+import Papa from "papaparse";
 import { initializeLocale, setLocale } from "@/i18n";
 import RouteReader from "./RouteReader.vue";
 import { randomUUID } from "node:crypto";
@@ -107,6 +109,21 @@ beforeEach(() => {
   mockFocus.mockReset();
   API.post.mockRejectedValue(new Error("catalog unavailable"));
   layout = jest.spyOn(dagre, "layout");
+});
+
+test("reader menu and materials panel receive the same selected route review receipt", async () => {
+  const route = candidate("csv-contract");
+  const receipt = { version: 1, phase: "automated_review", basis: "route_receipt", grade: "purchase_form_unresolved",
+    independent_review: { status: "missing" }, purchase_identity: { policy: "defined_purchase_identity_v1",
+      status: "unresolved", unresolved_materials: [{ smiles: "O=C([O-])[O-]", reason: "undefined_purchase_form" }] } };
+  route.metadata = { delivery_review: receipt };
+  const download = jest.spyOn(routeReading, "downloadRouteBlob").mockImplementation(() => {});
+  try {
+    const wrapper = await setup([route], { view: "materials" });
+    expect(wrapper.getComponent({ name: "RouteMaterials" }).props("deliveryReview")).toEqual(receipt);
+    await wrapper.get('v-list-item-stub[title="起始原料 CSV"]').trigger("click");
+    expect(Papa.parse(download.mock.calls[0][0]).data.slice(1).every(row => row[3] === "采购形式未明确")).toBe(true);
+  } finally { download.mockRestore(); }
 });
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());

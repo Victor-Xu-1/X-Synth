@@ -91,8 +91,15 @@ export function documentStateLabel(document, graph) {
   if (!document) return "";
   if (document.state === "draft") return "草稿";
   if (document.state !== "source_copy") return "来源状态未记录";
+  return sourceChemistryUnchanged(document, graph) ? "计算结果副本" : "草稿";
+}
+function sourceChemistryUnchanged(document, graph) {
+  if (document?.state !== "source_copy") return false;
   const original = chemistry(document.graph);
-  return original && original === chemistry(graph) ? "计算结果副本" : "草稿";
+  return Boolean(original) && original === chemistry(graph);
+}
+export function documentDeliveryReview(document, graph) {
+  return sourceChemistryUnchanged(document, graph) ? document.metadata?.delivery_review ?? null : null;
 }
 export function documentPersistenceLabel(
   document,

@@ -69,6 +69,7 @@
     </header>
     <div v-if="document" class="route-document-source">
       <span class="state-badge">{{ $tr(sourceStateLabel) }}</span>
+      <DeliveryReviewBadge :receipt="deliveryReview" />
       <router-link v-if="origin" :to="origin.to">
         {{ origin.label }} <v-icon icon="mdi-arrow-top-right" size="14" />
       </router-link>
@@ -238,6 +239,7 @@ import { useEditorInspectorFocus } from "@/composables/useEditorInspectorFocus";
 import { documentStepDetails } from "@/common/document-step-details";
 import { documentEditorLocation, documentLibraryLocation } from "@/common/document-library-view";
 import RouteGraph from "@/components/routes/RouteGraph.vue";
+import DeliveryReviewBadge from "@/components/routes/DeliveryReviewBadge.vue";
 import RouteInspector from "@/components/routes/RouteInspector.vue";
 import ExpandMolecule from "@/components/routes/ExpandMolecule.vue";
 import ManualReactionDialog from "@/components/routes/ManualReactionDialog.vue";
@@ -254,6 +256,7 @@ import {
   documentOrigin,
   documentPersistenceLabel,
   documentStateLabel,
+  documentDeliveryReview,
 } from "@/common/document-navigation";
 import {
   cleanGraph,
@@ -400,6 +403,7 @@ const persistenceLabel = computed(() =>
 const sourceStateLabel = computed(() =>
   documentStateLabel(document.value, graph.value),
 );
+const deliveryReview = computed(() => documentDeliveryReview(document.value, graph.value));
 const origin = computed(() => documentOrigin(document.value));
 function runEditAction(action) {
   if (editingLocked.value || action.disabled) return;
@@ -606,7 +610,7 @@ function exportDocument() {
   if (!document.value || importing.value || applying.value) return;
   download(
     new Blob(
-      [JSON.stringify(routeDocumentPayload(title.value, graph.value), null, 2)],
+      [JSON.stringify(routeDocumentPayload(title.value, graph.value, deliveryReview.value), null, 2)],
       { type: "application/json" },
     ),
     "route.x-synth.json",
@@ -615,7 +619,7 @@ function exportDocument() {
 async function exportImage() {
   if (!document.value || importing.value || applying.value) return;
   try {
-    const url = await routeImage(canvas.value.element, graph.value);
+    const url = await routeImage(canvas.value.element, graph.value, deliveryReview.value);
     const link = window.document.createElement("a");
     link.href = url;
     link.download = "route.png";

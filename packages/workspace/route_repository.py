@@ -191,6 +191,7 @@ class RouteDocumentRepository:
             if original
             else {},
             "source_closed": original and provenance.get("closed") is True,
+            "metadata": {"delivery_review": provenance.get("delivery_review") if original else None},
         }
 
     def create(self, owner: str, title: str, graph: RouteGraph, *, source=None):

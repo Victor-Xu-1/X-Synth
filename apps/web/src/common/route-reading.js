@@ -1,4 +1,6 @@
 import { stepDetails } from "./route-details";
+import { uiText } from "@/i18n";
+import { deliveryReviewGrade, deliveryReviewLabels } from "./delivery-review";
 import {
   buildReactionEvidence,
   createReactionEvidenceInput,
@@ -65,10 +67,11 @@ const csvCell = (value) => {
   if (/^[\s]*[=+@-]/.test(text)) text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
 };
-export function materialsCsv(rows) {
+export function materialsCsv(rows, deliveryReview = null) {
+  const review = uiText(deliveryReviewLabels[deliveryReviewGrade(deliveryReview)]);
   return [
-    ["原料", "结构 SMILES", "使用步骤"],
-    ...rows.map((row) => [row.label, row.smiles, row.usedIn.join("; ")]),
+    ["原料", "结构 SMILES", "使用步骤", uiText("核验等级")],
+    ...rows.map((row) => [row.label, row.smiles, row.usedIn.join("; "), review]),
   ]
     .map((row) => row.map(csvCell).join(","))
     .join("\r\n");

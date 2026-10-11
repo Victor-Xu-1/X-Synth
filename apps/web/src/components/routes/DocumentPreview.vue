@@ -4,7 +4,10 @@
       <header class="document-preview-heading">
         <div class="document-preview-title">
           <h2 :id="titleId" tabindex="0">{{ document?.title }}</h2>
-          <span class="state-badge">{{ $tr(documentStateLabel(document, document?.graph)) }}</span>
+          <div class="document-preview-status">
+            <span class="state-badge">{{ $tr(documentStateLabel(document, document?.graph)) }}</span>
+            <DeliveryReviewBadge :receipt="deliveryReview" />
+          </div>
         </div>
         <div class="page-actions">
           <v-btn
@@ -70,9 +73,10 @@ import RouteGraph from "./RouteGraph.vue";
 import RouteInspector from "./RouteInspector.vue";
 import DocumentStepList from "./DocumentStepList.vue";
 import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
-import { onBeforeUnmount, toRef, useId } from "vue";
+import DeliveryReviewBadge from "./DeliveryReviewBadge.vue";
+import { computed, onBeforeUnmount, toRef, useId } from "vue";
 import { useDocumentReading } from "@/composables/useDocumentReading";
-import { documentStateLabel } from "@/common/document-navigation";
+import { documentDeliveryReview, documentStateLabel } from "@/common/document-navigation";
 import { documentEditorLocation } from "@/common/document-library-view";
 const open = defineModel({ type: Boolean, default: false });
 const props = defineProps({ document: Object, focusTicket: { type: Number, default: null }, libraryQuery: Object });
@@ -86,6 +90,7 @@ const titleId = useId();
 const { selected, detailsOpen, view, views, graphActive, graphView, readingMain, inspectorView,
   graph, node, steps, stepNumbers, stepError, stepChoices, reactionSelection, mobileDetails,
   changeView, selectNode, closeDetails, locateStep, graphInitialized } = useDocumentReading(open, toRef(props, "document"));
+const deliveryReview = computed(() => documentDeliveryReview(props.document, graph.value));
 </script>
 <style scoped>
 .document-preview-dialog {
@@ -124,7 +129,7 @@ const { selected, detailsOpen, view, views, graphActive, graphView, readingMain,
 .document-preview-heading .page-actions { flex-shrink: 0; }
 .document-preview-heading .document-preview-action { min-height: 44px; height: 44px; }
 .document-preview-heading .document-preview-action.v-btn--icon { width: 44px; min-width: 44px; }
-.document-preview-title .state-badge { margin-top: 6px; }
+.document-preview-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .document-preview-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .document-step-picker { flex: 0 0 auto; max-width: 360px; margin: 12px 16px; }
 .document-preview-canvas {

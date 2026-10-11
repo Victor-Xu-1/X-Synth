@@ -2,7 +2,6 @@
 
 from copy import deepcopy
 import json
-import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,28 +11,39 @@ from fastapi import HTTPException
 from apps.api.job_views import delivery_routes, job_response, result_record, selected_route_data, selected_routes_for_job
 from packages.orchestrator.review_policy import REVIEW_POLICY
 from packages.orchestrator.route_artifacts import RouteArtifactStore
-from packages.orchestrator.delivery_review import delivery_review, history_delivery_review, with_delivery_review
+from packages.orchestrator.delivery_review import delivery_review, history_delivery_review
 from packages.workspace.history_projection import historical_routes
+from packages.adapters.askcos.forward import RankedResult
+from packages.orchestrator.route_verification import forward_match
+from packages.workspace.analysis_repository import AnalysisRepository
 
 
 BUDGET = SimpleNamespace(response_bytes=32 * 1024**2)
 
 
 @pytest.fixture
-def audit_dir():
-    path = Path(os.environ.get("X_SYNTH_DELIVERY_AUDIT_DIR", "/mnt/c/Users/Victor/Documents/New project/work/x-synth-scientific-deliverable-audit"))
-    if not path.is_dir():
-        pytest.skip("Preserved delivery audit not available; no substitute model provider")
-    return path
-
-
-def captured(path, identifier):
-    return json.loads((path / f"{identifier}.json").read_text(encoding="utf-8"))
-
-
-@pytest.fixture
-def reviewed(audit_dir):
-    return captured(audit_dir, "64997fb571744993b7511c6428f0e4f7")["result"]["unified_route_pool"]["selected_routes"][0]
+def reviewed(tmp_path):
+    path = Path(__file__).parents[1] / "fixtures/askcos/forward_sorafenib_result.json"
+    captured = json.loads(path.read_text(encoding="utf-8"))
+    assert captured["provenance"]["kind"] == "captured_real_model_output"
+    output = RankedResult.model_validate(captured["result"])
+    analyses = AnalysisRepository(tmp_path / "public-captured-analysis.sqlite")
+    identifier = analyses.start("owner", "forward", {"reactants": output.reactants, "count": 10})
+    analyses.finish(identifier, "owner", result=output.model_dump(mode="json"))
+    retained = analyses.get(identifier, "owner")
+    assert retained["status"] == "completed"
+    product = output.products[0].product
+    rank, score, matched = forward_match(RankedResult.model_validate(retained["result"]), product, .75)
+    assert matched
+    inputs = output.reactants.split(".")
+    return {"route_id": "public-captured-forward", "engine": "askcos", "target_smiles": product,
+            "closed": False, "starting_materials": inputs,
+            "steps": [{"step_id": "s1", "product": product, "precursors": inputs,
+                       "reaction_smiles": f"{output.reactants}>>{product}", "source": "captured_real_model_output"}],
+            "metadata": {"full_forward_prediction_validated": matched, "forward_validation_passed": matched,
+                         "automated_review": {"version": 1, "forward": {"matched_steps": 1, "total_steps": 1,
+                             "records": [{"step_id": "s1", "record_id": identifier, "expected_rank": rank,
+                                          "feasibility_score": score, "matched": matched, "model": output.model}]}}}}
 
 
 def test_native_fixture_projects_only_additive_unreviewed_metadata():
@@ -47,39 +57,19 @@ def test_native_fixture_projects_only_additive_unreviewed_metadata():
     assert routes == before
 
 
-@pytest.mark.parametrize("identifier,version,grade", [
-    ("110515bcaa4c437b9a51930225649249", None, "not_independently_reviewed"),
-    ("64997fb571744993b7511c6428f0e4f7", 1, "model_checked"),
-    ("a4d86b7d5dfa43a8a0a8aae58b28d854", 2, "model_checked"),
-])
-def test_existing_receipts_grade_without_demanding_exact_literature(audit_dir, identifier, version, grade):
-    payload = captured(audit_dir, identifier)
-    routes = payload["result"]["unified_route_pool"]["selected_routes"]
-    original = deepcopy(routes)
-    receipt = delivery_review(routes[0])
-    assert receipt["grade"] == grade
+@pytest.mark.parametrize("version", [1, 2])
+def test_captured_forward_receipts_grade_without_demanding_exact_literature(reviewed, version):
+    reviewed["metadata"]["automated_review"]["version"] = version
+    if version == 2:
+        forward = reviewed["metadata"]["automated_review"]["forward"]
+        forward.update(model_top1_matched_steps=1, record_supported_steps=0)
+        forward["records"][0].update(model_top1_matched=True, record_support=[], support_kind="model_top1")
+    original = deepcopy(reviewed)
+    receipt = delivery_review(reviewed)
+    assert receipt["grade"] == "model_checked"
     assert receipt["version"] == 1 and receipt["phase"] == "automated_review"
-    assert receipt["independent_review"].get("review_version") == version
-    assert routes == original
-
-
-def test_entire_preserved_population_is_read_only_and_phase_bounded(audit_dir):
-    routes = legacy = checked = unresolved = steps = 0
-    for path in sorted(audit_dir.glob("*.json")):
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        selected = payload.get("result", {}).get("unified_route_pool", {}).get("selected_routes", []) if isinstance(payload, dict) else []
-        original = deepcopy(selected)
-        for route in selected:
-            receipt = with_delivery_review(route)["metadata"]["delivery_review"]
-            routes += 1
-            steps += len(route["steps"])
-            legacy += receipt["independent_review"]["status"] == "missing"
-            checked += receipt["independent_review"]["status"] == "checked"
-            unresolved += receipt["purchase_identity"]["status"] == "unresolved"
-            assert "experiment" not in json.dumps(receipt)
-        assert selected == original
-    assert (routes, steps, legacy, checked) == (80, 164, 51, 29)
-    assert unresolved == 1
+    assert receipt["independent_review"]["review_version"] == version
+    assert reviewed == original
 
 
 @pytest.mark.parametrize("tamper", ["boolean_only", "version", "bool_version", "wrong_step", "duplicate_step",
@@ -123,7 +113,7 @@ def test_purchase_form_uses_parent_identity_authority_without_rewriting_input(re
     receipt = delivery_review(route)
     assert receipt["grade"] == ("purchase_form_unresolved" if reason else "model_checked")
     assert receipt["purchase_identity"]["unresolved_materials"] == ([{"smiles": smiles, "reason": reason}] if reason else [])
-    assert route["starting_materials"] == [smiles] and route["closed"] is True
+    assert route["starting_materials"] == [smiles] and route["closed"] is False
 
 
 def test_summary_grade_is_policy_and_count_bound_without_artifact_reads():
@@ -159,3 +149,31 @@ def test_flat_and_published_readers_share_fail_closed_guard(tmp_path):
         selected_routes_for_job(job, artifacts=tmp_path, budget=BUDGET)
     assert error.value.status_code == 409
     assert json.loads(path.read_text()) == [route]
+
+
+def test_saved_source_receipt_survives_layout_save_reopen_but_chemical_edits_are_sticky(reviewed, tmp_path):
+    from packages.workspace.route_graph import graph_from_candidate
+    from packages.workspace.route_repository import RouteDocumentRepository
+
+    graph, source = graph_from_candidate(reviewed)
+    receipt = delivery_review(reviewed)
+    source["delivery_review"] = receipt
+    repository = RouteDocumentRepository(tmp_path / "isolated-copies.sqlite")
+    saved = repository.create("owner", "Captured route", graph, source=source)
+    assert saved["metadata"]["delivery_review"]["grade"] == "model_checked"
+    layout = graph.model_copy(deep=True)
+    layout.nodes[0].position.x += 100
+    layout.nodes[0].note = "Raw annotation"
+    saved = repository.update(saved["id"], "owner", title="Raw title", graph=layout, revision=0)
+    assert saved["metadata"]["delivery_review"] == receipt
+    assert RouteDocumentRepository(repository.path).get(saved["id"], "owner")["metadata"]["delivery_review"] == receipt
+    changed = graph.model_copy(deep=True)
+    next(node for node in changed.nodes if node.id == changed.target_id).smiles = "CCO"
+    saved = repository.update(saved["id"], "owner", title="Edited", graph=changed, revision=1)
+    assert saved["state"] == "draft" and saved["metadata"]["delivery_review"] is None
+    saved = repository.update(saved["id"], "owner", title="Reverted", graph=graph, revision=2)
+    assert saved["metadata"]["delivery_review"] is None
+    assert RouteDocumentRepository(repository.path).get(saved["id"], "owner")["metadata"]["delivery_review"] is None
+    with repository.connect() as connection:
+        retained = json.loads(connection.execute("SELECT source FROM route_documents").fetchone()[0])
+    assert retained["delivery_review"] == receipt and retained["_chemistry_edited"] is True

@@ -16,6 +16,7 @@ beforeEach(() => { mockWidth.value = 1440; mockFocus.mockClear(); });
 const document = { id: "a".repeat(32), title: "原始研究路线", graph: { target_id: "m1",
   nodes: [{ id: "m1", type: "molecule", smiles: "[13CH3][C@H](O)C(=O)[O-].[Na+]", position: { x: 20, y: 20 } }], edges: [] } };
 const stubs = {
+  VIcon: true,
   VDefaultsProvider: { template: "<slot />" },
   VDialog: { name: "VDialog", props: ["modelValue"], emits: ["update:modelValue", "afterLeave"], template: '<div v-if="modelValue" role="dialog"><slot /></div>' },
   VCard: { template: '<section><slot /></section>' },
@@ -24,6 +25,18 @@ const stubs = {
   VTab: { props: ["value"], template: '<button role="tab" :data-view="value"><slot /></button>' },
   VSelect: { props: ["modelValue", "items"], template: '<select />' },
 };
+
+test("saved preview uses only the server's current source receipt", async () => {
+  const receipt = { version: 1, phase: "automated_review", basis: "route_receipt", grade: "model_checked",
+    independent_review: { status: "checked", review_version: 1, model: "graph2smiles_uspto_stereo", total_steps: 1, matched_steps: 1 },
+    purchase_identity: { policy: "defined_purchase_identity_v1", status: "defined", unresolved_materials: [] } };
+  const wrapper = mount(DocumentPreview, { props: { modelValue: true,
+    document: { ...document, state: "source_copy", metadata: { delivery_review: receipt } } }, global: { stubs } });
+  expect(wrapper.get(".delivery-review-badge").attributes("data-delivery-grade")).toBe("model_checked");
+  await wrapper.setProps({ document: { ...document, state: "draft", metadata: { delivery_review: receipt } } });
+  expect(wrapper.get(".delivery-review-badge").attributes("data-delivery-grade")).toBe("not_independently_reviewed");
+  wrapper.unmount();
+});
 
 test("reader-fix library context survives preview-to-editor entry without changing saved scientific data", async () => {
   const libraryQuery = { query: "[13CH3][C@H](O)C(=O)[O-].[Na+]", sort: "title", returnUrl: "https://evil.example" };

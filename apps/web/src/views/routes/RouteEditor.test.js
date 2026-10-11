@@ -144,7 +144,7 @@ test("a failed saved-document read offers a retry rather than a new-route creati
   expect(API.post).not.toHaveBeenCalled();
   expect(API.put).not.toHaveBeenCalled();
 });
-async function setup(state = "source_copy", identifier = documentId, query = {}, attached = false) {
+async function setup(state = "source_copy", identifier = documentId, query = {}, attached = false, receipt = null) {
   const router = { replace: jest.fn().mockResolvedValue(undefined) };
   const route = reactive({ params: { id: identifier }, query });
   useRoute.mockReturnValue(route);
@@ -156,6 +156,7 @@ async function setup(state = "source_copy", identifier = documentId, query = {},
     graph,
     revision: 1,
     state,
+    metadata: { delivery_review: receipt },
     source:
       state === "source_copy"
         ? { job_id: jobId, route_id: "askcos_mcts:record", route_index: 0 }
@@ -166,6 +167,22 @@ async function setup(state = "source_copy", identifier = documentId, query = {},
   await flushPromises();
   return { wrapper, router, route };
 }
+
+test("editor keeps layout-only source review but suppresses it as soon as chemistry changes", async () => {
+  const receipt = { version: 1, phase: "automated_review", basis: "route_receipt", grade: "model_checked",
+    independent_review: { status: "checked", review_version: 1, model: "graph2smiles_uspto_stereo", matched_steps: 1, total_steps: 1 },
+    purchase_identity: { policy: "defined_purchase_identity_v1", status: "defined", unresolved_materials: [] } };
+  const { wrapper } = await setup("source_copy", documentId, {}, false, receipt);
+  const badge = () => wrapper.get(".route-document-source .delivery-review-badge").attributes("data-delivery-grade");
+  expect(badge()).toBe("model_checked");
+  const flow = wrapper.getComponent({ name: "RouteGraph" });
+  flow.vm.$emit("update:graph", { ...graph, nodes: graph.nodes.map(node => ({ ...node, note: "raw", position: { x: 10, y: 20 } })) });
+  await flushPromises();
+  expect(badge()).toBe("model_checked");
+  flow.vm.$emit("update:graph", { ...graph, nodes: graph.nodes.map(node => ({ ...node, smiles: "CCN" })) });
+  await flushPromises();
+  expect(badge()).toBe("not_independently_reviewed");
+});
 
 test("keyboard inspector close preserves an unconfirmed note until discard and then returns to the graph entry", async () => {
   const { wrapper } = await setup("source_copy", documentId, {}, true);
