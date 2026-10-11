@@ -1,4 +1,5 @@
 from packages.adapters.stock.stock_index import StockIndex
+from packages.adapters.stock.procurement_identity import procurement_identity_reason
 
 
 class CatalogPricer:
@@ -11,6 +12,7 @@ class CatalogPricer:
         sources = [source] if isinstance(source, str) else source
         if sources and "unified_commercial" not in sources:
             matches = [row for row in matches if row["source"] in sources]
+        matches = [row for row in matches if procurement_identity_reason(row["smiles"]) is None]
         if not matches:
             return None
         record = matches[0]

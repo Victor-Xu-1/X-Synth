@@ -5,6 +5,8 @@ import re
 from urllib.parse import urlsplit
 
 from .commercial_stock import canonicalize_smiles
+from .procurement_identity import procurement_identity_reason
+from .supplier_admission import admitted_catalog_facts
 
 SCHEMA_VERSION = 1
 SUPPLIER_DOMAINS = {
@@ -21,11 +23,7 @@ SUPPLIER_DOMAINS = {
 SUPPLIER_ALIASES = {"MC": "mcule", "CB": "chembridge", "CS": "chemspace"}
 
 def supplier_record(row: dict) -> dict | None:
-    if (
-        not isinstance(row, dict)
-        or str(row.get("decision", "accepted")).strip().lower() != "accepted"
-        or row.get("evidence_role") in {"metadata", "structure_metadata", "discovery"}
-    ):
+    if not admitted_catalog_facts(row):
         return None
     source = str(row.get("source") or "").strip()
     source = SUPPLIER_ALIASES.get(source, source.lower())
@@ -44,14 +42,16 @@ def supplier_record(row: dict) -> dict | None:
         return None
     try:
         parsed = urlsplit(url)
+        port = parsed.port
     except ValueError:
         return None
     host = (parsed.hostname or "").lower()
     domains = SUPPLIER_DOMAINS[source]
     if (
         parsed.scheme != "https"
-        or parsed.username
-        or parsed.password
+        or parsed.username is not None
+        or parsed.password is not None
+        or port not in {None, 443}
         or parsed.fragment
         or parsed.query
         or not any(host == domain or host.endswith("." + domain) for domain in domains)
@@ -73,6 +73,10 @@ def supplier_record(row: dict) -> dict | None:
         return None
     if source == "chemspace" and not re.fullmatch(r"/CS[A-Za-z]*[0-9]+/?", parsed.path):
         return None
+    if source == "sigma_aldrich" and not re.fullmatch(
+        r"/[A-Z]{2}/[a-z]{2}/product/[a-z0-9]+/[A-Za-z0-9]+/?", parsed.path,
+    ):
+        return None
     if (
         source == "chembridge"
         and host.endswith("hit2lead.com")
@@ -84,13 +88,16 @@ def supplier_record(row: dict) -> dict | None:
     catalog_id = row.get("catalog_id") or parsed.path.rstrip("/").rsplit("/", 1)[-1]
     if not isinstance(catalog_id, str) or not catalog_id.strip():
         return None
-    if (
-        source in {"mcule", "chemspace", "chembridge"}
-        and catalog_id.strip() != parsed.path.rstrip("/").rsplit("/", 1)[-1]
-    ):
+    product_id = parsed.path.rstrip("/").rsplit("/", 1)[-1]
+    declared_id = catalog_id.strip()
+    if source == "sigma_aldrich":
+        product_id, declared_id = product_id.casefold(), declared_id.casefold()
+    if source in {"mcule", "chemspace", "chembridge", "sigma_aldrich"} and declared_id != product_id:
         return None
     smiles = canonicalize_smiles(str(row.get("smiles") or ""))
     if not smiles or "*" in smiles:
+        return None
+    if procurement_identity_reason(smiles) is not None:
         return None
     declared_keys = [row[key] for key in ("inchi_key", "inchikey")
                      if row.get(key) is not None]

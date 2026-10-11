@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from .procurement_identity import POLICY, procurement_identity_reason
 
 UNIT_EVIDENCE = (
     "https://askcos-docs.mit.edu/guide/7-Release-Notes/7.2-ASKCOS-v1/"
@@ -61,9 +62,16 @@ def price_basis(summary: Mapping) -> dict:
 
 def priced_record(record: Mapping, basis: Mapping) -> dict:
     amount, status = price_value(record.get("ppg"))
+    reason = procurement_identity_reason(record["smiles"])
     return {
         **record,
         "ppg": amount,
+        "procurement": {
+            "policy": POLICY,
+            "status": "unresolved" if reason else "defined",
+            "reason": reason,
+            "eligible_for_closure": reason is None,
+        },
         "price": {
             **basis,
             "amount": amount,

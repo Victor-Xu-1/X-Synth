@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .supplier_evidence import supplier_record
+from .supplier_admission import admitted_catalog_facts
 from .commercial_stock import canonicalize_smiles
 
 FIELD_ALIASES: dict[str, tuple[str, ...]] = {
@@ -132,6 +133,8 @@ def _compile_row(
     row_number: int,
     default_source: str,
 ) -> dict[str, Any]:
+    if not admitted_catalog_facts(row):
+        return _rejected(row, source_path, row_number, "negative_or_invalid_catalog_facts")
     raw_smiles = _first_text(row, FIELD_ALIASES["smiles"])
     if not raw_smiles:
         return _rejected(row, source_path, row_number, "missing_smiles")
@@ -152,7 +155,7 @@ def _compile_row(
     raw_price = _first_text(row, ("ppg", "price_per_gram"))
     record = supplier_record({
         **row, "smiles": smiles, "source": source, "catalog_id": catalog_id,
-        "cas": cas, "url": url, "lead_time": availability,
+        "cas": cas, "url": url, "lead_time": availability, "availability": availability,
         "ppg": _parse_ppg(raw_price),
     })
     if record is None:

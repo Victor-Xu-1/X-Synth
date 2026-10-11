@@ -19,6 +19,9 @@ def test_internal_id_and_lead_time_are_not_catalog_evidence():
     assert supplier_record(catalog_row(properties=[{"link": "javascript:alert(1)"}])) is None
     assert supplier_record(catalog_row(properties=[{"link": "https://mcule.com/search?q=ethanol"}])) is None
     assert supplier_record(catalog_row(catalog_id="different-product")) is None
+    for url in ("https://mcule.com:444/MCULE-7654109565", "https://mcule.com:bad/MCULE-7654109565",
+                "https://@mcule.com/MCULE-7654109565"):
+        assert supplier_record(catalog_row(url=url)) is None
 
 
 def test_real_sqlite_index_exact_matching_read_only_and_concurrency(tmp_path):
@@ -43,6 +46,9 @@ def test_real_sqlite_index_exact_matching_read_only_and_concurrency(tmp_path):
     assert registry.is_buyable("OCC")
     assert registry.accepted_sources("CCO") == ["mcule"]
     assert registry.accepted_decision_count(limit=10) == 1
+    for limit in (0, -1):
+        assert registry.accepted_decision_count(limit=limit) == 0
+        assert registry.accepted_smiles(limit=limit) == []
     with pytest.raises(FileExistsError):
         compile_stock_index([catalog_row()], output=path, source_id="other", source_sha256="b" * 64)
 

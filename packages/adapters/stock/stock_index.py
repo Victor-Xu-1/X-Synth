@@ -15,6 +15,7 @@ from .commercial_stock import CommercialStockRegistry, EvidenceDecision, canonic
 from .stock_snapshot import StockIndexError, compile_stock_index, validate_stock_schema, validate_stock_summary
 from .supplier_evidence import SCHEMA_VERSION, SUPPLIER_DOMAINS, SUPPLIER_ALIASES, supplier_record
 from .catalog_pricing import price_value
+from .procurement_identity import procurement_identity_reason
 
 __all__ = [
     "StockIndex", "IndexedCommercialStockRegistry", "StockIndexError",
@@ -116,16 +117,34 @@ class StockIndex:
 
         return sorted(rows, key=order)[:limit]
 
-    def iter_records(self, *, limit: int | None = None) -> Iterator[dict]:
+    def iter_records(self, *, limit: int | None = None, batch_size: int = 1000) -> Iterator[dict]:
+        if type(batch_size) is not int or not 1 <= batch_size <= 5000:
+            raise ValueError("Stock export batches must contain 1-5000 records")
         if limit is not None and limit < 1:
             return
-        with self.connect() as connection:
-            connection.row_factory = sqlite3.Row
-            cursor = connection.execute(
-                "SELECT * FROM evidence LIMIT ?", (-1 if limit is None else limit,)
-            )
-            for row in cursor:
-                yield dict(row)
+        last, remaining = None, limit
+        while remaining is None or remaining > 0:
+            self.assert_current()
+            count = batch_size if remaining is None else min(batch_size, remaining)
+            with self.connect() as connection:
+                connection.row_factory = sqlite3.Row
+                if last is None:
+                    rows = connection.execute(
+                        "SELECT * FROM evidence ORDER BY smiles,source,catalog_id LIMIT ?", (count,),
+                    ).fetchall()
+                else:
+                    rows = connection.execute(
+                        "SELECT * FROM evidence WHERE (smiles,source,catalog_id)>(?,?,?) "
+                        "ORDER BY smiles,source,catalog_id LIMIT ?", (*last, count),
+                    ).fetchall()
+            if not rows:
+                break
+            # Consumers process molecules only after the bounded database read closes.
+            yield from (dict(row) for row in rows)
+            last = tuple(rows[-1][key] for key in ("smiles", "source", "catalog_id"))
+            if remaining is not None:
+                remaining -= len(rows)
+        self.assert_current()
 
     def lookup_many(self, smiles_list: Iterable[str]) -> dict[str, list[dict]]:
         self.assert_current()
@@ -160,12 +179,14 @@ class IndexedCommercialStockRegistry(CommercialStockRegistry):
 
     @staticmethod
     def _decision(record: dict) -> EvidenceDecision:
+        reason = procurement_identity_reason(record["smiles"])
         return EvidenceDecision(
             **{
                 key: record[key]
-                for key in ("smiles", "source", "reason", "catalog_id", "cas", "url")
+                for key in ("smiles", "source", "catalog_id", "cas", "url")
             },
-            decision="accepted",
+            reason=reason or record["reason"],
+            decision="ambiguous" if reason else "accepted",
         )
 
     @property
@@ -206,15 +227,28 @@ class IndexedCommercialStockRegistry(CommercialStockRegistry):
 
     def accepted_decision_count(self, *, limit: int | None = None) -> int:
         self.index.check_snapshot()
-        count = self.index.summary["accepted_records"]
-        return min(count, limit) if limit is not None else count
+        if limit is not None and limit < 1:
+            return 0
+        count = 0
+        for record in self.index.iter_records():
+            if procurement_identity_reason(record["smiles"]) is None:
+                count += 1
+                if limit is not None and count >= limit:
+                    break
+        self.index.assert_current()
+        return count
 
     def accepted_smiles(self, *, limit: int | None = None) -> list[str]:
-        with self.index.connect() as connection:
-            return [
-                row[0]
-                for row in connection.execute(
-                    "SELECT DISTINCT smiles FROM evidence LIMIT ?",
-                    (-1 if limit is None else limit,),
-                )
-            ]
+        self.index.check_snapshot()
+        if limit is not None and limit < 1:
+            return []
+        result, seen = [], set()
+        for record in self.index.iter_records():
+            smiles = record["smiles"]
+            if smiles not in seen and procurement_identity_reason(smiles) is None:
+                seen.add(smiles)
+                result.append(smiles)
+                if limit is not None and len(result) >= limit:
+                    break
+        self.index.assert_current()
+        return result

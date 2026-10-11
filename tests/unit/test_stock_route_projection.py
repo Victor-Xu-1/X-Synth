@@ -10,6 +10,7 @@ import pytest
 from packages.adapters.stock import commercial_stock
 from packages.adapters.stock.commercial_stock import CommercialStockRegistry, EvidenceDecision
 from packages.adapters.stock.stock_index import IndexedCommercialStockRegistry, StockIndex, compile_stock_index
+from packages.adapters.stock.procurement_identity import procurement_identity_reason
 from packages.adapters.stock.route_pruning import (
     pruning_plan, source_occurrences, source_path_digest, source_stock_snapshots,
 )
@@ -58,6 +59,8 @@ def structural_route(specification):
 
 @pytest.fixture
 def duplicate_route(monkeypatch):
+    # These are bookkeeping symbols; commodity admission has real-structure tests.
+    monkeypatch.setattr(commercial_stock, "procurement_identity_reason", lambda value: None)
     monkeypatch.setattr(commercial_stock, "canonicalize_smiles", lambda value: value)
     monkeypatch.setattr(route_topology, "chemical_key", lambda value: value)
     return structural_route([
@@ -159,6 +162,7 @@ def proof_step(row):
 
 
 def test_long_chain_pruning_is_iterative_and_does_not_hide_cycles(monkeypatch):
+    monkeypatch.setattr(commercial_stock, "procurement_identity_reason", lambda value: None)
     monkeypatch.setattr(commercial_stock, "canonicalize_smiles", lambda value: value)
     monkeypatch.setattr(route_topology, "chemical_key", lambda value: value)
     steps = [RouteStep(f"s{i}", f"n{i+1}>>n{i}", [f"n{i+1}"], f"n{i}", "structural")
@@ -177,9 +181,11 @@ def test_long_chain_pruning_is_iterative_and_does_not_hide_cycles(monkeypatch):
 def test_captured_source_stock_snapshot_cannot_be_rebound_by_decisions():
     path = Path(__file__).parents[1] / "fixtures/askcos/diphenhydramine_retrostar_result.json"
     routes = normalize_askcos_tree_result(json.loads(path.read_text()))
-    value = next(route for route in routes if len(route.steps) > 1)
+    value, intermediate = next(
+        (route, step.product) for route in routes for step in route.steps[1:]
+        if procurement_identity_reason(step.product) is None
+    )
     before = deepcopy(value)
-    intermediate = value.steps[1].product
     registry = CommercialStockRegistry([EvidenceDecision(intermediate, "unit", "accepted", "exact")])
     with pytest.raises(ValueError, match="snapshot"):
         registry.close_route_if_buyable(value)

@@ -107,6 +107,8 @@ def test_each_stock_decision_helper_is_in_identity_boundary():
         "packages/adapters/stock/stock_index.py",
         "packages/adapters/stock/commercial_stock.py",
         "packages/adapters/stock/supplier_evidence.py",
+        "packages/adapters/stock/supplier_admission.py",
+        "packages/adapters/stock/procurement_identity.py",
         "packages/adapters/stock/stock_snapshot.py",
         "packages/adapters/stock/catalog_pricing.py",
         "packages/platform/immutable_sqlite.py",

@@ -78,6 +78,59 @@ def test_explicit_roles_survive_import_normalization(tmp_path, field, value):
     test_all_retained_file_imports_reject_weak_procurement_evidence(tmp_path, row)
 
 
+@pytest.mark.parametrize("facts", [
+    {"evidence_role": "test"}, {"evidence_role": "Demo"},
+    {"test_data": True}, {"is_demo": "true"},
+    {"test_data": {"enabled": True}}, {"evidence_role": []},
+    {"buyable": False}, {"purchasable": "false"},
+    {"buyable": "unknown"}, {"purchasable": {}},
+    {"availability": "discontinued"}, {"availability": "not for sale"},
+    {"availability": "已停产"},
+    {"properties": [{"link": catalog_row()["properties"][0]["link"]}, {"buyable": False}]},
+    {"availability": "available", "stock_status": "discontinued"},
+    {"availability": "available", "库存状态": "已停售"},
+    {"properties": [{"link": catalog_row()["properties"][0]["link"]}, {"decision": "rejected"}]},
+    {"properties": [{"link": catalog_row()["properties"][0]["link"]}, {"evidence_role": "test"}]},
+    {"properties": {"buyable": False}}, {"properties": ["buyable=false"]},
+    {"availability": ["discontinued"]}, {"stock_status": {"value": "discontinued"}},
+    {"availability": "backorder", "Stock_Status": "discontinued"},
+    {"Availability": "discontinued", "stock": "backorder"},
+    {"availability": "available", " STOCK_STATUS ": "discontinued"},
+    {"buyable": True, "Buyable": False},
+    {"Properties": [{"Decision": "rejected"}]},
+    {"properties": [{"properties": [{"buyable": False}]}]},
+])
+def test_negative_catalog_facts_cannot_close_any_retained_import(tmp_path, facts):
+    row = catalog_row(**facts)
+    row["url"] = catalog_row()["properties"][0]["link"]
+    test_all_retained_file_imports_reject_weak_procurement_evidence(tmp_path, row)
+    assert _supplier_decision(row["smiles"], {
+        **facts, "SourceName": "mcule", "SourceRecordURL": row["url"],
+    }) is None
+
+
+def test_backorder_does_not_mean_the_commodity_is_not_purchasable():
+    assert supplier_record(catalog_row(buyable=True, in_stock=False, availability="backorder")) is not None
+
+
+@pytest.mark.parametrize("header", ["库存状态", "stock_status", "inventory"])
+def test_domestic_negative_availability_alias_cannot_be_normalized_away(tmp_path, header):
+    row = catalog_row(**{header: "已停售"})
+    row["url"] = row["properties"][0]["link"]
+    path = tmp_path / "rows.json"
+    path.write_text(json.dumps([row]), encoding="utf-8")
+    result = build_domestic_stock_artifacts(source_paths=[path], output_dir=tmp_path / "domestic")
+    assert result.summary["accepted_records"] == 0
+
+
+def test_undefined_ionic_fragments_are_not_complete_procurement_items(tmp_path):
+    test_all_retained_file_imports_reject_weak_procurement_evidence(
+        tmp_path, catalog_row(smiles="O=C([O-])[O-]"),
+    )
+    for smiles in ("[Na+].[Na+].O=C([O-])[O-]", "[Cl-].C[N+](C)(C)C", "[NH3+]CC(=O)[O-]"):
+        assert supplier_record(catalog_row(smiles=smiles))["smiles"]
+
+
 def test_json_ambiguous_metadata_keeps_canonical_identity(tmp_path):
     path = tmp_path / "metadata.json"
     path.write_text(json.dumps([{"smiles": "OCC", "cas": "64-17-5"}]), encoding="utf-8")

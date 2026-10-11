@@ -92,6 +92,7 @@ def compile_stock_index(
                     url TEXT NOT NULL, cas TEXT, ppg REAL, lead_time TEXT NOT NULL,
                     reason TEXT NOT NULL, PRIMARY KEY(smiles, source, catalog_id)
                 ) WITHOUT ROWID;
+                CREATE UNIQUE INDEX evidence_supplier_identity ON evidence(source, catalog_id);
             """)
             for index, row in enumerate(rows, 1):
                 record = supplier_record(row)

@@ -3,7 +3,6 @@
 import hashlib
 import json
 import re
-import sqlite3
 from itertools import chain
 
 from .stock_index import StockIndex
@@ -14,26 +13,7 @@ def snapshot_records(index, *, batch_size=1000):
     """Keyset paging keeps compilation outside short-lived lookup transactions."""
     if type(batch_size) is not int or not 1 <= batch_size <= 5000:
         raise ValueError("Stock export batches must contain 1-5000 records")
-    last = None
-    while True:
-        index.assert_current()
-        with index.connect() as connection:
-            connection.row_factory = sqlite3.Row
-            if last is None:
-                rows = connection.execute(
-                    "SELECT * FROM evidence ORDER BY smiles,source,catalog_id LIMIT ?", (batch_size,)
-                ).fetchall()
-            else:
-                rows = connection.execute(
-                    "SELECT * FROM evidence WHERE (smiles,source,catalog_id)>(?,?,?) "
-                    "ORDER BY smiles,source,catalog_id LIMIT ?", (*last, batch_size)
-                ).fetchall()
-        if not rows:
-            break
-        for row in rows:
-            yield dict(row)
-        last = tuple(rows[-1][key] for key in ("smiles", "source", "catalog_id"))
-    index.assert_current()
+    yield from index.iter_records(batch_size=batch_size)
 
 
 def merge_stock_snapshots(paths, rows, *, additional_sha256, output, source_id):

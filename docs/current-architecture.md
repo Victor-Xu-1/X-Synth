@@ -344,10 +344,25 @@ for bounded monitoring, rather than scanning large template tables on each poll.
 Imports use one supplier-evidence authority. Missing prices, CAS and current
 stock remain unknown; a catalog record is not a live procurement confirmation.
 
+Catalog admission preserves explicit negative facts: test/demo roles, unavailable
+or non-purchasable entries cannot become terminals. Supported SKU/path bindings
+and declared InChIKeys must agree; compilation rejects a supplier SKU attributed
+to multiple exact structures. These are import consistency checks, not evidence
+that an arbitrary supplier page exists or that it presently offers the compound.
+The shared purchase-identity policy requires a complete electroneutral commodity,
+without guessing a missing counterion, normalizing salts or changing stereochemistry.
+Balanced salts and zwitterions remain eligible. Existing immutable rows stay readable;
+price responses carry a separate policy-bound procurement receipt. Defined chemical
+identity does not certify a solvent, concentration, purity or package. Native pricing
+and final closure apply the same policy, and its code is included in the native
+checkpoint fingerprint. Archival availability claims never rebind an old graph.
+
 Catalog composition streams existing immutable snapshots with bounded keyset
 reads and new supplier records through that same authority. Input files are never
 overwritten. Conflicting records require explicit resolution instead of silently
 keeping the first price; supplied InChIKeys must agree with the exact structure.
+The shared keyset iterator closes each bounded read before downstream molecular
+processing, so catalog-wide operations do not bypass lookup transaction deadlines.
 Verified small catalogs complement, rather than replace, the large stock corpus.
 
 Route documents retain repeated reactant input records on unique graph edges.

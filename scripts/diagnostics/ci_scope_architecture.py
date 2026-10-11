@@ -1,6 +1,7 @@
 """Exact source boundaries for immutable assets and owned native execution."""
 
 STOCK_FILES = {
+    "packages/adapters/askcos/catalog_pricer.py",
     "packages/adapters/stock/askcos_buyables.py",
     "packages/adapters/stock/commercial_stock.py",
     "packages/adapters/stock/route_pruning.py",
@@ -12,6 +13,8 @@ STOCK_FILES = {
     "packages/adapters/stock/stock_index.py",
     "packages/adapters/stock/stock_snapshot.py",
     "packages/adapters/stock/supplier_evidence.py",
+    "packages/adapters/stock/supplier_admission.py",
+    "packages/adapters/stock/procurement_identity.py",
     "packages/adapters/stock/unified_aizynth_stock.py",
 }
 TEMPLATE_FILES = {
