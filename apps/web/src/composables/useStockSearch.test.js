@@ -1,6 +1,7 @@
 import { defineComponent, ref } from "vue";
 import { mount } from "@vue/test-utils";
 import { useStockSearch } from "./useStockSearch";
+import { priceContractRecord, priceContractResponse } from "@/common/route-price-test-data";
 
 function deferred() {
   let resolve, reject;
@@ -12,10 +13,14 @@ function deferred() {
 }
 const snapshot = "a".repeat(64),
   otherSnapshot = "b".repeat(64);
-const response = (smiles, records = [{ smiles }], hash = snapshot) => ({
-  snapshot: hash,
-  results: { [smiles]: records },
-});
+function response(smiles, records, hash = snapshot) {
+  const record = priceContractRecord({ snapshot: hash,
+    record_key: { smiles, source: "contract-source", catalog_id: "contract-record" } });
+  record.smiles = smiles;
+  const value = priceContractResponse(record, smiles);
+  if (records) value.results[smiles] = records;
+  return value;
+}
 const wrappers = [];
 function setup(api, expectation = null) {
   const smiles = ref("CCO"),
@@ -60,7 +65,7 @@ test("structure and supplier evidence become visible only as one completed resul
     expectedSnapshot: snapshot,
     smiles: "CCO",
     snapshot,
-    records: [{ smiles: "CCO" }],
+    records: response("CCO").results.CCO,
   });
   expect(state.snapshotMatches.value).toBe(true);
 });

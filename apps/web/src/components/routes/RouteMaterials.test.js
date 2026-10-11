@@ -1,10 +1,11 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { API } from "@/common/api";
-import { priceContractResponse } from "@/common/route-price-test-data";
+import { priceContractRecord, priceContractResponse } from "@/common/route-price-test-data";
 import RouteMaterials from "./RouteMaterials.vue";
 import * as routeReading from "@/common/route-reading";
 import Papa from "papaparse";
 import { initializeLocale, setLocale } from "@/i18n";
+import { STOCK_REQUEST_TIMEOUT_MS } from "@/common/stock-lookup";
 
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 jest.mock("@/components/SmilesImage.vue", () => ({ template: "<span />" }));
@@ -51,7 +52,8 @@ test("materials lookup stays explicit and shows per-supplier raw catalog prices 
   API.post.mockResolvedValueOnce(response());
   await wrapper.get("button").trigger("click");
   await flushPromises();
-  expect(API.post).toHaveBeenCalledWith("/api/v1/stock/lookup", { smiles: ["CCO"] });
+  expect(API.post).toHaveBeenCalledWith("/api/v1/stock/lookup", { smiles: ["CCO"] }, false,
+    expect.objectContaining({ signal: expect.any(AbortSignal), timeoutMs: STOCK_REQUEST_TIMEOUT_MS }));
   expect(wrapper.text()).toContain("2.08 $/g");
   expect(wrapper.text()).toContain("币种未标注");
   expect(wrapper.text()).not.toMatch(/总价|成本|人民币|USD|CNY/);
@@ -97,7 +99,8 @@ test("noncanonical materials use one batch lookup and the server receipt", async
   await wrapper.get("button").trigger("click");
   await flushPromises();
   expect(API.post).toHaveBeenCalledTimes(1);
-  expect(API.post).toHaveBeenCalledWith("/api/v1/stock/lookup", { smiles: ["OCC"] });
+  expect(API.post).toHaveBeenCalledWith("/api/v1/stock/lookup", { smiles: ["OCC"] }, false,
+    expect.objectContaining({ signal: expect.any(AbortSignal), timeoutMs: STOCK_REQUEST_TIMEOUT_MS }));
   expect(wrapper.text()).toContain("2.08 $/g");
 });
 
@@ -177,5 +180,77 @@ test("bound form warnings leave actual catalog records and explicit lookup behav
   await wrapper.setProps({ deliveryReview: receipt, graph: { ...graph, nodes: graph.nodes.map(node =>
     node.id === "material" ? { ...node, smiles: "N" } : node) } });
   expect(wrapper.find("[data-purchase-status]").exists()).toBe(false);
+  expect(API.post).toHaveBeenCalledTimes(1);
+});
+
+test("new per-record lookup statuses remain distinct from the stored route-level purchase warning", async () => {
+  initializeLocale(null);
+  const decision = { policy: "defined_purchase_identity_v1", status: "defined", reason: null, eligible_for_closure: true };
+  const defined = { ...priceContractRecord(), procurement: decision };
+  const unresolved = { ...priceContractRecord(), smiles: "N", cas: "7664-41-7", url: "https://example.org/catalogue", procurement: {
+    ...decision, status: "unresolved", reason: "undefined_purchase_form", eligible_for_closure: false,
+  } };
+  unresolved.price.record_key = { ...unresolved.price.record_key, smiles: "N" };
+  const value = { ...priceContractResponse(defined), requested: [
+    { smiles: "CCO", canonical_smiles: "CCO" }, { smiles: "N", canonical_smiles: "N" },
+  ], results: { CCO: [defined], N: [unresolved] } };
+  const viewGraph = { ...graph, nodes: [...graph.nodes, { id: "other", type: "molecule", smiles: "N", label: "原始原料名称" }],
+    edges: [...graph.edges, { source: "other", target: "reaction" }] };
+  const before = JSON.stringify({ value, viewGraph });
+  API.post.mockResolvedValueOnce(value);
+  const wrapper = setup({ graph: viewGraph });
+  expect(wrapper.find("[data-procurement-status]").exists()).toBe(false);
+  await wrapper.get("button").trigger("click"); await flushPromises();
+  const statuses = wrapper.findAll(".catalog-record [data-procurement-status]");
+  expect(statuses.map(status => status.attributes("data-procurement-status"))).toEqual(["defined", "unresolved"]);
+  expect(wrapper.find("[data-purchase-status]").exists()).toBe(false);
+  expect(statuses[1].text()).toContain("Complete purchase form not recorded");
+  expect(statuses[1].text()).toContain("Not a confirmed commercial starting material");
+  await wrapper.setProps({ deliveryReview: formReview("CCO") });
+  expect(wrapper.findAll('[data-purchase-status="unresolved"]')).toHaveLength(1);
+  expect(statuses[0].attributes("data-procurement-status")).toBe("defined");
+  expect(statuses[1].attributes("data-procurement-status")).toBe("unresolved");
+  setLocale("zh-CN", { persist: false }); await flushPromises();
+  expect(statuses[0].text()).toBe("采购形式明确");
+  expect(statuses[1].text()).toContain("不能作为已确认商购原料");
+  expect(wrapper.text()).toContain("原始原料名称");
+  expect(wrapper.text()).toContain(unresolved.cas);
+  expect(wrapper.get(".catalog-record > a").attributes("href")).toBe(unresolved.url);
+  expect(JSON.stringify({ value, viewGraph })).toBe(before);
+  expect(API.post).toHaveBeenCalledTimes(1);
+  await wrapper.setProps({ expectedSnapshot: "b".repeat(64) });
+  expect(wrapper.find("[data-procurement-status]").exists()).toBe(false);
+  expect(wrapper.find(".procurement-material-limit").exists()).toBe(false);
+});
+
+test.each([[undefined, "unknown"], [null, "invalid"]])("per-record %p decisions retain catalog evidence without declaring closure eligibility", async (procurement, status) => {
+  API.post.mockResolvedValueOnce(priceContractResponse({ ...priceContractRecord(), procurement }));
+  const wrapper = setup();
+  await wrapper.get("button").trigger("click"); await flushPromises();
+  expect(wrapper.get("[data-procurement-status]").attributes("data-procurement-status")).toBe(status);
+  expect(wrapper.find(".procurement-material-limit").exists()).toBe(false);
+  expect(wrapper.find("[data-purchase-status]").exists()).toBe(false);
+  expect(wrapper.text()).toContain("2.08 $/g");
+});
+
+test.each(["structure", "snapshot", "unmount"])("%s cancels the bounded material batch instead of only hiding it", async change => {
+  let resolveOld;
+  API.post.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }));
+  const wrapper = setup();
+  await wrapper.get("button").trigger("click");
+  const options = API.post.mock.calls[0][3];
+  expect(options?.signal).toBeInstanceOf(AbortSignal);
+  expect(options.timeoutMs).toBe(STOCK_REQUEST_TIMEOUT_MS);
+  expect(options.signal.aborted).toBe(false);
+  if (change === "structure") await wrapper.setProps({ graph: { ...graph,
+    nodes: graph.nodes.map(node => node.id === "material" ? { ...node, smiles: "N" } : node) } });
+  if (change === "snapshot") await wrapper.setProps({ expectedSnapshot: "b".repeat(64) });
+  if (change === "unmount") {
+    wrappers.splice(wrappers.indexOf(wrapper), 1);
+    wrapper.unmount();
+  }
+  expect(options.signal.aborted).toBe(true);
+  resolveOld(response()); await flushPromises();
+  if (change !== "unmount") expect(wrapper.find(".catalog-record").exists()).toBe(false);
   expect(API.post).toHaveBeenCalledTimes(1);
 });

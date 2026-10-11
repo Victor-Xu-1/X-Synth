@@ -2,6 +2,8 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { API } from "@/common/api";
 import { priceContractRecord, priceContractResponse } from "@/common/route-price-test-data";
 import MoleculeStockDialog from "./MoleculeStockDialog.vue";
+import { initializeLocale, setLocale } from "@/i18n";
+import { STOCK_REQUEST_TIMEOUT_MS } from "@/common/stock-lookup";
 
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 jest.mock("@/components/SmilesImage.vue", () => ({ template: "<span />" }));
@@ -55,13 +57,18 @@ test("changing task snapshot invalidates a pending response even when the struct
   expect(wrapper.text()).toContain("不能替代原任务采购证据");
 });
 test("noncanonical purchase input uses the server receipt without structure-validation requests", async () => {
-  API.post.mockResolvedValueOnce({ ...response(), requested: [{ smiles: "OCC", canonical_smiles: "CCO" }] });
+  const record = { ...priceContractRecord(), procurement: {
+    policy: "defined_purchase_identity_v1", status: "defined", reason: null, eligible_for_closure: true,
+  } };
+  API.post.mockResolvedValueOnce({ ...response(record), requested: [{ smiles: "OCC", canonical_smiles: "CCO" }] });
   const wrapper = mount(MoleculeStockDialog, { props: { modelValue: true, smiles: "OCC", expectedSnapshot: snapshot }, global: { stubs } });
   wrappers.push(wrapper);
   await flushPromises();
   expect(API.post).toHaveBeenCalledTimes(1);
-  expect(API.post).toHaveBeenCalledWith("/api/v1/stock/lookup", { smiles: ["OCC"] });
+  expect(API.post).toHaveBeenCalledWith("/api/v1/stock/lookup", { smiles: ["OCC"] }, false,
+    expect.objectContaining({ signal: expect.any(AbortSignal), timeoutMs: STOCK_REQUEST_TIMEOUT_MS }));
   expect(wrapper.text()).toContain("2.08 $/g");
+  expect(wrapper.get("[data-procurement-status]").attributes("data-procurement-status")).toBe("defined");
 });
 test("failed lookup stays an error and does not become an empty catalog", async () => {
   API.post.mockRejectedValue(new Error("目录读取失败"));
@@ -69,4 +76,83 @@ test("failed lookup stays an error and does not become an empty catalog", async 
   await flushPromises();
   expect(wrapper.get('[role="alert"]').text()).toContain("无法读取采购记录");
   expect(wrapper.text()).not.toContain("没有精确结构匹配");
+});
+
+test.each([
+  ["undefined_purchase_form", "Complete purchase form not recorded", "完整采购形式未记录"],
+  ["indeterminate_purchase_structure", "Purchase structure indeterminate", "采购结构无法确定"],
+])("%s is visible beside the actual supplier record without hiding CAS, price or links", async (reason, english, chinese) => {
+  initializeLocale(null);
+  const record = { ...priceContractRecord(), cas: "64-17-5", url: "https://example.org/catalogue", procurement: {
+    policy: "defined_purchase_identity_v1", status: "unresolved", reason, eligible_for_closure: false,
+  } };
+  const value = response(record), before = JSON.stringify(value);
+  API.post.mockResolvedValueOnce(value);
+  const wrapper = setup(); await flushPromises();
+  expect(wrapper.get("[data-procurement-status]").attributes("data-procurement-status")).toBe("unresolved");
+  expect(wrapper.text()).toContain(english);
+  expect(wrapper.text()).toContain("Not a confirmed commercial starting material");
+  setLocale("zh-CN", { persist: false }); await flushPromises();
+  expect(wrapper.text()).toContain(chinese);
+  expect(wrapper.text()).toContain("不能作为已确认商购原料");
+  expect(wrapper.text()).toContain(record.catalog_id);
+  expect(wrapper.text()).toContain(record.cas);
+  expect(wrapper.text()).toContain("2.08 $/g");
+  expect(wrapper.get(".stock-node-record a").attributes("href")).toBe(record.url);
+  expect(JSON.stringify(value)).toBe(before);
+  expect(API.post).toHaveBeenCalledTimes(1);
+});
+
+test.each([[undefined, "unknown"], [null, "invalid"]])("missing or malformed decisions (%p) never display a closure eligibility claim", async (procurement, status) => {
+  API.post.mockResolvedValueOnce(response({ ...priceContractRecord(), procurement }));
+  const wrapper = setup(); await flushPromises();
+  expect(wrapper.get("[data-procurement-status]").attributes("data-procurement-status")).toBe(status);
+  expect(wrapper.text()).not.toContain("采购形式明确");
+  expect(wrapper.find(".procurement-material-limit").exists()).toBe(false);
+  expect(wrapper.text()).toContain("2.08 $/g");
+});
+
+test("closing or changing a lookup retires the prior procurement status along with the record", async () => {
+  const record = { ...priceContractRecord(), procurement: {
+    policy: "defined_purchase_identity_v1", status: "unresolved", reason: "undefined_purchase_form", eligible_for_closure: false,
+  } };
+  API.post.mockResolvedValueOnce(response(record));
+  const wrapper = setup(); await flushPromises();
+  expect(wrapper.find(".procurement-material-limit").exists()).toBe(true);
+  await wrapper.setProps({ modelValue: false });
+  expect(wrapper.find("[data-procurement-status]").exists()).toBe(false);
+  API.post.mockRejectedValueOnce(new Error("failed"));
+  await wrapper.setProps({ modelValue: true, smiles: "N" }); await flushPromises();
+  expect(wrapper.find("[data-procurement-status]").exists()).toBe(false);
+  expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+});
+
+test.each(["close", "structure", "snapshot", "unmount"])("%s cancels the bounded in-flight catalogue request", async (change) => {
+  let resolveOld;
+  API.post.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }));
+  const wrapper = setup();
+  const options = API.post.mock.calls[0][3];
+  expect(options?.signal).toBeInstanceOf(AbortSignal);
+  expect(options.timeoutMs).toBe(STOCK_REQUEST_TIMEOUT_MS);
+  expect(options.signal.aborted).toBe(false);
+  API.post.mockResolvedValueOnce({ ...response(), results: { CCO: [] },
+    requested: [{ smiles: change === "structure" ? "OCC" : "CCO", canonical_smiles: "CCO" }] });
+  if (change === "close") await wrapper.setProps({ modelValue: false });
+  if (change === "structure") await wrapper.setProps({ smiles: "OCC" });
+  if (change === "snapshot") await wrapper.setProps({ expectedSnapshot: "b".repeat(64) });
+  if (change === "unmount") {
+    wrappers.splice(wrappers.indexOf(wrapper), 1);
+    wrapper.unmount();
+  }
+  expect(options.signal.aborted).toBe(true);
+  resolveOld(response()); await flushPromises();
+  if (change !== "unmount") expect(wrapper.find(".stock-node-record").exists()).toBe(false);
+});
+
+test("deadline failure leaves an explicit retryable error, not catalogue success", async () => {
+  API.post.mockRejectedValueOnce(new DOMException("Catalogue timed out", "TimeoutError"));
+  const wrapper = setup(); await flushPromises();
+  expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+  expect(wrapper.find(".stock-node-record").exists()).toBe(false);
+  expect(wrapper.find("[data-procurement-status]").exists()).toBe(false);
 });

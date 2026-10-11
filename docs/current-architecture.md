@@ -230,6 +230,17 @@ governance. See [version operations](operations.md#版本管理).
   and immutable stock snapshot. Legacy `ppg` uses the documented `$/g` convention;
   ISO currency, quotation date, package and purity remain unknown when absent.
   Live quotes and full-route cost are not inferred from those catalog values.
+  Standalone lookup and route-material lookup share the same response identity
+  gate: ordered input/canonical echoes, catalogue rows, price basis and snapshot
+  must agree. The stock procurement presentation consumes the backend's defined
+  purchase-identity decision, not another client chemistry rule. Defined means a
+  determined structure/form only; unresolved, missing or invalid decisions cannot
+  become verified closure eligibility. Catalogue/CAS/price records remain visible
+  without implying real-time supply, purity or experimental suitability.
+  Catalogue requests share a 15-second transport deadline; route/input/snapshot
+  changes, dialog closure and unmount cancel their obsolete request. Generation
+  checks still reject late data, and a timeout remains a visible read error rather
+  than an empty catalogue or a successful procurement check.
 - Native trained models retain their exact template index and fingerprint
   parameters. A shared template query database cannot replace a trained output
   ordering. Imported ORD/USPTO templates are knowledge assets until a compatible

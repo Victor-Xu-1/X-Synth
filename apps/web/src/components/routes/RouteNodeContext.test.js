@@ -85,7 +85,10 @@ test("stock records are explicit reads with identity comparison, stale guards an
   expect(stock).toContain('API.post("/api/v1/stock/lookup"');
   expect(stock).toContain("catalogRecordsForInputs(value, [smiles])");
   expect(stock).toContain("snapshot === expectedSnapshot");
-  expect(stock).toContain("current !== generation");
+  expect(stock).toContain("!disposed && current === generation && !controller.signal.aborted");
+  expect(stock).toContain("if (!isCurrent()) return");
+  expect(stock).toContain("activeRequest?.abort()");
+  expect(stock).toContain("signal: controller.signal, timeoutMs: STOCK_REQUEST_TIMEOUT_MS");
   expect(stock).toContain("rows.value = []");
   expect(stock).not.toContain("call-sync");
 });

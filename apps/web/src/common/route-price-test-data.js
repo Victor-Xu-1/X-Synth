@@ -21,3 +21,18 @@ export function priceContractResponse(record = priceContractRecord(), input = "C
     results: { [record.smiles]: [record] },
   };
 }
+
+export function stockContractResponse(smiles, records = [], snapshot = "a".repeat(64)) {
+  const wire = priceContractResponse();
+  wire.snapshot = wire.price_basis.snapshot = snapshot;
+  wire.requested = [{ smiles, canonical_smiles: smiles }];
+  wire.results = { [smiles]: records.map(row => {
+    if (row.price) return row;
+    const record = { source: "contract-source", catalog_id: "contract-record", ppg: null, ...row, smiles };
+    const price = priceContractRecord({ snapshot, record_key: {
+      smiles, source: record.source, catalog_id: record.catalog_id,
+    }, amount: record.ppg, status: record.ppg === null ? "missing" : "recorded" }).price;
+    return { ...record, price };
+  }) };
+  return wire;
+}

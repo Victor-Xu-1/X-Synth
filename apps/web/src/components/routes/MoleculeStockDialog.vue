@@ -56,6 +56,7 @@
               >{{ $tr('供应商目录') }}<v-icon icon="mdi-open-in-new" size="14"
             /></a>
           </header>
+          <ProcurementStatus class="stock-node-procurement" :record="row" :snapshot="snapshot" :smiles="canonicalSmiles" />
           <dl>
             <div>
               <dt>{{ $tr('目录号') }}</dt>
@@ -97,9 +98,11 @@ import { API } from "@/common/api";
 import { safeExternalUrl } from "@/common/external-url";
 import { moleculeLocations } from "@/common/route-node-context";
 import { catalogRecordsForInputs } from "@/common/route-price";
+import { STOCK_REQUEST_TIMEOUT_MS } from "@/common/stock-lookup";
 import { errorMessage } from "@/common/workspace-errors";
 import SmilesImage from "@/components/SmilesImage.vue";
 import SupplierPrice from "./SupplierPrice.vue";
+import ProcurementStatus from "@/components/stock/ProcurementStatus.vue";
 const open = defineModel({ type: Boolean, default: false });
 const props = defineProps({ smiles: String, expectedSnapshot: String });
 defineEmits(["navigate"]);
@@ -110,11 +113,14 @@ const rows = ref([]),
   error = ref(""),
   searched = ref(false);
 let generation = 0,
-  disposed = false;
+  disposed = false,
+  activeRequest = null;
 watch(
   () => [open.value, props.smiles, props.expectedSnapshot],
   async ([visible, smiles]) => {
     const current = ++generation;
+    activeRequest?.abort();
+    activeRequest = null;
     rows.value = [];
     canonicalSmiles.value = "";
     snapshot.value = "";
@@ -122,20 +128,26 @@ watch(
     searched.value = false;
     loading.value = false;
     if (!visible || !smiles) return;
+    const controller = new AbortController();
+    activeRequest = controller;
+    const isCurrent = () => !disposed && current === generation && !controller.signal.aborted;
     loading.value = true;
     try {
-      const value = await API.post("/api/v1/stock/lookup", { smiles: [smiles] });
-      if (disposed || current !== generation) return;
+      const value = await API.post("/api/v1/stock/lookup", { smiles: [smiles] }, false, {
+        signal: controller.signal, timeoutMs: STOCK_REQUEST_TIMEOUT_MS,
+      });
+      if (!isCurrent()) return;
       const response = catalogRecordsForInputs(value, [smiles]);
       rows.value = response.records[smiles];
       canonicalSmiles.value = response.canonicalSmiles[smiles];
       snapshot.value = response.snapshot;
       searched.value = true;
     } catch (cause) {
-      if (!disposed && current === generation)
+      if (isCurrent())
         error.value = errorMessage(cause, "无法读取采购记录。");
     } finally {
-      if (!disposed && current === generation) loading.value = false;
+      if (activeRequest === controller) activeRequest = null;
+      if (isCurrent()) loading.value = false;
     }
   },
   { immediate: true },
@@ -143,6 +155,8 @@ watch(
 onBeforeUnmount(() => {
   disposed = true;
   generation++;
+  activeRequest?.abort();
+  activeRequest = null;
 });
 </script>
 <style scoped>
@@ -194,6 +208,9 @@ h2 {
 }
 .stock-node-record header {
   font-size: 13px;
+}
+.stock-node-procurement {
+  margin-top: 10px;
 }
 dl {
   display: grid;
