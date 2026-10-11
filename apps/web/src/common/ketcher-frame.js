@@ -1,3 +1,5 @@
+import { bindKetcherDialogAccess } from "./ketcher-dialog-access";
+
 export function createKetcherFrameLifecycle(getFrame, interrupted) {
   let document, release;
   function observe() {
@@ -6,8 +8,10 @@ export function createKetcherFrameLifecycle(getFrame, interrupted) {
     release?.();
     document = current;
     const view = current.defaultView;
-    view.addEventListener("pagehide", interrupted);
-    release = () => view.removeEventListener("pagehide", interrupted);
+    const releaseDialogs = bindKetcherDialogAccess(current);
+    const hidden = () => { releaseDialogs(); interrupted(); };
+    view.addEventListener("pagehide", hidden);
+    release = () => { view.removeEventListener("pagehide", hidden); releaseDialogs(); };
   }
   function dispose() {
     release?.();

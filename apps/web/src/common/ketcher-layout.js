@@ -26,6 +26,14 @@ export function prepareKetcherDocument(doc) {
         scrollbar-width: thin;
       }
     }
+    @media (max-width: 480px) {
+      [class*="Dialog-module_dialog"] {
+        min-width: 0 !important;
+        max-width: calc(100% - 16px) !important;
+        max-height: calc(100% - 16px) !important;
+      }
+      [class*="Dialog-module_body"] { min-width: 0; overflow: auto; }
+    }
   `;
   doc.head.appendChild(style);
 }

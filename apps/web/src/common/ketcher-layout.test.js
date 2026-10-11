@@ -56,6 +56,8 @@ test("narrow native toolbars remain reachable without scaling or suppressing the
   expect(css).toContain('[class*="BottomToolbar-module_root"]');
   expect(css).toContain("overflow-x: auto");
   expect(css).toContain("overscroll-behavior-x: contain");
+  expect(css).toContain('[class*="Dialog-module_dialog"]');
+  expect(css).toContain("max-width: calc(100% - 16px)");
   expect(css).not.toContain("transform: scale");
   expect(css).not.toContain("display: none");
   document.querySelector("#x-synth-ketcher-responsive-style").remove();
