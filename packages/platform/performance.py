@@ -29,6 +29,23 @@ class AssetCacheLimits:
 
 
 @dataclass(frozen=True)
+class HistoryReviewLimits:
+    max_entries: int = 128
+    max_pending: int = 64
+    batch_size: int = 4
+    idle_wait_seconds: float = 0.2
+    shutdown_seconds: float = 5.0
+
+    def __post_init__(self):
+        if (any(type(value) is not int or value <= 0 for value in
+                (self.max_entries, self.max_pending, self.batch_size))
+                or self.batch_size > self.max_pending
+                or any(not math.isfinite(value) or value <= 0 for value in
+                       (self.idle_wait_seconds, self.shutdown_seconds))):
+            raise ValueError("History review limits must be positive and bounded")
+
+
+@dataclass(frozen=True)
 class PerformanceBudget:
     """Resource ceilings are independent of chemistry quality or search depth."""
 

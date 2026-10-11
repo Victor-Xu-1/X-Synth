@@ -69,8 +69,11 @@ class HistoryBatch(HistoryModel):
     group_id: Identifier | None = None
 
 
-def result_router(*, repository, transport):
+def result_router(*, repository, transport, review_index=None):
     router = APIRouter()
+
+    def record(job):
+        return result_record(job, review=review_index.read(job) if review_index is not None else None)
 
     def owned_operation(request, operation):
         principal = authenticate(request, transport)
@@ -110,7 +113,7 @@ def result_router(*, repository, transport):
                 archived=archived,
             ),
         )
-        return {**page, "results": [result_record(job) for job in page["results"]]}
+        return {**page, "results": [record(job) for job in page["results"]]}
 
     @router.get("/v1/results/list")
     @router.get("/results/list")
@@ -122,7 +125,7 @@ def result_router(*, repository, transport):
         jobs = owned_operation(
             request, lambda owner: repository.list(owner, limit=limit, offset=offset)
         )
-        return [result_record(job) for job in jobs]
+        return [record(job) for job in jobs]
 
     @router.get("/v1/results/groups")
     def list_groups(request: Request):

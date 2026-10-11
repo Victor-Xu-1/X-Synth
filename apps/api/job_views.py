@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from copy import deepcopy
 
 from fastapi import HTTPException
@@ -8,7 +9,7 @@ from packages.chemistry.material_scope import stored_route_scope_exclusions
 from packages.orchestrator.review_policy import FORWARD_REVIEW_POLICIES, OPERATION_REVIEW_POLICIES, ORIGINAL_RANK_REVIEW_POLICIES
 from packages.orchestrator.operation_review import operation_records_validated
 from packages.orchestrator.route_artifacts import RouteArtifactError, RouteArtifactStore
-from packages.orchestrator.delivery_review import history_delivery_review, with_delivery_review
+from packages.orchestrator.delivery_review import history_delivery_review, with_delivery_review, selected_routes_review, pending_routes_review
 
 
 def history_metadata(job: dict) -> dict:
@@ -24,8 +25,8 @@ def display_description(job: dict) -> str:
     return job.get("history_title") or request.get("description") or request["smiles"]
 
 
-def job_response(job: dict) -> dict:
-    summary = delivery_summary(job.get("summary") or {})
+def job_response(job: dict, *, review=None) -> dict:
+    summary = delivery_summary(job.get("summary") or {}, review=review)
     request = job["request"]
     return {
         "job_id": job["id"],
@@ -80,12 +81,14 @@ def original_search_settings(job: dict) -> dict:
     return settings
 
 
-def result_record(job: dict) -> dict:
-    data = job_response(job)
+def result_record(job: dict, *, review=None) -> dict:
+    data = job_response(job, review=review)
     return {
         "result_id": data["job_id"],
         "description": data["description"],
         "revision": data["revision"],
+        "result_snapshot": review["source_binding"]["snapshot_id"] if review is not None
+        and review.get("basis") == "selected_routes" else data["result_snapshot"],
         **history_metadata(data),
         "progress": data["progress"],
         "created": data["created_at"],
@@ -114,8 +117,8 @@ def public_summary(value):
     return value
 
 
-def delivery_summary(summary):
-    return {**public_summary(summary), "delivery_review": history_delivery_review(summary)}
+def delivery_summary(summary, *, review=None):
+    return {**public_summary(summary), "delivery_review": review if review is not None else history_delivery_review(summary)}
 
 
 def result_snapshot_identifier(checkpoint):
@@ -177,7 +180,15 @@ def selected_routes_for_job(job, *, artifacts, budget):
     return delivery_routes(selected, job=job, budget=budget)
 
 
-def route_result(job, *, artifacts, budget):
+def current_delivery_summary(job, routes, *, review_index=None, token=None):
+    review = selected_routes_review(routes, job_id=job["id"], snapshot_id=result_snapshot_identifier(job.get("checkpoint")))
+    if review_index is not None:
+        review_index.remember(job, review, token=token)
+    return delivery_summary(job.get("summary") or {}, review=review)
+
+
+def route_result(job, *, artifacts, budget, review_index=None):
+    token = review_index.token(job) if review_index is not None else None
     if (job.get("summary") or {}).get("origin") == "askcos_history":
         path = artifacts / job["id"] / "native-history.json"
         if not path.exists():
@@ -201,7 +212,7 @@ def route_result(job, *, artifacts, budget):
         if job.get("request"):
             document["description"] = display_description(job)
         result["unified_route_pool"] = {
-            "summary": delivery_summary(job["summary"]),
+            "summary": current_delivery_summary(job, routes, review_index=review_index, token=token),
             "selected_routes": routes,
         }
         if (
@@ -213,6 +224,7 @@ def route_result(job, *, artifacts, budget):
             )
         return document
     selected = selected_routes_for_job(job, artifacts=artifacts, budget=budget)
+    summary = current_delivery_summary(job, selected, review_index=review_index, token=token)
     return {
         "result_id": job["id"],
         "target_smiles": job["request"]["smiles"],
@@ -226,9 +238,9 @@ def route_result(job, *, artifacts, budget):
         "public": False,
         "result": {
             "version": 2,
-            "stats": delivery_summary(job["summary"] or {}),
+            "stats": summary,
             "unified_route_pool": {
-                "summary": delivery_summary(job["summary"] or {}),
+                "summary": summary,
                 "selected_routes": selected,
             },
             "uds": {
@@ -238,3 +250,33 @@ def route_result(job, *, artifacts, budget):
             },
         },
     }
+
+
+def load_history_review(job, *, artifacts, budget, jobs_path=None):
+    """Spawn-picklable read-only projection through the same result guards."""
+    from packages.orchestrator.history_review_identity import snapshot_identifier, artifact_identity, review_context
+    original = job
+    try:
+        if jobs_path is not None:
+            with sqlite3.connect(f"file:{jobs_path}?mode=ro", uri=True) as db:
+                db.row_factory = sqlite3.Row
+                db.execute("PRAGMA query_only=ON")
+                row = db.execute(
+                    """SELECT id,owner,status,revision,created,modified,request,summary,
+                    json_object('published_result',json_extract(checkpoint,'$.published_result'),
+                                'result_artifact_schema',json_extract(checkpoint,'$.result_artifact_schema'),
+                                'review_policy',json_extract(checkpoint,'$.review_policy')) AS checkpoint
+                    FROM jobs WHERE id=? AND owner=?""", (job["id"], job.get("owner")),
+                ).fetchone()
+            if row is None:
+                raise ValueError("History projection owner changed")
+            job = dict(row)
+            for key in ("request", "summary", "checkpoint"):
+                job[key] = json.loads(job[key]) if job[key] else None
+            if review_context(job) != review_context(original):
+                return pending_routes_review(original["id"], snapshot_identifier(original)), None
+        identity = artifact_identity(artifacts, job, snapshot_identifier(job))
+        result = route_result(job, artifacts=artifacts, budget=budget)
+        return result["result"]["unified_route_pool"]["summary"]["delivery_review"], identity
+    except (HTTPException, OSError, sqlite3.Error, ValueError, TypeError, KeyError):
+        return pending_routes_review(job["id"], snapshot_identifier(job), unavailable=True), None
