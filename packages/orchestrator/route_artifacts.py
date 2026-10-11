@@ -60,7 +60,10 @@ class RouteArtifactStore:
     def _directory(self, identifier):
         if not isinstance(identifier, str) or not JOB_ID.fullmatch(identifier):
             raise RouteArtifactError("Invalid published job identity")
-        return self.root / identifier / "results"
+        directory = self.root / identifier / "results"
+        if any(path.is_symlink() for path in (directory.parent, directory)):
+            raise RouteArtifactError("Invalid result directory")
+        return directory
 
     def stage(self, identifier, *, all_routes, selected_routes, summary):
         validate_selected(identifier, selected_routes, summary)
@@ -103,22 +106,29 @@ class RouteArtifactStore:
         pointer = checkpoint.get("published_result")
         if pointer is None:
             return [] if schema == SCHEMA else None
+        selected, summary = self.read_publication(
+            job["id"], pointer, target_smiles=job["request"]["smiles"], limit=limit
+        )
+        if summary != job.get("summary"):
+            raise RouteArtifactError("Published summary and job commit disagree")
+        return selected
+
+    def read_publication(self, identifier, pointer, *, target_smiles, limit):
+        """Read a server-owned immutable reference; does not publish it as current."""
         generation_id = publication_id(pointer)
-        directory = self._directory(job["id"]) / generation_id
+        directory = self._directory(identifier) / generation_id
         if directory.is_symlink():
             raise RouteArtifactError("Invalid result generation directory")
         manifest_path = directory / "manifest.json"
         manifest = _read(manifest_path, limit=MANIFEST_LIMIT, expected_digest=generation_id)
-        manifest = validate_manifest(manifest, job["id"])
-        if manifest["target_smiles"] != job["request"]["smiles"]:
+        manifest = validate_manifest(manifest, identifier)
+        if manifest["target_smiles"] != target_smiles:
             raise RouteArtifactError("Published result target changed")
         descriptors = manifest["files"]
         total_bytes = sum(descriptors[name]["bytes"] for name in ("selected_routes.json", "summary.json"))
         if total_bytes > limit:
             raise RouteArtifactError("Result exceeds the response budget", oversized=True)
         summary = _read(directory / "summary.json", limit=limit, descriptor=descriptors["summary.json"])
-        if summary != job.get("summary"):
-            raise RouteArtifactError("Published summary and job commit disagree")
         selected = _read(directory / "selected_routes.json", limit=limit, descriptor=descriptors["selected_routes.json"])
-        validate_selected(job["id"], selected, summary)
-        return selected
+        validate_selected(identifier, selected, summary)
+        return selected, summary

@@ -138,6 +138,110 @@ def captured_task(api, *, owner="local_workspace"):
     return job, artifact, candidates
 
 
+def test_source_evidence_http_reads_owned_captured_steps_without_new_calculations(api):
+    job, _, candidates = captured_task(api)
+    response = api.client.post("/api/v1/route-documents/from-task", json={
+        "job_id": job["id"], "route_index": 0, "route_id": candidates[0].route_id,
+    })
+    assert response.status_code == 200
+    document = response.json()
+    endpoint = f"/api/v1/route-documents/{document['id']}/source-evidence"
+    before = api.app.state.repository.get(job["id"])
+    response = api.client.get(endpoint)
+    assert response.status_code == 200
+    evidence = response.json()
+    assert evidence["status"] == "available"
+    assert evidence["scope"] == "current_matching_source"
+    assert evidence["binding"]["chemical_signature"] == document["metadata"]["chemical_signature"]
+    assert evidence["steps_by_node"]["r-1"]["step_id"] == candidates[0].steps[0].step_id
+    assert api.app.state.repository.get(job["id"]) == before
+    assert api.app.state.documents.get(document["id"], "local_workspace") == document
+    assert api.client.get(endpoint, headers={"Origin": "https://untrusted.example"}).status_code == 403
+    assert api.client.get("/api/v1/route-documents/" + "f" * 32 + "/source-evidence").status_code == 404
+
+
+def test_source_evidence_http_reports_drafts_and_lost_job_ownership(api):
+    document = api.client.post("/api/v1/route-documents", json=document_body()).json()
+    response = api.client.get(f"/api/v1/route-documents/{document['id']}/source-evidence")
+    assert response.status_code == 200 and response.json()["reason"] == "not_source_copy"
+    job, _, _ = captured_task(api)
+    document = api.client.post("/api/v1/route-documents/from-task", json={
+        "job_id": job["id"], "route_index": 0,
+    }).json()
+    with api.app.state.repository.connect() as connection:
+        connection.execute("UPDATE jobs SET owner='another_owner' WHERE id=?", (job["id"],))
+        connection.commit()
+    response = api.client.get(f"/api/v1/route-documents/{document['id']}/source-evidence")
+    assert response.status_code == 200 and response.json()["reason"] == "source_job_unavailable"
+
+
+def _source_copy_endpoint(api):
+    job, _, _ = captured_task(api)
+    document = api.client.post("/api/v1/route-documents/from-task", json={
+        "job_id": job["id"], "route_index": 0,
+    }).json()
+    return document, f"/api/v1/route-documents/{document['id']}/source-evidence"
+
+
+def _active_source_reader(api):
+    executor = api.app.state.document_sources.executor
+    deadline = monotonic() + 3
+    while monotonic() < deadline:
+        with executor._lock:
+            if executor._process is not None and executor._process.pid is not None:
+                return
+        sleep(0.001)
+    pytest.fail("Actual source-reading child did not start")
+
+
+def test_source_read_busy_is_bounded_and_revision_change_cannot_return_old_evidence(api):
+    document, endpoint = _source_copy_endpoint(api)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        first = pool.submit(api.client.get, endpoint)
+        _active_source_reader(api)
+        busy = api.client.get(endpoint)
+        assert busy.status_code == 503 and busy.json()["detail"]["code"] == "document_source_busy"
+        update = api.client.put(f"/api/v1/route-documents/{document['id']}", json={
+            "title": "Changed during source read", "graph": document["graph"],
+            "revision": document["revision"],
+        })
+        assert update.status_code == 200
+        response = first.result(timeout=5)
+    assert response.status_code == 200 and response.json()["reason"] == "source_document_changed"
+    assert response.json()["binding"]["document_revision"] == update.json()["revision"]
+    assert api.client.get(endpoint).json()["status"] == "available"
+
+
+def test_disconnect_interrupts_only_owned_source_child_and_releases_admission(api):
+    _, endpoint = _source_copy_endpoint(api)
+    address = (api.client.base_url.host, api.client.base_url.port)
+    with socket.create_connection(address, timeout=5) as peer:
+        peer.sendall(f"GET {endpoint} HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n".encode())
+        _active_source_reader(api)
+    deadline = monotonic() + 5
+    executor = api.app.state.document_sources.executor
+    while monotonic() < deadline:
+        with executor._lock:
+            if executor._process is None:
+                break
+        sleep(0.01)
+    assert executor._process is None and executor._reader is None
+    assert api.client.get(endpoint).json()["status"] == "available"
+
+
+def test_corrupt_document_provenance_is_explicit_and_never_rewritten(api):
+    document = api.client.post("/api/v1/route-documents", json=document_body()).json()
+    with api.app.state.documents.connect() as connection:
+        connection.execute("UPDATE route_documents SET source='[]' WHERE id=?", (document["id"],))
+        connection.commit()
+    for suffix in ("", "/source-evidence"):
+        response = api.client.get(f"/api/v1/route-documents/{document['id']}{suffix}")
+        assert response.status_code == 409
+        assert "binding" not in response.json() and "source_closed" not in response.json()
+    with api.app.state.documents.connect() as connection:
+        assert connection.execute("SELECT source FROM route_documents WHERE id=?", (document["id"],)).fetchone() == ("[]",)
+
+
 def test_editable_copy_uses_display_title_without_rewriting_scientific_request(api):
     job, _, candidates = captured_task(api)
     repository = api.app.state.repository

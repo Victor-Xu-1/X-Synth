@@ -166,6 +166,8 @@ class RouteDocumentRepository:
         )
         require_document_scope(graph)
         provenance = json.loads(source)
+        if not isinstance(provenance, dict):
+            raise ValueError("Invalid stored document provenance")
         original = (
             bool(provenance)
             and not provenance.get("_chemistry_edited", False)
@@ -191,7 +193,10 @@ class RouteDocumentRepository:
             if original
             else {},
             "source_closed": original and provenance.get("closed") is True,
-            "metadata": {"delivery_review": provenance.get("delivery_review") if original else None},
+            "metadata": {
+                "chemical_signature": graph.semantic_signature(),
+                "delivery_review": provenance.get("delivery_review") if original else None,
+            },
         }
 
     def create(self, owner: str, title: str, graph: RouteGraph, *, source=None):
@@ -220,15 +225,27 @@ class RouteDocumentRepository:
             connection.commit()
         return result
 
-    def get(self, identifier: str, owner: str):
+    def _row(self, identifier: str, owner: str):
         _owner(owner)
         with self.connect() as connection:
-            return self.public(
-                connection.execute(
-                    "SELECT * FROM route_documents WHERE id=? AND owner=?",
-                    (identifier, owner),
-                ).fetchone()
-            )
+            row = connection.execute(
+                "SELECT * FROM route_documents WHERE id=? AND owner=?",
+                (identifier, owner),
+            ).fetchone()
+        if row is None:
+            raise KeyError(identifier)
+        return row
+
+    def get(self, identifier: str, owner: str):
+        return self.public(self._row(identifier, owner))
+
+    def source_context(self, identifier: str, owner: str):
+        """Server-only provenance from the same owned document revision."""
+        row = self._row(identifier, owner)
+        return {
+            "document": self.public(row),
+            "provenance": json.loads(row[4]),
+        }
 
     def list(self, owner: str, *, limit=50, offset=0):
         _owner(owner)

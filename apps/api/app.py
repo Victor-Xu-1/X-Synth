@@ -30,6 +30,7 @@ from packages.platform.version import product_version, source_build
 from packages.workspace.analysis_repository import AnalysisRepository
 from packages.workspace.analysis_execution import analysis_runner
 from packages.workspace.route_repository import RouteDocumentRepository
+from packages.workspace.document_source_reader import DocumentSourceReader
 
 from .analysis_routes import analysis_router
 from .assessment_routes import assessment_router, process_router
@@ -118,6 +119,9 @@ def create_app(
         artifacts=artifacts, loader=partial(load_history_review, artifacts=artifacts, budget=budget, jobs_path=repository.path),
         idle=lambda: not repository.has_active_work(),
     )
+    document_sources = DocumentSourceReader(
+        documents=documents, repository=repository, artifacts=artifacts, budget=budget,
+    )
 
     @asynccontextmanager
     async def lifespan(app):
@@ -130,13 +134,16 @@ def create_app(
             yield
         finally:
             try:
-                history_review.close()
+                document_sources.close()
             finally:
                 try:
-                    health_refresh.stop()
+                    history_review.close()
                 finally:
-                    if pipeline is not None:
-                        pipeline.stop()
+                    try:
+                        health_refresh.stop()
+                    finally:
+                        if pipeline is not None:
+                            pipeline.stop()
 
     app = FastAPI(
         title="X-Synth",
@@ -152,6 +159,7 @@ def create_app(
     app.state.pipeline = pipeline
     app.state.health_refresh = health_refresh
     app.state.history_review = history_review
+    app.state.document_sources = document_sources
 
     def readiness():
         health_refresh.check()
@@ -257,6 +265,7 @@ def create_app(
             transport=transport,
             artifacts=artifacts,
             budget=budget,
+            source_reader=document_sources,
         ),
         prefix="/api/v1",
     )

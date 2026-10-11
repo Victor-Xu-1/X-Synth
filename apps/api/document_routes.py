@@ -1,3 +1,6 @@
+import asyncio
+from threading import Event
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -5,7 +8,9 @@ from packages.orchestrator.job_repository import JobConflict
 from packages.workspace.http_validation import WorkspaceRoute
 from packages.workspace.route_graph import RouteGraph, graph_from_candidate
 from packages.workspace.route_repository import UnsupportedRouteDocumentSchema
+from packages.workspace.source_evidence import DocumentSourceAvailable, DocumentSourceUnavailable
 from packages.chemistry.material_scope import MaterialScopeError
+from packages.adapters.askcos.transport import EngineUnavailable
 
 from .job_views import display_description, route_result
 from .security import authenticate
@@ -36,7 +41,7 @@ class SourceRouteBody(BaseModel):
     route_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
-def document_router(*, documents, repository, transport, artifacts, budget):
+def document_router(*, documents, repository, transport, artifacts, budget, source_reader):
     router = APIRouter(prefix="/route-documents", route_class=WorkspaceRoute)
 
     def owned(request: Request):
@@ -53,6 +58,8 @@ def document_router(*, documents, repository, transport, artifacts, budget):
             raise HTTPException(503, "路线文档存储格式不受支持。") from exc
         except MaterialScopeError as exc:
             raise HTTPException(409, str(exc)) from exc
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(409, "路线文档数据无效或已损坏。") from exc
 
     @router.get("")
     def list_documents(
@@ -106,6 +113,29 @@ def document_router(*, documents, repository, transport, artifacts, budget):
     @router.get("/{identifier}")
     def get_document(identifier: str, owner: str = Depends(owned)):
         return guarded(lambda: documents.get(identifier, owner))
+
+    @router.get(
+        "/{identifier}/source-evidence",
+        response_model=DocumentSourceAvailable | DocumentSourceUnavailable,
+        response_model_exclude_unset=True,
+    )
+    async def source_evidence(identifier: str, request: Request, owner: str = Depends(owned)):
+        cancelled = Event()
+        task = asyncio.create_task(asyncio.to_thread(
+            guarded, lambda: source_reader.read(identifier, owner, cancelled=cancelled.is_set)
+        ))
+        try:
+            while not task.done():
+                if await request.is_disconnected():
+                    cancelled.set()
+                await asyncio.wait({task}, timeout=0.1)
+            return await task
+        except EngineUnavailable as exc:
+            raise HTTPException(503, {"code": exc.code}) from exc
+        finally:
+            cancelled.set()
+            # ASGI cancellation may occur before the request can await the worker.
+            task.add_done_callback(lambda done: None if done.cancelled() else done.exception())
 
     @router.put("/{identifier}")
     def update_document(

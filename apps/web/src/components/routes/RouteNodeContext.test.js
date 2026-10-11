@@ -16,6 +16,8 @@ test.each([
   "RouteInspector.vue",
   "RoutePreview.vue",
   "DocumentPreview.vue",
+  "DocumentSourceStatus.vue",
+  "RouteSavedStepEvidence.vue",
 ])("%s compiles with the actual Vue compiler", (filename) => {
   const { descriptor, errors } = parse(source(filename), { filename });
   expect(errors).toEqual([]);

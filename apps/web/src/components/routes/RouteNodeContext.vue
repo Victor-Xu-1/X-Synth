@@ -100,6 +100,11 @@
         rel="noopener noreferrer"
         >{{ $tr(link.label) }} · {{ link.value }}</a
       >
+      <RouteSavedStepEvidence :step="step" :automated-review="automatedReview" />
+      <details v-if="step" class="saved-step-record">
+        <summary>{{ $tr('来源与模型记录') }}</summary>
+        <RouteEvidencePanel :step="step" />
+      </details>
       <ReactionReferences
         :key="node.id"
         :product="reaction.product"
@@ -143,10 +148,13 @@ import RouteConditionDialog from "./RouteConditionDialog.vue";
 import MoleculeFileControls from "@/components/workspace/MoleculeFileControls.vue";
 import StructurePreview from "@/components/workspace/StructurePreview.vue";
 import ReactionReferences from "@/components/references/ReactionReferences.vue";
+import RouteSavedStepEvidence from "./RouteSavedStepEvidence.vue";
+import RouteEvidencePanel from "./RouteEvidencePanel.vue";
 const props = defineProps({
   node: { type: Object, required: true },
   graph: Object,
   step: Object,
+  automatedReview: Object,
   snapshot: String,
 });
 defineEmits(["navigate"]);
@@ -219,6 +227,8 @@ onBeforeUnmount(() => {
   gap: 4px;
   flex-wrap: wrap;
 }
+.saved-step-record { margin-top: 12px; font-size: 12px; }
+.saved-step-record summary { cursor: pointer; }
 code {
   display: block;
   overflow-wrap: anywhere;

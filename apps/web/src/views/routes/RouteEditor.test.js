@@ -16,6 +16,7 @@ import { resolve } from "node:path";
 import { parse } from "@vue/compiler-sfc";
 import { initializeLocale, setLocale } from "@/i18n";
 import * as routeExport from "@/common/route-export";
+import { sourceDocument, sourceEvidence, sourceReceipt, deferred as sourceDeferred } from "@/common/document-source-evidence.test-support";
 jest.mock("@vueuse/core", () => ({ useResizeObserver: jest.fn() }));
 
 test("the document title does not suppress the shared keyboard-focus outline", () => {
@@ -125,6 +126,96 @@ const wrappers = [];
 const buttonWithText = (wrapper, text) =>
   wrapper.findAll("button").find((button) => button.text() === text);
 
+async function setupSourceEvidence(value = sourceDocument(), evidence = sourceEvidence(value)) {
+  const route = reactive({ params: { id: value.id }, query: {} });
+  useRoute.mockReturnValue(route); useRouter.mockReturnValue({ replace: jest.fn() });
+  useWorkspaceStore.mockReturnValue({ can: () => false });
+  API.get.mockReset(); API.get.mockImplementation(endpoint => endpoint.endsWith("/source-evidence")
+    ? Promise.resolve(evidence) : Promise.resolve(value));
+  const wrapper = mount(RouteEditor, { global: { stubs } }); wrappers.push(wrapper); await flushPromises();
+  return { wrapper, route };
+}
+
+test("saved editor passes real source steps to the existing Inspector and binds unresolved operations to raw IDs", async () => {
+  const value = sourceDocument(), evidence = sourceEvidence(value), before = JSON.stringify(value);
+  const { wrapper } = await setupSourceEvidence(value, evidence), flow = wrapper.getComponent({ name: "RouteGraph" });
+  flow.vm.$emit("select", "r-2"); await flushPromises();
+  const inspector = wrapper.getComponent({ name: "RouteInspector" });
+  expect(inspector.props("displayStepNumber")).toBe(1); expect(inspector.props("step")).toBe(evidence.steps_by_node["r-2"]);
+  expect(inspector.props("automatedReview")).toBe(evidence.metadata.automated_review);
+  expect(wrapper.get('[data-review="step-operations"]').text()).toContain("包含多个独立转化");
+  flow.vm.$emit("select", "r-1"); await flushPromises();
+  expect(inspector.props("displayStepNumber")).toBe(2); expect(inspector.props("step").step_id).toBe("late-original");
+  expect(wrapper.find('[data-review="step-operations"]').exists()).toBe(false);
+  expect(JSON.stringify(value)).toBe(before); expect(API.post).not.toHaveBeenCalled(); expect(API.put).not.toHaveBeenCalled();
+});
+test("saved editor preserves original evidence for title, label, note and layout-only changes", async () => {
+  const value = sourceDocument(), { wrapper } = await setupSourceEvidence(value), flow = wrapper.getComponent({ name: "RouteGraph" });
+  flow.vm.$emit("select", "r-2"); await flushPromises();
+  const inspector = wrapper.getComponent({ name: "RouteInspector" }), original = inspector.props("step");
+  await wrapper.get('[aria-label="路线名称"]').setValue("用户原始名称");
+  flow.vm.$emit("update:graph", { ...value.graph, nodes: value.graph.nodes.map(node => ({ ...node,
+    label: "raw label", note: "raw note", position: { x: 25, y: 30 } })) }); await flushPromises();
+  expect(inspector.props("step")).toBe(original);
+  expect(wrapper.get(".document-source-status").attributes("data-source-state")).toBe("available");
+  expect(API.get).toHaveBeenCalledTimes(2);
+});
+test("selecting reaction and molecular nodes cannot retire evidence through transient Inspector resets", async () => {
+  const { wrapper } = await setupSourceEvidence(), flow = wrapper.getComponent({ name: "RouteGraph" });
+  for (const id of ["r-2", "target", "middle", "r-1", "input", "r-2"]) {
+    flow.vm.$emit("select", id); await flushPromises();
+    expect(wrapper.get(".document-source-status").attributes("data-source-state")).toBe("available");
+  }
+  expect(wrapper.getComponent({ name: "RouteInspector" }).props("step").step_id).toBe("early-original");
+  expect(API.get).toHaveBeenCalledTimes(2); expect(API.post).not.toHaveBeenCalled();
+});
+test.each(["smiles", "unconfirmed drawing"])("a new %s draft immediately retires source evidence before application", async action => {
+  const { wrapper } = await setupSourceEvidence();
+  wrapper.getComponent({ name: "RouteGraph" }).vm.$emit("select", "target"); await flushPromises();
+  const inspector = wrapper.getComponent({ name: "RouteInspector" });
+  await inspector.get('textarea[maxlength="4096"]').setValue("original note");
+  expect(wrapper.get(".document-source-status").attributes("data-source-state")).toBe("available");
+  const structure = inspector.getComponent({ name: "StructureInput" });
+  if (action === "smiles") structure.vm.$emit("update:modelValue", "CCN");
+  else structure.vm.hasUnconfirmedDraft = true;
+  await flushPromises();
+  expect(wrapper.get(".document-source-status").attributes("data-source-state")).toBe("retired");
+  expect(inspector.props("step")).toBeUndefined(); expect(inspector.props("automatedReview")).toBeNull();
+  expect(inspector.props("deliveryReview")).toBeNull(); expect(API.post).not.toHaveBeenCalled();
+});
+test("chemistry change aborts a pending source read and a restored graph cannot resurrect late evidence", async () => {
+  const value = sourceDocument(), pending = sourceDeferred(), { wrapper } = await setupSourceEvidence(value, pending.promise);
+  const sourceSignal = API.get.mock.calls.find(([endpoint]) => endpoint.endsWith("/source-evidence"))[3].signal;
+  const flow = wrapper.getComponent({ name: "RouteGraph" });
+  flow.vm.$emit("update:graph", { ...value.graph, nodes: value.graph.nodes.map(node => node.id === "target" ? { ...node, smiles: "CCN" } : node) });
+  await flushPromises(); expect(sourceSignal.aborted).toBe(true);
+  flow.vm.$emit("update:graph", value.graph); pending.resolve(sourceEvidence(value)); await flushPromises();
+  expect(wrapper.get(".document-source-status").attributes("data-source-state")).toBe("retired");
+  expect(wrapper.find(".route-document-source .delivery-review-badge").exists()).toBe(false);
+  expect(API.get).toHaveBeenCalledTimes(2);
+});
+test("legacy editor uses the current unreviewed source receipt instead of omitting null saved review", async () => {
+  const value = sourceDocument(); value.source.result_snapshot = null; value.metadata.delivery_review = null;
+  const evidence = sourceEvidence(value); evidence.metadata.delivery_review = sourceReceipt("not_independently_reviewed");
+  evidence.metadata.automated_review = null;
+  const { wrapper } = await setupSourceEvidence(value, evidence);
+  wrapper.getComponent({ name: "RouteGraph" }).vm.$emit("select", "r-2"); await flushPromises();
+  expect(wrapper.getComponent({ name: "RouteInspector" }).props("deliveryReview")).toBe(evidence.metadata.delivery_review);
+  expect(wrapper.get(".route-document-source .delivery-review-badge").attributes("data-delivery-grade")).toBe("not_independently_reviewed");
+  expect(wrapper.get(".document-source-status").attributes("data-source-state")).toBe("available");
+});
+test("invalid original source response leaves the saved receipt and never guesses unresolved step binding", async () => {
+  const value = sourceDocument(), evidence = sourceEvidence(value); delete evidence.steps_by_node["r-2"];
+  const { wrapper } = await setupSourceEvidence(value, evidence);
+  wrapper.getComponent({ name: "RouteGraph" }).vm.$emit("select", "r-2"); await flushPromises();
+  const inspector = wrapper.getComponent({ name: "RouteInspector" });
+  expect(inspector.props("step")).toBeUndefined(); expect(inspector.props("deliveryReview")).toBeNull();
+  expect(wrapper.find(".document-current-review").exists()).toBe(false);
+  expect(wrapper.get("[data-source-saved-review]").text()).toContain("历史票据");
+  expect(wrapper.find('[data-review="step-operations"]').exists()).toBe(false);
+  expect(wrapper.get(".document-source-status").attributes("data-source-state")).toBe("error");
+});
+
 test("a loaded document has one named page heading while retaining its editable title and full canvas", async () => {
   const { wrapper } = await setup();
   const name = wrapper.get('[aria-label="路线名称"]').element.value;
@@ -144,6 +235,14 @@ test("a failed saved-document read offers a retry rather than a new-route creati
   expect(wrapper.get(".editor-graph").exists()).toBe(true);
   expect(API.post).not.toHaveBeenCalled();
   expect(API.put).not.toHaveBeenCalled();
+});
+test("a guarded damaged document read displays the localized error and never creates an empty route", async () => {
+  initializeLocale(null);
+  API.get.mockRejectedValueOnce(new Error(JSON.stringify({ detail: "路线文档数据无效或已损坏。" })));
+  const { wrapper } = await setup();
+  expect(wrapper.get(".route-editor-error").text()).toContain("Route document data is invalid or damaged.");
+  expect(wrapper.find(".editor-create-form").exists()).toBe(false);
+  expect(API.post).not.toHaveBeenCalled(); expect(API.put).not.toHaveBeenCalled();
 });
 async function setup(state = "source_copy", identifier = documentId, query = {}, attached = false, receipt = null) {
   const router = { replace: jest.fn().mockResolvedValue(undefined) };
@@ -169,20 +268,22 @@ async function setup(state = "source_copy", identifier = documentId, query = {},
   return { wrapper, router, route };
 }
 
-test("editor keeps layout-only source review but suppresses it as soon as chemistry changes", async () => {
+test("editor keeps labelled layout-only historical review but never calls it current", async () => {
   const receipt = { version: 1, phase: "automated_review", basis: "route_receipt", grade: "model_checked",
     independent_review: { status: "checked", review_version: 1, model: "graph2smiles_uspto_stereo", matched_steps: 1, total_steps: 1 },
     purchase_identity: { policy: "defined_purchase_identity_v1", status: "defined", unresolved_materials: [] } };
   const { wrapper } = await setup("source_copy", documentId, {}, false, receipt);
   const badge = () => wrapper.get(".route-document-source .delivery-review-badge").attributes("data-delivery-grade");
   expect(badge()).toBe("model_checked");
+  expect(wrapper.find(".document-current-review").exists()).toBe(false);
+  expect(wrapper.get("[data-source-saved-review]").text()).toContain("历史票据");
   const flow = wrapper.getComponent({ name: "RouteGraph" });
   flow.vm.$emit("update:graph", { ...graph, nodes: graph.nodes.map(node => ({ ...node, note: "raw", position: { x: 10, y: 20 } })) });
   await flushPromises();
   expect(badge()).toBe("model_checked");
   flow.vm.$emit("update:graph", { ...graph, nodes: graph.nodes.map(node => ({ ...node, smiles: "CCN" })) });
   await flushPromises();
-  expect(badge()).toBe("not_independently_reviewed");
+  expect(wrapper.find(".route-document-source .delivery-review-badge").exists()).toBe(false);
 });
 
 test("PNG completion cannot publish a stale grade after editing and restoring chemistry", async () => {
