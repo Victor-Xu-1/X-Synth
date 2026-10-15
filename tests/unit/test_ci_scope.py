@@ -105,6 +105,7 @@ def mock_frontend(monkeypatch, before, after, old_records, new_records):
         "apps/web/src/assets/logo.png",
         "README.md",
         "apps/web/README.md",
+        "docs/images/research-overview.png",
         "NOTICE",
         "requirements/orchestrator-linux-py312.lock",
         "scripts/operations/serve_platform.py",
@@ -128,6 +129,21 @@ def mock_frontend(monkeypatch, before, after, old_records, new_records):
 )
 def test_workspace_profile_accepts_explicitly_scoped_paths(path):
     profile.guard_paths({path})
+
+
+@pytest.mark.parametrize("paths", [
+    {"docs/images/research-overview.png"},
+    {"README.md", "docs/images/research-overview.png"},
+])
+def test_reviewed_readme_image_is_documentation_only(tmp_path, paths):
+    def unexpected_text_read(path):
+        pytest.fail(f"Documentation-only scope must not parse file content: {path}")
+
+    item = SimpleNamespace(root=tmp_path, files=paths, text=unexpected_text_read)
+    profile.guard_paths(paths)
+    assert profile.python_tests(item, item, paths) == []
+    assert profile.frontend_tests(item, item, paths) == ([], {})
+    assert profile.reaction_data_tests(paths) == []
 
 
 @pytest.mark.parametrize("path", sorted(profile.RELEASE_FILES))
@@ -166,6 +182,14 @@ def test_version_workflow_only_executes_trusted_main_and_scoped_tests():
         "apps/web/playwright.config.js",
         "apps/web/src/unknown.wasm",
         "private/runtime.json",
+        "docs/images/another-overview.png",
+        "docs/images/research-overview.svg",
+        "docs/images/research-overview.png.py",
+        "docs/images/subdir/research-overview.png",
+        "docs/unreviewed.md",
+        "docs/runtime.py",
+        "assets/research-overview.png",
+        "apps/web/public/research-overview.png",
     ],
 )
 def test_unknown_changes_fail_instead_of_skip_or_global_fallback(path):
@@ -979,6 +1003,44 @@ def test_cli_unknown_change_fails_before_running_tests(git_repo, monkeypatch, ca
     assert (
         scope.main(["--base", "HEAD", "--worktree", "--suite", "python", "--run"]) == 2
     )
+    assert "Unmapped changes" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("suite", ["python", "frontend", "reaction-data"])
+@pytest.mark.parametrize("update_readme", [False, True])
+def test_cli_reviewed_readme_image_has_empty_scope(
+    git_repo, monkeypatch, capsys, suite, update_readme
+):
+    target = git_repo / "docs/images/research-overview.png"
+    target.parent.mkdir(parents=True)
+    # Non-UTF-8 fixture ensures selection never decodes binary documentation.
+    target.write_bytes(b"\x89PNG\r\n\x1a\n\xff")
+    if update_readme:
+        (git_repo / "README.md").write_text("updated README", encoding="utf-8")
+    monkeypatch.chdir(git_repo)
+    assert scope.main([
+        "--base", "HEAD", "--worktree", "--suite", suite, "--run"
+    ]) == 0
+    assert json.loads(capsys.readouterr().out) == []
+
+
+@pytest.mark.parametrize("suite", ["python", "frontend", "reaction-data"])
+def test_cli_reviewed_image_does_not_hide_unknown_changes(
+    git_repo, monkeypatch, capsys, suite
+):
+    target = git_repo / "docs/images/research-overview.png"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"\x89PNG\r\n\x1a\n\xff")
+    (git_repo / "unknown.py").write_text("pass", encoding="utf-8")
+    monkeypatch.chdir(git_repo)
+
+    def forbidden_test_command(*args):
+        pytest.fail("Unknown changes must fail before constructing a test command")
+
+    monkeypatch.setattr(scope, "test_command", forbidden_test_command)
+    assert scope.main([
+        "--base", "HEAD", "--worktree", "--suite", suite, "--run"
+    ]) == 2
     assert "Unmapped changes" in capsys.readouterr().err
 
 
