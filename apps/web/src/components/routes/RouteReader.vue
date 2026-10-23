@@ -248,6 +248,7 @@
         generated-step-labels
         :graph="sourceGraph"
         :step="stepForNode(candidate, selectedNode)"
+        :automated-review="candidate.metadata?.automated_review"
         :display-step-number="selectedReviewTargets.numbers[selectedNode]"
         :delivery-review="candidate.metadata?.delivery_review"
         :snapshot="stockSnapshot"
