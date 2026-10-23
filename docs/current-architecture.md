@@ -265,7 +265,10 @@ governance. See [version operations](operations.md#版本管理).
   constraint. A joint promotion cannot claim original-model top-1 agreement.
   A lower joint-ranked target candidate
   is supported only by an exact ORD reaction with positive target yield, recorded
-  conditions, ready pinned sources and untruncated retrieval. Product-only matches,
+  conditions and ready pinned sources. Positive returned observations remain
+  eligible when retrieval is paginated; coverage remains explicitly incomplete,
+  never exhaustive. Unavailable sources or contradictory coverage flags still
+  invalidate the binding. Product-only matches,
   missing/zero yields or a target absent from model candidates cannot pass.
   Review version 4 retains the model/record distinction and adds complete original
   decoder, native-filter and FF-ranking provenance to the version 3
@@ -348,8 +351,10 @@ governance. See [version operations](operations.md#版本管理).
   Every suppression uses a surviving exact witness; discarded intermediates do
   not create unvalidated transitive proof chains. Selection receipts preserve
   route digests, direct/replaced step identities and the policy without rewriting
-  source routes. Unknown or truncated process evidence is separately pending,
-  never a recorded-process exemption or an independent route slot. The source/
+  source routes. Missing or unbound process evidence stays pending, never a
+  recorded-process exemption or an independent route slot. A paginated search
+  can still contain an exact bound positive process observation; its coverage
+  remains incomplete and does not imply that unseen records were checked. The source/
   snapshot/outcome binder is shared with operation review. Its query identity
   preserves compound groups and occurrence counts, but not reactant-list order;
   the reference atom budget is independent of the forward-input atom budget.

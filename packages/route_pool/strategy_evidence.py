@@ -23,7 +23,7 @@ def process_evidence_state(route, steps):
         proofs = row.get("recorded_process_support")
         if proofs and support_bound(proofs, step, row):
             return "documented"
-        if not isinstance(proofs, list) or proofs:
+        if row.get("has_more") is True or not isinstance(proofs, list) or proofs:
             unknown = True
         # Presence-only legacy hints are not silently promoted to bound support.
         if any(ref.get("match_scope") == "reaction_identity" and (

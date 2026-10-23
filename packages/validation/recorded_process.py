@@ -36,8 +36,14 @@ def support_bound(proofs, step, reference):
 
 
 def reference_bound(step, reference):
+    """Bind returned evidence; an incomplete result page is not missing evidence."""
     try:
-        if not isinstance(reference, dict) or reference.get("has_more") is not False or reference.get("complete") is not True:
+        if not isinstance(reference, dict):
+            return False
+        complete = reference.get("has_more") is False and reference.get("complete") is True
+        paginated = (reference.get("has_more") is True and reference.get("complete") is False
+                     and reference.get("available") is True and reference.get("search_status") == "incomplete")
+        if not (complete or paginated):
             return False
         query = canonical_reference_query(ReferenceSearchInput(product=step.product, reactants=step.precursors))
         actual = ReferenceQuery.model_validate(reference.get("query"))
