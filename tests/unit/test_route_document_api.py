@@ -14,7 +14,7 @@ import pytest
 import uvicorn
 
 from packages.route_pool.askcos import normalize_askcos_tree_result
-from packages.workspace.route_graph import RouteGraph
+from packages.workspace.route_graph import RouteGraph, graph_from_candidate
 
 
 def document_body():
@@ -136,6 +136,89 @@ def captured_task(api, *, owner="local_workspace"):
     artifact.parent.mkdir(parents=True)
     artifact.write_text(json.dumps([asdict(value) for value in candidates]))
     return job, artifact, candidates
+
+
+def test_from_task_localizes_only_fresh_generated_names_and_preserves_all_source_data(api):
+    job, artifact, candidates = captured_task(api)
+    repository, documents = api.app.state.repository, api.app.state.documents
+    repository.edit_history(
+        job["id"], owner="local_workspace", description="原任务 / Original prefix",
+        expected_revision=job["revision"],
+    )
+    job_before, artifact_before = repository.get(job["id"]), artifact.read_bytes()
+    native_graph, native_source = graph_from_candidate(asdict(candidates[0]))
+    recorded_graph = native_graph.model_dump()
+    for node in recorded_graph["nodes"]:
+        node["label"], node["note"] = "反应 1", "Original record / 25 °C"
+    recorded = api.client.post("/api/v1/route-documents", json={
+        "title": "路线 1 / User title", "graph": recorded_graph,
+    }).json()
+    copies = []
+    for locale, route_name, reaction_name in [
+        (None, "Route", "Reaction"), ("zh-CN", "路线", "反应"), ("en", "Route", "Reaction"),
+    ]:
+        with documents.connect() as connection:
+            before = connection.execute("SELECT * FROM route_documents ORDER BY id").fetchall()
+        body = {"job_id": job["id"], "route_index": 0, "route_id": candidates[0].route_id}
+        if locale is not None:
+            body["locale"] = locale
+        response = api.client.post("/api/v1/route-documents/from-task", json=body)
+        assert response.status_code == 200
+        saved = response.json()
+        expected_graph = native_graph.model_dump()
+        reactions = (node for node in expected_graph["nodes"] if node["type"] == "reaction")
+        for index, node in enumerate(reactions, 1):
+            assert node["id"] == f"r-{index}"
+            node["label"] = f"{reaction_name} {index}"
+        assert saved["title"] == f"原任务 / Original prefix · {route_name} 1"
+        assert saved["graph"] == expected_graph
+        assert saved["revision"] == 0 and saved["state"] == "source_copy"
+        assert saved["prediction_scores"] == native_source["prediction_scores"]
+        assert saved["source_closed"] == native_source["closed"]
+        assert saved["metadata"]["chemical_signature"] == native_graph.semantic_signature()
+        assert saved["source"]["route_id"] == candidates[0].route_id
+        if copies:
+            for field in ("source", "metadata", "prediction_scores", "source_closed"):
+                assert saved[field] == copies[0][field]
+        with documents.connect() as connection:
+            after = dict((row[0], row) for row in connection.execute("SELECT * FROM route_documents"))
+        assert all(after[row[0]] == row for row in before)
+        assert api.client.get(f"/api/v1/route-documents/{recorded['id']}").json() == recorded
+        for previous in copies:
+            assert api.client.get(f"/api/v1/route-documents/{previous['id']}").json() == previous
+        copies.append(saved)
+        assert repository.get(job["id"]) == job_before
+        assert artifact.read_bytes() == artifact_before
+
+
+@pytest.mark.parametrize("locale", [None, "", "EN", "en-US", "zh", 0, True, ["en"], {"locale": "en"}])
+def test_from_task_invalid_locales_are_rejected_without_creating_or_mutating_records(api, locale):
+    job, artifact, _ = captured_task(api)
+    before = artifact.read_bytes()
+    response = api.client.post("/api/v1/route-documents/from-task", json={
+        "job_id": job["id"], "route_index": 0, "locale": locale,
+    })
+    assert response.status_code == 422
+    assert api.app.state.documents.list("local_workspace") == []
+    assert api.app.state.repository.get(job["id"]) == job
+    assert artifact.read_bytes() == before
+
+
+@pytest.mark.parametrize("field,value", [
+    ("graph", document_body()["graph"]), ("labels", {"r-1": "Client label"}),
+    ("title", "Client title"), ("owner", "foreign"), ("source", {"closed": True}),
+    ("metadata", {"delivery_review": {"grade": "model_checked"}}),
+])
+def test_from_task_locale_cannot_admit_client_graph_labels_or_provenance(api, field, value):
+    job, artifact, _ = captured_task(api)
+    before = artifact.read_bytes()
+    response = api.client.post("/api/v1/route-documents/from-task", json={
+        "job_id": job["id"], "route_index": 0, "locale": "en", field: value,
+    })
+    assert response.status_code == 422
+    assert api.app.state.documents.list("local_workspace") == []
+    assert api.app.state.repository.get(job["id"]) == job
+    assert artifact.read_bytes() == before
 
 
 def test_source_evidence_http_reads_owned_captured_steps_without_new_calculations(api):
@@ -264,14 +347,16 @@ def test_editable_copy_uses_display_title_without_rewriting_scientific_request(a
     )
 
 
-def test_editable_copy_checks_the_stable_route_id_not_only_a_stale_index(api):
+@pytest.mark.parametrize("locale", ["en", "zh-CN"])
+def test_editable_copy_checks_the_stable_route_id_not_only_a_stale_index(api, locale):
     job, _, candidates = captured_task(api)
     response = api.client.post("/api/v1/route-documents/from-task", json={
-        "job_id": job["id"], "route_index": 0, "route_id": "not-the-displayed-route",
+        "job_id": job["id"], "route_index": 0, "route_id": "not-the-displayed-route", "locale": locale,
     })
     assert response.status_code == 409
+    assert api.app.state.documents.list("local_workspace") == []
     response = api.client.post("/api/v1/route-documents/from-task", json={
-        "job_id": job["id"], "route_index": 0, "route_id": candidates[0].route_id,
+        "job_id": job["id"], "route_index": 0, "route_id": candidates[0].route_id, "locale": locale,
     })
     assert response.status_code == 200
     assert response.json()["source"]["route_id"] == candidates[0].route_id
@@ -388,13 +473,12 @@ def test_http_foreign_documents_and_tasks_are_never_visible_or_mutable(api):
     assert documents.get(foreign["id"], "foreign") == foreign
     job, artifact, _ = captured_task(api, owner="foreign")
     before = artifact.read_bytes()
-    assert (
-        api.client.post(
-            "/api/v1/route-documents/from-task",
-            json={"job_id": job["id"], "route_index": 0},
-        ).status_code
-        == 404
-    )
+    for locale in ("en", "zh-CN"):
+        assert api.client.post("/api/v1/route-documents/from-task", json={
+            "job_id": job["id"], "route_index": 0, "locale": locale,
+        }).status_code == 404
+    assert documents.get(foreign["id"], "foreign") == foreign
+    assert api.app.state.repository.get(job["id"], owner="foreign") == job
     assert artifact.read_bytes() == before
 
 

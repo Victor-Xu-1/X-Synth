@@ -1,4 +1,5 @@
 import dagre from "@dagrejs/dagre";
+import { uiText } from "@/i18n";
 import { syntheticStepOrder } from "./synthetic-step-order";
 import {
   inputOccurrences,
@@ -15,7 +16,7 @@ export const READING_NODE_SIZE = Object.freeze({
   reaction: Object.freeze({ width: 84, height: 96 }),
 });
 
-export function topologyFromCandidate(route) {
+export function topologyFromCandidate(route, localizeLabels = true) {
   const sourceSteps = route.steps || [];
   const order = syntheticStepOrder(sourceSteps);
   const stepNumbers = new Map(
@@ -44,7 +45,11 @@ export function topologyFromCandidate(route) {
     nodes.push({
       id,
       type: "reaction",
-      label: stepNumbers.has(index) ? `步骤 ${stepNumbers.get(index)}` : "反应",
+      label: stepNumbers.has(index)
+        ? localizeLabels
+          ? uiText("步骤 {index}", { index: stepNumbers.get(index) })
+          : `步骤 ${stepNumbers.get(index)}`
+        : localizeLabels ? uiText("反应") : "反应",
       note: "",
       smiles: "",
       position: { x: 0, y: 0 },
@@ -72,7 +77,8 @@ export function graphFromCandidate(route, nodeSize = ROUTE_NODE_SIZE) {
 }
 
 export function prepareCandidateGraph(route, nodeSize = ROUTE_NODE_SIZE) {
-  const topology = topologyFromCandidate(route);
+  // Reader source labels stay stable across locale changes, just like its layout.
+  const topology = topologyFromCandidate(route, false);
   let graph;
   return {
     topology,
@@ -202,7 +208,7 @@ export function attachPrecursors(
     id: reactionId,
     type: "reaction",
     smiles: "",
-    label: "反应",
+    label: uiText("反应"),
     note: "",
     position: { x: 0, y: 0 },
   });

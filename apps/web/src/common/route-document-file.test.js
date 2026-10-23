@@ -40,6 +40,31 @@ test("preview and editor export the same importable structure-only document", ()
   expect(exported).not.toHaveProperty("closed");
 });
 
+test("file round trips never translate recorded labels or titles, even generated-looking names", () => {
+  const graph = graphFromCandidate({
+    target_smiles: "[13CH3][C@H](O)Cl.[Na+]",
+    steps: [{ product: "[13CH3][C@H](O)Cl.[Na+]", precursors: ["O", "O", "[13CH3][C@@H](O)Cl.[Na+]"] }],
+  });
+  const previous = i18n.global.locale.value;
+  try {
+    for (const label of ["步骤 1", "反应", "Step 1", "Reaction", "实验反应 / User label"]) {
+      graph.nodes.find(node => node.type === "reaction").label = label;
+      graph.nodes[0].label = "用户目标";
+      graph.nodes[0].note = "Original note / 25 °C";
+      const original = JSON.stringify(graph);
+      for (const locale of ["en", "zh-CN", "en"]) {
+        setLocale(locale, { persist: false });
+        const value = routeDocumentPayload("合成路线 R007 / User title", graph);
+        expect(value.format).toBe("x-synth-route");
+        expect(value.version).toBe(1);
+        expect(value.graph).toEqual(graph);
+        expect(parseRouteDocument(JSON.stringify(value))).toEqual({ title: value.title, graph });
+        expect(JSON.stringify(graph)).toBe(original);
+      }
+    }
+  } finally { setLocale(previous, { persist: false }); }
+});
+
 test("route import uses the supported format and strips untrusted provenance", () => {
   const graph = graphFromCandidate({ target_smiles: "CCO", steps: [] });
   const value = parseRouteDocument(

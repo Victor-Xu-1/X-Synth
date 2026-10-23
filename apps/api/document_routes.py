@@ -1,5 +1,6 @@
 import asyncio
 from threading import Event
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -39,6 +40,7 @@ class SourceRouteBody(BaseModel):
     job_id: str = Field(pattern=r"^[a-f0-9]{32}$")
     route_index: int = Field(ge=0, le=9, strict=True)
     route_id: str | None = Field(default=None, min_length=1, max_length=128)
+    locale: Literal["en", "zh-CN"] = "en"
 
 
 def document_router(*, documents, repository, transport, artifacts, budget, source_reader):
@@ -94,6 +96,10 @@ def document_router(*, documents, repository, transport, artifacts, budget, sour
             graph, source = graph_from_candidate(
                 candidates[body.route_index], max_atoms=budget.max_structure_atoms
             )
+            if body.locale == "en":
+                reactions = (node for node in graph.nodes if node.type == "reaction")
+                for index, node in enumerate(reactions, 1):
+                    node.label = f"Reaction {index}"
             source["delivery_review"] = candidates[body.route_index]["metadata"]["delivery_review"]
         except (ValueError, TypeError, KeyError, OSError) as exc:
             raise HTTPException(
@@ -104,9 +110,10 @@ def document_router(*, documents, repository, transport, artifacts, budget, sour
         if isinstance(pointer, dict):
             source["result_snapshot"] = pointer["snapshot_id"]
         title = display_description(job)[:140]
+        route_name = "Route" if body.locale == "en" else "路线"
         return guarded(
             lambda: documents.create(
-                owner, f"{title} · 路线 {body.route_index + 1}", graph, source=source
+                owner, f"{title} · {route_name} {body.route_index + 1}", graph, source=source
             )
         )
 

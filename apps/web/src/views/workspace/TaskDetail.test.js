@@ -113,8 +113,27 @@ test("from-task copies bind the exact route ID and index without changing the ex
   const { wrapper, router } = await setup();
   API.post.mockResolvedValueOnce({ id: "d".repeat(32) });
   await wrapper.vm.edit("route-a");
-  expect(API.post).toHaveBeenCalledWith("/api/v1/route-documents/from-task", { job_id: idA, route_index: 0, route_id: "route-a" });
+  expect(API.post).toHaveBeenCalledWith("/api/v1/route-documents/from-task", { job_id: idA, route_index: 0, route_id: "route-a", locale: "zh-CN" });
   expect(router.push).toHaveBeenCalledWith("/editor/" + "d".repeat(32));
+});
+
+test("from-task copies read the shared locale at call time without remounting or refreshing routes", async () => {
+  initializeLocale(null);
+  const { wrapper, router } = await setup();
+  const candidates = wrapper.vm.candidates, reads = API.get.mock.calls.length;
+  for (const locale of ["en", "zh-CN", "en"]) {
+    setLocale(locale, { persist: false });
+    await settle();
+    API.post.mockResolvedValueOnce({ id: "d".repeat(32) });
+    await wrapper.vm.edit("route-a");
+    expect(API.post).toHaveBeenLastCalledWith("/api/v1/route-documents/from-task", {
+      job_id: idA, route_index: 0, route_id: "route-a", locale,
+    });
+    expect(wrapper.vm.candidates).toBe(candidates);
+    expect(API.get).toHaveBeenCalledTimes(reads);
+  }
+  expect(API.post).toHaveBeenCalledTimes(3);
+  expect(router.push).toHaveBeenCalledTimes(3);
 });
 
 test("a from-task failure blocks stale copy retries until an actual artifact refresh, not just another status tick", async () => {
@@ -134,7 +153,7 @@ test("a from-task failure blocks stale copy retries until an actual artifact ref
   expect(wrapper.findComponent({ name: "RouteReader" }).props("canEdit")).toBe(true);
   API.post.mockResolvedValueOnce({ id: "e".repeat(32) });
   await wrapper.vm.edit("route-b");
-  expect(API.post).toHaveBeenLastCalledWith("/api/v1/route-documents/from-task", { job_id: idA, route_index: 0, route_id: "route-b" });
+  expect(API.post).toHaveBeenLastCalledWith("/api/v1/route-documents/from-task", { job_id: idA, route_index: 0, route_id: "route-b", locale: "zh-CN" });
 });
 
 test("changing task aborts old reads and still loads the new task while the old read is pending", async () => {

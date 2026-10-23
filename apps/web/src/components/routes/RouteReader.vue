@@ -275,6 +275,7 @@
 <script setup>
 import { computed, nextTick, ref, watch, onBeforeUnmount } from "vue";
 import {
+  topologyFromCandidate,
   prepareCandidateGraph,
   READING_NODE_SIZE,
 } from "@/common/route-graph";
@@ -614,12 +615,18 @@ async function locateNode(id, event) {
   }
 }
 function exportJson() {
-  if (candidate.value)
+  if (candidate.value) {
+    const labels = new Map(topologyFromCandidate(candidate.value).nodes
+      .filter(node => node.type === "reaction").map(node => [node.id, node.label]));
+    const documentGraph = { ...sourceGraph.value,
+      nodes: sourceGraph.value.nodes.map(node => node.type === "reaction"
+        ? { ...node, label: labels.get(node.id) } : node),
+    };
     downloadRouteBlob(
       JSON.stringify(
         routeDocumentPayload(
           uiText("合成路线 {name}", { name: labelFor(selectedChoice.value) }),
-          sourceGraph.value,
+          documentGraph,
           candidate.value.metadata?.delivery_review,
         ),
         null,
@@ -628,6 +635,7 @@ function exportJson() {
       `${labelFor(selectedChoice.value)}.x-synth.json`,
       "application/json",
     );
+  }
 }
 function exportMaterials() {
   downloadRouteBlob(
