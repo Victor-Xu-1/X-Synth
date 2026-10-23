@@ -41,6 +41,26 @@ def test_public_assets_select_only_static_and_server_security_contracts(tmp_path
     assert profile.python_tests(item, item, {path}) == sorted(tests)
 
 
+def test_public_option_helper_selects_its_parser_and_actual_http_contract_only(tmp_path):
+    path = "packages/platform/public_frontend_options.py"
+    target = "tests/unit/test_public_frontend_options.py"
+    item = snapshot(tmp_path, {target: "pass", "tests/unit/test_optimization_tables.py": "pass"})
+    profile.guard_paths({path})
+    assert profile.python_tests(item, item, {path}) == [target]
+
+
+def test_native_proxy_keeps_public_option_contract_in_its_related_scope(tmp_path):
+    tests = {
+        "tests/unit/test_public_frontend_options.py",
+        "tests/unit/test_native_capability_boundary.py",
+        "tests/unit/test_environment_api.py",
+        "tests/unit/test_native_drawing_proxy.py",
+        "tests/unit/test_product_api_security.py",
+    }
+    item = snapshot(tmp_path, {name: "pass" for name in tests})
+    assert profile.python_tests(item, item, {"apps/api/native_routes.py"}) == sorted(tests)
+
+
 def test_git_inspection_does_not_refresh_or_lock_the_worktree_index(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(scope, "command", lambda root, *args: calls.append((root, args)) or "result")
@@ -108,6 +128,7 @@ def mock_frontend(monkeypatch, before, after, old_records, new_records):
         "packages/platform/environments.py",
         "packages/platform/native_capabilities.py",
         "apps/api/native_routes.py",
+        "packages/platform/public_frontend_options.py",
         "apps/api/data_routes.py",
         "apps/api/job_views.py",
         "packages/knowledge_base/template_library.py",

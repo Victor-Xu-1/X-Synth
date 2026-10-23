@@ -72,6 +72,9 @@ API_FILES = {
 PUBLIC_ASSET_FILES = {
     "apps/api/web_assets.py", "apps/api/web_asset_cache.py", "apps/api/web_asset_http.py",
 }
+PUBLIC_OPTION_FILES = {
+    "apps/api/native_routes.py", "packages/platform/public_frontend_options.py",
+}
 SCIENTIFIC_FILES = {
     "packages/adapters/askcos/native_models.py",
     "packages/adapters/askcos/conditions.py",
@@ -339,6 +342,7 @@ def guard_paths(paths: set[str]) -> None:
             | MANIFESTS
             | API_FILES
             | PUBLIC_ASSET_FILES
+            | PUBLIC_OPTION_FILES
             | SCIENTIFIC_FILES
             | RUNTIME_FILES
             | WEB_BUILD_FILES
@@ -457,6 +461,8 @@ def python_tests(before, after, paths: set[str]) -> list[str]:
     selected.update(architecture.related_tests(roots))
     if roots & PUBLIC_ASSET_FILES:
         selected.update({"tests/unit/test_web_assets.py", "tests/unit/test_product_api_security.py"})
+    if roots & PUBLIC_OPTION_FILES:
+        selected.add("tests/unit/test_public_frontend_options.py")
     if roots & ENVIRONMENT_FILES:
         selected.add("tests/unit/test_environment_api.py")
     if "apps/api/condition_routes.py" in roots:

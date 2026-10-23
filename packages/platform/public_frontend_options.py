@@ -26,7 +26,9 @@ def _reject_constant(_value):
 def project_public_frontend_options(payload: bytes) -> bytes:
     try:
         rows = json.loads(
-            payload, object_pairs_hook=_unique_object, parse_constant=_reject_constant
+            payload.decode("utf-8"),
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_constant,
         )
     except (ValueError, RecursionError):
         raise PublicFrontendOptionsError from None
@@ -43,9 +45,16 @@ def project_public_frontend_options(payload: bytes) -> bytes:
             or not isinstance(row["value"], str)
         ):
             raise PublicFrontendOptionsError
+        try:
+            row["key"].encode("utf-8")
+            row["value"].encode("utf-8")
+        except UnicodeError:
+            raise PublicFrontendOptionsError from None
         if row["key"] in _PUBLIC_KEYS:
             if row["key"] in seen:
                 raise PublicFrontendOptionsError
             seen.add(row["key"])
             projected.append(row)
-    return json.dumps(projected, ensure_ascii=True, allow_nan=False, separators=(",", ":")).encode("utf-8")
+    return json.dumps(
+        projected, ensure_ascii=True, allow_nan=False, separators=(",", ":")
+    ).encode("utf-8")

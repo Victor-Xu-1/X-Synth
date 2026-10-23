@@ -46,6 +46,12 @@ INVALID_PAYLOADS = [
     pytest.param(b'[{"key":"VITE_GTAG","value":"a"},{"key":"VITE_\\u0047TAG","value":"b"}]', id="escaped-public-duplicate"),
     pytest.param(b'[{"key":"UNRELATED_OPTION","value":NaN}]', id="non-finite-json"),
     pytest.param(b'[{"key":"VITE_GTAG","value":"\xff"}]', id="invalid-encoding"),
+    pytest.param(b'[{"key":"VITE_GTAG","value":"\xed\xa0\x80"}]', id="raw-surrogate-encoding"),
+    pytest.param(json.dumps(PUBLIC_ROWS).encode("utf-16"), id="utf16-response"),
+    pytest.param(json.dumps(PUBLIC_ROWS).encode("utf-32"), id="utf32-response"),
+    pytest.param(b'[{"key":"VITE_GTAG","value":"\\ud800"}]', id="escaped-high-surrogate"),
+    pytest.param(b'[{"key":"VITE_GTAG","value":"\\udfff"}]', id="escaped-low-surrogate"),
+    pytest.param(b'[{"key":"\\ud800","value":"unrelated"}]', id="escaped-surrogate-key"),
     pytest.param(b'[] {"value":"unit-private-marker"}', id="trailing-json"),
 ]
 
@@ -77,7 +83,7 @@ def test_projection_preserves_optional_keys_and_order(projection, rows):
     assert encoded(rows) == before
 
 
-@pytest.mark.parametrize("value", ["", "False", "true", "0", " quoted ", "a\nb\t\\\"", "\u6d4b\u8bd5"])
+@pytest.mark.parametrize("value", ["", "False", "true", "0", " quoted ", "a\nb\t\\\"", "\u6d4b\u8bd5", "\U00010400"])
 def test_projection_preserves_opaque_string_values(projection, value):
     project, _ = projection
     rows = [{"value": value, "key": "VITE_GTAG"}]
