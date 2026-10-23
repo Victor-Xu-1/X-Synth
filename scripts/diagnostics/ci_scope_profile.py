@@ -43,6 +43,7 @@ CI_SAFETY_TESTS = {
 DOCS = {
     "README.md",
     "apps/web/README.md",
+    "docs/images/research-overview.png",
     "docs/current-architecture.md",
     "docs/operations.md",
     "docs/real-case-testing.md",

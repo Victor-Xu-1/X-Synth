@@ -1,5 +1,6 @@
 <template>
-  <section class="standard-page analysis-history" :aria-busy="loading">
+  <section class="standard-page analysis-history" :aria-busy="loading"
+    :data-history-freshness="stale ? 'stale' : loading ? 'updating' : total === null ? 'unread' : 'fresh'">
     <header class="page-heading analysis-heading">
       <h1>{{ $tr('研究记录') }}</h1>
       <v-tooltip :text="$tr('刷新研究记录')">
@@ -12,7 +13,7 @@
     <div class="analysis-filters" role="search" :aria-label="$tr('筛选研究记录')">
       <v-select v-model="kind" :items="kinds" :item-title="item => $tr(item.title)" item-value="value"
         :label="$tr('研究类型')" :aria-label="$tr('研究类型')" density="compact" variant="outlined" hide-details data-cy="analysis-kind" />
-      <p role="status">{{ total !== null ? $tr('共 {total} 次计算', { total: total }) : loading ? $tr('正在读取研究记录') : "" }}</p>
+      <p role="status">{{ total !== null ? $tr(stale ? '上次读取：{total} 次计算' : '共 {total} 次计算', { total: total }) : loading ? $tr('正在读取研究记录') : "" }}</p>
     </div>
     <div v-if="error" class="tool-error analysis-error" role="alert">
       <span>{{ $tr(error) }}</span>
@@ -78,7 +79,8 @@
           :disabled="loading || page * analysisPageSize >= total" @click="setPage(page + 1)" />
       </template></v-tooltip>
     </nav>
-    <AnalysisHistoryDetails v-if="summaryRecord" v-model="summaryOpen" :record="summaryRecord" @after-leave="restoreSummaryFocus" />
+    <AnalysisHistoryDetails v-if="summaryRecord" v-model="summaryOpen" :record="summaryRecord"
+      :stale="stale" :refreshing="loading" @after-leave="restoreSummaryFocus" />
   </section>
 </template>
 <script setup>
@@ -91,7 +93,7 @@ import { analysisKinds, analysisStatuses, recordDate, analysisPageSize, analysis
 import SmilesImage from "@/components/SmilesImage.vue";
 import AnalysisHistoryDetails from "./AnalysisHistoryDetails.vue";
 const route = useRoute(), router = useRouter();
-const rows = ref([]), total = ref(null), loading = ref(false), error = ref("");
+const rows = ref([]), total = ref(null), loading = ref(false), error = ref(""), stale = ref(false);
 const historyId = useId(), summaryId = ref(""), summaryOpen = ref(false);
 const summaryRecord = computed(() => rows.value.find((row) => row.id === summaryId.value) ?? null);
 let summaryFocus;
@@ -101,7 +103,7 @@ const kind = computed({
 });
 const page = computed(() => { try { return analysisQuery(route.query).page; } catch { return 1; } });
 const kinds = [{ title: "全部研究", value: "" }, ...Object.entries(analysisKinds).map(([value, entry]) => ({ title: entry.title, value }))];
-let generation = 0, timer, disposed = false;
+let generation = 0, timer, disposed = false, reader = null;
 let displayedQuery = null;
 const openLabel = (row) => uiText("打开{name}记录，{date}",
   { name: uiText(analysisKinds[row.kind].title), date: recordDate(row.created) });
@@ -120,35 +122,52 @@ function setPage(value) {
 async function refresh() {
   if (disposed) return;
   const current = ++generation;
+  reader?.abort();
+  reader = null;
+  let controller;
   const query = JSON.stringify([route.query.kind, route.query.page]);
-  const active = () => !disposed && current === generation && query === JSON.stringify([route.query.kind, route.query.page]);
-  if (query !== displayedQuery) { rows.value = []; total.value = null; }
+  const active = () => !disposed && current === generation && !controller?.signal.aborted
+    && query === JSON.stringify([route.query.kind, route.query.page]);
+  if (query !== displayedQuery) { rows.value = []; total.value = null; stale.value = false; }
   loading.value = true; error.value = "";
   try {
     const selection = analysisQuery(route.query);
     const params = { limit: analysisPageSize, offset: (selection.page - 1) * analysisPageSize };
     if (selection.kind) params.kind = selection.kind;
-    const response = readAnalysisList(await API.get("/api/v1/analyses", params));
+    controller = new AbortController();
+    reader = controller;
+    const value = await API.get("/api/v1/analyses", params, true, { signal: controller.signal, timeoutMs: 15000 });
     if (!active()) return;
+    const response = readAnalysisList(value);
     const last = Math.max(1, Math.ceil(response.total / analysisPageSize));
     if (selection.page > last) {
       await router.replace({ path: "/analyses", query: { ...route.query, ...listQuery(selection.kind, last) } });
       return;
     }
+    if (summaryId.value && !response.items.some(row => row.id === summaryId.value)) {
+      summaryOpen.value = false; summaryId.value = ""; summaryFocus = null;
+    }
     rows.value = response.items; total.value = response.total;
     displayedQuery = query;
+    stale.value = false;
   } catch (cause) {
-    if (active()) error.value = API.toErrorObject(cause).string_error;
-  } finally { if (active()) loading.value = false; }
+    if (active()) {
+      error.value = API.toErrorObject(cause).string_error;
+      stale.value = displayedQuery === query && total.value !== null;
+    }
+  } finally {
+    if (reader === controller) reader = null;
+    if (active()) loading.value = false;
+  }
 }
 watch(() => [route.query.kind, route.query.page], () => {
   summaryOpen.value = false; summaryId.value = ""; summaryFocus = null;
   refresh();
 }, { immediate: true });
 onMounted(() => { timer = window.setInterval(() => {
-  if (!loading.value && rows.value.some((row) => row.status === "running")) refresh();
+  if (!loading.value && !error.value && !stale.value && rows.value.some((row) => row.status === "running")) refresh();
 }, 10000); });
-onBeforeUnmount(() => { disposed = true; generation++; window.clearInterval(timer); });
+onBeforeUnmount(() => { disposed = true; generation++; reader?.abort(); reader = null; window.clearInterval(timer); });
 </script>
 <style scoped>
 .analysis-history {
