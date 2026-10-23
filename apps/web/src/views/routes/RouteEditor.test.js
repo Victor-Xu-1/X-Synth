@@ -16,6 +16,7 @@ import { resolve } from "node:path";
 import { parse } from "@vue/compiler-sfc";
 import { initializeLocale, setLocale } from "@/i18n";
 import * as routeExport from "@/common/route-export";
+import * as documentFile from "@/common/route-document-file";
 import { sourceDocument, sourceEvidence, sourceReceipt, deferred as sourceDeferred } from "@/common/document-source-evidence.test-support";
 jest.mock("@vueuse/core", () => ({ useResizeObserver: jest.fn() }));
 
@@ -309,6 +310,108 @@ test("PNG completion cannot publish a stale grade after editing and restoring ch
     expect(API.post).not.toHaveBeenCalled();
     expect(API.put).not.toHaveBeenCalled();
   } finally { render.mockRestore(); click.mockRestore(); }
+});
+
+test.each(["structure", "label", "note"])("exports wait for an unapplied %s draft without discarding it", async kind => {
+  const { wrapper } = await setup("draft");
+  wrapper.getComponent({ name: "RouteGraph" }).vm.$emit("select", "target"); await flushPromises();
+  const inspector = wrapper.getComponent({ name: "RouteInspector" });
+  if (kind === "structure") inspector.getComponent({ name: "StructureInput" }).vm.$emit("update:modelValue", "CCN");
+  else if (kind === "label") await inspector.get("input.workspace-input").setValue("unapplied label");
+  else await inspector.get('textarea[maxlength="4096"]').setValue("unapplied note");
+  await flushPromises();
+  const serialize = jest.spyOn(documentFile, "routeDocumentPayload").mockImplementation(() => { throw new Error("Unexpected draft export"); });
+  const render = jest.spyOn(routeExport, "routeImage").mockResolvedValue("data:image/png;base64,stale");
+  const click = jest.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  try {
+    let rejected;
+    try { wrapper.vm.exportDocument(); } catch (error) { rejected = error; }
+    await wrapper.vm.exportImage();
+    expect(rejected).toBeUndefined();
+    expect(serialize).not.toHaveBeenCalled(); expect(render).not.toHaveBeenCalled(); expect(click).not.toHaveBeenCalled();
+    expect(buttonWithText(wrapper, "导出路线").element.disabled).toBe(true);
+    expect(wrapper.vm.draftGuard.dirty.value).toBe(true);
+    expect(wrapper.getComponent({ name: "RouteGraph" }).props("graph")).toEqual(graph);
+    expect(window.confirm).not.toHaveBeenCalled(); expect(API.post).not.toHaveBeenCalled(); expect(API.put).not.toHaveBeenCalled();
+  } finally { serialize.mockRestore(); render.mockRestore(); click.mockRestore(); }
+});
+
+test("a pending PNG stays cancelled after a draft is discarded back to the original graph", async () => {
+  let finish;
+  const render = jest.spyOn(routeExport, "routeImage").mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  const click = jest.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  try {
+    const { wrapper } = await setup("draft");
+    const operation = wrapper.vm.exportImage(), current = render.mock.calls[0][3].isCurrent;
+    expect(current()).toBe(true);
+    wrapper.getComponent({ name: "RouteGraph" }).vm.$emit("select", "target"); await flushPromises();
+    const inspector = wrapper.getComponent({ name: "RouteInspector" });
+    await inspector.get('textarea[maxlength="4096"]').setValue("new unapplied note"); await flushPromises();
+    expect(current()).toBe(false);
+    inspector.vm.discardDraft(); await flushPromises();
+    expect(wrapper.vm.draftGuard.dirty.value).toBe(false); expect(current()).toBe(false);
+    finish("data:image/png;base64,stale"); await operation;
+    expect(click).not.toHaveBeenCalled();
+    expect(API.post).not.toHaveBeenCalled(); expect(API.put).not.toHaveBeenCalled();
+  } finally { render.mockRestore(); click.mockRestore(); }
+});
+
+test.each(["loading", "reloading", "saving", "validating", "applying", "moleculeDialog", "reactionDialog", "expandDialog"])(
+  "exports share the editor's %s readiness boundary", async state => {
+    const { wrapper } = await setup("draft");
+    expect(wrapper.vm.canExport).toBe(true);
+    wrapper.vm[state] = true; await flushPromises();
+    expect(wrapper.vm.canExport).toBe(false);
+    expect(buttonWithText(wrapper, "导出路线").element.disabled).toBe(true);
+    expect(() => wrapper.vm.exportDocument()).not.toThrow();
+    await expect(wrapper.vm.exportImage()).resolves.toBeUndefined();
+    expect(API.post).not.toHaveBeenCalled(); expect(API.put).not.toHaveBeenCalled();
+    wrapper.vm[state] = false; await flushPromises();
+    expect(wrapper.vm.canExport).toBe(true);
+    expect(buttonWithText(wrapper, "导出路线").element.disabled).toBe(false);
+  },
+);
+
+test("a ready PNG export remains current while its own rendering is busy", async () => {
+  let finish;
+  const render = jest.spyOn(routeExport, "routeImage").mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  const click = jest.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  try {
+    const { wrapper } = await setup("draft"), operation = wrapper.vm.exportImage();
+    expect(wrapper.vm.exporting).toBe(true);
+    expect(render.mock.calls[0][3].isCurrent()).toBe(true);
+    finish("data:image/png;base64,current"); await operation;
+    expect(click).toHaveBeenCalledTimes(1); expect(wrapper.vm.exporting).toBe(false);
+    expect(API.post).not.toHaveBeenCalled(); expect(API.put).not.toHaveBeenCalled();
+  } finally { render.mockRestore(); click.mockRestore(); }
+});
+
+test("a retired PNG rejection cannot erase a newer save-conflict recovery", async () => {
+  let reject;
+  const render = jest.spyOn(routeExport, "routeImage").mockReturnValue(new Promise((_, failed) => { reject = failed; }));
+  try {
+    const { wrapper } = await setup("draft"), operation = wrapper.vm.exportImage();
+    await wrapper.get('[aria-label="路线名称"]').setValue("newer local title");
+    API.put.mockRejectedValueOnce(new Error(JSON.stringify({ detail: conflictMessage })));
+    await wrapper.vm.saveDocument(false); await flushPromises();
+    expect(wrapper.find('[data-cy="document-conflict-reload"]').exists()).toBe(true);
+    reject(new Error("obsolete image failure")); await operation; await flushPromises();
+    expect(wrapper.vm.error).toBe(conflictMessage);
+    expect(wrapper.find('[data-cy="document-conflict-reload"]').exists()).toBe(true);
+    expect(wrapper.get('[aria-label="路线名称"]').element.value).toBe("newer local title");
+    expect(API.post).not.toHaveBeenCalled(); expect(API.put).toHaveBeenCalledTimes(1);
+  } finally { render.mockRestore(); }
+});
+
+test("a current PNG failure still reports the existing recoverable export error", async () => {
+  const render = jest.spyOn(routeExport, "routeImage").mockRejectedValue(new Error("current image failure"));
+  try {
+    const { wrapper } = await setup("draft");
+    await wrapper.vm.exportImage(); await flushPromises();
+    expect(wrapper.vm.error).toBe("图像导出失败，请确认结构图已加载。");
+    expect(wrapper.vm.exporting).toBe(false);
+    expect(API.post).not.toHaveBeenCalled(); expect(API.put).not.toHaveBeenCalled();
+  } finally { render.mockRestore(); }
 });
 
 test("keyboard inspector close preserves an unconfirmed note until discard and then returns to the graph entry", async () => {

@@ -40,7 +40,7 @@
               v-bind="props"
               prepend-icon="mdi-download"
               variant="text"
-              :disabled="!document || importing || applying || exporting"
+              :disabled="!canExport || exporting"
               :loading="exporting"
               >{{ $tr('导出路线') }}</v-btn
             ></template
@@ -346,6 +346,7 @@ const draftGuard = useInspectorDraftGuard({
   confirm: () => window.confirm(uiText("存在未应用的结构或反应修改，仍要放弃？")),
   discard: () => inspectorView.value?.discardDraft() ?? false,
 });
+const canExport = computed(() => !!document.value && !editingLocked.value && !draftGuard.dirty.value);
 const stepProjection = computed(() => {
   try {
     return { numbers: Object.fromEntries(documentStepDetails(graph.value).map(step => [step.node.id, step.number])), error: "" };
@@ -418,7 +419,7 @@ const { loaded: sourceEvidence, loading: sourceLoading, unavailable: sourceUnava
   retired: sourceRetired, deliveryReview, savedDeliveryReview, automatedReview, stepsByNode: sourceSteps, retry: retrySource, retire: retireSource }
   = useDocumentSourceEvidence(document, graph, { active: sourceActive });
 let imageGeneration = 0;
-watch([() => document.value?.id, graph, deliveryReview], () => { imageGeneration++; }, { deep: true, flush: "sync" });
+watch([() => document.value?.id, graph, deliveryReview, canExport], () => { imageGeneration++; }, { deep: true, flush: "sync" });
 const origin = computed(() => documentOrigin(document.value));
 function runEditAction(action) {
   if (editingLocked.value || action.disabled) return;
@@ -627,7 +628,7 @@ function download(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function exportDocument() {
-  if (!document.value || importing.value || applying.value) return;
+  if (!canExport.value || exporting.value) return;
   download(
     new Blob(
       [JSON.stringify(routeDocumentPayload(title.value, graph.value, deliveryReview.value), null, 2)],
@@ -637,9 +638,9 @@ function exportDocument() {
   );
 }
 async function exportImage() {
-  if (!document.value || importing.value || applying.value || exporting.value) return;
+  if (!canExport.value || exporting.value) return;
   const current = imageGeneration, owner = document.value.id, surface = canvas.value.element;
-  const isCurrent = () => imageGeneration === current && document.value?.id === owner
+  const isCurrent = () => canExport.value && imageGeneration === current && document.value?.id === owner
     && canvas.value?.element === surface;
   exporting.value = true;
   try {
@@ -650,7 +651,7 @@ async function exportImage() {
     link.download = "route.png";
     link.click();
   } catch (e) {
-    if (document.value?.id === owner)
+    if (isCurrent())
       error.value = routeExportErrorMessage(e, "图像导出失败，请确认结构图已加载。");
   } finally {
     exporting.value = false;
