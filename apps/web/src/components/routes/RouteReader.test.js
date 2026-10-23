@@ -7,7 +7,7 @@ import { originalRouteIndex, stepDetails } from "@/common/route-details";
 import { routeLabel } from "@/common/route-reading";
 import * as routeReading from "@/common/route-reading";
 import Papa from "papaparse";
-import { initializeLocale, setLocale } from "@/i18n";
+import { i18n, initializeLocale, setLocale } from "@/i18n";
 import RouteReader from "./RouteReader.vue";
 import { randomUUID } from "node:crypto";
 import { deserialize, serialize } from "node:v8";
@@ -109,6 +109,50 @@ beforeEach(() => {
   mockFocus.mockReset();
   API.post.mockRejectedValue(new Error("catalog unavailable"));
   layout = jest.spyOn(dagre, "layout");
+});
+
+test.each([["en", "Synthesis route R001", "Route document JSON"], ["zh-CN", "合成路线 R001", "路线文档 JSON"]])(
+  "generated reader document title follows %s without changing the route or grade", async (locale, title, label) => {
+    const previous = i18n.global.locale.value;
+    setLocale(locale, { persist: false });
+    const download = jest.spyOn(routeReading, "downloadRouteBlob").mockImplementation(() => {});
+    try {
+      const route = candidate("export-title");
+      const receipt = { version: 1, phase: "automated_review", grade: "not_independently_reviewed" };
+      route.metadata = { delivery_review: receipt };
+      const original = JSON.stringify(route);
+      const wrapper = await setup([route], { view: "graph" });
+      await wrapper.get(`v-list-item-stub[title="${label}"]`).trigger("click");
+      const value = JSON.parse(download.mock.calls[0][0]);
+      expect(value.title).toBe(title);
+      expect(value.graph.nodes.find(node => node.id === value.graph.target_id).smiles).toBe(route.target_smiles);
+      expect(value.metadata.delivery_review).toEqual(receipt);
+      expect(JSON.stringify(route)).toBe(original);
+    } finally { download.mockRestore(); setLocale(previous, { persist: false }); }
+  },
+);
+
+test("successive exports follow EN to ZH to EN within one mounted reader", async () => {
+  const previous = i18n.global.locale.value;
+  setLocale("en", { persist: false });
+  const download = jest.spyOn(routeReading, "downloadRouteBlob").mockImplementation(() => {});
+  try {
+    const route = candidate("hot-export-title"), original = JSON.stringify(route);
+    const wrapper = await setup([route], { view: "graph" });
+    for (const [locale, label, title] of [
+      ["en", "Route document JSON", "Synthesis route R001"],
+      ["zh-CN", "路线文档 JSON", "合成路线 R001"],
+      ["en", "Route document JSON", "Synthesis route R001"],
+    ]) {
+      setLocale(locale, { persist: false }); await flushPromises();
+      await wrapper.get(`v-list-item-stub[title="${label}"]`).trigger("click");
+      const value = JSON.parse(download.mock.calls.at(-1)[0]);
+      expect(value.title).toBe(title);
+      expect(value.graph.nodes.find(node => node.id === value.graph.target_id).smiles).toBe(route.target_smiles);
+    }
+    expect(download).toHaveBeenCalledTimes(3);
+    expect(JSON.stringify(route)).toBe(original);
+  } finally { download.mockRestore(); setLocale(previous, { persist: false }); }
 });
 
 test("reader menu and materials panel receive the same selected route review receipt", async () => {

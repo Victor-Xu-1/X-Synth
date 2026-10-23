@@ -5,6 +5,26 @@ import {
   routeDocumentPayload,
 } from "./route-document-file";
 import { graphFromCandidate, cleanGraph } from "./route-graph";
+import { i18n, setLocale } from "@/i18n";
+
+test.each([
+  ["en", "Untitled route", "Imported route"],
+  ["zh-CN", "未命名路线", "导入的路线"],
+])("only generated route-file titles follow the %s locale", (locale, untitled, imported) => {
+  const previous = i18n.global.locale.value;
+  setLocale(locale, { persist: false });
+  try {
+    const graph = graphFromCandidate({ target_smiles: "[13CH3][C@H](N)C(=O)O.[Na+]", steps: [] });
+    const value = routeDocumentPayload("", graph);
+    expect(value.title).toBe(untitled);
+    expect(parseRouteDocument(JSON.stringify({ ...value, title: "" })).title).toBe(imported);
+    for (const title of ["记录 / R001", "User route α", "合成路线 R007"]) {
+      expect(routeDocumentPayload(title, graph).title).toBe(title);
+      expect(parseRouteDocument(JSON.stringify({ ...value, title })).title).toBe(title);
+    }
+    expect(value.graph).toEqual(cleanGraph(graph));
+  } finally { setLocale(previous, { persist: false }); }
+});
 
 test("preview and editor export the same importable structure-only document", () => {
   const graph = graphFromCandidate({

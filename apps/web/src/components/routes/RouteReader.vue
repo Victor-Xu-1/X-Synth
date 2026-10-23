@@ -291,6 +291,7 @@ import {
 } from "@/common/route-reading";
 import { routeImage, routeExportErrorMessage } from "@/common/route-export";
 import { routeDocumentPayload } from "@/common/route-document-file";
+import { uiText } from "@/i18n";
 import { stepForNode } from "@/common/route-node-context";
 import { reviewTargets } from "@/common/route-review-targets";
 import RouteFilters from "./RouteFilters.vue";
@@ -617,7 +618,7 @@ function exportJson() {
     downloadRouteBlob(
       JSON.stringify(
         routeDocumentPayload(
-          `合成路线 ${labelFor(selectedChoice.value)}`,
+          uiText("合成路线 {name}", { name: labelFor(selectedChoice.value) }),
           sourceGraph.value,
           candidate.value.metadata?.delivery_review,
         ),
