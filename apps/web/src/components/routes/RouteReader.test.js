@@ -125,6 +125,7 @@ test.each([["en", "Synthesis route R001", "Route document JSON"], ["zh-CN", "合
       await wrapper.get(`v-list-item-stub[title="${label}"]`).trigger("click");
       const value = JSON.parse(download.mock.calls[0][0]);
       expect(value.title).toBe(title);
+      expect(value.graph.nodes.find(node => node.type === "reaction").label).toBe(locale === "en" ? "Step 1" : "步骤 1");
       expect(value.graph.nodes.find(node => node.id === value.graph.target_id).smiles).toBe(route.target_smiles);
       expect(value.metadata.delivery_review).toEqual(receipt);
       expect(JSON.stringify(route)).toBe(original);
@@ -137,8 +138,14 @@ test("successive exports follow EN to ZH to EN within one mounted reader", async
   setLocale("en", { persist: false });
   const download = jest.spyOn(routeReading, "downloadRouteBlob").mockImplementation(() => {});
   try {
-    const route = candidate("hot-export-title"), original = JSON.stringify(route);
+    const route = candidate("hot-export-title");
+    route.steps[0].precursors.push("[H][H]");
+    route.steps.push({ product: "CC=O", precursors: ["[13CH3][C@H](O)Cl.[Na+]", "O"] });
+    route.metadata = { delivery_review: { version: 1, phase: "automated_review", grade: "not_independently_reviewed" } };
+    const original = JSON.stringify(route);
     const wrapper = await setup([route], { view: "graph" });
+    const cachedGraph = wrapper.getComponent({ name: "RouteGraph" }).props("graph");
+    let originalGraph;
     for (const [locale, label, title] of [
       ["en", "Route document JSON", "Synthesis route R001"],
       ["zh-CN", "路线文档 JSON", "合成路线 R001"],
@@ -148,9 +155,22 @@ test("successive exports follow EN to ZH to EN within one mounted reader", async
       await wrapper.get(`v-list-item-stub[title="${label}"]`).trigger("click");
       const value = JSON.parse(download.mock.calls.at(-1)[0]);
       expect(value.title).toBe(title);
+      expect(value.graph.nodes.filter(node => node.type === "reaction").map(node => node.label)).toEqual(
+        locale === "en" ? ["Step 2", "Step 1"] : ["步骤 2", "步骤 1"],
+      );
+      const withoutLabels = { ...value.graph, nodes: value.graph.nodes.map(node => ({ ...node, label: "" })) };
+      originalGraph ??= withoutLabels;
+      expect(withoutLabels).toEqual(originalGraph);
+      expect(value.graph.edges.find(edge => edge.input_occurrences)?.input_occurrences).toBe(2);
+      expect(value.format).toBe("x-synth-route");
+      expect(value.version).toBe(1);
+      expect(value.metadata.delivery_review).toEqual(route.metadata.delivery_review);
+      expect(wrapper.props("view")).toBe("graph");
+      expect(wrapper.getComponent({ name: "RouteGraph" }).props("graph")).toBe(cachedGraph);
       expect(value.graph.nodes.find(node => node.id === value.graph.target_id).smiles).toBe(route.target_smiles);
     }
     expect(download).toHaveBeenCalledTimes(3);
+    expect(layout).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(route)).toBe(original);
   } finally { download.mockRestore(); setLocale(previous, { persist: false }); }
 });

@@ -11,11 +11,66 @@ import {
   READING_NODE_SIZE,
 } from "./route-graph";
 import dagre from "@dagrejs/dagre";
+import { i18n, setLocale } from "@/i18n";
 
 const route = {
   target_smiles: "CCO",
   steps: [{ product: "CCO", precursors: ["CC=O", "[H][H]"], confidence: 0.8 }],
 };
+
+test("generated candidate labels follow the current locale without changing graph data", () => {
+  const candidate = {
+    target_smiles: "CCO",
+    steps: [
+      { product: "CCO", precursors: ["CC=O", "[H][H]", "[H][H]"] },
+      { product: "CC=O", precursors: ["[13CH3][C@H](O)Cl.[Na+]", "O"] },
+    ],
+  };
+  const original = JSON.stringify(candidate), previous = i18n.global.locale.value;
+  const withoutLabels = (graph) => ({ ...graph,
+    nodes: graph.nodes.map(node => ({ ...node, label: "" })),
+  });
+  const baseline = withoutLabels(graphFromCandidate(candidate));
+  try {
+    for (const [locale, labels] of [
+      ["en", ["Step 2", "Step 1"]],
+      ["zh-CN", ["步骤 2", "步骤 1"]],
+      ["en", ["Step 2", "Step 1"]],
+    ]) {
+      setLocale(locale, { persist: false });
+      const prepared = prepareCandidateGraph(candidate);
+      for (const graph of [topologyFromCandidate(candidate), graphFromCandidate(candidate)])
+        expect(graph.nodes.filter(node => node.type === "reaction").map(node => node.label)).toEqual(labels);
+      expect(prepared.topology.nodes.filter(node => node.type === "reaction").map(node => node.label))
+        .toEqual(["步骤 2", "步骤 1"]);
+      expect(withoutLabels(prepared.graph)).toEqual(baseline);
+      expect(withoutLabels(cleanGraph(graphFromCandidate(candidate)))).toEqual(baseline);
+    }
+    expect(baseline.edges.find(edge => edge.input_occurrences)).toEqual({
+      id: "e-1", source: "m-3", target: "r-1", input_occurrences: 2,
+    });
+    expect(JSON.stringify(candidate)).toBe(original);
+  } finally { setLocale(previous, { persist: false }); }
+});
+
+test("generated unnumbered reactions use the creation locale without translating existing labels", () => {
+  const previous = i18n.global.locale.value;
+  try {
+    for (const [locale, label] of [["en", "Reaction"], ["zh-CN", "反应"], ["en", "Reaction"]]) {
+      setLocale(locale, { persist: false });
+      const cyclic = topologyFromCandidate({ target_smiles: "CCO", steps: [{ product: "CCO", precursors: ["CCO"] }] });
+      expect(cyclic.nodes.find(node => node.type === "reaction").label).toBe(label);
+      const graph = graphFromCandidate({ target_smiles: "CCO", steps: [] });
+      graph.nodes[0].label = "步骤 1 / User target";
+      const original = JSON.stringify(graph);
+      let id = 0;
+      const expanded = attachPrecursors(graph, graph.target_id, ["CC=O", "[H][H]"], () => String(++id));
+      expect(expanded.nodes.find(node => node.type === "reaction").label).toBe(label);
+      expect(expanded.nodes.find(node => node.id === graph.target_id).label).toBe("步骤 1 / User target");
+      expect(JSON.stringify(graph)).toBe(original);
+    }
+  } finally { setLocale(previous, { persist: false }); }
+});
 
 test("topology preserves exact chemistry, source anchors and all branches without layout", () => {
   const salt = "[13CH3][C@H]([NH3+])C(=O)[O-].[Na+]";

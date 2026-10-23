@@ -123,7 +123,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { API } from "@/common/api";
-import { uiText } from "@/i18n";
+import { uiText, useUiLanguage } from "@/i18n";
 import { errorMessage } from "@/common/workspace-errors";
 import {
   taskStateLabel,
@@ -145,6 +145,7 @@ import TaskInfoDialog from "@/components/workspace/TaskInfoDialog.vue";
 import TaskSearchProgress from "@/components/workspace/TaskSearchProgress.vue";
 const route = useRoute(),
   router = useRouter();
+const { locale } = useUiLanguage();
 const job = ref(null),
   deliveryReview = ref(null),
   candidates = ref([]),
@@ -256,6 +257,7 @@ async function edit(routeId) {
       job_id: id,
       route_index: index,
       route_id: routeId,
+      locale: locale.value,
     });
     if (disposed || context !== taskGeneration || id !== identifier.value) return;
     const documentId = taskIdentifier(result.id);
