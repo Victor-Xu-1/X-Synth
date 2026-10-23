@@ -13,12 +13,13 @@ from packages.route_pool.pool import UnifiedRoutePool
 from packages.route_pool.workflow import build_route_pool_result
 from packages.validation.route_quality import RouteQualityPolicy
 from packages.validation.reaction_operations import screen_step_operations
+from packages.validation.route_topology import chemical_key
 
 from .verification_cache import VerificationCache
 from .forward_review import forward_rank_receipt
 from .qualification_queue import QualificationQueue, family_key
 from .reference_evidence import reference_evidence, recorded_reaction_support
-from .operation_review import operation_record, operations_summary
+from .operation_review import operation_record, operation_status_accepted, operations_passed, operations_summary
 
 
 def forward_match(output, product, minimum):
@@ -100,13 +101,15 @@ class RouteVerifier:
                                     "reason": "unsupported_forward_input"})
                     break
                 screening = screen_step_operations(step)
-                binding = (reactants, step.product, tuple(screening["template_sha256"]), tuple(screening["witness_sha256"]))
+                binding = (reactants, step.product,
+                           tuple(sorted(chemical_key(value) for value in step.precursors)),
+                           tuple(screening["template_sha256"]), tuple(screening["witness_sha256"]))
                 if binding in step_checks and not step_checks[binding][0].get("record_support"):
                     saved_forward, saved_reference, saved_operation = step_checks[binding]
                     forward.append({**saved_forward, "step_id": step.step_id})
                     references.append({**saved_reference, "step_id": step.step_id})
                     operations.append({**saved_operation, "step_id": step.step_id})
-                    if not saved_forward["matched"] or saved_operation["status"] == "evidence_required":
+                    if not saved_forward["matched"] or not operation_status_accepted(saved_operation["status"]):
                         break
                     continue
                 output, identifier = self.prediction(reactants, owner, cache)
@@ -137,12 +140,12 @@ class RouteVerifier:
                     raise EngineUnavailable("route_verification_interrupted", recoverable=True)
                 progress({"checked_routes": len(checked), "current_step": step.step_id,
                           "forward_records": len(cache.records)})
-                if not matched or operations[-1]["status"] == "evidence_required":
+                if not matched or not operation_status_accepted(operations[-1]["status"]):
                     break
             if self.epoch() != epoch:
                 raise EngineUnavailable("qualification_model_restarted", recoverable=True)
             forward_passed = len(forward) == len(route.steps) and all(row["matched"] for row in forward)
-            operation_passed = len(operations) == len(route.steps) and all(row["status"] != "evidence_required" for row in operations)
+            operation_passed = operations_passed(operations, len(route.steps))
             passed = forward_passed and operation_passed
             review = {
                 "version": 4,
@@ -172,11 +175,13 @@ class RouteVerifier:
                 else "native_template_and_joint_sequence_fast_filter_top1",
                 "automated_review": review,
                 "qualification_status": "qualified" if passed else (
-                    "operation_evidence_required" if any(row["status"] == "evidence_required" for row in operations)
+                    "operation_evidence_required" if any(not operation_status_accepted(row["status"]) for row in operations)
                     else "unsupported" if any(row.get("reason") for row in forward) else "forward_rejected"
                 ),
             })
             checked.add(route.route_id)
+            if not operation_passed and forward and all(row["matched"] for row in forward):
+                queue.retry_operation_evidence(route)
             if passed:
                 representatives.add_routes([routes[route.route_id]])
                 selected = representatives.final_candidates()
@@ -193,8 +198,9 @@ class RouteVerifier:
         result.summary["verification_budget"] = {
             "routes_checked": len(checked), "route_limit": len(report.all_routes),
             "forward_inputs": len(cache.records),
-            "eligible_unique_routes": sum(len(group) for group in queue.groups.values()) + len(checked),
+            "eligible_unique_routes": queue.chemical_unique_count,
             "chemical_duplicate_routes": len(queue.duplicate_ids),
+            "operation_evidence_variants_scheduled": queue.evidence_retry_count,
             "stop_reason": "maximum_qualified_families" if len(qualified_families) >= maximum else "family_candidates_exhausted",
         }
         return result
