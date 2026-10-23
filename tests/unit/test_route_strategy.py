@@ -421,6 +421,39 @@ def test_composed_shortcut_keeps_a_nested_evidence_gap_pending(gap):
     assert result.summary["strategy_dominated_route_count"] == 0
 
 
+@pytest.mark.parametrize("tamper", [None, "snapshot", "yield"])
+def test_composed_shortcut_uses_the_real_paginated_record_binder(tamper):
+    from test_operation_review import recorded
+    from packages.orchestrator.reference_evidence import reference_evidence, recorded_reaction_support
+
+    _, response, source = recorded()
+    response.has_more = True
+    first, second = source.precursors
+    # Boundary graphs only: the deposited step is unchanged, not a new synthesis.
+    direct = with_empty_search(RouteCandidate("direct", "boundary", source.product,
+        steps=[step("direct-target", ["C", second], source.product), step("direct-feed", ["N"], second)],
+        closed=True, metadata={"full_forward_prediction_validated": True, "operation_validation_passed": True}))
+    longer = with_empty_search(replace(direct, route_id="longer", steps=[source,
+        step("first-feed", ["C"], first), step("second-feed", ["CO"], second), step("last-feed", ["N"], "CO")]))
+    row = {"step_id": source.step_id, **reference_evidence(response),
+           "recorded_process_support": recorded_reaction_support(response)}
+    assert row["has_more"] is True and row["complete"] is False
+    if tamper == "snapshot":
+        row["recorded_process_support"][0]["snapshot"] = "b" * 64
+    elif tamper == "yield":
+        row["recorded_process_support"][0]["recorded_outcomes"][0]["yield_value"] = 0
+    rows = longer.metadata["automated_review"]["references"]["records"]
+    rows[:] = [row if item["step_id"] == source.step_id else item for item in rows]
+    proof = _shortcut(direct, longer, _graph(direct), _graph(longer))
+    assert proof is not None and len(proof.segments) == 2
+    before = [asdict(route) for route in [direct, longer]]
+    decision = select_strategies([direct, longer])
+    assert [route.route_id for route in decision.routes] == (["direct", "longer"] if tamper is None else ["direct"])
+    assert not decision.dominated
+    assert set(decision.pending) == (set() if tamper is None else {"longer"})
+    assert [asdict(route) for route in [direct, longer]] == before
+
+
 @pytest.mark.parametrize("field", ["full_forward_prediction_validated", "operation_validation_passed"])
 def test_composed_shortcut_still_requires_a_qualified_surviving_witness(field):
     direct, _middle, longer = composed_alternatives()
