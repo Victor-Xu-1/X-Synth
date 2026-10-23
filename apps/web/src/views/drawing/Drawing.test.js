@@ -99,6 +99,18 @@ test("a recoverable gateway outage keeps the same pending file and drawing child
   expect(wrapper.get('[aria-label="Test-only retained drawing state"]').element.value).toBe("unconfirmed_chiral_drawing");
 });
 
+test("the applied molecule preview reserves a responsive width and nonzero image height", async () => {
+  await setup();
+  const smiles = "[13CH3][C@H]([NH3+])CO.[Cl-]";
+  wrapper.getComponent(editor).vm.$emit("commit", smiles);
+  await nextTick();
+  expect(wrapper.get("smiles-image-stub").attributes()).toMatchObject({
+    smiles, width: "100%", height: "220",
+  });
+  expect(wrapper.get('[data-cy="draw-committed-smiles"]').text()).toBe(smiles);
+  expect(API.post).not.toHaveBeenCalled();
+});
+
 test("unrelated background loading preserves the initialized drawing and never adds a competing status pane", async () => {
   await setup(); const oldEditor = wrapper.getComponent(editor).vm.$.uid;
   mockWorkspace.loading = true; await nextTick();
