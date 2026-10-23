@@ -248,6 +248,10 @@
     {
       "number": 115,
       "merge_commit_sha": "fd9b070bbc4ec20a707f8c11ec3c0eadcf51a9b0"
+    },
+    {
+      "number": 116,
+      "merge_commit_sha": "a373226f4b75731c0558a9e8bd8d11f69933bc43"
     }
   ]
 }
