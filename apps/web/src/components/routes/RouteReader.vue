@@ -726,9 +726,4 @@ onBeforeUnmount(() => {
   generation++;
 });
 </script>
-<style scoped>
-.reader-detail-body > :deep(.route-inspector) {
-  position: static;
-}
-</style>
 <style scoped src="./route-reader.css"></style>
