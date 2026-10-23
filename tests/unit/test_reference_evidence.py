@@ -79,8 +79,19 @@ def test_positive_deposited_exact_reaction_support_is_distinct_from_model_top1()
     assert proof[0]["basis"] == "exact_recorded_reaction_with_positive_yield"
     assert recorded_reaction_support(library_response(records=[public_record()])) == []
     assert recorded_reaction_support(native_response()) == []
-    assert recorded_reaction_support(library_response(records=[record], has_more=True)) == []
     assert recorded_reaction_support(library_response(records=[record], ready=False)) == []
+
+
+def test_exact_positive_record_survives_pagination_without_claiming_complete_coverage():
+    record = public_record().model_copy(update={"match_scope": "reaction_identity"})
+    response = library_response(records=[record], has_more=True)
+    original = deepcopy(response.model_dump(mode="json"))
+    proofs = recorded_reaction_support(response)
+    assert len(proofs) == 1 and proofs[0]["id"] == record.id
+    evidence = reference_evidence(response)
+    assert evidence["has_more"] is True and evidence["complete"] is False
+    assert evidence["search_status"] == "incomplete" and evidence["available"] is True
+    assert response.model_dump(mode="json") == original
 
 
 @pytest.mark.parametrize("value", [0, None, -1, 101])

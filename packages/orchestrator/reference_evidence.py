@@ -14,12 +14,12 @@ from packages.validation.recorded_process import recorded_support_proofs_are_val
 
 
 def recorded_reaction_support(response: ReferenceSearchResponse) -> list[dict]:
-    """Positive exact ORD outcomes support a candidate only under recorded conditions."""
+    """Exact positive outcomes support a step without claiming exhaustive search."""
     if not isinstance(response, ReactionLibraryResponse):
         return []
     sources = {item.source: item for item in response.sources}
     source = sources.get("ORD")
-    if (source is None or not source.ready or not source.snapshot or response.has_more
+    if (source is None or not source.ready or not source.snapshot
             or any(not item.ready for item in response.sources)):
         return []
     supported = []

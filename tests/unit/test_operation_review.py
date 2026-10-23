@@ -15,7 +15,8 @@ from packages.orchestrator.operation_review import (
 )
 from packages.orchestrator.reference_evidence import reference_evidence, recorded_reaction_support
 from packages.orchestrator.review_policy import REVIEW_POLICY
-from packages.route_schema.route_schema import RouteStep
+from packages.route_schema.route_schema import RouteCandidate, RouteStep
+from packages.route_pool.strategy_evidence import process_evidence_state
 from packages.validation.reaction_operations import screen_step_operations
 from test_delivery_review import BUDGET, reviewed
 from test_reaction_library import public_record
@@ -130,8 +131,10 @@ def test_missing_operation_assessment_cannot_pass_the_current_ledger_guard(revie
     assert error.value.status_code == 409 and route == before
 
 
-def test_exact_deposited_process_can_support_an_untemplated_step():
+@pytest.mark.parametrize("has_more", [False, True])
+def test_exact_deposited_process_can_support_an_untemplated_step(has_more):
     _record, response, source = recorded()
+    response.has_more = has_more
     screening = screen_step_operations(source)
     assert screening["status"] == "not_assessed"
     support = recorded_reaction_support(response)
@@ -146,6 +149,48 @@ def test_exact_deposited_process_can_support_an_untemplated_step():
     route["metadata"]["automated_review"]["references"]["records"][0]["query"]["reactants"] = ["CCO"]
     assert not operation_records_validated(route)
     assert operation_receipt(route)["status"] == "not_assessed"
+
+
+@pytest.mark.parametrize("tamper", ["complete", "status", "available", "source_unavailable", "product", "reactants", "snapshot", "yield", "condition", "scope"])
+def test_paginated_positive_support_keeps_exact_identity_and_truthful_coverage(tamper):
+    _, response, source = recorded()
+    proof = recorded_reaction_support(response)
+    response.has_more = True
+    refs = reference_evidence(response)
+    assert _support_bound(proof, source, refs)
+    if tamper == "complete": refs["complete"] = True
+    elif tamper == "status": refs["search_status"] = "complete"
+    elif tamper == "available": refs["available"] = False
+    elif tamper == "source_unavailable": refs["sources"][0]["ready"] = False
+    elif tamper == "product": refs["query"]["product"] = "CCO"
+    elif tamper == "reactants": refs["query"]["reactants"] = ["CCO"]
+    elif tamper == "snapshot": refs["sources"][1]["snapshot"] = "b" * 64
+    elif tamper == "yield": proof[0]["recorded_outcomes"][0]["yield_value"] = 0
+    elif tamper == "condition": proof[0]["recorded_outcomes"][0]["condition_source_fields"] = ["outcomes[1].reaction_time"]
+    elif tamper == "scope": refs["refs"][0]["match_scope"] = "product_identity"
+    assert not _support_bound(proof, source, refs)
+
+
+@pytest.mark.parametrize("has_more,expected", [(False, "none"), (True, "unknown")])
+def test_process_evidence_absence_is_not_inferred_from_an_incomplete_page(has_more, expected):
+    _, response, source = recorded()
+    response.results.clear()
+    response.count = 0
+    response.has_more = has_more
+    row = {"step_id": source.step_id, **reference_evidence(response), "recorded_process_support": []}
+    candidate = RouteCandidate("coverage-boundary", "ORD", source.product, steps=[source],
+        metadata={"automated_review": {"references": {"records": [row]}}})
+    assert process_evidence_state(candidate, {source.step_id: source}) == expected
+
+
+def test_a_bound_positive_record_is_documented_even_when_other_records_are_unseen():
+    _, response, source = recorded()
+    proof = recorded_reaction_support(response)
+    response.has_more = True
+    row = {"step_id": source.step_id, **reference_evidence(response), "recorded_process_support": proof}
+    candidate = RouteCandidate("positive-coverage-boundary", "ORD", source.product, steps=[source],
+        metadata={"automated_review": {"references": {"records": [row]}}})
+    assert process_evidence_state(candidate, {source.step_id: source}) == "documented"
 
 
 def test_one_supported_operation_cannot_hide_another_unassessed_step():
