@@ -4,6 +4,10 @@ from dataclasses import asdict, replace
 import json
 from pathlib import Path
 
+import pytest
+
+from packages.orchestrator.qualification_queue import QualificationQueue
+from packages.route_pool.askcos import normalize_askcos_tree_result
 from packages.route_pool.workflow import (
     AizynthFinderRouteSource,
     AskcosRouteSource,
@@ -11,6 +15,7 @@ from packages.route_pool.workflow import (
 )
 from packages.route_schema.route_schema import RouteCandidate, RouteStep
 from packages.validation.route_quality import RouteQualityPolicy
+from packages.validation.template_forward import validate_native_routes
 
 
 FIXTURES = Path("tests/fixtures")
@@ -268,3 +273,114 @@ def test_workflow_applies_route_transform_before_quality_selection(tmp_path):
     assert result.summary["quality_rejection_counts"] == {
         "forward_validation_failed": 1
     }
+
+
+def test_native_witness_families_keep_raw_candidates_and_failed_variant_alternatives():
+    product = "NCCO"
+    controls = [
+        ("CC(C)(C)OC(=O)NCCO", "[N;H2:1]>>[N;H1:1]C(=O)OC(C)(C)C"),
+        ("O=C(OCc1ccccc1)NCCO", "[N;H2:1]>>[N;H1:1]C(=O)OCc1ccccc1"),
+        ("NCCOC(C)=O", "[O;H1:1]>>[O;H0:1]C(=O)C"),
+    ]
+    sources = []
+    for index, (precursor, smarts) in enumerate(controls):
+        reaction = precursor + ">>" + product
+        payload = {"target_smiles": product, "result": {"uds": {
+            "uuid2smiles": {"root": product, "reaction": reaction, "leaf": precursor},
+            "node_dict": {
+                product: {"type": "chemical"},
+                precursor: {"type": "chemical", "terminal": True, "buyable": True},
+                reaction: {"type": "reaction", "plausibility": 0.8,
+                    "model_metadata": [{"source": {"template": {"reaction_smarts": smarts}}}]},
+            },
+            "pathways": [[{"source": "root", "target": "reaction"},
+                          {"source": "reaction", "target": "leaf"}]],
+        }}}
+        sources.append(AskcosRouteSource(f"controlled-{index}", payload,
+                       "askcos_mcts" if index % 2 == 0 else "askcos_retro_star"))
+    before = [asdict(source) for source in sources]
+    raw = [normalize_askcos_tree_result(source.payload, engine=source.engine)[0] for source in sources]
+    result = build_unified_route_pool(id="witness-family-contract", askcos_sources=sources,
+                                     route_transform=validate_native_routes)
+    assert result.summary["total_route_count"] == len(raw)
+    assert result.summary["selected_route_count"] == result.summary["selected_family_count"] == 2
+    assert not result.summary["meets_min_routes"]
+    by_id = {route.route_id: route for route in result.all_routes}
+    for original in raw:
+        route = by_id[original.route_id]
+        assert route.steps == original.steps and route.starting_materials == original.starting_materials
+        assert route.engine == original.engine and route.route_score == original.route_score
+        assert route.evidence_refs == original.evidence_refs
+        assert all(route.metadata[key] == value for key, value in original.metadata.items())
+        assert route.metadata["full_forward_prediction_validated"] is False
+    first, alternative, distinct = [by_id[route.route_id] for route in raw]
+    assert first.family_key == alternative.family_key != distinct.family_key
+    queue = QualificationQueue([first, alternative, distinct])
+    assert not queue.ineligible and not queue.duplicate_ids
+    # Scheduling only: an unqualified prefix does not hide its later variant.
+    assert queue.next(set()) is first
+    assert queue.next(set()) is distinct
+    assert queue.next(set()) is alternative
+    assert queue.next(set()) is None
+    queue = QualificationQueue([first, alternative, distinct])
+    assert queue.next(set()) is first
+    assert queue.next({first.family_key}) is distinct
+    assert queue.next({first.family_key}) is None
+    assert [asdict(source) for source in sources] == before
+
+
+@pytest.mark.parametrize(("minimum", "maximum", "selected_count"), [(1, 1, 1), (2, 2, 2), (3, 3, 2)])
+def test_unresolved_native_family_cannot_prove_an_independent_delivery_route(minimum, maximum, selected_count):
+    product = "NCCNC"
+    controls = [
+        ("primary-N", "CC(C)(C)OC(=O)NCCNC", ["[N;H2:1]>>[N;H1:1]C(=O)OC(C)(C)C"]),
+        ("secondary-N", "NCCN(C)C(=O)OC(C)(C)C", ["[N;H1:1]>>[N;H0:1]C(=O)OC(C)(C)C"]),
+        ("unresolved", "CNCCNCC", ["[N;H2:1]>>[N;H1:1]CC",
+         "[N;H2:1][CH2:4][CH2:5][N;H1:2][CH3:3]>>C[N;H1:1][CH2:4][CH2:5][N;H1:2][CH2:3]C"]),
+    ]
+    routes = []
+    for identifier, precursor, smarts in controls:
+        step = RouteStep("s1", precursor + ">>" + product, [precursor], product,
+                         "controlled-template", confidence=0.8, metadata={
+                             "model_metadata": [{"source": {"template": {"reaction_smarts": value}}}
+                                                for value in smarts],
+                         })
+        routes.append(RouteCandidate(identifier, "askcos_mcts", product, [step], [precursor],
+                      closed=True, route_score=1000.0 if identifier == "unresolved" else 50.0))
+    before = [asdict(route) for route in routes]
+    checked = validate_native_routes(routes)
+    assert all(route.metadata["forward_validation_passed"] for route in checked)
+    assert checked[0].family_key != checked[1].family_key
+    assert checked[2].family_key.startswith("unresolved-target-family:")
+    result = build_unified_route_pool(id="unresolved-family", extra_routes=checked,
+                                     min_routes=minimum, max_routes=maximum)
+    assert len(result.all_routes) == result.summary["quality_accepted_route_count"] == 3
+    assert result.summary["quality_rejected_route_count"] == 0
+    assert result.summary["selected_route_count"] == result.summary["selected_family_count"] == selected_count
+    assert result.summary["meets_min_routes"] is (selected_count >= minimum)
+    assert all(route.route_id != "unresolved" for route in result.selected_routes)
+    queue = QualificationQueue(checked)
+    assert queue.next({checked[0].family_key, checked[1].family_key}) is checked[2]
+    assert [asdict(route) for route in routes] == before
+
+
+def test_resolved_family_duplicate_is_not_hidden_by_an_unresolved_representative():
+    from test_template_forward import candidate
+
+    product, precursors = "NCCNC", ["CNCCNCC"]
+    first = "[N;H2:1]>>[N;H1:1]CC"
+    second = ("[N;H2:1][CH2:4][CH2:5][N;H1:2][CH3:3]>>"
+              "C[N;H1:1][CH2:4][CH2:5][N;H1:2][CH2:3]C")
+    unresolved, resolved = validate_native_routes([
+        candidate("ambiguous-source", product, precursors, first, second),
+        candidate("resolved-source", product, precursors, first),
+    ])
+    assert unresolved.family_key.startswith("unresolved-target-family:")
+    assert resolved.family_key.startswith("target-bond-family:")
+    assert all(route.metadata["forward_validation_passed"] for route in [unresolved, resolved])
+    before = [asdict(route) for route in [unresolved, resolved]]
+    queue = QualificationQueue([unresolved, resolved])
+    assert queue.next(set()) is resolved
+    assert queue.chemical_unique_count == 1
+    assert queue.duplicate_ids == {unresolved.route_id}
+    assert [asdict(route) for route in [unresolved, resolved]] == before

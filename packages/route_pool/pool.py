@@ -9,6 +9,10 @@ from packages.validation.route_quality import RouteQualityPolicy
 from .strategy import StrategySelection, select_strategies
 
 
+def is_unresolved_family(route: RouteCandidate) -> bool:
+    return (route.family_key or "").startswith("unresolved-target-family:")
+
+
 class UnifiedRoutePool:
     """Shared candidate pool before route-family selection and final output."""
 
@@ -56,7 +60,9 @@ class UnifiedRoutePool:
         )
 
     def strategy_selection(self) -> StrategySelection:
-        ranked = self.ranked_routes()
+        # Ambiguous mappings remain in the raw pool, not as proved diversity.
+        ranked = [route for route in self.ranked_routes()
+                  if not is_unresolved_family(route)]
         if self.quality_policy is not None:
             ranked = [
                 route

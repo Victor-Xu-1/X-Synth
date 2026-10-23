@@ -74,6 +74,26 @@ def test_qualified_direct_step_prevents_an_unsupported_activation_detour_filling
     assert [asdict(route) for route in routes] == before
 
 
+@pytest.mark.parametrize("incomplete", [False, True])
+def test_unresolved_family_cannot_dominate_or_defer_a_known_qualified_strategy(incomplete):
+    direct, longer = alternatives()
+    unresolved = replace(direct, family_key="unresolved-target-family:controlled")
+    if incomplete:
+        longer = replace(longer, metadata={**longer.metadata, "automated_review": None})
+    # Structural selection controls, not additional model or experimental proof.
+    unchecked_selection = select_strategies([unresolved, longer])
+    suppressed = unchecked_selection.pending if incomplete else unchecked_selection.dominated
+    assert suppressed[longer.route_id].route_id == unresolved.route_id
+    before = [asdict(route) for route in [unresolved, longer]]
+    result = selected([unresolved, longer])
+    assert [route.route_id for route in result.selected_routes] == [longer.route_id]
+    assert result.summary["strategy_selection"]["dominated"] == {}
+    assert result.summary["strategy_selection"]["pending"] == {}
+    assert result.summary["quality_accepted_route_count"] == len(result.all_routes) == 2
+    assert not result.summary["meets_min_routes"]
+    assert [asdict(route) for route in [unresolved, longer]] == before
+
+
 @pytest.mark.parametrize("field", ["full_forward_prediction_validated", "operation_validation_passed"])
 def test_unchecked_shortcut_cannot_eliminate_a_qualified_longer_path(field):
     direct, longer = alternatives()

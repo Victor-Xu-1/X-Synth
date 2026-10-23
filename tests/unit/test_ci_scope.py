@@ -17,6 +17,20 @@ def snapshot(tmp_path, content):
     return SimpleNamespace(root=tmp_path, files=set(content), text=content.__getitem__)
 
 
+def test_retired_unbound_family_helper_selects_only_chemistry_consumers(tmp_path):
+    path = "packages/route_pool/family.py"
+    root = Path(__file__).resolve().parents[2]
+    content = {item.relative_to(root).as_posix(): "pass"
+               for item in (root / "tests/unit").glob("test_*.py")}
+    before = snapshot(tmp_path, {**content, path: "def strategic_first_step_family(step): pass"})
+    after = snapshot(tmp_path, content)
+    expected = profile.python_tests(after, after, {"packages/validation/template_forward.py"})
+    profile.guard_paths({path})
+    assert profile.python_tests(before, after, {path}) == expected
+    assert "tests/unit/test_template_forward.py" in expected
+    assert "tests/unit/test_optimization_tables.py" not in expected
+
+
 @pytest.mark.parametrize("path", [
     "apps/api/web_assets.py", "apps/api/web_asset_cache.py", "apps/api/web_asset_http.py",
 ])

@@ -335,6 +335,26 @@ governance. See [version operations](operations.md#版本管理).
   original experimental conditions do not certify new conditions or a new experiment.
   Unmapped record-only first moves share a conservative target family, preventing
   leaving-group variants from inflating the requested diversity count.
+- Native template first-move families use concrete precursor/product reconstruction
+  witnesses bound to the complete target identity, not a query's first match or an
+  engine-local cluster label. All matching templates and mappings must agree on
+  the target edits. A canonical labeled incidence graph preserves the joint set
+  of edited sites and bond relations, not independent symmetry-rank multisets.
+  Deleted, redirected or type-changed precursor dative bonds remain unresolved
+  until their directed edit roles are supported; other edits cannot hide them.
+  Unmasking variants share the retained target-atom site; stereo,
+  isotopes, whole salt groups and component occurrences are not flattened. Missing
+  or contradictory mappings remain in an explicit unresolved target bucket;
+  they cannot establish diversity, dominate qualified strategies or consume
+  final delivery slots, but remain intact in the raw pool without a chemical
+  rejection. The target step is identified by chemical identity,
+  not serialized step order. This classification is not experimental certification;
+  reconstruction, independent forward and operation evidence gates remain separate.
+  `packages.validation.template_forward` is the sole native family authority; no
+  unused MCS or unbound query-matching heuristic provides a second execution path.
+  Qualification prefers resolved-source representatives before chemical duplicate
+  removal, preserving source order within each class and unresolved evidence
+  variants for the existing bounded retry path.
 - Qualified route selection also compares exact substitutions between chemical
   DAGs. One or several checked direct steps can suppress unsupported multi-step
   detours while the remaining reactions stay identical. Each changed direct step

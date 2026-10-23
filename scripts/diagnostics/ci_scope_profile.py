@@ -200,6 +200,7 @@ SEARCH_ROUND_FILES = {
     "packages/validation/reaction_operations.py",
     "packages/chemistry/reaction_centers.py",
     "packages/validation/template_forward.py",
+    "packages/route_pool/family.py",
     "packages/route_pool/workflow.py",
     "packages/route_pool/pool.py", "packages/route_pool/strategy.py",
     "packages/route_pool/strategy_evidence.py", "packages/validation/recorded_process.py",

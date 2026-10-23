@@ -5,6 +5,7 @@ from collections import defaultdict, deque
 from packages.validation.route_quality import RouteQualityPolicy
 from packages.validation.route_topology import chemical_key, route_signature, topology_reasons
 from packages.validation.template_forward import templates
+from packages.route_pool.pool import is_unresolved_family
 from packages.route_pool.strategy import potential_shortcut
 from .operation_review import operation_rejection_ids, step_records
 
@@ -34,7 +35,8 @@ class QualificationQueue:
         self.evidence_retry_count = 0
         signatures = set()
         policy = RouteQualityPolicy()
-        for route in routes:
+        # Prefer a mapped source before chemical deduplication hides its variant.
+        for route in sorted(routes, key=is_unresolved_family):
             reasons = policy.evaluate_route(route).reasons + topology_reasons(route)
             if reasons:
                 self.ineligible[route.route_id] = tuple(dict.fromkeys(reasons))
