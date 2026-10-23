@@ -280,6 +280,22 @@ governance. See [version operations](operations.md#版本管理).
   Support binds the source snapshot, template/witness hashes, exact step, positive
   target-yield field and matching outcome's reaction parameters/procedure. Addition
   timestamps and another outcome's duration are not supporting reaction conditions.
+  Operation admission requires complete positive coverage: each step is either
+  concretely screened or supported by that bound recorded process. A missing
+  template remains unassessed, not passed, even when the forward model matches.
+  An exact-record proposal without a template may use the same validated process
+  support; no template, parameter or yield is invented. Mixed supported/unassessed
+  routes retain the pending operation status. Producer admission and read-time
+  ledger validation share this positive-status rule; legacy forward evidence is
+  preserved separately and does not become an operation certificate.
+  Exact chemical duplicates initially expose one candidate. If its completed
+  forward prefix matches but operation coverage is pending, the same finite
+  queue may schedule a distinct template/compound-group evidence variant. An
+  accepted candidate does not schedule its duplicate alternatives. Equivalent
+  evidence is not retried, and source graphs are never merged or rewritten.
+  Forward record reuse remains bound to the actual model input; step/reference
+  reuse additionally preserves precursor compound grouping and multiplicity.
+  Counts distinguish unique chemistry from evidence variants scheduled.
   Missing/truncated evidence stays unresolved and is not a chemical blacklist.
   Qualification continues to later candidates and the existing single expanded
   search if output remains insufficient; unsupported candidates cannot fill slots.

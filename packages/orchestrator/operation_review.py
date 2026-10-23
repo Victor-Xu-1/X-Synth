@@ -5,8 +5,18 @@ from packages.validation.reaction_operations import POLICY, screen_step_operatio
 from packages.validation.recorded_process import support_bound as _support_bound
 
 
+def operation_status_accepted(status):
+    return isinstance(status, str) and status in {"screened", "record_supported"}
+
+
+def operations_passed(records, total):
+    """Positive coverage only; source binding remains mandatory when reading a ledger."""
+    return (type(total) is int and total > 0 and isinstance(records, list) and len(records) == total
+            and all(isinstance(row, dict) and operation_status_accepted(row.get("status")) for row in records))
+
+
 def operation_record(step, screening, support):
-    required = screening["status"] == "evidence_required"
+    required = screening["status"] in {"evidence_required", "not_assessed"}
     return {"step_id": step.step_id, **screening,
             "status": "record_supported" if required and support else screening["status"],
             "record_support": support if required else []}
@@ -38,12 +48,12 @@ def _screening_bound(row, screen, step):
 def _valid_record(row, screen, step, reference):
     if not _screening_bound(row, screen, step):
         return False
-    if screen["status"] == "evidence_required":
+    if screen["status"] in {"evidence_required", "not_assessed"}:
         try:
             return row.get("status") == "record_supported" and _support_bound(row.get("record_support"), step, reference)
         except (ValueError, TypeError, KeyError, AttributeError):
             return False
-    return row.get("status") == screen["status"] and row.get("record_support") == []
+    return screen["status"] == "screened" and row.get("status") == "screened" and row.get("record_support") == []
 
 
 def step_records(value):
@@ -101,19 +111,20 @@ def operation_receipt(route):
         references = review.get("references")
         references = references if isinstance(references, dict) else {}
         records, refs = step_records(ledger.get("records")), step_records(references.get("records"))
-        screened, supported = [], False
+        screened = []
         for step in steps:
             screen = screen_step_operations(step)
             screened.append(screen["status"])
-            if screen["status"] != "evidence_required":
+            if screen["status"] not in {"evidence_required", "not_assessed"}:
                 continue
             if (type(review.get("version")) is int and review["version"] in {3, 4} and ledger.get("policy") == POLICY
                     and _valid_record(records.get(step.step_id), screen, step, refs.get(step.step_id))):
-                supported = True
-            else:
+                screened[-1] = "record_supported"
+            elif screen["status"] == "evidence_required":
                 receipt["unresolved_steps"].append({"step_id": step.step_id, "reasons": screen["reasons"]})
-        receipt["status"] = ("evidence_required" if receipt["unresolved_steps"] else "record_supported" if supported
-                             else "screened" if all(status == "screened" for status in screened) else "not_assessed")
+        receipt["status"] = ("evidence_required" if receipt["unresolved_steps"]
+                             else "not_assessed" if not all(operation_status_accepted(status) for status in screened)
+                             else "record_supported" if "record_supported" in screened else "screened")
     except (ValueError, TypeError, KeyError, AttributeError):
         return receipt
     return receipt
@@ -140,7 +151,7 @@ def operation_records_validated(route):
         if not all(_valid_record(records.get(step.step_id), screen_step_operations(step), step, refs.get(step.step_id)) for step in steps):
             return False
         summary = operations_summary(rows, len(steps))
-        return metadata.get("operation_validation_passed") is True and all(
+        return operations_passed(rows, len(steps)) and metadata.get("operation_validation_passed") is True and all(
             type(ledger.get(key)) is int and ledger[key] == summary[key]
             for key in ("screened_steps", "record_supported_steps", "unassessed_steps", "unresolved_steps")
         )
