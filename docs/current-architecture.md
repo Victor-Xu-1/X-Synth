@@ -886,6 +886,15 @@ cannot satisfy the SLO. Measured response documents are discarded immediately,
 apart from the bounded pre/post task observations. A control-plane latency result
 does not establish model, catalog, experimental or route-count acceptance.
 
+History review validates artifact source stamps outside its shared index mutex.
+Returning a retained receipt rechecks the exact entry and desired-request identity
+under the mutex. Publication also rechecks queued/in-flight ownership and shutdown.
+Unchanged full/light polling shares a semantic ticket; a retired ticket receives
+only bounded follow-up admission rather than an automatic retry loop. A slow
+filesystem check cannot serialize unrelated jobs, discard a newer queued snapshot
+or publish after shutdown. This isolates shared contention; it does not bound that
+request's own filesystem latency or relax source validation and performance targets.
+
 Route duration depends on target complexity, model coverage and purchasable
 precursors. It is not a performance promise that an arbitrary target will always
 produce three routes in a fixed time.
