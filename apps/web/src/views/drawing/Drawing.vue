@@ -80,6 +80,8 @@
           <div class="drawing-image">
             <smiles-image
               :smiles="committedSmiles"
+              width="100%"
+              :height="220"
               :show-error-image="false"
               allow-copy
             />
