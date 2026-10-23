@@ -14,6 +14,7 @@ class Shortcut:
     step_id: str
     replaced_steps: tuple[str, ...]
     reason: str | None = None
+    segments: dict[str, list[str]] | None = None
 
 
 @dataclass(frozen=True)
@@ -55,24 +56,58 @@ def _segment_frontier(segment, root):
     return frontier if reached == set(segment) else None
 
 
+def _replacement_segments(direct, replacement, retained_inputs):
+    """Cut changed DAG steps at direct products without enumerating recipe paths."""
+    remaining, segments = set(replacement), {}
+    for root, inputs in sorted(direct.items()):
+        if root not in remaining:
+            return None
+        segment, stack = {}, [root]
+        while stack:
+            product = stack.pop()
+            if product in segment or (product != root and product in direct):
+                continue
+            if product not in replacement:
+                continue
+            # Segments may meet at direct products, never share replaced internals.
+            if product not in remaining:
+                return None
+            segment[product] = replacement[product]
+            remaining.remove(product)
+            stack.extend(segment[product])
+        if len(segment) < 2 or (set(segment) - {root}) & retained_inputs:
+            return None
+        frontier = _segment_frontier(segment, root)
+        if frontier is None or not inputs <= frontier:
+            return None
+        segments[root] = tuple(sorted(segment))
+    return segments if not remaining else None
+
+
 def _shortcut(shorter, longer, short_graph, long_graph):
-    if chemical_key(shorter.target_smiles) != chemical_key(longer.target_smiles):
+    target = chemical_key(shorter.target_smiles)
+    if target != chemical_key(longer.target_smiles):
         return None
     direct_keys = short_graph.keys() - long_graph.keys()
     replacement_keys = long_graph.keys() - short_graph.keys()
-    if len(direct_keys) != 1 or len(replacement_keys) < 2:
+    if not direct_keys or len(replacement_keys) < 2 * len(direct_keys):
         return None
-    key = next(iter(direct_keys))
-    root, inputs = key
-    segment = {product: Counter(dict(precursors)) for product, precursors in replacement_keys}
-    internal = set(segment) - {root}
-    if any(internal & set(dict(precursors)) for _product, precursors in short_graph.keys() & long_graph.keys()):
+    direct = {product: Counter(dict(inputs)) for product, inputs in direct_keys}
+    replacement = {product: Counter(dict(inputs)) for product, inputs in replacement_keys}
+    if len(direct) != len(direct_keys) or len(replacement) != len(replacement_keys):
         return None
-    replaced = {long_graph[value].step_id: long_graph[value] for value in replacement_keys}
-    frontier = _segment_frontier(segment, root)
-    if frontier is None or not Counter(dict(inputs)) <= frontier:
+    retained_inputs = {precursor for _product, inputs in short_graph.keys() & long_graph.keys()
+                       for precursor, _count in inputs}
+    segments = _replacement_segments(direct, replacement, retained_inputs)
+    if segments is None:
         return None
-    return Shortcut(shorter.route_id, short_graph[key].step_id, tuple(sorted(replaced)))
+    direct_steps = {key[0]: short_graph[key].step_id for key in direct_keys}
+    replaced = {key[0]: long_graph[key].step_id for key in replacement_keys}
+    witness = {direct_steps[root]: sorted(replaced[product] for product in products)
+               for root, products in segments.items()}
+    anchor = min(direct_keys, key=lambda key: (key[0] != target, key))
+    return Shortcut(shorter.route_id, short_graph[anchor].step_id, tuple(sorted(replaced.values())),
+                    segments=witness if len(witness) > 1 else None)
 
 
 def select_strategies(routes):

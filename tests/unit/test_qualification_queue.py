@@ -394,3 +394,29 @@ def test_reaching_route_limit_still_checks_exact_improvements_without_exhausting
     assert queue.next({longer.family_key}, representatives=[longer], only_improvements=True) == shorter
     assert queue.next({longer.family_key}, representatives=[longer], only_improvements=True) is None
     assert queue.next(set()) == unrelated
+
+
+@pytest.mark.parametrize("at_limit", [False, True])
+def test_composed_shortcuts_revisit_covered_families_and_the_route_limit(at_limit):
+    from test_route_strategy import composed_alternatives
+
+    shorter, _middle, longer = composed_alternatives()
+    shorter = replace(shorter, family_key=longer.family_key)
+    unrelated = candidate(0, "unrelated")
+    queue = QualificationQueue([longer, unrelated, shorter])
+    assert queue.next(set()) is longer
+    assert queue.next({longer.family_key}, representatives=[longer], only_improvements=at_limit) is (
+        shorter if at_limit else unrelated)
+    if not at_limit:
+        assert queue.next({longer.family_key}, representatives=[longer]) is shorter
+    assert queue.next({longer.family_key}, representatives=[longer], only_improvements=True) is None
+
+
+def test_composed_evidence_gap_still_allows_a_shorter_candidate_revisit():
+    from test_route_strategy import composed_alternatives
+
+    shorter, _middle, longer = composed_alternatives()
+    records = longer.metadata["automated_review"]["references"]["records"]
+    next(row for row in records if row["step_id"] == "x-feed")["has_more"] = True
+    queue = QualificationQueue([shorter])
+    assert queue.next({longer.family_key}, representatives=[longer], only_improvements=True) is shorter

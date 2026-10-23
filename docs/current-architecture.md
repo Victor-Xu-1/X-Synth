@@ -335,10 +335,13 @@ governance. See [version operations](operations.md#版本管理).
   original experimental conditions do not certify new conditions or a new experiment.
   Unmapped record-only first moves share a conservative target family, preventing
   leaving-group variants from inflating the requested diversity count.
-- Qualified route selection also compares exact single-step substitutions between
-  otherwise identical chemical DAGs. A checked direct step can suppress an
-  unsupported multi-step detour with the same product and a precursor-occurrence
-  frontier containing the direct inputs. Whole-compound salt grouping, isotope,
+- Qualified route selection also compares exact substitutions between chemical
+  DAGs. One or several checked direct steps can suppress unsupported multi-step
+  detours while the remaining reactions stay identical. Each changed direct step
+  requires its own segment of at least two replaced steps, with the same product
+  and a precursor-occurrence frontier containing the direct inputs. Segments may
+  meet at direct products but cannot share replaced internals; every changed
+  longer step belongs to exactly one segment. Whole-compound salt grouping, isotope,
   stereochemistry and repeated input counts remain part of identity. Shared
   intermediates consumed elsewhere and source-bound recorded longer processes
   cannot be removed this way. This is not length-only or MCS-based elimination,
@@ -351,7 +354,9 @@ governance. See [version operations](operations.md#版本管理).
   Every suppression uses a surviving exact witness; discarded intermediates do
   not create unvalidated transitive proof chains. Selection receipts preserve
   route digests, direct/replaced step identities and the policy without rewriting
-  source routes. Missing or unbound process evidence stays pending, never a
+  source routes. Composed proofs additionally bind each direct step to its own
+  replaced segment; no intermediate discarded route supplies a transitive proof.
+  Missing or unbound process evidence stays pending, never a
   recorded-process exemption or an independent route slot. A paginated search
   can still contain an exact bound positive process observation; its coverage
   remains incomplete and does not imply that unseen records were checked. The source/
