@@ -52,6 +52,32 @@ test("reader tabs have stable touch heights and do not consume a side canvas col
   expect(declarations(css, ".reader-route-tabs")["overflow-x"]).toBe("auto");
 });
 
+test("long desktop step lists retain a visible, viewport-bounded details column", () => {
+  const inspector = declarations(stylesheet("route-reader.css"), ".reader-detail-body > :deep(.route-inspector)");
+  expect(inspector.position).toBe("sticky");
+  expect(inspector.top).toBe("12px");
+  expect(inspector["max-height"]).toBe("calc(100dvh - 310px)");
+});
+
+test("reader layout has one scoped modular stylesheet without an inline position reset", () => {
+  const { descriptor } = parse(readFileSync(resolve(directory, "RouteReader.vue"), "utf8"));
+  expect(descriptor.styles.map(style => style.src)).toEqual(["./route-reader.css"]);
+});
+
+test("narrow details remain in normal reading flow instead of a sticky overlay", () => {
+  const inspector = {};
+  stylesheet("route-reader.css").walkAtRules("media", media => {
+    if (media.params !== "(max-width: 1100px)") return;
+    media.walkRules(".reader-detail-body > :deep(.route-inspector)", rule => {
+      rule.walkDecls(decl => { inspector[decl.prop] = decl.value; });
+    });
+  });
+  expect(inspector.position).toBe("static");
+  expect(inspector.top).toBe("auto");
+  expect(inspector["max-height"]).toBe("none");
+  expect(inspector.width).toBe("100%");
+});
+
 test("whole-route thumbnails reclaim the checkbox column and do not force a tall empty mobile canvas", () => {
   const reader = stylesheet("route-reader.css"), steps = stylesheet("route-step-list.css");
   expect(declarations(reader, ".reader-overview-entry")["grid-template-columns"]).toBeUndefined();

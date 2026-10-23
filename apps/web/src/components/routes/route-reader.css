@@ -186,6 +186,8 @@
   background: var(--ws-surface);
 }
 .reader-detail-body > :deep(.route-inspector) {
+  position: sticky;
+  top: 12px;
   width: 336px;
   max-height: calc(100dvh - 310px);
   min-width: 0;
@@ -226,6 +228,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
   .reader-detail-body > :deep(.route-inspector) {
+    position: static;
+    top: auto;
     grid-column: 1;
     width: 100%;
     max-height: none;

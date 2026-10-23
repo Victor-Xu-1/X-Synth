@@ -534,7 +534,9 @@ test("generation guard, URL reset, timer cleanup and nonoverlapping inspector re
   expect(detail).toContain("job.value = null; candidates.value = []");
   expect(detail).toMatch(/onBeforeUnmount\(\(\) => \{[^}]*generation\+\+;[^}]*detailRequest\?\.abort\(\);[^}]*window\.clearInterval\(timer\)/);
   expect(reader).toContain("retainedRouteId(values, selectedId.value)");
-  expect(reader).toContain(
-    ".reader-detail-body > :deep(.route-inspector) { position: static;",
-  );
+  expect(reader).toContain('<style scoped src="./route-reader.css"></style>');
+  const layout = compactSource("components/routes/route-reader.css");
+  expect(layout).toContain(".reader-detail-body { display: grid;");
+  expect(layout).toContain(".reader-detail-body > :deep(.route-inspector) { position: sticky;");
+  expect(layout).not.toContain("position: fixed");
 });
