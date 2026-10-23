@@ -14,6 +14,10 @@ from packages.platform.native_capabilities import (
     native_runtime_payload,
     optional_proxy_module,
 )
+from packages.platform.public_frontend_options import (
+    PublicFrontendOptionsError,
+    project_public_frontend_options,
+)
 
 from .security import authenticate
 
@@ -151,10 +155,23 @@ def native_router(*, transport, budget, read_health=None):
                     raise HTTPException(
                         413, "Native response exceeds the response budget"
                     )
+                media_type = response.headers.get("Content-Type", "application/json")
+                if parts == ["frontend-config", "get-all-config"]:
+                    try:
+                        payload = project_public_frontend_options(payload)
+                    except PublicFrontendOptionsError:
+                        raise HTTPException(
+                            502, "Invalid native frontend options response"
+                        ) from None
+                    if len(payload) > budget.response_bytes:
+                        raise HTTPException(
+                            413, "Native response exceeds the response budget"
+                        )
+                    media_type = "application/json"
                 return Response(
                     payload,
                     status_code=response.status,
-                    media_type=response.headers.get("Content-Type", "application/json"),
+                    media_type=media_type,
                 )
 
         try:
