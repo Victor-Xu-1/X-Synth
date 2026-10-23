@@ -1,11 +1,12 @@
 import { cleanGraph } from "./route-graph";
+import { uiText } from "@/i18n";
 
 export const MAX_ROUTE_FILE_BYTES = 10 * 1024 * 1024;
 export function routeDocumentPayload(title, graph, deliveryReview = null) {
   return {
     format: "x-synth-route",
     version: 1,
-    title: String(title || "合成路线").slice(0, 160),
+    title: String(title || uiText("未命名路线")).slice(0, 160),
     graph: cleanGraph(graph),
     metadata: { delivery_review: deliveryReview },
   };
@@ -15,7 +16,7 @@ export function parseRouteDocument(text) {
   if (value?.format !== "x-synth-route" || value.version !== 1 || !value.graph)
     throw new Error("文件不是有效的 X-Synth 路线文档。");
   return {
-    title: String(value.title || "导入路线").slice(0, 160),
+    title: String(value.title || uiText("导入的路线")).slice(0, 160),
     graph: cleanGraph(value.graph),
   };
 }

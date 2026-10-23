@@ -82,6 +82,7 @@ export default [
   ["全部路线", "All routes"], ["所选合成路线", "Selected synthesis routes"], ["总步数 {count}", "Total steps {count}"],
   ["最长线性步数 {value}", "Longest linear steps {value}"], ["完整路线图 PNG", "Complete route diagram PNG"],
   ["路线文档 JSON", "Route document JSON"], ["起始原料 CSV", "Starting materials CSV"],
+  ["合成路线 {name}", "Synthesis route {name}"], ["导入的路线", "Imported route"],
   ["编辑副本", "Edit copy"], ["选择{name}", "Select {name}"], ["路线视图", "Route views"],
   ["路线审查与来源", "Route review and provenance"], ["正在读取路线", "Reading routes"],
   ["没有符合筛选的路线", "No routes match the filters"], ["暂无路线数据", "No route data"],
