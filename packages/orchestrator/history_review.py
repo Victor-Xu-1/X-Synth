@@ -21,8 +21,25 @@ def review_batch(loader, jobs):
 class ReviewEntry:
     context: str
     revision: int
+    snapshot: str | None
     source: tuple
     receipt: dict
+
+
+def _known_snapshot(context, revision, desired, retained, queued, inflight):
+    if (desired is not None and desired[0] == context and desired[1] == revision
+            and desired[2] is not None):
+        return desired[2]
+    if queued is not None and queued[0] == context:
+        snapshot = snapshot_identifier(queued[1])
+        if snapshot is not None:
+            return snapshot
+    if (inflight is not None and inflight[0] == context and inflight[1] is not None
+            and inflight[2] is retained):
+        return inflight[1]
+    if retained is not None and retained.context == context and retained.revision == revision:
+        return retained.snapshot
+    return None
 
 
 class HistoryReviewIndex:
@@ -59,25 +76,52 @@ class HistoryReviewIndex:
         if type(revision) is not int or revision < 0:
             return unavailable
         with self._lock:
+            if self._stop.is_set():
+                return unavailable
             previous = self._desired.get(identifier)
             retained = self._entries.get(identifier)
             if ((previous is not None and revision < previous[1])
                     or (retained is not None and revision < retained.revision)):
                 return pending_routes_review(identifier, snapshot)
-            self._desired[identifier] = (token, revision)
+            binding = snapshot if snapshot is not None else _known_snapshot(
+                token, revision, previous, retained, self._pending.get(identifier), self._inflight.get(identifier))
+            desired = (token, revision, binding)
+            if previous == desired:
+                desired = previous
+            self._desired[identifier] = desired
             self._desired.move_to_end(identifier)
             self._trim_desired()
-            if retained is not None and retained.context == token:
-                actual_snapshot = retained.receipt["source_binding"]["snapshot_id"]
-                try:
-                    matches = (snapshot is None or snapshot == actual_snapshot) and retained.source == artifact_identity(self.artifacts, job, actual_snapshot)
-                except (OSError, ValueError):
-                    return unavailable
-                if matches:
-                    self._entries.move_to_end(identifier)
-                    return deepcopy(retained.receipt)
-            if self._inflight.get(identifier) != token and (identifier in self._pending or len(self._pending) < self.limits.max_pending):
-                self._pending[identifier] = (token, deepcopy(projection_job(job)))
+
+        # Filesystem validation cannot hold up other jobs or index shutdown.
+        matches = False
+        if retained is not None and retained.context == token:
+            actual_snapshot = retained.receipt["source_binding"]["snapshot_id"]
+            try:
+                matches = ((binding is None or binding == retained.snapshot)
+                           and (snapshot is None or snapshot == actual_snapshot)
+                           and retained.source == artifact_identity(self.artifacts, job, actual_snapshot))
+            except (OSError, ValueError):
+                return unavailable
+        with self._lock:
+            if self._stop.is_set():
+                return unavailable
+            # A retired ticket stays retired across eviction or a different-snapshot ABA.
+            if self._entries.get(identifier) is not retained or self._desired.get(identifier) is not desired:
+                return pending_routes_review(identifier, snapshot)
+            if matches:
+                queued = self._pending.get(identifier)
+                if (retained.receipt["status"] == "ready" and queued is not None
+                        and (queued[0] == token or queued[1].get("revision", 0) < revision)):
+                    self._pending.pop(identifier, None)
+                self._entries.move_to_end(identifier)
+                return deepcopy(retained.receipt)
+            inflight = self._inflight.get(identifier)
+            if ((desired is not previous or inflight is None or inflight[:2] != (token, binding))
+                    and (identifier in self._pending or len(self._pending) < self.limits.max_pending)):
+                queued = self._pending.get(identifier)
+                if (snapshot is not None or queued is None or queued[0] != token
+                        or snapshot_identifier(queued[1]) != binding):
+                    self._pending[identifier] = (token, deepcopy(projection_job(job)))
                 self._wake.set()
         return pending_routes_review(identifier, snapshot)
 
@@ -88,17 +132,14 @@ class HistoryReviewIndex:
         if not selected_review_valid(receipt, job_id=job["id"], snapshot_id=expected_snapshot):
             raise ValueError("History review result belongs to another publication")
         current = review_context(job)
-        current_source = artifact_identity(self.artifacts, job, expected_snapshot)
         revision = job.get("revision", 0)
         if type(revision) is not int or revision < 0:
             raise ValueError("Invalid review projection revision")
         if isinstance(token, tuple):
             before, before_source = token
-            if before != current or before_source != current_source:
+            if before != current:
                 return False
         elif token is not None and token != current:
-            return False
-        if source_identity is not None and source_identity != current_source:
             return False
         with self._lock:
             if self._stop.is_set():
@@ -111,20 +152,43 @@ class HistoryReviewIndex:
             if retained is not None and (revision < retained.revision
                     or (revision == retained.revision and retained.context != current)):
                 return False
-            if (token is not None and receipt["status"] != "ready" and retained is not None
-                    and retained.context == current and retained.receipt["status"] == "ready"):
-                # A checkpoint-free batch failure knows less than the confirmed publication.
-                confirmed_snapshot = retained.receipt["source_binding"]["snapshot_id"]
-                if retained.source == artifact_identity(self.artifacts, job, confirmed_snapshot):
+            queued = self._pending.get(job["id"])
+            inflight = self._inflight.get(job["id"])
+            binding = _known_snapshot(current, revision, desired, retained, queued, inflight)
+            if binding is not None and expected_snapshot != binding:
+                if expected_snapshot is not None or receipt["status"] == "ready":
                     return False
-            self._desired[job["id"]] = (current, revision)
+            if expected_snapshot is not None:
+                binding = expected_snapshot
+
+        # Capture ownership before either source stamp; later reads cannot lend a new ticket.
+        current_source = artifact_identity(self.artifacts, job, expected_snapshot)
+        if isinstance(token, tuple) and before_source != current_source:
+            return False
+        if source_identity is not None and source_identity != current_source:
+            return False
+        preserve_ready = False
+        if (token is not None and receipt["status"] != "ready" and retained is not None
+                and retained.context == current and retained.receipt["status"] == "ready"):
+            # A checkpoint-free batch failure knows less than the confirmed publication.
+            confirmed_snapshot = retained.receipt["source_binding"]["snapshot_id"]
+            preserve_ready = retained.source == artifact_identity(self.artifacts, job, confirmed_snapshot)
+        with self._lock:
+            if (self._stop.is_set() or self._entries.get(job["id"]) is not retained
+                    or self._desired.get(job["id"]) is not desired
+                    or self._pending.get(job["id"]) is not queued
+                    or self._inflight.get(job["id"]) is not inflight or preserve_ready):
+                return False
+            self._desired[job["id"]] = (current, revision, binding)
             self._desired.move_to_end(job["id"])
             self._trim_desired()
-            self._entries[job["id"]] = ReviewEntry(current, revision, current_source, deepcopy(receipt))
+            self._entries[job["id"]] = ReviewEntry(current, revision, binding, current_source, deepcopy(receipt))
             self._entries.move_to_end(job["id"])
-            queued = self._pending.get(job["id"])
-            if queued is not None and (queued[0] == current or queued[1].get("revision", 0) < revision):
-                self._pending.pop(job["id"], None)
+            if queued is not None:
+                queued_snapshot = snapshot_identifier(queued[1])
+                if (queued[1].get("revision", 0) < revision or (queued[0] == current
+                        and (queued_snapshot is None or queued_snapshot == expected_snapshot))):
+                    self._pending.pop(job["id"], None)
             while len(self._entries) > self.limits.max_entries:
                 self._entries.popitem(last=False)
         return True
@@ -157,7 +221,8 @@ class HistoryReviewIndex:
                          range(min(len(self._pending), self.limits.batch_size))]
                 if not self._pending:
                     self._wake.clear()
-                self._inflight.update((job["id"], token) for token, job in batch)
+                self._inflight.update((job["id"], (token, snapshot_identifier(job), self._entries.get(job["id"])))
+                    for token, job in batch)
             if not batch:
                 continue
             interrupted = lambda: not self._idle()
@@ -179,8 +244,12 @@ class HistoryReviewIndex:
                         for token, job in batch:
                             desired = self._desired.get(job["id"])
                             retained = self._entries.get(job["id"])
+                            snapshot = snapshot_identifier(job)
                             if (desired is not None and desired[0] == token and job["id"] not in self._pending
-                                    and not (retained is not None and retained.context == token and retained.receipt["status"] == "ready")
+                                    and (snapshot is None or desired[2] is None or snapshot == desired[2])
+                                    and not (retained is not None and retained.context == token
+                                             and retained.receipt["status"] == "ready"
+                                             and (desired[2] is None or retained.snapshot == desired[2]))
                                     and len(self._pending) < self.limits.max_pending):
                                 self._pending[job["id"]] = (token, job)
                     self._stop.wait(self.limits.idle_wait_seconds)
@@ -194,8 +263,9 @@ class HistoryReviewIndex:
                         self._inflight.pop(job["id"], None)
 
     def close(self):
-        self._stop.set()
-        self._wake.set()
+        with self._lock:
+            self._stop.set()
+            self._wake.set()
         if self._executor is not None:
             self._executor.close()
         if self._thread is not None:
