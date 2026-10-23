@@ -13,7 +13,7 @@ jest.mock("@vueuse/core", () => ({ useResizeObserver: jest.fn() }));
 jest.mock("@/components/SmilesImage.vue", () => ({ name: "SmilesImage", template: "<span />" }));
 jest.mock("./RouteGraph.vue", () => ({ name: "RouteGraph", template: "<div />", methods: { fit() {} } }));
 jest.mock("./RouteInspector.vue", () => ({ name: "RouteInspector",
-  props: ["node", "step", "displayStepNumber", "deliveryReview"], emits: ["close"],
+  props: ["node", "step", "displayStepNumber", "deliveryReview", "automatedReview"], emits: ["close"],
   mounted() { mockInspectorMount.run?.(this.$el); },
   template: '<aside tabindex="-1"><button class="close-inspector" @click="$emit(\'close\')">Close</button></aside>',
 }));
@@ -70,6 +70,40 @@ test("purchase inspection targets the unresolved starting material,not the other
   await flushPromises();
   expect(wrapper.emitted("update:view").at(-1)).toEqual(["materials"]);
   expect(wrapper.getComponent({ name: "RouteInspector" }).props("node").smiles).toBe("O=C([O-])[O-]");
+});
+
+test("step inspection receives the current saved review without rewriting source chemistry", async () => {
+  const value = route();
+  value.metadata.automated_review = { version: 4, forward: { records: [
+    { step_id: "later", record_id: "later-record", expected_rank: 2 },
+    { step_id: "earlier", record_id: "earlier-record", expected_rank: 1 },
+  ] }, references: { records: [{ step_id: "earlier", refs: [] }] } };
+  const before = JSON.stringify(value), wrapper = await setup(value);
+  await wrapper.get('[data-reader-action="review-operations"]').trigger("click");
+  await flushPromises();
+  const inspector = wrapper.getComponent({ name: "RouteInspector" });
+  expect(inspector.props("step").step_id).toBe("earlier");
+  expect(inspector.props("automatedReview")).toEqual(value.metadata.automated_review);
+  expect(JSON.stringify(value)).toBe(before);
+});
+
+test.each([true, false])("replacement saved-review presence %s cannot retain a previous route's record", async present => {
+  const value = route();
+  value.metadata.automated_review = { version: 4, forward: { records: [{ step_id: "earlier", record_id: "old-record" }] } };
+  const wrapper = await setup(value);
+  await wrapper.get('[data-reader-action="review-operations"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.getComponent({ name: "RouteInspector" }).props("automatedReview")).toEqual(value.metadata.automated_review);
+  const replacement = route();
+  replacement.route_id = "replacement";
+  if (present) replacement.metadata.automated_review = { version: 4, forward: {
+    records: [{ step_id: "earlier", record_id: "new-record" }],
+  } };
+  await wrapper.setProps({ candidates: [replacement] });
+  await flushPromises();
+  await wrapper.get('[data-reader-action="review-operations"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.getComponent({ name: "RouteInspector" }).props("automatedReview")).toEqual(replacement.metadata.automated_review);
 });
 
 test("closing inspection returns keyboard focus to the current detail counter", async () => {
