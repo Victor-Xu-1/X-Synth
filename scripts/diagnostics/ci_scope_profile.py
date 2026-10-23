@@ -306,7 +306,7 @@ NATIVE_KETCHER_FILES = {
     WEB + "tooling/ketcher-provider-plugin.js",
     SOURCE + "common/ketcher-provider-ownership.js",
 }
-WEB_BUILD_DEPENDENCIES = {"magic-string"}
+WEB_BUILD_DEPENDENCIES = {"magic-string", "vite"}
 WEB_TEST_TOOLING = {WEB + "jest.config.js"}
 FRONTEND_API_TESTS = {
     SOURCE + "composables/useTemplateSearch.test.js",
@@ -754,6 +754,8 @@ def npm_dependency_changes(before, after, paths: set[str]) -> set[str]:
 def frontend_tests(before, after, paths: set[str]) -> tuple[list[str], dict]:
     dependencies = npm_dependency_changes(before, after, paths)
     roots = {path for path in paths if path.startswith(SOURCE) or path in WEB_BUILD_FILES}
+    if "vite" in dependencies:
+        roots.update(WEB_BUILD_FILES)
     # The generated iframe factory reaches its host consumers without a JS import.
     if paths & NATIVE_KETCHER_FILES:
         roots.add(SOURCE + "common/ketcher.js")

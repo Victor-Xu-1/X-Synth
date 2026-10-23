@@ -789,6 +789,55 @@ def test_reviewed_dev_dependency_still_requires_a_real_importer(tmp_path, monkey
         profile.frontend_tests(before, after, {profile.WEB + "package.json"})
 
 
+def test_vite_patch_selects_config_and_real_native_build_contracts(tmp_path, monkeypatch):
+    config = profile.WEB + "vite.config.js"
+    provider = profile.WEB + "tooling/ketcher-provider-plugin.js"
+    controls = profile.WEB + "tooling/vuetify-control-plugin.js"
+    tests = {
+        profile.SOURCE + "common/ketcher-provider-assets.test.js": record(["../../tooling/ketcher-provider-plugin.js"]),
+        profile.SOURCE + "plugins/control-semantics.test.js": record(["../../tooling/vuetify-control-plugin.js"]),
+        profile.SOURCE + "router/history-assets.test.js": record(files=["../../vite.config.js"]),
+    }
+    unrelated = profile.SOURCE + "views/optimization/Optimization.test.js"
+    records = {config: record(["vite"]), provider: record(), controls: record(),
+               unrelated: record(), **tests}
+    before = npm_snapshot(tmp_path, manifest(devDependencies={"vite": "^7.3.1"}))
+    after = npm_snapshot(tmp_path, manifest(devDependencies={"vite": "^7.3.7"}))
+    before.files.update(records)
+    after.files.update(records)
+    monkeypatch.setattr(dependencies, "parse_frontend", lambda item: records)
+    selected, imports = profile.frontend_tests(before, after, {profile.WEB + "package.json"})
+    assert selected == sorted(tests)
+    assert unrelated not in selected and imports == {"vite": [config]}
+
+
+def test_vite_lock_transitives_keep_the_exact_build_scope(tmp_path):
+    package = manifest(devDependencies={"vite": "^7.3.1"})
+    entries = {"node_modules/vite": {"version": "7.3.6", "devOptional": True,
+        "dependencies": {"esbuild": "^0.27.0"}},
+        "node_modules/esbuild": {"version": "0.27.0", "dev": True}}
+    before = npm_snapshot(tmp_path, package, entries)
+    after = npm_snapshot(tmp_path, package, {**entries,
+        "node_modules/esbuild": {"version": "0.27.1", "dev": True}})
+    assert profile.npm_dependency_changes(before, after, {profile.WEB + "package-lock.json"}) == {"vite"}
+
+
+@pytest.mark.parametrize("unknown", ["vitez", "vite-plugin-vuetify", "@vitejs/plugin-vue", "jest"])
+def test_vite_scope_does_not_admit_unknown_or_mixed_tool_updates(tmp_path, unknown):
+    before = npm_snapshot(tmp_path, manifest(devDependencies={"vite": "^7.3.1", unknown: "1"}))
+    after = npm_snapshot(tmp_path, manifest(devDependencies={"vite": "^7.3.7", unknown: "2"}))
+    with pytest.raises(dependencies.ScopeError, match="Unmapped npm dev"):
+        profile.npm_dependency_changes(before, after, {profile.WEB + "package.json"})
+
+
+def test_vite_mapping_still_requires_a_real_config_importer(tmp_path, monkeypatch):
+    before = npm_snapshot(tmp_path, manifest(devDependencies={"vite": "^7.3.1"}))
+    after = npm_snapshot(tmp_path, manifest(devDependencies={"vite": "^7.3.7"}))
+    monkeypatch.setattr(dependencies, "parse_frontend", lambda item: {})
+    with pytest.raises(dependencies.ScopeError, match="No production imports"):
+        profile.frontend_tests(before, after, {profile.WEB + "package.json"})
+
+
 @pytest.mark.parametrize("changed", sorted(profile.NATIVE_KETCHER_FILES))
 def test_native_factory_adapter_reaches_iframe_consumers_without_selecting_other_tools(tmp_path, monkeypatch, changed):
     host = profile.SOURCE + "common/ketcher.js"
