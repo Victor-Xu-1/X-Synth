@@ -105,6 +105,18 @@ def test_scientific_engine_projection_preserves_other_engines(
     assert engines["process"]["ready"] is (ready is True)
 
 
+@pytest.mark.parametrize("lifetime", [0, 60])
+def test_configured_optimization_projection_still_requires_ready(
+    scientific_snapshot, lifetime
+):
+    result = scientific_snapshot({"scientific_engines": {"optimization": {
+        "ready": False, "configured": True, "reason": "Protocol fixture",
+        "fresh_for_seconds": lifetime,
+    }}})
+    assert result["scientific_engines"][0]["ready"] is False
+    assert result["health"]["scientific_engines"]["optimization"]["configured"] is True
+
+
 @pytest.mark.parametrize(
     ("health", "expected"),
     [

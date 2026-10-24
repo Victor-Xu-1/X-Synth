@@ -2,7 +2,10 @@ const refreshes = new WeakMap();
 const core = [["health", "/api/v1/health"], ["session", "/api/v1/session"]];
 const optional = { templates: "/api/v1/template-library/health",
   optimization: "/api/v1/optimization/health", references: "/api/v1/references/status" };
-const identity = () => localStorage.getItem("accessToken") || "";
+function identity() {
+  try { return localStorage.getItem("accessToken") || ""; }
+  catch { return null; }
+}
 export const optionalFeatures = Object.keys(optional);
 
 export function emptyProbeState() {
@@ -10,12 +13,28 @@ export function emptyProbeState() {
 }
 
 function current(store, owner) {
-  return refreshes.get(store) === owner && identity() === owner.identity;
+  return refreshes.get(store) === owner && workspaceIdentityCurrent(store);
+}
+
+function retireIdentity(store, unavailable) {
+  stopWorkspaceProbes(store);
+  store.$patch({ core: { health: null, session: null }, templates: null,
+    optimization: null, optimizationExpires: 0, references: null, refreshed: 0,
+    error: unavailable ? "无法确认工作区会话" : "" });
 }
 
 export function workspaceIdentityCurrent(store) {
-  const owner = refreshes.get(store);
-  return !owner || owner.identity === identity();
+  const owner = refreshes.get(store), value = identity();
+  if (value === null || owner && owner.identity !== value) {
+    if (owner) retireIdentity(store, value === null);
+    return false;
+  }
+  return true;
+}
+
+export function captureWorkspaceIdentity(store) {
+  const owner = ownerFor(store);
+  return () => !!owner && current(store, owner);
 }
 
 export function stopWorkspaceProbes(store) {
@@ -32,14 +51,14 @@ export function stopWorkspaceProbes(store) {
 
 function ownerFor(store) {
   let owner = refreshes.get(store);
-  if (owner && owner.identity !== identity()) {
-    stopWorkspaceProbes(store);
-    store.$patch({ core: { health: null, session: null }, templates: null,
-      optimization: null, optimizationExpires: 0, references: null, refreshed: 0, error: "" });
+  const value = identity();
+  if (value === null || owner && owner.identity !== value) {
+    retireIdentity(store, value === null);
+    if (value === null) return null;
     owner = null;
   }
   if (!owner) {
-    owner = { identity: identity(), core: null, all: null, probes: new Map(),
+    owner = { identity: value, core: null, all: null, probes: new Map(),
       checked: {}, optimizationRevision: 0, expiry: null };
     refreshes.set(store, owner);
   }
@@ -61,7 +80,7 @@ function checkedCore(field, value) {
 function checkedOptimization(value) {
   if (!value || typeof value.ready !== "boolean" || typeof value.reason !== "string"
       || value.ready && value.versions?.baybe !== "0.15.0"
-      || ["busy", "checking"].some(key => value[key] !== undefined && typeof value[key] !== "boolean")
+      || ["busy", "checking", "configured"].some(key => value[key] !== undefined && typeof value[key] !== "boolean")
       || value.engine !== undefined && value.engine !== "BayBE"
       || value.expected_version !== undefined && value.expected_version !== "0.15.0"
       || value.fresh_for_seconds !== undefined && (!Number.isFinite(value.fresh_for_seconds)
@@ -167,6 +186,7 @@ function subscribe(entry, signal) {
 export function refreshFeature(store, feature, force = false, { signal } = {}) {
   if (!optionalFeatures.includes(feature) || signal?.aborted) return Promise.resolve();
   const owner = ownerFor(store);
+  if (!owner) return Promise.resolve();
   const previous = owner.probes.get(feature);
   if (previous && !previous.controller.signal.aborted) return subscribe(previous, signal);
   if (previous) owner.probes.delete(feature);
@@ -193,7 +213,7 @@ export function refreshFeature(store, feature, force = false, { signal } = {}) {
       if (feature === "optimization") {
         owner.optimizationRevision++;
         publishOptimization(store, owner, { ready: false, reason: "服务未就绪",
-          fresh_for_seconds: 0 }, started);
+          configured: store.optimization?.configured === true, fresh_for_seconds: 0 }, started);
       }
       else store[feature] = null;
     }).finally(() => {
@@ -208,6 +228,7 @@ export function refreshFeature(store, feature, force = false, { signal } = {}) {
 
 export function refreshWorkspace(store, force = false, coreOnly = false) {
   const owner = ownerFor(store);
+  if (!owner) return Promise.resolve();
   const ready = refreshCore(store, owner, force);
   if (coreOnly) return ready;
   if (owner.all) return owner.all;
@@ -225,9 +246,11 @@ export function refreshWorkspace(store, force = false, coreOnly = false) {
 
 export function reconnectWorkspace(store) {
   let owner = ownerFor(store);
+  if (!owner) return Promise.resolve();
   if (owner.reconnect) return owner.reconnect;
   stopWorkspaceProbes(store);
   owner = ownerFor(store);
+  if (!owner) return Promise.resolve();
   const pending = refreshWorkspace(store, true).finally(() => {
     if (current(store, owner)) owner.reconnect = null;
   });

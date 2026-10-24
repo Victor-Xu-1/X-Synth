@@ -8,6 +8,7 @@ import {
 } from "vue";
 import { API } from "@/common/api";
 import { useWorkspaceStore } from "@/store/workspace";
+import { captureWorkspaceIdentity } from "@/store/workspace-probes";
 import { buildRequest, candidateCount, LIMITS, validateResult } from "./model";
 import { savedOptimizationContent, restoreOptimization } from "./optimization-replay";
 
@@ -208,6 +209,8 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
   async function recommend() {
     if (disposed || running.value || fileLoading.value || blocked() || !workspace.can("optimization")
         || healthLoading.value || health.value?.ready !== true || health.value.busy || health.value.checking) return;
+    const identityCurrent = captureWorkspaceIdentity(workspace);
+    if (!identityCurrent()) return;
     result.value = null;
     error.value = "";
     let request;
@@ -234,11 +237,11 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
         "/api/v1/optimization/recommend",
         request,
       );
-      if (disposed || ticket !== revision) return;
+      if (disposed || ticket !== revision || !identityCurrent()) return;
       result.value = validateResult(response, request);
-      if (onResult) await onResult(response);
+      if (onResult && identityCurrent()) await onResult(response);
     } catch (failure) {
-      if (!disposed && ticket === revision)
+      if (!disposed && ticket === revision && identityCurrent())
         error.value = API.toErrorObject(failure).string_error;
     } finally {
       if (!disposed) running.value = false;

@@ -42,7 +42,7 @@ export const useWorkspaceStore = defineStore("workspace", {
         scscore: checks.scscore,
         assessment: fresh && health.scientific_tools?.assessment === true,
         process: fresh && health.scientific_tools?.process === true,
-        optimization: fresh && state.optimization?.ready === true,
+        optimization: fresh && (state.optimization?.configured ?? state.optimization?.ready) === true,
         fast_filter: checks.fast_filter,
         native_account: fresh && session.mode === "askcos",
         administrator:
@@ -74,9 +74,9 @@ export const useWorkspaceStore = defineStore("workspace", {
       return reconnectWorkspace(this);
     },
     can(feature) {
-      // Navigation retains a previously verified capability; execution needs current evidence.
+      // Configuration advertises navigation only; execution still needs verified readiness.
       return !feature || workspaceIdentityCurrent(this) && this.features[feature] === true && (feature !== "optimization"
-        || this.optimizationExpires > performance.now());
+        || this.optimization?.ready === true && this.optimizationExpires > performance.now());
     },
   },
 });

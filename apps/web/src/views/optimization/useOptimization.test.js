@@ -336,3 +336,65 @@ test("a changed identity cannot reuse readiness before the next shared refresh",
     expect(API.post).not.toHaveBeenCalled();
   } finally { localStorage.removeItem("accessToken"); }
 });
+
+test.each(["identity", "replacement", "unavailable"].flatMap(change => ["success", "error"].map(outcome => [change, outcome])))(
+  "retired %s ownership ignores deferred recommendation %s and delivery without erasing current state",
+  async (change, outcome) => {
+    localStorage.setItem("accessToken", "fixture-request-owner-a");
+    const onResult = jest.fn();
+    const { state } = setup({ onResult }); await confirmed(state); await flushPromises();
+    const held = deferred();
+    API.post.mockReturnValueOnce(held.promise);
+    const pending = state.recommend(), body = API.post.mock.calls.at(-1)[1];
+    const draft = JSON.stringify([state.content.value, state.selectedRows.value, state.factors.value, state.target]);
+    let denied;
+    try {
+      if (change === "unavailable") {
+        denied = jest.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("Fixture storage denied"); });
+        try { useWorkspaceStore().can("optimization"); } catch { /* Separate storage controls require no throw. */ }
+        denied.mockRestore(); denied = null;
+      } else {
+        if (change === "identity") localStorage.setItem("accessToken", "fixture-request-owner-b");
+        global.fetch.mockImplementation(async url => ({ ok: true, json: async () => url === "/api/v1/session"
+          ? { mode: "askcos" } : url === "/api/v1/health"
+            ? { route_search_ready: true, scientific_engines: { optimization: healthFixture } }
+            : { ready: true, status: "ready" } }));
+        if (change === "replacement") await useWorkspaceStore().reconnect();
+        else await useWorkspaceStore().refreshCore(true);
+      }
+      const current = { record_id: "b".repeat(32) };
+      state.result.value = current; state.error.value = "Current owner notice";
+      if (outcome === "success") held.resolve(response(body));
+      else held.reject(new Error("Obsolete request failure"));
+      await pending;
+      expect(state.result.value).toEqual(current);
+      expect(state.error.value).toBe("Current owner notice");
+      expect(onResult).not.toHaveBeenCalled();
+      expect(JSON.stringify([state.content.value, state.selectedRows.value, state.factors.value, state.target])).toBe(draft);
+      expect(state.running.value).toBe(false);
+    } finally {
+      denied?.mockRestore();
+      held.resolve(response(body)); await pending;
+      localStorage.removeItem("accessToken");
+    }
+  },
+);
+
+test("retired ownership ignores a deferred delivery error after an accepted result", async () => {
+  localStorage.setItem("accessToken", "fixture-delivery-owner-a");
+  const delivery = deferred(), onResult = jest.fn(() => delivery.promise);
+  const { state } = setup({ onResult }); await confirmed(state); await flushPromises();
+  API.post.mockImplementationOnce((_, body) => Promise.resolve(response(body)));
+  const pending = state.recommend();
+  await flushPromises();
+  expect(onResult).toHaveBeenCalledTimes(1);
+  localStorage.setItem("accessToken", "fixture-delivery-owner-b");
+  const current = { record_id: "c".repeat(32) };
+  state.result.value = current; state.error.value = "Current delivery notice";
+  try {
+    delivery.reject(new Error("Obsolete navigation failure"));
+    await pending;
+    expect(state.result.value).toEqual(current);
+    expect(state.error.value).toBe("Current delivery notice");
+  } finally { delivery.resolve(); await pending; localStorage.removeItem("accessToken"); }
+});

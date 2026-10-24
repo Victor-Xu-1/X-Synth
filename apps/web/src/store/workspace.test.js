@@ -1,5 +1,6 @@
 import { createPinia, setActivePinia } from "pinia";
 import { watch } from "vue";
+import { visibleNavigation } from "@/common/workspace-navigation";
 import { useWorkspaceStore } from "./workspace";
 import { stopWorkspaceProbes } from "./workspace-probes";
 import { useRouteWorkbenchStore } from "./route-workbench";
@@ -458,4 +459,124 @@ test("a wall-clock correction cannot extend optimization verification lifetime",
   expect(workspace.can("optimization")).toBe(true);
   await jest.advanceTimersByTimeAsync(60000);
   expect(workspace.can("optimization")).toBe(false);
+});
+
+test("cold configured optimization is discoverable but waits for explicit verified readiness", async () => {
+  const workspace = useWorkspaceStore();
+  const cold = { ready: false, reason: "not_probed", configured: true, fresh_for_seconds: 0 };
+  global.fetch.mockImplementation(async url => reply(url === "/api/v1/health"
+    ? { ...healthy[url], scientific_engines: { optimization: cold } } : healthy[url]));
+  await workspace.refreshCore(true);
+  const listed = () => visibleNavigation(workspace.features).flatMap(group => group.items).some(item => item.id === "optimization");
+  expect(listed()).toBe(true);
+  expect(workspace.can("optimization")).toBe(false);
+  expect(global.fetch.mock.calls.map(([url]) => url)).not.toContain("/api/v1/optimization/health");
+  const held = deferredRead();
+  global.fetch.mockReturnValueOnce(held.promise);
+  const pending = workspace.refreshFeature("optimization");
+  expect(workspace.can("optimization")).toBe(false);
+  held.resolve(reply({ ...healthyOptimization, configured: true }));
+  await pending;
+  expect(workspace.can("optimization")).toBe(true);
+  expect(listed()).toBe(true);
+});
+
+test.each([
+  { ready: false, reason: "not_probed", configured: false },
+  { ready: false, reason: "Legacy unprobed" },
+  { ...healthyOptimization, configured: false },
+])("unconfigured optimization is not advertised: %j", async value => {
+  const workspace = useWorkspaceStore();
+  global.fetch.mockImplementation(async url => reply(url === "/api/v1/health"
+    ? { ...healthy[url], scientific_engines: { optimization: value } } : healthy[url]));
+  await workspace.refreshCore(true);
+  expect(visibleNavigation(workspace.features).flatMap(group => group.items).some(item => item.id === "optimization")).toBe(false);
+  expect(workspace.can("optimization")).toBe(false);
+});
+
+test("configured failed verification remains discoverable but a positive cache lifetime cannot execute", async () => {
+  const workspace = useWorkspaceStore();
+  await workspace.refreshCore(true);
+  global.fetch.mockResolvedValueOnce(reply({ configured: true, ready: false, reason: "Probe failed", fresh_for_seconds: 60 }));
+  await workspace.refreshFeature("optimization", true);
+  expect(workspace.features.optimization).toBe(true);
+  expect(workspace.optimizationExpires).toBeGreaterThan(performance.now());
+  expect(workspace.can("optimization")).toBe(false);
+  global.fetch.mockRejectedValueOnce(new Error("Fixture transport failure"));
+  await workspace.refreshFeature("optimization", true);
+  expect(workspace.features.optimization).toBe(true);
+  expect(workspace.can("optimization")).toBe(false);
+});
+
+test.each([1, "true", null])("malformed configured metadata cannot advertise or authorize optimization: %j", async configured => {
+  const workspace = useWorkspaceStore();
+  global.fetch.mockImplementation(async url => reply(url === "/api/v1/health"
+    ? { ...healthy[url], scientific_engines: { optimization: { ...healthyOptimization, configured } } } : healthy[url]));
+  await workspace.refreshCore(true);
+  expect(workspace.features.optimization).toBe(false);
+  expect(workspace.can("optimization")).toBe(false);
+});
+
+test.each(["getItem", "accessor"])("storage denial at %s revokes current readiness without throwing or anonymous fallback", async kind => {
+  const workspace = useWorkspaceStore();
+  localStorage.setItem("accessToken", "fixture-owner-a");
+  await workspace.refreshCore(true);
+  const calls = global.fetch.mock.calls.length;
+  const denied = kind === "getItem" ? jest.spyOn(Storage.prototype, "getItem")
+    : jest.spyOn(window, "localStorage", "get");
+  denied.mockImplementation(() => { throw new Error("Fixture storage denied"); });
+  try {
+    expect(() => workspace.can("optimization")).not.toThrow();
+    expect(workspace.can("optimization")).toBe(false);
+    expect(() => workspace.refreshCore(true)).not.toThrow();
+    await workspace.refreshCore(true);
+    await workspace.refreshFeature("optimization", true);
+    await workspace.reconnect();
+    expect(global.fetch).toHaveBeenCalledTimes(calls);
+    expect(workspace.loading).toBe(false);
+    expect(workspace.ready).toBe(false);
+  } finally { denied.mockRestore(); }
+  expect(workspace.can("optimization")).toBe(false);
+  await workspace.refreshCore(true);
+  expect(workspace.can("optimization")).toBe(true);
+});
+
+test("storage denial before ownership cannot dispatch anonymous probes", async () => {
+  const workspace = useWorkspaceStore();
+  const denied = jest.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("Fixture storage denied"); });
+  try {
+    expect(() => workspace.refreshCore(true)).not.toThrow();
+    await workspace.refreshCore(true);
+    await workspace.refreshFeature("optimization", true);
+    await workspace.reconnect();
+    expect(workspace.can("optimization")).toBe(false);
+    expect(global.fetch).not.toHaveBeenCalled();
+  } finally { denied.mockRestore(); }
+});
+
+test("storage denial retires pending owner evidence even after readable storage recovers", async () => {
+  const workspace = useWorkspaceStore();
+  localStorage.setItem("accessToken", "fixture-owner-a");
+  await workspace.refreshCore(true);
+  const held = deferredRead();
+  let signal;
+  global.fetch.mockImplementationOnce((_url, options) => { signal = options.signal; return held.promise; });
+  const pending = workspace.refreshFeature("optimization", true);
+  const denied = jest.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("Fixture storage denied"); });
+  try {
+    expect(() => workspace.can("optimization")).not.toThrow();
+    expect(workspace.can("optimization")).toBe(false);
+    expect(signal.aborted).toBe(true);
+  } finally {
+    denied.mockRestore();
+    held.resolve(reply({ ...healthyOptimization, reason: "Obsolete owner evidence" }));
+    await pending;
+  }
+  expect(workspace.optimization).toBeNull();
+  expect(workspace.can("optimization")).toBe(false);
+  localStorage.setItem("accessToken", "fixture-owner-b");
+  global.fetch.mockImplementation(async url => reply(healthy[url]));
+  await workspace.refreshCore(true);
+  expect(workspace.can("optimization")).toBe(true);
+  expect(global.fetch.mock.calls.at(-1)[1].headers.Authorization).toBe("Bearer fixture-owner-b");
 });

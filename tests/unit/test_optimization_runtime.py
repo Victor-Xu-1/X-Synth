@@ -299,3 +299,82 @@ def test_freshness_uses_completed_verification_not_worker_supplied_age(monkeypat
     assert runtime.health().fresh_for_seconds == 60
     now[0] = 121.0
     assert runtime.health_snapshot().fresh_for_seconds == 59
+
+@pytest.mark.parametrize("kind", ["unconfigured", "missing", "directory", "file"])
+def test_configured_discovery_is_passive_and_does_not_claim_ready(
+    kind, tmp_path, monkeypatch
+):
+    monkeypatch.delenv("X_SYNTH_OPTIMIZATION_PYTHON", raising=False)
+    path = tmp_path / "python"
+    if kind == "file":
+        path.touch()
+    elif kind == "directory":
+        path.mkdir()
+    runtime = OptimizationRuntime(
+        python=None if kind == "unconfigured" else path, model_threads=1
+    )
+
+    def forbidden(**kwargs):
+        raise AssertionError("Passive configuration must not import or execute a worker")
+
+    monkeypatch.setattr(runtime, "_invoke", forbidden)
+    status = runtime.health_snapshot()
+    assert status.model_dump().get("configured") is (kind == "file")
+    assert status.ready is False
+    assert status.fresh_for_seconds == 0
+    assert status.reason == "not_probed"
+
+
+@pytest.mark.parametrize("advertised", [True, False, "true", 1, None])
+@pytest.mark.parametrize("exists", [True, False])
+def test_configured_status_is_runtime_owned_not_worker_owned(
+    advertised, exists, tmp_path, monkeypatch
+):
+    path = tmp_path / "python"
+    if exists:
+        path.touch()
+    runtime = OptimizationRuntime(python=path, model_threads=1)
+    monkeypatch.setattr(runtime, "_invoke", lambda **kwargs: {
+        "ready": True, "reason": "Protocol fixture",
+        "versions": {"baybe": "0.15.0"}, "configured": advertised,
+    })
+    status = runtime.health()
+    assert status.ready is True
+    assert status.model_dump().get("configured") is exists
+    assert runtime.health_snapshot().model_dump().get("configured") is exists
+    if exists:
+        path.unlink()
+        assert runtime.health_snapshot().configured is False
+        assert runtime.health().configured is False
+
+
+def test_unreadable_configured_path_fails_closed_without_exception_details(
+    tmp_path, monkeypatch
+):
+    runtime = OptimizationRuntime(python=tmp_path / "python", model_threads=1)
+
+    def denied(path):
+        raise OSError("Fixture private path details")
+
+    monkeypatch.setattr(type(runtime.python), "is_file", denied)
+    status = runtime.health_snapshot()
+    assert status.model_dump().get("configured") is False
+    assert "Fixture private path details" not in status.model_dump_json()
+
+
+def test_configured_contract_is_optional_strict_and_not_readiness():
+    from packages.adapters.optimization.contracts import RuntimeHealth
+
+    legacy = RuntimeHealth(ready=True, reason="Legacy protocol fixture")
+    assert legacy.model_dump(mode="json").get("configured") is False
+    configured = RuntimeHealth(ready=False, reason="not_probed", configured=True)
+    assert configured.ready is False and configured.fresh_for_seconds == 0
+    assert configured.model_dump(mode="json")["configured"] is True
+
+
+@pytest.mark.parametrize("value", [0, 1, "true", "false", None])
+def test_configured_contract_rejects_nonboolean_values(value):
+    from packages.adapters.optimization.contracts import RuntimeHealth
+
+    with pytest.raises(ValueError):
+        RuntimeHealth(ready=False, reason="Protocol fixture", configured=value)
