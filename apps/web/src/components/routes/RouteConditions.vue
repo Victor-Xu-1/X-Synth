@@ -11,7 +11,7 @@
           prepend-icon="mdi-beaker-outline"
           size="small"
           variant="text"
-          @click="activeStep = step"
+          @click="showConditions(step, $event)"
           >{{ $tr('条件预测') }}</v-btn
         >
       </header>
@@ -45,6 +45,7 @@
     <RouteConditionDialog
       v-if="activeStep"
       :key="activeStep.nodeId"
+      :origin="conditionOrigin"
       :reaction="{
         precursors: activeStep.reactants,
         product: activeStep.product,
@@ -67,6 +68,11 @@ const props = defineProps({ candidate: Object, graph: Object });
 defineEmits(["select", "navigate"]);
 const workspace = useWorkspaceStore();
 const activeStep = ref(null);
+const conditionOrigin = ref(null);
+function showConditions(step, event) {
+  conditionOrigin.value = event.currentTarget;
+  activeStep.value = step;
+}
 const ordered = computed(() => {
   try {
     return { steps: conditionRows(props.candidate, props.graph), error: "" };

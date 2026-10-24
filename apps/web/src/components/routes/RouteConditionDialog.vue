@@ -1,21 +1,21 @@
 <template>
-  <v-dialog
-    :model-value="true"
+  <WorkbenchDialog
+    v-model="open"
     max-width="960"
-    aria-labelledby="route-condition-title"
-    @update:model-value="!$event && $emit('close')"
+    :aria-labelledby="titleId"
+    @after-leave="finishClose"
   >
     <section class="route-condition-dialog">
       <header>
         <div>
           <span class="field-label">{{ $tr('当前合成步骤') }}</span>
-          <h2 id="route-condition-title">{{ $tr('反应条件预测') }}</h2>
+          <h2 :id="titleId">{{ $tr('反应条件预测') }}</h2>
         </div>
         <v-btn
           icon="mdi-close"
           variant="text"
           :aria-label="$tr('关闭条件预测')"
-          @click="$emit('close')"
+          @click="open = false"
         />
       </header>
       <div class="condition-input-summary">
@@ -32,7 +32,7 @@
             <select
               v-model.number="count"
               class="workspace-input"
-              :disabled="pending > 0"
+              :disabled="!open || pending > 0"
             >
               <option :value="3">3</option>
               <option :value="5">5</option>
@@ -44,7 +44,7 @@
             color="primary"
             variant="flat"
             :loading="pending > 0"
-            :disabled="pending > 0"
+            :disabled="!open || pending > 0"
             @click="predict"
             >{{ $tr('预测条件') }}</v-btn
           >
@@ -61,18 +61,40 @@
         :allow-evaluation="false"
       />
     </section>
-  </v-dialog>
+  </WorkbenchDialog>
 </template>
 <script setup>
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, ref, useId, watch } from "vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import ConditionRecommendation from "@/views/forward/tab/ConditionRecommendation.vue";
 import { useConditionPrediction } from "@/composables/useConditionPrediction";
 import { errorMessage } from "@/common/workspace-errors";
-const props = defineProps({ reaction: { type: Object, required: true } });
-defineEmits(["close"]);
+import { useDialogReturnFocus } from "@/composables/useDialogReturnFocus";
+import { useWorkbenchActivity } from "@/components/workspace/workbench-activity";
+import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
+const props = defineProps({ reaction: { type: Object, required: true }, origin: { type: Object, default: null } });
+const emit = defineEmits(["close"]);
 const reactants = computed(() => props.reaction.precursors.join("."));
 const product = computed(() => props.reaction.product);
+const titleId = useId(), activity = useWorkbenchActivity(), open = ref(false);
+const context = computed(() => JSON.stringify([reactants.value, product.value]));
+const focus = useDialogReturnFocus(open, context), ticket = focus.begin(null, props.origin);
+let closed = false;
+open.value = true;
+function finishClose() {
+  if (open.value || closed) return;
+  closed = true;
+  focus.restore(ticket);
+  emit("close");
+}
+watch([context, activity], () => {
+  if (closed) return;
+  closed = true;
+  focus.cancel();
+  open.value = false;
+  emit("close");
+}, { flush: "sync" });
+onBeforeUnmount(() => { closed = true; });
 const count = ref(3),
   results = ref([]),
   pending = ref(0),
@@ -80,6 +102,7 @@ const count = ref(3),
 const { predict, prediction, submitted } = useConditionPrediction({
   reactants,
   product,
+  context: [open],
   count,
   results,
   pending,

@@ -44,7 +44,9 @@ test.each([
 test("route conditions use the shared predictor and an explicit action without leaving the route", () => {
   const context = source("RouteNodeContext.vue"),
     dialog = source("RouteConditionDialog.vue");
-  expect(context).toContain("conditionOpen = true");
+  expect(context).toContain('@click="showConditions"');
+  expect(context).toContain("conditionOpen.value = true");
+  expect(context).toContain("conditionOrigin.value = event.currentTarget");
   expect(context).toContain("conditionOpen.value = false");
   expect(dialog).toContain("useConditionPrediction");
   expect(dialog).toContain('@click="predict"');

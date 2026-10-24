@@ -6,12 +6,13 @@ import { REACTION_REQUEST_TIMEOUT_MS } from "@/common/reaction-input";
 import { setLocale } from "@/i18n";
 import RouteNodeContext from "./RouteNodeContext.vue";
 
-jest.mock("@/store/workspace", () => ({ useWorkspaceStore: () => ({ can: () => false }) }));
+const mockCan = jest.fn(() => false);
+jest.mock("@/store/workspace", () => ({ useWorkspaceStore: () => ({ can: mockCan }) }));
 jest.mock("@/components/workspace/StructurePreview.vue", () => ({ template: "<div />" }));
 jest.mock("@/components/workspace/MoleculeFileControls.vue", () => ({ template: "<div />" }));
 jest.mock("@/components/references/ReactionReferences.vue", () => ({ template: "<div />" }));
 jest.mock("./MoleculeStockDialog.vue", () => ({ template: "<div />" }));
-jest.mock("./RouteConditionDialog.vue", () => ({ template: "<div />" }));
+jest.mock("./RouteConditionDialog.vue", () => ({ name: "RouteConditionDialog", props: ["reaction", "origin"], template: "<div />" }));
 jest.mock("./RouteSavedStepEvidence.vue", () => ({ template: "<div />" }));
 jest.mock("./RouteEvidencePanel.vue", () => ({ template: "<div />" }));
 jest.mock("@/common/chemical-files", () => ({
@@ -22,7 +23,7 @@ jest.mock("@/common/chemical-files", () => ({
 const Button = {
   props: ["loading"],
   emits: ["click"],
-  template: '<button :data-loading="Boolean(loading)" @click="$emit(\'click\')"><slot /></button>',
+  template: '<button :data-loading="Boolean(loading)" @click="$emit(\'click\', $event)"><slot /></button>',
 };
 function graph() {
   return {
@@ -52,7 +53,7 @@ function setup(value = graph()) {
     props: { graph: value, node: value.nodes[2] },
     global: { stubs: {
       VBtn: Button, VIcon: true, RouterLink: true, StructurePreview: true, ReactionReferences: true,
-      RouteSavedStepEvidence: true, RouteEvidencePanel: true, RouteConditionDialog: true,
+      RouteSavedStepEvidence: true, RouteEvidencePanel: true,
       MoleculeStockDialog: true, MoleculeFileControls: true,
     } },
   });
@@ -67,7 +68,19 @@ beforeEach(() => {
 afterEach(() => {
   wrapper?.unmount();
   wrapper = null;
+  mockCan.mockReturnValue(false);
   jest.restoreAllMocks();
+});
+
+test("node condition preview retains its exact opener and graph reaction without a model request", async () => {
+  mockCan.mockImplementation(capability => capability === "conditions");
+  setup();
+  const origin = wrapper.findAll(".node-actions button").find(button => button.text() === "Condition prediction");
+  await origin.trigger("click");
+  const dialog = wrapper.getComponent({ name: "RouteConditionDialog" });
+  expect(dialog.props("origin")).toBe(origin.element);
+  expect(dialog.props("reaction")).toMatchObject({ precursors: ["C=C", "O"], product: "CCO" });
+  expect(post).not.toHaveBeenCalled();
 });
 
 test("RXN export owns one finite, cancellable read without changing reaction roles", async () => {
