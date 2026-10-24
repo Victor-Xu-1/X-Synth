@@ -19,12 +19,12 @@
         />
       </header>
       <div class="condition-input-summary">
-        <SmilesImage
+        <StructurePreview
+          label="反应结构"
           :smiles="reactants + '>>' + product"
           input-type="reaction"
           :width="620"
           :height="180"
-          :show-error-image="false"
         />
         <div class="condition-run-controls">
           <label
@@ -65,7 +65,7 @@
 </template>
 <script setup>
 import { computed, onBeforeUnmount, ref, useId, watch } from "vue";
-import SmilesImage from "@/components/SmilesImage.vue";
+import StructurePreview from "@/components/workspace/StructurePreview.vue";
 import ConditionRecommendation from "@/views/forward/tab/ConditionRecommendation.vue";
 import { useConditionPrediction } from "@/composables/useConditionPrediction";
 import { errorMessage } from "@/common/workspace-errors";
