@@ -816,6 +816,31 @@ def test_changed_build_source_reaches_the_shared_runtime_regression(tmp_path, mo
     assert profile.frontend_tests(before, after, {tool})[0] == [test]
 
 
+def test_hydrogen_backport_selects_native_build_and_host_consumers_only(tmp_path, monkeypatch):
+    helper = profile.WEB + "tooling/ketcher-hydrogen-backport.js"
+    generator = profile.WEB + "tooling/ketcher-provider-assets.js"
+    host = profile.SOURCE + "common/ketcher.js"
+    direct = profile.SOURCE + "common/ketcher-hydrogen-backport.test.js"
+    assets = profile.SOURCE + "common/ketcher-provider-assets.test.js"
+    consumer = profile.SOURCE + "components/StructureInput.test.js"
+    unrelated = profile.SOURCE + "views/optimization/Optimization.test.js"
+    records = {
+        helper: record(), generator: record(["./ketcher-hydrogen-backport.js"]),
+        host: record(), direct: record(["../../tooling/ketcher-hydrogen-backport.js"]),
+        assets: record(["../../tooling/ketcher-provider-assets.js"]),
+        consumer: record(["../common/ketcher.js"]), unrelated: record(),
+    }
+    files = {name: "source" for name in records}
+    files[profile.CONTRACT_TEST] = "pass"
+    before, after = snapshot(tmp_path, files), snapshot(tmp_path, files)
+    monkeypatch.setattr(dependencies, "parse_frontend", lambda item: records)
+    profile.guard_paths({helper})
+    selected, _imports = profile.frontend_tests(before, after, {helper})
+    assert selected == sorted([assets, consumer, direct])
+    assert unrelated not in selected
+    assert profile.python_tests(before, after, {helper}) == [profile.CONTRACT_TEST]
+
+
 def test_reviewed_dev_dependency_still_requires_a_real_importer(tmp_path, monkeypatch):
     before = npm_snapshot(tmp_path, manifest())
     after = npm_snapshot(tmp_path, manifest(devDependencies={"magic-string": "0.30.21"}))

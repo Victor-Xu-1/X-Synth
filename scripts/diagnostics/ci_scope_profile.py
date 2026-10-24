@@ -304,8 +304,10 @@ WEB_BUILD_FILES = {WEB + name for name in (
     "index.html", "vite.config.js", "tooling/vuetify-control-semantics.js",
     "tooling/vuetify-control-plugin.js",
     "tooling/ketcher-provider-assets.js", "tooling/ketcher-provider-plugin.js",
+    "tooling/ketcher-hydrogen-backport.js",
 )}
 NATIVE_KETCHER_FILES = {
+    WEB + "tooling/ketcher-hydrogen-backport.js",
     WEB + "tooling/ketcher-provider-assets.js",
     WEB + "tooling/ketcher-provider-plugin.js",
     SOURCE + "common/ketcher-provider-ownership.js",
