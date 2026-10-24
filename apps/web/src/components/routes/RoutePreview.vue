@@ -45,6 +45,7 @@
 import { computed, ref, watch, onBeforeUnmount, useId } from "vue";
 import { useRouter } from "vue-router";
 import { API } from "@/common/api";
+import { useUiLanguage } from "@/i18n";
 import { originalRouteIndex, taskIdentifier } from "@/common/route-details";
 import { errorMessage } from "@/common/workspace-errors";
 import RouteReader from "./RouteReader.vue";
@@ -63,6 +64,7 @@ const props = defineProps({
   detailQuery: Object,
   focusTicket: { type: Number, default: null },
 });
+const { locale } = useUiLanguage();
 const router = useRouter(),
   selectedId = ref(""),
   view = ref("graph"),
@@ -102,6 +104,7 @@ async function edit(routeId) {
       job_id: jobId,
       route_index: originalIndex,
       route_id: routeId,
+      locale: locale.value,
     });
     if (
       disposed ||

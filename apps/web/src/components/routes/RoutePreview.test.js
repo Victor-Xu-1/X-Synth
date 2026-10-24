@@ -1,8 +1,10 @@
-import { mount } from "@vue/test-utils";
+import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
 import RoutePreview from "./RoutePreview.vue";
+import RouteReader from "./RouteReader.vue";
 import WorkbenchDialog from "@/components/workspace/WorkbenchDialog.vue";
 import { setLocale } from "@/i18n";
+import { API } from "@/common/api";
 
 jest.mock("vue-router", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 jest.mock("./RouteReader.vue", () => ({ props: ["candidates"], template: '<div class="actual-reader-boundary" />' }));
@@ -44,4 +46,24 @@ test("intentional navigation emits its release before closing the preview", asyn
   await wrapper.get('button[data-to]').trigger("click");
   expect(events).toEqual(["navigate", false]);
   wrapper.unmount();
+});
+
+test.each(["en", "zh-CN"])("copy uses the active %s language, not the language when preview opened", async locale => {
+  setLocale(locale === "en" ? "zh-CN" : "en", { persist: false });
+  const jobId = "a".repeat(32), routeId = "askcos_mcts:preview-source";
+  const candidates = [{ route_id: routeId, steps: [] }], before = JSON.stringify(candidates);
+  API.post.mockReset();
+  API.post.mockResolvedValue({ id: "b".repeat(32) });
+  const wrapper = mount(RoutePreview, { props: { modelValue: true, jobId, candidates, originalIndices: [7] }, global: { stubs } });
+  try {
+    setLocale(locale, { persist: false });
+    await nextTick();
+    wrapper.getComponent(RouteReader).vm.$emit("edit", routeId);
+    await flushPromises();
+    expect(API.post).toHaveBeenCalledTimes(1);
+    expect(API.post).toHaveBeenCalledWith("/api/v1/route-documents/from-task", {
+      job_id: jobId, route_index: 7, route_id: routeId, locale,
+    });
+    expect(JSON.stringify(candidates)).toBe(before);
+  } finally { wrapper.unmount(); }
 });
