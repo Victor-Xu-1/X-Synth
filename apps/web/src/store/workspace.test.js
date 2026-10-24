@@ -1,11 +1,13 @@
 import { createPinia, setActivePinia } from "pinia";
 import { watch } from "vue";
 import { useWorkspaceStore } from "./workspace";
+import { stopWorkspaceProbes } from "./workspace-probes";
 import { useRouteWorkbenchStore } from "./route-workbench";
 
 const originalFetch = global.fetch;
+const healthyOptimization = { ready: true, reason: "Protocol fixture", versions: { baybe: "0.15.0" }, fresh_for_seconds: 60 };
 const healthy = {
-  "/api/v1/health": { route_search_ready: true, service_checks: { expand_one: true, template_relevance: true, fast_filter: true, gateway: true, commercial_stock: true, condition_recommender: true, forward_predictor: true, qm: true, solubility: true }, scientific_tools: { assessment: true, process: true } },
+  "/api/v1/health": { route_search_ready: true, service_checks: { expand_one: true, template_relevance: true, fast_filter: true, gateway: true, commercial_stock: true, condition_recommender: true, forward_predictor: true, qm: true, solubility: true }, scientific_tools: { assessment: true, process: true }, scientific_engines: { optimization: healthyOptimization } },
   "/api/v1/session": { mode: "local" },
   "/api/v1/template-library/health": { status: "ready" },
   "/api/v1/optimization/health": { ready: true },
@@ -15,9 +17,61 @@ let failures;
 beforeEach(() => {
   setActivePinia(createPinia());
   failures = new Set();
-  global.fetch = jest.fn(async (url) => ({ ok: !failures.has(url), json: async () => healthy[url] }));
+  global.fetch = jest.fn(async (url) => ({ ok: !failures.has(url), json: async () =>
+    url === "/api/v1/health" && failures.has("/api/v1/optimization/health")
+      ? { ...healthy[url], scientific_engines: { optimization: { ...healthyOptimization, ready: false } } }
+      : healthy[url] }));
 });
-afterEach(() => { global.fetch = originalFetch; jest.useRealTimers(); });
+afterEach(() => { stopWorkspaceProbes(useWorkspaceStore()); global.fetch = originalFetch; localStorage.clear(); jest.useRealTimers(); });
+
+test("core-only dispatch never starts optional probes", async () => {
+  const workspace = useWorkspaceStore();
+  await workspace.refreshCore(true);
+  expect(global.fetch.mock.calls.map(([url]) => url).sort()).toEqual(["/api/v1/health", "/api/v1/session"]);
+  expect(workspace.probing.templates).toBe(false);
+  expect(workspace.probing.optimization).toBe(false);
+});
+
+test.each(["__proto__", "constructor", "unknown"])("unsupported optional feature %s cannot dispatch a probe", async feature => {
+  const workspace = useWorkspaceStore();
+  await workspace.refreshFeature(feature, true);
+  expect(global.fetch).not.toHaveBeenCalled();
+});
+
+test("generic shell refresh never invokes the active optimization endpoint", async () => {
+  await useWorkspaceStore().refresh(true);
+  expect(global.fetch.mock.calls.map(([url]) => url)).not.toContain("/api/v1/optimization/health");
+});
+
+test("core refresh replaces old identity headers and rejects their late publication", async () => {
+  const workspace = useWorkspaceStore();
+  const releases = [];
+  localStorage.setItem("accessToken", "old-fixture-identity");
+  global.fetch.mockImplementation((url, { headers }) => headers.Authorization === "Bearer old-fixture-identity"
+    ? new Promise(resolve => releases.push(() => resolve({ ok: true, json: async () => healthy[url] })))
+    : Promise.resolve({ ok: true, json: async () => url.endsWith("/session")
+      ? { mode: "askcos", owner: "new-fixture-owner" } : healthy[url] }));
+  const old = workspace.refreshCore(true);
+  localStorage.setItem("accessToken", "new-fixture-identity");
+  const current = workspace.refreshCore(true);
+  expect(global.fetch.mock.calls.filter(([url]) => ["/api/v1/health", "/api/v1/session"].includes(url))).toHaveLength(4);
+  releases.forEach(release => release());
+  await Promise.all([old, current]);
+  expect(workspace.session.owner).toBe("new-fixture-owner");
+});
+
+test("explicit feature verification publishes to the same workspace capability", async () => {
+  const workspace = useWorkspaceStore();
+  global.fetch.mockImplementation(async url => ({ ok: true, json: async () => url === "/api/v1/health"
+    ? { ...healthy[url], scientific_engines: {} } : healthy[url] }));
+  await workspace.refreshCore(true);
+  expect(workspace.can("optimization")).toBe(false);
+  global.fetch.mockResolvedValue({ ok: true, json: async () => ({ ready: true, reason: "Protocol fixture",
+    versions: { baybe: "0.15.0" }, fresh_for_seconds: 60 }) });
+  await workspace.refreshFeature("optimization", true);
+  expect(workspace.optimization.ready).toBe(true);
+  expect(workspace.can("optimization")).toBe(true);
+});
 
 test.each(["/api/v1/health", "/api/v1/session"])("failure of %s gates all execution without clearing chemical drafts", async (path) => {
   const workspace = useWorkspaceStore(), draft = useRouteWorkbenchStore();
@@ -47,7 +101,7 @@ test.each([
   ["/api/v1/template-library/health", "templates"],
   ["/api/v1/optimization/health", "optimization"],
   ["/api/v1/references/status", "references"],
-])("failed optional probe %s clears its previous capability only", async (path, feature) => {
+])("failed optional evidence %s clears its previous capability only", async (path, feature) => {
   const workspace = useWorkspaceStore();
   await workspace.refresh(true);
   expect(workspace.can(feature)).toBe(true);
@@ -64,14 +118,14 @@ test("concurrent callers await one shared readiness refresh", async () => {
     releases.push(() => resolve({ ok: true, json: async () => healthy[url] }));
   }));
   const first = workspace.refresh(true), second = workspace.refresh(true);
-  expect(global.fetch).toHaveBeenCalledTimes(5);
+  expect(global.fetch).toHaveBeenCalledTimes(4);
   expect(workspace.loading).toBe(true);
   releases.forEach((release) => release());
   await Promise.all([first, second]);
   expect(workspace.ready).toBe(true);
   expect(workspace.loading).toBe(false);
   await workspace.refresh();
-  expect(global.fetch).toHaveBeenCalledTimes(5);
+  expect(global.fetch).toHaveBeenCalledTimes(4);
 });
 
 test("a core-only caller shares the same probes and resolves before optional work", async () => {
@@ -82,7 +136,7 @@ test("a core-only caller shares the same probes and resolves before optional wor
     : { ok: true, json: async () => healthy[url] });
   const all = workspace.refresh(true);
   await workspace.refreshCore(true);
-  expect(global.fetch).toHaveBeenCalledTimes(5);
+  expect(global.fetch).toHaveBeenCalledTimes(4);
   expect(workspace.ready).toBe(true); expect(workspace.loading).toBe(true);
   expect(workspace.probing.references).toBe(true);
   finish(); await all;
@@ -143,7 +197,6 @@ test("a failed core probe gates immediately while an unrelated optional probe is
 
 test.each([
   ["/api/v1/template-library/health", "templates"],
-  ["/api/v1/optimization/health", "optimization"],
   ["/api/v1/references/status", "references"],
 ])("a slow %s cannot delay confirmed core readiness or another optional capability", async (path, field) => {
   const workspace = useWorkspaceStore();
@@ -239,14 +292,16 @@ test("deadline releases a stalled JSON body and late optional data cannot overwr
   await workspace.refresh(true); expect(workspace.references.ready).toBe(true);
   release({ ready: false });
   for (let i = 0; i < 24; i++) await Promise.resolve();
-  expect(workspace.references.ready).toBe(true); expect(jest.getTimerCount()).toBe(0);
+  expect(workspace.references.ready).toBe(true);
+  expect(jest.getTimerCount()).toBe(1);
+  stopWorkspaceProbes(workspace); expect(jest.getTimerCount()).toBe(0);
 });
 
 test("reconnect bypasses the freshness cache and confirms current core identity and readiness", async () => {
   const workspace = useWorkspaceStore(); await workspace.refresh(true);
-  expect(global.fetch).toHaveBeenCalledTimes(5);
+  expect(global.fetch).toHaveBeenCalledTimes(4);
   await workspace.reconnect();
-  expect(global.fetch).toHaveBeenCalledTimes(10);
+  expect(global.fetch).toHaveBeenCalledTimes(8);
   expect(workspace.ready).toBe(true); expect(workspace.error).toBe("");
 });
 
@@ -259,11 +314,11 @@ test("reconnect behind an unfinished offline probe is coalesced and uses a new s
   const old = workspace.refresh(true);
   for (let i = 0; i < 24; i++) await Promise.resolve();
   expect(workspace.error).toBeTruthy(); expect(workspace.loading).toBe(true);
-  const first = workspace.reconnect(), second = workspace.reconnect();
-  expect(global.fetch).toHaveBeenCalledTimes(5);
   global.fetch.mockImplementation(async url => ({ ok: true, json: async () => healthy[url] }));
+  const first = workspace.reconnect(), second = workspace.reconnect();
+  expect(global.fetch).toHaveBeenCalledTimes(8);
   release(); await Promise.all([old, first, second]);
-  expect(global.fetch).toHaveBeenCalledTimes(10);
+  expect(global.fetch).toHaveBeenCalledTimes(8);
   expect(workspace.ready).toBe(true); expect(workspace.error).toBe("");
   expect(workspace.references.ready).toBe(true); expect(workspace.loading).toBe(false);
 });
@@ -285,6 +340,122 @@ test("reconnect does not wait for a stalled optional probe and late old data can
     expect(workspace.ready).toBe(true); expect(workspace.references.ready).toBe(true);
     release(); await jest.advanceTimersByTimeAsync(1);
     expect(workspace.references.ready).toBe(true);
-    expect(jest.getTimerCount()).toBe(0);
+    expect(jest.getTimerCount()).toBe(1);
+    stopWorkspaceProbes(workspace); expect(jest.getTimerCount()).toBe(0);
   } finally { release(); await Promise.all([old, retry]); }
+});
+
+
+const settle = async () => { for (let i = 0; i < 24; i++) await Promise.resolve(); };
+const deferredRead = () => {
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  return { promise, resolve };
+};
+const reply = value => ({ ok: true, json: async () => value });
+
+test("expired verified capability stays discoverable but cannot execute or start a worker", async () => {
+  jest.useFakeTimers();
+  const workspace = useWorkspaceStore(); await workspace.refreshCore(true);
+  expect(workspace.can("optimization")).toBe(true);
+  const calls = global.fetch.mock.calls.length;
+  await jest.advanceTimersByTimeAsync(60000);
+  expect(workspace.features.optimization).toBe(true);
+  expect(workspace.can("optimization")).toBe(false);
+  expect(global.fetch).toHaveBeenCalledTimes(calls);
+});
+
+test.each([
+  {}, { fresh_for_seconds: 0 }, { fresh_for_seconds: "60" }, { fresh_for_seconds: true },
+  { fresh_for_seconds: 61 }, { fresh_for_seconds: -1 }, { fresh_for_seconds: Infinity },
+  { versions: { baybe: "wrong-version" } }, { ready: "true" }, { checking: "false" },
+])("unverified or malformed passive optimization evidence never authorizes execution: %j", async patch => {
+  const workspace = useWorkspaceStore();
+  const value = { ...healthyOptimization, ...patch };
+  if (!Object.keys(patch).length) delete value.fresh_for_seconds;
+  global.fetch.mockImplementation(async url => reply(url === "/api/v1/health"
+    ? { ...healthy[url], scientific_engines: { optimization: value } } : healthy[url]));
+  await workspace.refreshCore(true);
+  expect(workspace.ready).toBe(true);
+  expect(workspace.can("optimization")).toBe(false);
+  expect(global.fetch.mock.calls.map(([url]) => url)).not.toContain("/api/v1/optimization/health");
+});
+
+test("a core response begun during verification cannot overwrite its newer completed feature evidence", async () => {
+  const workspace = useWorkspaceStore(); await workspace.refreshCore(true);
+  const healthBody = deferredRead(), feature = deferredRead();
+  global.fetch.mockImplementation(async url => url.endsWith("/optimization/health") ? feature.promise
+    : url === "/api/v1/health" ? { ok: true, json: () => healthBody.promise } : reply(healthy[url]));
+  const active = workspace.refreshFeature("optimization", true);
+  const coreRead = workspace.refreshCore(true);
+  feature.resolve(reply(healthyOptimization)); await active;
+  expect(workspace.can("optimization")).toBe(true);
+  healthBody.resolve({ ...healthy["/api/v1/health"],
+    scientific_engines: { optimization: { ...healthyOptimization, ready: false } } });
+  await coreRead;
+  expect(workspace.can("optimization")).toBe(true);
+});
+
+test("a replacement subscriber never joins an aborted feature request or accepts its late evidence", async () => {
+  const workspace = useWorkspaceStore(); await workspace.refreshCore(true);
+  const held = deferredRead(), controller = new AbortController();
+  global.fetch.mockReturnValueOnce(held.promise).mockResolvedValue(reply({ ...healthyOptimization, ready: false }));
+  const old = workspace.refreshFeature("optimization", true, { signal: controller.signal });
+  controller.abort();
+  const current = workspace.refreshFeature("optimization", true);
+  expect(global.fetch).toHaveBeenCalledTimes(4);
+  held.resolve(reply(healthyOptimization)); await Promise.all([old, current]);
+  expect(workspace.optimization.ready).toBe(false);
+});
+
+test("one feature consumer cannot cancel another consumer's shared verification", async () => {
+  const workspace = useWorkspaceStore(); await workspace.refreshCore(true);
+  const held = deferredRead(), first = new AbortController(), second = new AbortController();
+  let signal;
+  global.fetch.mockImplementation(async (_url, options) => { signal = options.signal; return held.promise; });
+  const a = workspace.refreshFeature("optimization", true, { signal: first.signal });
+  const b = workspace.refreshFeature("optimization", true, { signal: second.signal });
+  first.abort(); await a;
+  expect(signal.aborted).toBe(false);
+  held.resolve(reply(healthyOptimization)); await b;
+  expect(workspace.can("optimization")).toBe(true);
+});
+
+test("active verification deadline releases a stalled body and cannot publish late success", async () => {
+  jest.useFakeTimers();
+  const workspace = useWorkspaceStore(); await workspace.refreshCore(true);
+  const held = deferredRead();
+  global.fetch.mockResolvedValue({ ok: true, json: () => held.promise });
+  const pending = workspace.refreshFeature("optimization", true);
+  await jest.advanceTimersByTimeAsync(25000); await pending;
+  expect(workspace.probing.optimization).toBe(false);
+  expect(workspace.can("optimization")).toBe(false);
+  held.resolve(healthyOptimization); await settle();
+  expect(workspace.can("optimization")).toBe(false);
+});
+
+test("transport time cannot extend a verified snapshot's remaining lifetime", async () => {
+  jest.useFakeTimers();
+  const workspace = useWorkspaceStore(), held = deferredRead();
+  global.fetch.mockImplementation(async url => url === "/api/v1/health"
+    ? { ok: true, json: () => held.promise } : reply(healthy[url]));
+  const pending = workspace.refreshCore(true);
+  await jest.advanceTimersByTimeAsync(1500);
+  held.resolve({ ...healthy["/api/v1/health"],
+    scientific_engines: { optimization: { ...healthyOptimization, fresh_for_seconds: 1 } } });
+  await pending;
+  expect(workspace.can("optimization")).toBe(false);
+});
+
+test("a wall-clock correction cannot extend optimization verification lifetime", async () => {
+  jest.useFakeTimers();
+  const workspace = useWorkspaceStore(), held = deferredRead();
+  global.fetch.mockImplementation(async url => url === "/api/v1/health"
+    ? { ok: true, json: () => held.promise } : reply(healthy[url]));
+  const pending = workspace.refreshCore(true);
+  jest.setSystemTime(Date.now() - 120000);
+  held.resolve(healthy["/api/v1/health"]); await pending;
+  expect(workspace.can("optimization")).toBe(true);
+  await jest.advanceTimersByTimeAsync(60000);
+  expect(workspace.can("optimization")).toBe(false);
 });

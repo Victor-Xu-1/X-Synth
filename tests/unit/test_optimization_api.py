@@ -38,7 +38,9 @@ def test_csv_inspection_is_available_without_fake_model_readiness(client):
     response = client.post("/api/v1/optimization/inspect", json={"content": CSV})
     assert response.status_code == 200
     assert response.json()["row_count"] == 4
-    assert client.get("/api/v1/optimization/health").json()["ready"] is False
+    health = client.get("/api/v1/optimization/health").json()
+    assert health["ready"] is False
+    assert 0 <= health["fresh_for_seconds"] <= 60
     assert (
         client.post("/api/v1/optimization/recommend", json=request_body()).status_code
         == 503

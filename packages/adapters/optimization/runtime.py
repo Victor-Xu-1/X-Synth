@@ -109,8 +109,12 @@ class OptimizationRuntime:
     def _status(self, *, busy=None, checking=False):
         busy = self._computing.is_set() if busy is None else busy
         if self._cached_health is not None:
+            remaining = max(0.0, min(60.0, 60 - (time.monotonic() - self._health_at)))
             return self._cached_health.model_copy(
-                deep=True, update={"busy": busy, "checking": checking}
+                deep=True, update={
+                    "busy": busy, "checking": checking,
+                    "fresh_for_seconds": remaining,
+                }
             )
         return RuntimeHealth(
             ready=False, reason="BayBE 正在核对运行环境。", busy=busy, checking=checking
@@ -150,7 +154,7 @@ class OptimizationRuntime:
                     else "BayBE 就绪响应无效。"
                 )
                 health = RuntimeHealth(ready=False, reason=reason)
-            self._cached_health, self._health_at = health, now
+            self._cached_health, self._health_at = health, time.monotonic()
             return self._status()
         finally:
             self._health_lock.release()

@@ -249,3 +249,53 @@ def test_health_snapshot_is_typed_deep_copied_and_never_starts_a_probe(monkeypat
     snapshot.versions["baybe"] = "mutated-by-caller"
     assert runtime.health_snapshot().versions["baybe"] == "0.15.0"
     assert len(calls) == 1
+
+
+def test_snapshot_freshness_expires_without_invoking_a_worker(monkeypatch):
+    runtime = OptimizationRuntime()
+    now = [100.0]
+    calls = []
+    monkeypatch.setattr("packages.adapters.optimization.runtime.time.monotonic", lambda: now[0])
+    monkeypatch.setattr(runtime, "_invoke", lambda **kwargs: calls.append(kwargs) or {
+        "ready": True, "reason": "Protocol fixture", "versions": {"baybe": "0.15.0"},
+    })
+    assert runtime.health_snapshot().model_dump().get("fresh_for_seconds") == 0
+    runtime.health()
+    assert runtime.health_snapshot().model_dump().get("fresh_for_seconds") == 60
+    now[0] = 159.0
+    assert runtime.health_snapshot().model_dump().get("fresh_for_seconds") == 1
+    now[0] = 161.0
+    assert runtime.health_snapshot().model_dump().get("fresh_for_seconds") == 0
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("value", [-1, 61, True, "60", float("nan"), float("inf")])
+def test_freshness_metadata_rejects_invalid_or_unbounded_values(value):
+    from packages.adapters.optimization.contracts import RuntimeHealth
+
+    with pytest.raises(ValueError):
+        RuntimeHealth(ready=False, reason="Protocol fixture", fresh_for_seconds=value)
+
+
+def test_legacy_health_payload_remains_valid_but_has_no_claimed_fresh_lifetime():
+    from packages.adapters.optimization.contracts import RuntimeHealth
+
+    health = RuntimeHealth.model_validate({"ready": True, "reason": "Legacy protocol fixture"})
+    assert health.ready is True
+    assert health.model_dump(mode="json")["fresh_for_seconds"] == 0
+
+
+def test_freshness_uses_completed_verification_not_worker_supplied_age(monkeypatch):
+    runtime = OptimizationRuntime()
+    now = [100.0]
+    monkeypatch.setattr("packages.adapters.optimization.runtime.time.monotonic", lambda: now[0])
+
+    def verified(**kwargs):
+        now[0] = 120.0
+        return {"ready": True, "reason": "Protocol fixture", "versions": {"baybe": "0.15.0"},
+                "fresh_for_seconds": 0}
+
+    monkeypatch.setattr(runtime, "_invoke", verified)
+    assert runtime.health().fresh_for_seconds == 60
+    now[0] = 121.0
+    assert runtime.health_snapshot().fresh_for_seconds == 59

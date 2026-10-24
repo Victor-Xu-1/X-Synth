@@ -1,11 +1,12 @@
 import { defineStore } from "pinia";
-import { emptyProbeState, reconnectWorkspace, refreshWorkspace } from "./workspace-probes";
+import { emptyProbeState, reconnectWorkspace, refreshFeature, refreshWorkspace, workspaceIdentityCurrent } from "./workspace-probes";
 
 export const useWorkspaceStore = defineStore("workspace", {
   state: () => ({
     core: { health: null, session: null },
     templates: null,
     optimization: null,
+    optimizationExpires: 0,
     references: null,
     loading: false,
     error: "",
@@ -23,7 +24,7 @@ export const useWorkspaceStore = defineStore("workspace", {
       if (!feature || state.error) return false;
       if (!state.refreshed && (state.probing.health || state.probing.session)) return true;
       return ["templates", "optimization", "references"].includes(feature)
-        && state.probing[feature] && !state[feature];
+        && state.probing[feature] && (!state[feature] || feature === "optimization" && !state.optimizationExpires);
     },
     features: (state) => {
       const { health, session } = state.core;
@@ -66,11 +67,16 @@ export const useWorkspaceStore = defineStore("workspace", {
     refreshCore(force = false) {
       return refreshWorkspace(this, force, true);
     },
+    refreshFeature(feature, force = false, options) {
+      return refreshFeature(this, feature, force, options);
+    },
     reconnect() {
       return reconnectWorkspace(this);
     },
     can(feature) {
-      return !feature || this.features[feature] === true;
+      // Navigation retains a previously verified capability; execution needs current evidence.
+      return !feature || workspaceIdentityCurrent(this) && this.features[feature] === true && (feature !== "optimization"
+        || this.optimizationExpires > performance.now());
     },
   },
 });

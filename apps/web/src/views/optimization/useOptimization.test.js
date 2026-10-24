@@ -1,3 +1,6 @@
+import { createPinia, setActivePinia } from "pinia";
+import { useWorkspaceStore } from "@/store/workspace";
+import { stopWorkspaceProbes } from "@/store/workspace-probes";
 import { TextDecoder, TextEncoder } from "node:util";
 import { defineComponent } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
@@ -14,6 +17,8 @@ jest.mock("@/common/api", () => ({
 jest.mock("file-saver", () => ({ saveAs: jest.fn() }));
 global.TextDecoder = TextDecoder;
 global.TextEncoder = TextEncoder;
+const originalFetch = global.fetch;
+const healthFixture = { ready: true, reason: "Protocol fixture", versions: { baybe: "0.15.0" }, fresh_for_seconds: 60 };
 const CSV = "temperature,solvent,response\n10,a,1\n20,a,2\n10,b,3\n20,b,4\n";
 const table = {
   table_sha256: "a".repeat(64),
@@ -86,11 +91,17 @@ function response(body) {
   };
 }
 beforeEach(() => {
+  setActivePinia(createPinia());
+  useWorkspaceStore().core = { health: { route_search_ready: true }, session: { mode: "local" } };
+  global.fetch = jest.fn(async url => ({ ok: true, json: () => API.get(url, null, false) }));
   jest.clearAllMocks();
   API.post.mockReset();
-  API.get.mockResolvedValue({ ready: true, versions: { baybe: "0.15.0" } });
+  API.get.mockResolvedValue(healthFixture);
 });
-afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
+afterEach(() => {
+  wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
+  stopWorkspaceProbes?.(useWorkspaceStore()); global.fetch = originalFetch;
+});
 
 test("opening/importing only inspects actual file and never chooses rows, factors or starts Bayesian computation", async () => {
   const { state } = setup();
@@ -279,4 +290,49 @@ test("an oversized replacement does not erase verified input or make a parser re
   await state.chooseFile({ ...file("large.csv"), size: 3 * 1024 * 1024 });
   expect(state.table.value).toBe(original); expect(state.content.value).toBe(CSV);
   expect(API.post).toHaveBeenCalledTimes(calls); expect(state.fileLoading.value).toBe(false);
+});
+
+
+test("feature verification publishes the same health consumed by workspace gating", async () => {
+  const { state } = setup(); await flushPromises();
+  const workspace = useWorkspaceStore();
+  expect(workspace.optimization).toEqual(state.health.value);
+  expect(workspace.can("optimization")).toBe(true);
+});
+
+test("refreshing verified health cannot recommend from the previous ready value", async () => {
+  const { state } = setup(); await confirmed(state); await flushPromises();
+  expect(state.canRecommend.value).toBe(true);
+  const held = deferred(); API.get.mockReturnValueOnce(held.promise);
+  const pending = state.refreshHealth();
+  try {
+    await flushPromises();
+    expect(state.healthLoading.value).toBe(true);
+    expect(state.canRecommend.value).toBe(false);
+  } finally { held.resolve(healthFixture); await pending; }
+  expect(state.canRecommend.value).toBe(true);
+});
+
+test("submission rechecks freshness even before an expiry timer or UI computed value updates", async () => {
+  const { state } = setup(); await confirmed(state); await flushPromises();
+  expect(state.canRecommend.value).toBe(true);
+  const later = performance.now() + 61000;
+  const clock = jest.spyOn(performance, "now").mockReturnValue(later);
+  API.post.mockClear();
+  try {
+    await state.recommend();
+    expect(API.post).not.toHaveBeenCalled();
+  } finally { clock.mockRestore(); }
+});
+
+test("a changed identity cannot reuse readiness before the next shared refresh", async () => {
+  const { state } = setup(); await confirmed(state); await flushPromises();
+  expect(state.canRecommend.value).toBe(true);
+  localStorage.setItem("accessToken", "different-unit-identity");
+  API.post.mockClear();
+  try {
+    expect(useWorkspaceStore().can("optimization")).toBe(false);
+    await state.recommend();
+    expect(API.post).not.toHaveBeenCalled();
+  } finally { localStorage.removeItem("accessToken"); }
 });
