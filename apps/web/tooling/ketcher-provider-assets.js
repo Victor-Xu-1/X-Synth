@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { Script } from "node:vm";
+import { KETCHER_HYDROGEN_BACKPORTS, KETCHER_HYDROGEN_UPSTREAM_PIN } from "./ketcher-hydrogen-backport.js";
 
 export const KETCHER_NATIVE_PATH = "ketcher-standalone";
 export const KETCHER_VENDOR_SCRIPT = `${KETCHER_NATIVE_PATH}/static/js/main.f1aaf31e.js`;
@@ -68,21 +69,43 @@ function ownershipSource(owner) {
   return source;
 }
 
+function applyReviewedPatches(source, patches) {
+  const parts = [];
+  let cursor = 0;
+  for (const { offset, length, replacement } of [...patches].sort((a, b) => a.offset - b.offset)) {
+    if (offset < cursor) throw new Error("Overlapping Ketcher adaptation sites");
+    parts.push(source.slice(cursor, offset), replacement);
+    cursor = offset + length;
+  }
+  parts.push(source.slice(cursor));
+  return parts.join("");
+}
+
 export function generateKetcherProviderAssets({ source, indexHtml, assetManifest, owner }) {
-  const factory = uniqueIndex(source, KETCHER_PROVIDER_FACTORY, "provider factory");
+  const patches = [
+    { label: "provider factory", needle: KETCHER_PROVIDER_FACTORY },
+    ...KETCHER_HYDROGEN_BACKPORTS,
+  ].map(patch => {
+    const offset = uniqueIndex(source, patch.needle, patch.label);
+    const length = patch.length ?? patch.needle.length;
+    if (patch.sha256) verifyHash(source.slice(offset, offset + length), patch.sha256, patch.label);
+    return { ...patch, offset, length };
+  });
   verifyHash(source, KETCHER_VENDOR_SHA256, "vendor source");
   const scriptTag = uniqueIndex(indexHtml, vendorScriptTag, "HTML script");
   verifyHash(indexHtml, indexSha256, "HTML index");
   const manifest = readManifest(assetManifest);
-  const adaptation = `return (${ownershipSource(owner)})(new Y(U), ${JSON.stringify(KETCHER_PROVIDER_COMMANDS)})`;
-  const provenance = `/*! X-Synth native provider adaptation by apps/web/tooling/ketcher-provider-assets.js.
+  patches[0].replacement = `return (${ownershipSource(owner)})(new Y(U), ${JSON.stringify(KETCHER_PROVIDER_COMMANDS)})`;
+  const provenance = `/*! X-Synth native provider and aromatic-H adaptation by apps/web/tooling/ketcher-provider-assets.js.
  * Source: apps/web/public/${KETCHER_VENDOR_SCRIPT}; SHA-256: ${KETCHER_VENDOR_SHA256}.
  * Ownership: apps/web/src/common/ketcher-provider-ownership.js (self-contained).
- * Only the reviewed provider factory is adapted; recognize remains unchanged.
+ * Exactly four reviewed sites: provider factory, Atom constructor, early aromatic H guard, fromAtomsAttrs.
+ * Core backports: Ketcher 3.18.0, ${KETCHER_HYDROGEN_UPSTREAM_PIN}, atom.ts and struct.ts.
+ * Local action repair: tooling/ketcher-hydrogen-backport.js; one H declaration writer and native inverse seed.
+ * Recognize, valence tables, bond actions and operation/history classes remain unchanged.
  * Original vendor source and adjacent license notices are retained.
  */\n`;
-  const script = provenance + source.slice(0, factory) + adaptation +
-    source.slice(factory + KETCHER_PROVIDER_FACTORY.length);
+  const script = provenance + applyReviewedPatches(source, patches);
   const digest = sha256(script);
   const scriptRelativePath = `static/js/main.native.${digest}.js`;
   const scriptFileName = `${KETCHER_NATIVE_PATH}/${scriptRelativePath}`;
