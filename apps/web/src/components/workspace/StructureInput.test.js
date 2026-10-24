@@ -19,7 +19,7 @@ jest.mock("@/components/InlineKetcherEditor.vue", () => ({
 }));
 jest.mock("@/components/KetcherModal.vue", () => ({
   name: "KetcherModal",
-  props: ["value"],
+  props: ["value", "smiles"],
   emits: ["input"],
   template: "<div />",
 }));
@@ -138,5 +138,82 @@ describe("unconfirmed input intent", () => {
     else child.vm.hasPending = false;
     await flushPromises();
     expect(wrapper.vm.hasUnconfirmedDraft).toBe(false);
+  });
+});
+
+describe("current structure popup entry", () => {
+  let wrapper;
+  const blockedOwners = ["native", "file draft", "file busy", "disabled prop"];
+  beforeEach(async () => {
+    wrapper = mount(StructureInput, {
+      props: { modelValue: "CCO", recycle: true },
+      global: { stubs: {
+        VTooltip: { template: '<div><slot name="activator" :props="{}" /></div>' },
+        VBtn: {
+          name: "VBtn",
+          props: ["disabled"],
+          emits: ["click"],
+          template: '<button :disabled="disabled" @click="$emit(\'click\')"><slot /></button>',
+        },
+      } },
+    });
+    mockVisible([{ isIntersecting: true }]);
+    await flushPromises();
+    const editor = wrapper.getComponent({ name: "InlineKetcherEditor" });
+    editor.vm.ready = true;
+    editor.vm.pending = false;
+    await flushPromises();
+  });
+  afterEach(() => wrapper.unmount());
+
+  async function block(owner) {
+    const editor = wrapper.getComponent({ name: "InlineKetcherEditor" });
+    const files = wrapper.getComponent({ name: "MoleculeFileControls" });
+    if (owner === "native") {
+      editor.props("contentChanged")();
+      editor.vm.pending = true;
+    } else if (owner === "file draft") files.vm.hasPending = true;
+    else if (owner === "file busy") files.vm.$emit("busy", true);
+    else await wrapper.setProps({ disabled: true });
+    await flushPromises();
+  }
+
+  test.each(blockedOwners)("disables popup entry for %s input", async owner => {
+    await block(owner);
+    const button = wrapper.getComponent({ name: "VBtn" });
+    expect(button.props("disabled")).toBe(true);
+    expect(button.element.disabled).toBe(true);
+    expect(wrapper.getComponent({ name: "KetcherModal" }).props("value")).toBe(false);
+  });
+
+  test.each(blockedOwners)("rejects programmatic popup entry for %s input", async owner => {
+    await block(owner);
+    wrapper.getComponent({ name: "VBtn" }).vm.$emit("click");
+    await flushPromises();
+    expect(wrapper.getComponent({ name: "KetcherModal" }).props("value")).toBe(false);
+    expect(wrapper.getComponent({ name: "InlineKetcherEditor" }).props("disabled")).toBe(owner === "disabled prop");
+    expect(wrapper.find("textarea").element.value).toBe("CCO");
+  });
+
+  test("settled input opens the current accepted structure and Cancel preserves it", async () => {
+    const editor = wrapper.getComponent({ name: "InlineKetcherEditor" });
+    editor.vm.pending = true;
+    await flushPromises();
+    await wrapper.setProps({ modelValue: "CCO.CC" });
+    editor.vm.pending = false;
+    await flushPromises();
+    const button = wrapper.getComponent({ name: "VBtn" });
+    expect(button.props("disabled")).toBe(false);
+    await button.trigger("click");
+    const modal = wrapper.getComponent({ name: "KetcherModal" });
+    expect(modal.props("value")).toBe(true);
+    expect(modal.props("smiles")).toBe("CCO.CC");
+    expect(editor.props("disabled")).toBe(true);
+    modal.vm.$emit("input", false);
+    await flushPromises();
+    expect(modal.props("value")).toBe(false);
+    expect(editor.props("disabled")).toBe(false);
+    expect(wrapper.vm.pending).toBe(false);
+    expect(wrapper.find("textarea").element.value).toBe("CCO.CC");
   });
 });
