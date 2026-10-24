@@ -3,7 +3,7 @@
 import json
 
 
-_PUBLIC_KEYS = frozenset({"VITE_GTAG", "VITE_EMAIL_REQUIRED"})
+_PUBLIC_KEYS = frozenset({"VITE_EMAIL_REQUIRED"})
 
 
 class PublicFrontendOptionsError(ValueError):
