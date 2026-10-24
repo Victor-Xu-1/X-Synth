@@ -272,7 +272,10 @@ const syncKetcherLayout = (options = {}) => {
 
 const patchKetcherDocument = () => {
   const doc = ketcherIframe.value?.contentDocument;
-  prepareKetcherDocument(doc);
+  prepareKetcherDocument(doc, {
+    hostViewTools: true,
+    hostFullscreen: view.supported.value,
+  });
   focusGuard.observe();
   frameLifecycle.observe();
   view.observeFrame();

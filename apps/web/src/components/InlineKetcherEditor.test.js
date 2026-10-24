@@ -101,7 +101,12 @@ test("inline Ketcher editor scales the fixed-width Ketcher app to the available 
   );
   expect(text).toContain("window.setTimeout(syncKetcherLayout, 900);");
   expect(text).toContain('@load="patchKetcherDocument"');
-  expect(text).toContain("prepareKetcherDocument(doc)");
+  expect(text).toContain("prepareKetcherDocument(doc, {");
+  expect(text).toContain("hostViewTools: true,");
+  expect(text).toContain("hostFullscreen: view.supported.value,");
+  const modal = fs.readFileSync(path.resolve(__dirname, "KetcherModal.vue"), "utf8");
+  expect(modal).toContain("prepareKetcherDocument(ketcherIframe.value?.contentDocument)");
+  expect(modal).not.toContain("hostViewTools: true");
   expect(text).toContain(
     "fitKetcherCanvas(editor, { preserveZoom })",
   );
