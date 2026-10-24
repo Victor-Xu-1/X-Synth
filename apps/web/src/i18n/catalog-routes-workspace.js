@@ -17,6 +17,7 @@ export default [
   ["Fast Filter 模型的反应评分阈值（minimum_plausibility），不是实测收率或实验成功率。", "Fast Filter reaction-score threshold (minimum_plausibility), not measured yield or experimental success probability."],
   ["正在读取任务", "Reading tasks"], ["任务尚未加载", "Tasks not loaded yet"],
   ["共 {total} 个任务，第 {page} / {pageCount} 页", "Total tasks: {total}, page {page} / {pageCount}"],
+  ["上次读取：{total} 个任务，第 {page} / {pageCount} 页", "Last loaded tasks: {total}, page {page} / {pageCount}"],
   ["当前索引未包含{direction}模板。", "The current index contains no {direction} templates."],
   ["全部状态", "All statuses"], ["进行中 / 等待恢复", "Running / waiting to resume"], ["已完成", "Completed"],
   ["路线不足", "Insufficient routes"], ["已取消", "Cancelled"], ["执行失败", "Execution failed"],

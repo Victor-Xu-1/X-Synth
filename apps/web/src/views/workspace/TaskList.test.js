@@ -17,7 +17,7 @@ import TaskBatchActions from "@/components/workspace/TaskBatchActions.vue";
 import RoutePreview from "@/components/routes/RoutePreview.vue";
 import { initializeLocale, setLocale } from "@/i18n";
 jest.mock("@/common/api", () => ({
-  API: { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() },
+  API: { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn(), pollRequestTimeoutMs: 15000 },
 }));
 jest.mock("@/components/SmilesImage.vue", () => ({
   props: ["smiles"],
@@ -176,6 +176,8 @@ test("actual history composition reads one page, keeps server group totals, and 
         group: "all",
         archived: false,
       },
+      true,
+      expect.objectContaining({ timeoutMs: 15000, signal: expect.any(AbortSignal) }),
     ],
   ]);
   expect(wrapper.text()).toContain("全部任务42");
@@ -298,12 +300,66 @@ test("toolbar reset clears only search and status, keeps the selected group, and
       group: "g-1",
       archived: false,
     },
+    true,
+    expect.objectContaining({ timeoutMs: 15000, signal: expect.any(AbortSignal) }),
   ]);
   expect(router.currentRoute.value.query).toEqual({ group: "g-1" });
   expect(
     wrapper.find('.history-view-tools [aria-label="清除筛选"]').exists(),
   ).toBe(false);
   expect(API.post).not.toHaveBeenCalled();
+});
+
+test.each([["en", "Clear filters"], ["zh-CN", "清除筛选"]])("invalid history URL in %s requires one explicit legal recovery and keeps header refresh disabled", async (locale, label) => {
+  setLocale(locale, { persist: false });
+  const { wrapper, router } = await setup("/results?page=NaN&query=CCO&status=bad&group=&view=bad&archived=maybe&keep=visible");
+  const replace = jest.spyOn(router, "replace");
+  expect(API.get).not.toHaveBeenCalled();
+  expect(wrapper.get('[data-icon="mdi-refresh"]').element.disabled).toBe(true);
+  const recover = wrapper.get(".history-error button");
+  expect(recover.text()).toBe(label);
+  expect(recover.element.disabled).toBe(false);
+  await recover.trigger("click");
+  await flushPromises();
+  expect(replace).toHaveBeenCalledTimes(1);
+  expect(router.currentRoute.value.query).toEqual({ keep: "visible" });
+  expect(API.get).toHaveBeenCalledTimes(1);
+  expect(API.get.mock.calls[0]).toEqual([
+    "/api/v1/results/page",
+    { limit: 24, offset: 0, query: "", status: "all", group: "all", archived: false },
+    true,
+    expect.objectContaining({ timeoutMs: 15000, signal: expect.any(AbortSignal) }),
+  ]);
+  expect(wrapper.find(".history-error").exists()).toBe(false);
+  expect(wrapper.get('[data-icon="mdi-refresh"]').element.disabled).toBe(false);
+  expect(wrapper.findAllComponents(TaskCard)).toHaveLength(1);
+  jest.advanceTimersByTime(18000);
+  await flushPromises();
+  expect(API.get).toHaveBeenCalledTimes(1);
+  for (const method of [API.post, API.put, API.delete]) expect(method).not.toHaveBeenCalled();
+});
+
+test.each([["en", "Last loaded tasks: 1, page 1 / 1"], ["zh-CN", "上次读取：1 个任务，第 1 / 1 页"]])("last loaded history caption survives pending retry in %s until valid success", async (locale, caption) => {
+  setLocale(locale, { persist: false });
+  const { wrapper } = await setup();
+  API.get.mockRejectedValueOnce(new Error(JSON.stringify({ detail: "History unavailable" })));
+  await wrapper.get('[data-icon="mdi-refresh"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.get(".task-history").attributes("data-history-freshness")).toBe("stale");
+  expect(wrapper.get(".history-collection-heading [role=status]").text()).toBe(caption);
+  let respond;
+  API.get.mockImplementationOnce(() => new Promise(resolve => { respond = resolve; }));
+  await wrapper.get(".history-error button").trigger("click");
+  await flushPromises();
+  expect(wrapper.find(".history-error").exists()).toBe(false);
+  expect(wrapper.get(".task-history").attributes("data-history-freshness")).toBe("stale");
+  expect(wrapper.get(".history-collection-heading [role=status]").text()).toBe(caption);
+  expect(wrapper.findAllComponents(TaskCard)).toHaveLength(1);
+  respond(data([row("fresh")]));
+  await flushPromises();
+  expect(wrapper.get(".task-history").attributes("data-history-freshness")).toBe("fresh");
+  expect(wrapper.get(".history-collection-heading [role=status]").text()).not.toBe(caption);
+  expect(API.get).toHaveBeenCalledTimes(3);
 });
 
 test("a failed refresh keeps the actual cards, shows the server error, and disables metadata actions without claiming an empty result", async () => {
