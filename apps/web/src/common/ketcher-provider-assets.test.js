@@ -10,6 +10,7 @@ import {
   generateKetcherProviderAssets, KETCHER_NATIVE_PATH, KETCHER_VENDOR_SCRIPT,
   KETCHER_VENDOR_SHA256, KETCHER_PROVIDER_FACTORY, KETCHER_PROVIDER_COMMANDS,
 } from "../../tooling/ketcher-provider-assets.js";
+import { KETCHER_HYDROGEN_BACKPORTS, KETCHER_HYDROGEN_UPSTREAM_PIN } from "../../tooling/ketcher-hydrogen-backport.js";
 
 const webRoot = resolve(__dirname, "../..");
 const publicRoot = resolve(webRoot, "public");
@@ -45,15 +46,50 @@ test("regeneration is deterministic and addresses the complete generated script 
   expect(generated.digest).toMatch(/^[a-f0-9]{64}$/);
 });
 
-test("only the reviewed factory changes and the original license pointer remains intact", () => {
+test("only four reviewed sites change and the original license pointer remains intact", () => {
   const script = generated.files[generated.scriptFileName];
   const provenanceEnd = script.indexOf(" */\n") + " */\n".length;
   const replacement = `return (${ownKetcherProvider.toString()})(new Y(U), ${JSON.stringify(KETCHER_PROVIDER_COMMANDS)})`;
-  expect(script.startsWith("/*! X-Synth native provider adaptation")).toBe(true);
+  const atomAction = KETCHER_HYDROGEN_BACKPORTS[2];
+  const actionOffset = source.indexOf("function MJ(U,F,Q,R){var B=new Od;");
+  const originalAction = source.slice(actionOffset, actionOffset + 799);
+  expect(hash(originalAction)).toBe("3b09680879c0b89b812211b628c17de567b8f2d2acd5217fae83bf877e0261ca");
+  expect(() => new Script(`(${originalAction})`)).not.toThrow();
+  const expected = source.replace(KETCHER_PROVIDER_FACTORY, replacement)
+    .replace("this.implicitH=F.implicitHCount||F.implicitH||0", "this.implicitH=F.implicitHCount??F.implicitH??0")
+    .replace('"S"===F.label&&0===F.charge&&3===V)return void(F.implicitH=0)',
+      '"S"===F.label&&0===F.charge&&3===V||!F.implicitH)return void(F.implicitH=0)')
+    .replace(originalAction, atomAction.replacement);
+  expect(KETCHER_HYDROGEN_BACKPORTS).toHaveLength(3);
+  expect(script.startsWith("/*! X-Synth native provider and aromatic-H adaptation")).toBe(true);
   expect(script.slice(0, provenanceEnd)).toContain(KETCHER_VENDOR_SHA256);
-  expect(hash(script.slice(provenanceEnd))).toBe(hash(source.replace(KETCHER_PROVIDER_FACTORY, replacement)));
+  expect(script.slice(0, provenanceEnd)).toContain("Exactly four reviewed sites");
+  expect(script.slice(0, provenanceEnd)).toContain(KETCHER_HYDROGEN_UPSTREAM_PIN);
+  expect(script.slice(0, provenanceEnd)).toContain("Local action repair");
+  expect(hash(script.slice(provenanceEnd))).toBe(hash(expected));
   expect(script.slice(provenanceEnd, provenanceEnd + 90)).toContain("main.f1aaf31e.js.LICENSE.txt");
   expect(() => new Script(script)).not.toThrow();
+});
+
+test.each(KETCHER_HYDROGEN_BACKPORTS)("$label requires one exact original site", repair => {
+  expect(() => generateKetcherProviderAssets({ ...inputs, source: source.replace(repair.needle, "unreviewed-site") })).toThrow(repair.label);
+  expect(() => generateKetcherProviderAssets({ ...inputs, source: source + repair.needle })).toThrow(repair.label);
+});
+
+test("the complete native attribute action has a separate fail-closed hash gate", () => {
+  const offset = source.indexOf("function MJ(U,F,Q,R){var B=new Od;");
+  const originalAction = source.slice(offset, offset + 799);
+  const drift = source.slice(0, offset) + originalAction.replace("n.implicitH", "n.implicitH+0") + source.slice(offset + 799);
+  expect(() => generateKetcherProviderAssets({ ...inputs, source: drift })).toThrow(/atom attribute action changed/);
+});
+
+test("reviewed ranges never rewrite text inserted by the ownership adapter", () => {
+  const owner = function ownKetcherProvider(service) {
+    return Object.assign(service, { literal: "this.implicitH=F.implicitHCount||F.implicitH||0" });
+  };
+  const assets = generateKetcherProviderAssets({ ...inputs, owner });
+  expect(assets.files[assets.scriptFileName]).toContain(owner.toString());
+  expect(assets.files[assets.scriptFileName].split("this.implicitH=F.implicitHCount||F.implicitH||0")).toHaveLength(2);
 });
 
 test("changing ownership code changes the URL even with identical vendor inputs", () => {

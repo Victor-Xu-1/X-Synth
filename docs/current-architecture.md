@@ -166,9 +166,19 @@ governance. See [version operations](operations.md#版本管理).
   the instance and reject queued work; recovery requires a new editor, not reuse
   of an uncorrelated response. Listener limits are not changed.
   `apps/web/tooling/ketcher-provider-assets.js` guards the original bundle SHA-256
-  and unique factory, generates a content-addressed script and updates only the
-  generated iframe entry references. Development and production share that
-  generator. Vendored source and notices remain unchanged; source drift fails
+  and four unique reviewed sites, generates a content-addressed script and updates
+  only the generated iframe entry references. Alongside the provider factory,
+  the Atom nullish H seed and early aromatic zero-H guard backport the exact core
+  changes from Ketcher 3.18.0 commit
+  `f4f013e1855b71b0cbd37fc79d55b0cbe51c2371`; the retained SDK is still 2.13.
+  The separately hash-gated 799-byte `fromAtomsAttrs` boundary has a local repair
+  in `tooling/ketcher-hydrogen-backport.js`: explicit H declarations have one
+  writer, only an element change clears inherited H metadata, and the seed uses
+  native AtomAttr inverses before CalcImplicitH. Derived H is not promoted into
+  a declaration. Valence tables, bond actions and operation/history classes are
+  unchanged. Development and production share that generator. Native import,
+  toolbar and undo/redo acceptance is distinct from its direct static controls.
+  Vendored source and notices remain unchanged; source drift fails
   before serving/building an unreviewed adaptation. The response owner is not a
   new chemistry engine, formatter, timeout budget or model-validation shortcut.
 - Product job IDs and ownership are authoritative in the transactional job store.
