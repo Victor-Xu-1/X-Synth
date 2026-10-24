@@ -1,11 +1,12 @@
 import { defineStore } from "pinia";
-import { emptyProbeState, reconnectWorkspace, refreshWorkspace } from "./workspace-probes";
+import { emptyProbeState, reconnectWorkspace, refreshFeature, refreshWorkspace, workspaceIdentityCurrent } from "./workspace-probes";
 
 export const useWorkspaceStore = defineStore("workspace", {
   state: () => ({
     core: { health: null, session: null },
     templates: null,
     optimization: null,
+    optimizationExpires: 0,
     references: null,
     loading: false,
     error: "",
@@ -23,7 +24,7 @@ export const useWorkspaceStore = defineStore("workspace", {
       if (!feature || state.error) return false;
       if (!state.refreshed && (state.probing.health || state.probing.session)) return true;
       return ["templates", "optimization", "references"].includes(feature)
-        && state.probing[feature] && !state[feature];
+        && state.probing[feature] && (!state[feature] || feature === "optimization" && !state.optimizationExpires);
     },
     features: (state) => {
       const { health, session } = state.core;
@@ -41,7 +42,7 @@ export const useWorkspaceStore = defineStore("workspace", {
         scscore: checks.scscore,
         assessment: fresh && health.scientific_tools?.assessment === true,
         process: fresh && health.scientific_tools?.process === true,
-        optimization: fresh && state.optimization?.ready === true,
+        optimization: fresh && (state.optimization?.configured ?? state.optimization?.ready) === true,
         fast_filter: checks.fast_filter,
         native_account: fresh && session.mode === "askcos",
         administrator:
@@ -66,11 +67,16 @@ export const useWorkspaceStore = defineStore("workspace", {
     refreshCore(force = false) {
       return refreshWorkspace(this, force, true);
     },
+    refreshFeature(feature, force = false, options) {
+      return refreshFeature(this, feature, force, options);
+    },
     reconnect() {
       return reconnectWorkspace(this);
     },
     can(feature) {
-      return !feature || this.features[feature] === true;
+      // Configuration advertises navigation only; execution still needs verified readiness.
+      return !feature || workspaceIdentityCurrent(this) && this.features[feature] === true && (feature !== "optimization"
+        || this.optimization?.ready === true && this.optimizationExpires > performance.now());
     },
   },
 });

@@ -16,6 +16,15 @@ from .native_endpoints import ENDPOINTS
 ENGINE_SERVICES = tuple(ENDPOINTS)
 
 
+def _scientific_engine_ready(identifier: str, status: dict) -> bool:
+    if status.get("ready") is not True:
+        return False
+    if identifier != "optimization":
+        return True
+    remaining = status.get("fresh_for_seconds", 0)
+    return type(remaining) in (int, float) and 0 < remaining <= 60
+
+
 def environment_snapshot(
     *,
     health: dict,
@@ -77,7 +86,9 @@ def environment_snapshot(
         "integrations": inactive_integrations(),
         "scientific_engines": [
             {"id": identifier, "name": name, "purpose": purpose,
-             "ready": health.get("scientific_engines", {}).get(identifier, {}).get("ready") is True,
+             "ready": _scientific_engine_ready(
+                 identifier, health.get("scientific_engines", {}).get(identifier, {})
+             ),
              "versions": health.get("scientific_engines", {}).get(identifier, {}).get("versions", {})}
             for identifier, name, purpose in (
                 ("optimization", "BayBE / BoTorch", "实测实验优化"),

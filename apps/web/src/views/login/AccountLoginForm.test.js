@@ -10,6 +10,7 @@ const mockWorkspace = {
   local: true,
   can: jest.fn(() => false),
   refresh: jest.fn(),
+  refreshCore: jest.fn(),
 };
 jest.mock("@/common/api", () => ({ API: { post: jest.fn() } }));
 jest.mock("vue-router", () => ({
@@ -78,6 +79,7 @@ test("fresh English and Chinese labels preserve a pending-free login draft and d
 });
 beforeEach(() => {
   jest.clearAllMocks();
+  mockWorkspace.refresh.mockReset(); mockWorkspace.refreshCore.mockReset();
   localStorage.clear();
   mockRoute.query = {};
   mockWorkspace.can.mockReturnValue(false);
@@ -108,6 +110,23 @@ test("shows native failure without navigation", async () => {
   expect(mockRouter.replace).not.toHaveBeenCalled();
   wrapper.unmount();
 });
+test("successful login waits for current core only, not an optional batch", async () => {
+  let finishCore;
+  mockWorkspace.refresh.mockReturnValue(new Promise(() => {}));
+  mockWorkspace.refreshCore.mockImplementation(force => force ? new Promise(resolve => { finishCore = resolve; }) : Promise.resolve());
+  API.post.mockResolvedValue({ access_token: "new-unit-identity" });
+  const wrapper = makeForm();
+  await fill(wrapper);
+  await wrapper.get("form").trigger("submit");
+  await flushPromises();
+  expect(mockWorkspace.refreshCore).toHaveBeenCalledWith(true);
+  expect(mockRouter.replace).not.toHaveBeenCalled();
+  finishCore(); await flushPromises();
+  expect(mockRouter.replace).toHaveBeenCalled();
+  wrapper.unmount();
+  mockWorkspace.refresh.mockReset(); mockWorkspace.refreshCore.mockReset();
+});
+
 test("prevents duplicate pending authentication requests", async () => {
   let finish;
   API.post.mockImplementation(

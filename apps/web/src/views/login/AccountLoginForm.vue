@@ -215,7 +215,7 @@ const submit = async () => {
     localStorage.setItem("username", username.value.trim());
     localStorage.setItem("authProvider", "local");
     password.value = "";
-    await workspace.refresh(true);
+    await workspace.refreshCore(true);
     await router.replace(destination());
   } catch {
     errorMessage.value = registering.value
@@ -251,7 +251,7 @@ const keycloakLogin = async () => {
   }
 };
 
-onMounted(() => workspace.refresh());
+onMounted(() => workspace.refreshCore());
 </script>
 
 <style scoped>

@@ -31,7 +31,9 @@ async function setup(props = {}, slots = { default: () => h(Draft) }) {
     props: { title: "Test workbench", ...props }, slots,
     global: {
       plugins: [createVuetify({ components: { VDefaultsProvider: components.VDefaultsProvider, VDialog: components.VDialog }, theme: false })],
-      stubs: { transition: false, VIcon: true, VProgressLinear: true, RouterLink: { template: '<a><slot /></a>' } },
+      stubs: { transition: false, VIcon: true, VProgressLinear: true,
+        VBtn: { props: ["disabled"], template: '<button :disabled="disabled"><slot /></button>' },
+        RouterLink: { template: '<a><slot /></a>' } },
     },
   });
   wrappers.push(wrapper);
@@ -52,6 +54,7 @@ beforeEach(() => {
     features: { stock: true }, pending: {}, loading: false, refreshed: 1, error: "",
     can: jest.fn((feature) => !feature || mockWorkspace.features[feature] === true),
     checking: jest.fn((feature) => !mockWorkspace.error && mockWorkspace.pending[feature] === true),
+    refreshFeature: jest.fn().mockResolvedValue(undefined),
   });
 });
 afterEach(() => {
@@ -442,4 +445,30 @@ test("returning to an older open dialog restores Escape ownership without cancel
   expect(open.b).toBe(true);
   expect(first.isConnected).toBe(false);
   expect(second.isConnected).toBe(true);
+});
+
+
+test.each([["/optimization", "optimization"], ["/template", "templates"], ["/references", "references"]])("optional %s verification retry stays reachable and restores its draft", async (path, feature) => {
+  mockRoute.path = path; mockRoute.meta.feature = feature;
+  mockWorkspace.features = {};
+  mockWorkspace.refreshFeature.mockImplementation(async (_, force) => {
+    if (force) mockWorkspace.features[feature] = true;
+  });
+  const wrapper = await setup();
+  expect(mounts).toBe(0);
+  expect(mockWorkspace.refreshFeature).toHaveBeenCalledWith(feature, false, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  await wrapper.get('[aria-label="刷新运行环境"]').trigger("click"); await flushPromises();
+  const input = wrapper.get("input");
+  await input.setValue("preserved-scientific-draft");
+  mockWorkspace.features[feature] = false; await flushPromises();
+  const retry = wrapper.get('[aria-label="刷新运行环境"]');
+  expect(retry.element.closest("[inert]")).toBeNull();
+  setLocale("en", { persist: false }); await flushPromises();
+  expect(wrapper.get('[aria-label="Refresh runtime environment"]').element).toBe(retry.element);
+  expect(wrapper.text()).toContain("Service not ready");
+  await retry.trigger("click"); await flushPromises();
+  expect(wrapper.get("input").element).toBe(input.element);
+  expect(input.element.value).toBe("preserved-scientific-draft");
+  expect(mounts).toBe(1); expect(unmounts).toBe(0);
+  setLocale("zh-CN", { persist: false });
 });

@@ -1,3 +1,6 @@
+import { createPinia, setActivePinia } from "pinia";
+import { useWorkspaceStore } from "@/store/workspace";
+import { stopWorkspaceProbes } from "@/store/workspace-probes";
 import { TextDecoder, TextEncoder } from "node:util";
 import { randomUUID } from "node:crypto";
 import { reactive } from "vue";
@@ -13,6 +16,8 @@ jest.mock("file-saver", () => ({ saveAs: jest.fn() }));
 jest.mock("./optimization.css", () => ({}));
 global.TextDecoder = TextDecoder; global.TextEncoder = TextEncoder;
 // Protocol-only fixtures; actual model acceptance uses the published measured CSV.
+const originalFetch = global.fetch;
+const healthFixture = { ready: true, reason: "Protocol fixture", versions: { baybe: "0.15.0" }, fresh_for_seconds: 60 };
 const CSV = "temperature,solvent,response\n10,a,0\n20,a,2\n10,b,3\n20,b,4\n";
 const columns = [
   { name: "temperature", numeric: true, values: ["10", "20"], unique_count: 2 },
@@ -43,10 +48,14 @@ async function setup(query = {}) {
   return { wrapper, router, route };
 }
 beforeEach(() => {
+  setActivePinia(createPinia());
+  useWorkspaceStore().core = { health: { route_search_ready: true }, session: { mode: "local" } };
+  global.fetch = jest.fn(async url => ({ ok: true, json: () => API.get(url, null, false) }));
   jest.clearAllMocks(); API.post.mockReset(); window.history.replaceState({}, "");
-  API.get.mockImplementation((url) => Promise.resolve(url.endsWith("/health") ? { ready: true, versions: { baybe: "0.15.0" } } : record()));
+  API.get.mockImplementation((url) => Promise.resolve(url.endsWith("/health") ? healthFixture : record()));
 });
 afterEach(() => {
+  stopWorkspaceProbes(useWorkspaceStore()); global.fetch = originalFetch;
   wrappers.splice(0).forEach(wrapper => wrapper.unmount());
   hosts.splice(0).forEach(host => host.remove());
 });
@@ -166,7 +175,8 @@ test("health loading and failure preserve CSV entry while recommendation remains
   expect(file.element.disabled).toBe(false);
   expect(wrapper.vm.canRecommend).toBe(false);
   fail(new Error("isolated runtime unavailable")); await flushPromises();
-  expect(wrapper.get('.opt-notice[role="status"]').text()).toBe("isolated runtime unavailable");
+  expect(wrapper.get('.opt-notice[role="status"]').text()).toBe("服务未就绪");
+  expect(wrapper.text()).not.toContain("isolated runtime unavailable");
   expect(wrapper.get(".opt-file-entry.opt-empty input").element).toBe(file.element);
   expect(file.element.disabled).toBe(false);
   expect(wrapper.vm.canRecommend).toBe(false);

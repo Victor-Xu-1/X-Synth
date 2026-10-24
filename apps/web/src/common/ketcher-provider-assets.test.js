@@ -138,6 +138,13 @@ const viteHarness = String.raw`
   const report = { node: process.version, checks: [] };
   let dev, http, watcher;
 
+  // Builds run in this server's event loop; do not reuse idle connections across them.
+  function fetchFixture(url, options = {}) {
+    const headers = new Headers(options.headers);
+    headers.set('Connection', 'close');
+    return fetch(url, { ...options, headers });
+  }
+
   function treeHashes(directory, prefix = '') {
     return Object.fromEntries(readdirSync(directory, { withFileTypes: true }).flatMap(item => {
       const name = prefix + item.name, path = join(directory, item.name);
@@ -204,34 +211,37 @@ const viteHarness = String.raw`
     assert.equal(typeof new Script('(' + ownerSource + ')').runInNewContext(), 'function');
     assert.ok(expected.files[expected.scriptFileName].includes('return (' + ownerSource + ')(new Y(U), '));
     new Script(expected.files[expected.scriptFileName]);
-    http = httpServer(dev.middlewares);
+    http = httpServer((request, response) => {
+      assert.equal(request.headers.connection, 'close', 'fixture HTTP requests must be one-shot');
+      dev.middlewares(request, response);
+    });
     await new Promise(resolveListen => http.listen(0, '127.0.0.1', resolveListen));
     const origin = 'http://127.0.0.1:' + http.address().port;
     for (const [name, body] of Object.entries(expected.files)) {
-      const response = await fetch(origin + '/' + name + '?native-probe=1');
+      const response = await fetchFixture(origin + '/' + name + '?native-probe=1');
       assert.equal(response.status, 200);
       assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
       assert.equal(digest(Buffer.from(await response.arrayBuffer())), digest(body), 'dev bytes: ' + name);
     }
     const scriptUrl = origin + '/' + expected.scriptFileName;
-    const head = await fetch(scriptUrl, { method: 'HEAD' });
+    const head = await fetchFixture(scriptUrl, { method: 'HEAD' });
     assert.equal(head.status, 200);
     assert.equal(head.headers.get('content-length'), String(Buffer.byteLength(expected.files[expected.scriptFileName])));
     assert.equal((await head.arrayBuffer()).byteLength, 0);
-    const cached = await fetch(scriptUrl, { headers: { 'if-none-match': head.headers.get('etag') } });
+    const cached = await fetchFixture(scriptUrl, { headers: { 'if-none-match': head.headers.get('etag') } });
     assert.equal(cached.status, 304);
-    const post = await fetch(origin + '/' + indexName, { method: 'POST' });
+    const post = await fetchFixture(origin + '/' + indexName, { method: 'POST' });
     assert.equal(post.status, 405);
     assert.equal(post.headers.get('allow'), 'GET, HEAD');
-    const stale = await fetch(origin + '/ketcher-standalone/static/js/main.native.' + '0'.repeat(64) + '.js');
+    const stale = await fetchFixture(origin + '/ketcher-standalone/static/js/main.native.' + '0'.repeat(64) + '.js');
     assert.equal(stale.status, 404);
     await stale.arrayBuffer();
-    const encoded = await fetch(origin + '/' + indexName.replace('index', '%69ndex'));
+    const encoded = await fetchFixture(origin + '/' + indexName.replace('index', '%69ndex'));
     assert.equal(encoded.status, 200);
     assert.equal(digest(await encoded.text()), digest(expected.files[indexName]));
     for (const name of [vendorName, vendorName + '.LICENSE.txt', 'ketcher-standalone/favicon.ico',
       'ketcher-standalone/static/css/main.f14d85d5.css', 'ketcher-standalone/manifest.json']) {
-      const response = await fetch(origin + '/' + name);
+      const response = await fetchFixture(origin + '/' + name);
       assert.equal(response.status, 200);
       assert.equal(digest(Buffer.from(await response.arrayBuffer())), retained[name], 'ordinary dev asset: ' + name);
     }
@@ -278,7 +288,7 @@ const viteHarness = String.raw`
     assert.match(drift.error.message, /vendor source changed/);
     await watcher.close(); watcher = undefined;
     for (const name of Object.keys(expected.files)) {
-      const response = await fetch(origin + '/' + name);
+      const response = await fetchFixture(origin + '/' + name);
       assert.equal(response.status, 500, 'no native fallback after source drift');
       assert.equal(await response.text(), 'Ketcher provider assets failed validation');
     }
@@ -291,7 +301,7 @@ const viteHarness = String.raw`
       [manifestName, '{}', /correspondence/]]) {
       const file = join(publicDir, name), original = readFileSync(file);
       writeFileSync(file, malformed);
-      const response = await fetch(origin + '/' + indexName);
+      const response = await fetchFixture(origin + '/' + indexName);
       assert.equal(response.status, 500);
       await response.arrayBuffer();
       await assert.rejects(build({ ...common, build: buildOptions }), message);

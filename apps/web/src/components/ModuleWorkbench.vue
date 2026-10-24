@@ -18,9 +18,11 @@
           <template v-if="checking"><v-progress-linear indeterminate /><span>{{ $tr('连接计算服务') }}</span></template>
           <template v-else>
             <v-icon icon="mdi-server-off" size="32" />
-            <h2>{{ $tr(workspace.error ? "工作区连接不可用" : "当前服务未启用") }}</h2>
+            <h2>{{ $tr(workspace.error ? "工作区连接不可用" : optionalFeature ? "服务未就绪" : "当前服务未启用") }}</h2>
             <p v-if="workspace.error" class="workspace-muted">{{ $tr(workspace.error) }}</p>
             <router-link to="/environments?tab=monitor">{{ $tr('查看运行监测') }}</router-link>
+            <v-btn v-if="optionalFeature && !workspace.error" icon="mdi-refresh" variant="text"
+              :title="$tr('刷新运行环境')" :aria-label="$tr('刷新运行环境')" @click="verifyFeature(true)" />
           </template>
         </div>
         <div v-if="initialized || modules.length" :key="scope" ref="content" v-show="available" class="workbench-content"
@@ -59,6 +61,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useWorkspaceStore } from "@/store/workspace";
+import { optionalFeatures } from "@/store/workspace-probes";
 import { pageFeature } from "@/common/workspace-navigation";
 import WorkbenchTabs from "./WorkbenchTabs.vue";
 import WorkbenchScope from "./workspace/WorkbenchScope.vue";
@@ -72,13 +75,23 @@ const props = defineProps({
 defineEmits(["select-module"]);
 const route = useRoute(), workspace = useWorkspaceStore();
 const feature = computed(() => pageFeature(route));
+const optionalFeature = computed(() => optionalFeatures.includes(feature.value));
 const scope = computed(() => JSON.stringify([route.path, feature.value]));
 const available = computed(() => !feature.value || workspace.can(feature.value));
 const checking = computed(() => !!feature.value && !workspace.error && workspace.checking(feature.value));
 const initialized = ref(false), visited = ref([]), content = ref(null), actions = ref(null), status = ref(null);
 const moduleSurfaces = ref(new Map());
 const contentId = `workbench-${crypto.randomUUID()}-panel`;
-let previousScope, focusGeneration = 0, disposed = false, blockedFocus = null;
+let previousScope, focusGeneration = 0, disposed = false, blockedFocus = null, featureController;
+function verifyFeature(force = false) {
+  if (optionalFeature.value)
+    return workspace.refreshFeature(feature.value, force, { signal: featureController.signal });
+}
+watch(scope, () => {
+  featureController?.abort();
+  featureController = new AbortController();
+  verifyFeature();
+}, { immediate: true });
 
 watch([scope, available, () => props.activeModule, () => props.modules], ([current, enabled]) => {
   if (current !== previousScope) {
@@ -117,7 +130,7 @@ watch(available, async (enabled) => {
   if (!disposed && current === focusGeneration && originScope === scope.value && !available.value && status.value?.isConnected)
     status.value.focus({ preventScroll: true });
 });
-onBeforeUnmount(() => { disposed = true; blockedFocus = null; focusGeneration++; });
+onBeforeUnmount(() => { disposed = true; featureController?.abort(); blockedFocus = null; focusGeneration++; });
 </script>
 <style scoped>
 .workbench-content,

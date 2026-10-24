@@ -191,8 +191,10 @@ class TablePreview(Contract):
 class RuntimeHealth(Contract):
     ready: bool
     reason: str
+    configured: StrictBool = False
     busy: bool = False
     checking: bool = False
+    fresh_for_seconds: float = Field(default=0.0, ge=0, le=60, allow_inf_nan=False, strict=True)
     versions: dict[str, str] = Field(default_factory=dict)
     engine: Literal["BayBE"] = "BayBE"
     expected_version: Literal["0.15.0"] = BAYBE_VERSION

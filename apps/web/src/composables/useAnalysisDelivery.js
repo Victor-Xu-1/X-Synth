@@ -6,11 +6,13 @@ import { inputLocation } from "@/common/input-draft-navigation";
 export function useAnalysisDelivery(kind, { onCommitted } = {}) {
   const router = useRouter();
   const route = useRoute();
-  return async (result) => {
+  return async (result, isCurrent = () => true) => {
     const path = recordPath(result.record_id);
     if (!path) throw new CalculationInputError("结果缺少可打开的研究记录。");
     try {
+      if (!isCurrent()) return;
       await onCommitted?.();
+      if (!isCurrent()) return;
       // Keep only a server record pointer on the originating history entry.
       // Browser Back/refresh can restore it without storing chemical input locally.
       const location = inputLocation(route.fullPath);
@@ -18,8 +20,12 @@ export function useAnalysisDelivery(kind, { onCommitted } = {}) {
         ...window.history.state,
         xSynthSubmittedInput: { version: 1, kind, id: result.record_id, location },
       }, "");
-      if (await router.push({ path, query: { kind } })) throw new Error("navigation_failed");
+      if (!isCurrent()) return;
+      const failure = await router.push({ path, query: { kind } });
+      if (!isCurrent()) return;
+      if (failure) throw new Error("navigation_failed");
     } catch {
+      if (!isCurrent()) return;
       throw new CalculationInputError("结果已保存，但结果页面未能打开。");
     }
   };

@@ -106,14 +106,26 @@ class OptimizationRuntime:
         except (ValueError, TypeError) as exc:
             raise OptimizationError("BayBE 返回了无效的计算响应。", 502) from exc
 
+    def _configured(self) -> bool:
+        try:
+            return self.python is not None and self.python.is_file()
+        except OSError:
+            return False
+
     def _status(self, *, busy=None, checking=False):
         busy = self._computing.is_set() if busy is None else busy
+        configured = self._configured()
         if self._cached_health is not None:
+            remaining = max(0.0, min(60.0, 60 - (time.monotonic() - self._health_at)))
             return self._cached_health.model_copy(
-                deep=True, update={"busy": busy, "checking": checking}
+                deep=True, update={
+                    "busy": busy, "checking": checking, "configured": configured,
+                    "fresh_for_seconds": remaining,
+                }
             )
         return RuntimeHealth(
-            ready=False, reason="BayBE 正在核对运行环境。", busy=busy, checking=checking
+            ready=False, reason="BayBE 正在核对运行环境。", busy=busy,
+            checking=checking, configured=configured
         )
 
     def health_snapshot(self) -> RuntimeHealth:
@@ -122,6 +134,7 @@ class OptimizationRuntime:
             return RuntimeHealth(
                 ready=False,
                 reason="not_probed",
+                configured=self._configured(),
                 busy=self._computing.is_set(),
                 checking=self._health_lock.locked(),
             )
@@ -138,7 +151,10 @@ class OptimizationRuntime:
                 if not self._admission.acquire(blocking=False):
                     return self._status(busy=True)
                 try:
-                    health = RuntimeHealth.model_validate(self._invoke(health=True))
+                    payload = self._invoke(health=True)
+                    if isinstance(payload, dict):
+                        payload = {**payload, "configured": self._configured()}
+                    health = RuntimeHealth.model_validate(payload)
                     if health.versions.get("baybe") != BAYBE_VERSION:
                         raise OptimizationError("BayBE 版本与已核验版本不一致。")
                 finally:
@@ -150,7 +166,7 @@ class OptimizationRuntime:
                     else "BayBE 就绪响应无效。"
                 )
                 health = RuntimeHealth(ready=False, reason=reason)
-            self._cached_health, self._health_at = health, now
+            self._cached_health, self._health_at = health, time.monotonic()
             return self._status()
         finally:
             self._health_lock.release()

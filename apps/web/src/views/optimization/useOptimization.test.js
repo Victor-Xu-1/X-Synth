@@ -1,8 +1,18 @@
+import { createPinia, setActivePinia } from "pinia";
+import { useWorkspaceStore } from "@/store/workspace";
+import { stopWorkspaceProbes } from "@/store/workspace-probes";
 import { TextDecoder, TextEncoder } from "node:util";
 import { defineComponent } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import { API } from "@/common/api";
 import { useOptimization } from "./useOptimization";
+import { useAnalysisDelivery } from "@/composables/useAnalysisDelivery";
+import { useRouter } from "vue-router";
+
+jest.mock("vue-router", () => ({
+  useRoute: jest.fn(() => ({ fullPath: "/optimization" })),
+  useRouter: jest.fn(),
+}));
 
 jest.mock("@/common/api", () => ({
   API: {
@@ -14,6 +24,8 @@ jest.mock("@/common/api", () => ({
 jest.mock("file-saver", () => ({ saveAs: jest.fn() }));
 global.TextDecoder = TextDecoder;
 global.TextEncoder = TextEncoder;
+const originalFetch = global.fetch;
+const healthFixture = { ready: true, reason: "Protocol fixture", versions: { baybe: "0.15.0" }, fresh_for_seconds: 60 };
 const CSV = "temperature,solvent,response\n10,a,1\n20,a,2\n10,b,3\n20,b,4\n";
 const table = {
   table_sha256: "a".repeat(64),
@@ -86,11 +98,17 @@ function response(body) {
   };
 }
 beforeEach(() => {
+  setActivePinia(createPinia());
+  useWorkspaceStore().core = { health: { route_search_ready: true }, session: { mode: "local" } };
+  global.fetch = jest.fn(async url => ({ ok: true, json: () => API.get(url, null, false) }));
   jest.clearAllMocks();
   API.post.mockReset();
-  API.get.mockResolvedValue({ ready: true, versions: { baybe: "0.15.0" } });
+  API.get.mockResolvedValue(healthFixture);
 });
-afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
+afterEach(() => {
+  wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
+  stopWorkspaceProbes?.(useWorkspaceStore()); global.fetch = originalFetch;
+});
 
 test("opening/importing only inspects actual file and never chooses rows, factors or starts Bayesian computation", async () => {
   const { state } = setup();
@@ -200,7 +218,7 @@ test("validated recommendation is delivered to the persisted result view only on
   API.post.mockImplementationOnce((_, body) => Promise.resolve(response(body)));
   await state.recommend();
   expect(onResult).toHaveBeenCalledTimes(1);
-  expect(onResult).toHaveBeenCalledWith(state.result.value);
+  expect(onResult).toHaveBeenCalledWith(state.result.value, expect.any(Function));
 });
 
 test("a failed result-page navigation retains the validated saved result for an explicit recovery link", async () => {
@@ -279,4 +297,140 @@ test("an oversized replacement does not erase verified input or make a parser re
   await state.chooseFile({ ...file("large.csv"), size: 3 * 1024 * 1024 });
   expect(state.table.value).toBe(original); expect(state.content.value).toBe(CSV);
   expect(API.post).toHaveBeenCalledTimes(calls); expect(state.fileLoading.value).toBe(false);
+});
+
+
+test("feature verification publishes the same health consumed by workspace gating", async () => {
+  const { state } = setup(); await flushPromises();
+  const workspace = useWorkspaceStore();
+  expect(workspace.optimization).toEqual(state.health.value);
+  expect(workspace.can("optimization")).toBe(true);
+});
+
+test("refreshing verified health cannot recommend from the previous ready value", async () => {
+  const { state } = setup(); await confirmed(state); await flushPromises();
+  expect(state.canRecommend.value).toBe(true);
+  const held = deferred(); API.get.mockReturnValueOnce(held.promise);
+  const pending = state.refreshHealth();
+  try {
+    await flushPromises();
+    expect(state.healthLoading.value).toBe(true);
+    expect(state.canRecommend.value).toBe(false);
+  } finally { held.resolve(healthFixture); await pending; }
+  expect(state.canRecommend.value).toBe(true);
+});
+
+test("submission rechecks freshness even before an expiry timer or UI computed value updates", async () => {
+  const { state } = setup(); await confirmed(state); await flushPromises();
+  expect(state.canRecommend.value).toBe(true);
+  const later = performance.now() + 61000;
+  const clock = jest.spyOn(performance, "now").mockReturnValue(later);
+  API.post.mockClear();
+  try {
+    await state.recommend();
+    expect(API.post).not.toHaveBeenCalled();
+  } finally { clock.mockRestore(); }
+});
+
+test("a changed identity cannot reuse readiness before the next shared refresh", async () => {
+  const { state } = setup(); await confirmed(state); await flushPromises();
+  expect(state.canRecommend.value).toBe(true);
+  localStorage.setItem("accessToken", "different-unit-identity");
+  API.post.mockClear();
+  try {
+    expect(useWorkspaceStore().can("optimization")).toBe(false);
+    await state.recommend();
+    expect(API.post).not.toHaveBeenCalled();
+  } finally { localStorage.removeItem("accessToken"); }
+});
+
+test.each(["identity", "replacement", "unavailable"].flatMap(change => ["success", "error"].map(outcome => [change, outcome])))(
+  "retired %s ownership ignores deferred recommendation %s and delivery without erasing current state",
+  async (change, outcome) => {
+    localStorage.setItem("accessToken", "fixture-request-owner-a");
+    const onResult = jest.fn();
+    const { state } = setup({ onResult }); await confirmed(state); await flushPromises();
+    const held = deferred();
+    API.post.mockReturnValueOnce(held.promise);
+    const pending = state.recommend(), body = API.post.mock.calls.at(-1)[1];
+    const draft = JSON.stringify([state.content.value, state.selectedRows.value, state.factors.value, state.target]);
+    let denied;
+    try {
+      if (change === "unavailable") {
+        denied = jest.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("Fixture storage denied"); });
+        try { useWorkspaceStore().can("optimization"); } catch { /* Separate storage controls require no throw. */ }
+        denied.mockRestore(); denied = null;
+      } else {
+        if (change === "identity") localStorage.setItem("accessToken", "fixture-request-owner-b");
+        global.fetch.mockImplementation(async url => ({ ok: true, json: async () => url === "/api/v1/session"
+          ? { mode: "askcos" } : url === "/api/v1/health"
+            ? { route_search_ready: true, scientific_engines: { optimization: healthFixture } }
+            : { ready: true, status: "ready" } }));
+        if (change === "replacement") await useWorkspaceStore().reconnect();
+        else await useWorkspaceStore().refreshCore(true);
+      }
+      const current = { record_id: "b".repeat(32) };
+      state.result.value = current; state.error.value = "Current owner notice";
+      if (outcome === "success") held.resolve(response(body));
+      else held.reject(new Error("Obsolete request failure"));
+      await pending;
+      expect(state.result.value).toEqual(current);
+      expect(state.error.value).toBe("Current owner notice");
+      expect(onResult).not.toHaveBeenCalled();
+      expect(JSON.stringify([state.content.value, state.selectedRows.value, state.factors.value, state.target])).toBe(draft);
+      expect(state.running.value).toBe(false);
+    } finally {
+      denied?.mockRestore();
+      held.resolve(response(body)); await pending;
+      localStorage.removeItem("accessToken");
+    }
+  },
+);
+
+test("retired ownership ignores a deferred delivery error after an accepted result", async () => {
+  localStorage.setItem("accessToken", "fixture-delivery-owner-a");
+  const delivery = deferred(), onResult = jest.fn(() => delivery.promise);
+  const { state } = setup({ onResult }); await confirmed(state); await flushPromises();
+  API.post.mockImplementationOnce((_, body) => Promise.resolve(response(body)));
+  const pending = state.recommend();
+  await flushPromises();
+  expect(onResult).toHaveBeenCalledTimes(1);
+  localStorage.setItem("accessToken", "fixture-delivery-owner-b");
+  const current = { record_id: "c".repeat(32) };
+  state.result.value = current; state.error.value = "Current delivery notice";
+  try {
+    delivery.reject(new Error("Obsolete navigation failure"));
+    await pending;
+    expect(state.result.value).toEqual(current);
+    expect(state.error.value).toBe("Current delivery notice");
+  } finally { delivery.resolve(); await pending; localStorage.removeItem("accessToken"); }
+});
+
+test.each(["success", "reject"])("deferred onCommitted %s cannot deliver or overwrite current optimization UI after A-to-B", async outcome => {
+  localStorage.setItem("accessToken", "fixture-async-owner-a");
+  const committed = deferred(), push = jest.fn().mockResolvedValue(undefined);
+  useRouter.mockReturnValue({ push });
+  const onResult = jest.fn(useAnalysisDelivery("optimization", { onCommitted: () => committed.promise }));
+  const { state } = setup({ onResult }); await confirmed(state); await flushPromises();
+  API.post.mockImplementationOnce((_, body) => Promise.resolve(response(body)));
+  const pending = state.recommend(); await flushPromises();
+  const draft = JSON.stringify([state.content.value, state.selectedRows.value, state.factors.value, state.target]);
+  localStorage.setItem("accessToken", "fixture-async-owner-b");
+  const current = { record_id: "d".repeat(32) };
+  state.result.value = current; state.error.value = "Current async delivery notice";
+  window.history.replaceState({ position: 16, retained: "Current owner history" }, "");
+  try {
+    if (outcome === "success") committed.resolve();
+    else committed.reject(new Error("Obsolete input commit error"));
+    await pending;
+    expect(onResult).toHaveBeenCalledWith(expect.any(Object), expect.any(Function));
+    expect(state.result.value).toEqual(current);
+    expect(state.error.value).toBe("Current async delivery notice");
+    expect(push).not.toHaveBeenCalled();
+    expect(window.history.state).toEqual({ position: 16, retained: "Current owner history" });
+    expect(JSON.stringify([state.content.value, state.selectedRows.value, state.factors.value, state.target])).toBe(draft);
+    expect(state.running.value).toBe(false);
+  } finally {
+    committed.resolve(); await pending; localStorage.removeItem("accessToken"); window.history.replaceState({}, "");
+  }
 });

@@ -7,6 +7,8 @@ import {
   watch,
 } from "vue";
 import { API } from "@/common/api";
+import { useWorkspaceStore } from "@/store/workspace";
+import { captureWorkspaceIdentity } from "@/store/workspace-probes";
 import { buildRequest, candidateCount, LIMITS, validateResult } from "./model";
 import { savedOptimizationContent, restoreOptimization } from "./optimization-replay";
 
@@ -26,9 +28,10 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
     seed = ref(42),
     confirmedMeasurements = ref(false),
     confirmedCandidates = ref(false);
-  const health = ref(null),
-    healthLoading = ref(true),
-    fileLoading = ref(false),
+  const workspace = useWorkspaceStore(), healthController = new AbortController();
+  const health = computed(() => workspace.optimization),
+    healthLoading = computed(() => workspace.probing.optimization);
+  const fileLoading = ref(false),
     running = ref(false);
   const result = ref(null), error = ref(""), fileError = ref(false);
   let revision = 0,
@@ -48,6 +51,7 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
   });
   onBeforeUnmount(() => {
     disposed = true;
+    healthController.abort();
     revision++;
     fileRevision++;
   });
@@ -55,7 +59,8 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
   const count = computed(() => candidateCount(factors.value));
   const canRecommend = computed(
     () =>
-      health.value?.ready === true &&
+      workspace.can("optimization") && health.value?.ready === true &&
+      !healthLoading.value && !health.value.busy && !health.value.checking &&
       !blocked() &&
       !running.value &&
       !fileLoading.value &&
@@ -70,26 +75,11 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
       confirmedCandidates.value,
   );
 
-  async function refreshHealth() {
-    healthLoading.value = true;
-    try {
-      const response = await API.get(
-        "/api/v1/optimization/health",
-        null,
-        false,
-      );
-      if (!disposed) health.value = response;
-    } catch (failure) {
-      if (!disposed)
-        health.value = {
-          ready: false,
-          reason: API.toErrorObject(failure).string_error,
-        };
-    } finally {
-      if (!disposed) healthLoading.value = false;
-    }
+  function verifyHealth(force) {
+    return workspace.refreshFeature("optimization", force, { signal: healthController.signal });
   }
-  onMounted(refreshHealth);
+  const refreshHealth = () => verifyHealth(true);
+  onMounted(() => verifyHealth(false));
 
   function clear() {
     fileRevision++;
@@ -217,7 +207,10 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
   }
 
   async function recommend() {
-    if (disposed || running.value || fileLoading.value || blocked() || health.value?.ready !== true) return;
+    if (disposed || running.value || fileLoading.value || blocked() || !workspace.can("optimization")
+        || healthLoading.value || health.value?.ready !== true || health.value.busy || health.value.checking) return;
+    const identityCurrent = captureWorkspaceIdentity(workspace);
+    if (!identityCurrent()) return;
     result.value = null;
     error.value = "";
     let request;
@@ -244,11 +237,11 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
         "/api/v1/optimization/recommend",
         request,
       );
-      if (disposed || ticket !== revision) return;
+      if (disposed || ticket !== revision || !identityCurrent()) return;
       result.value = validateResult(response, request);
-      if (onResult) await onResult(response);
+      if (onResult && identityCurrent()) await onResult(response, identityCurrent);
     } catch (failure) {
-      if (!disposed && ticket === revision)
+      if (!disposed && ticket === revision && identityCurrent())
         error.value = API.toErrorObject(failure).string_error;
     } finally {
       if (!disposed) running.value = false;
