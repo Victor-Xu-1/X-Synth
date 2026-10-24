@@ -3,11 +3,27 @@ import RouteConditions from "./RouteConditions.vue";
 import { setLocale } from "@/i18n";
 
 jest.mock("@/common/route-reading", () => ({ conditionRows: jest.fn() }));
-jest.mock("@/store/workspace", () => ({ useWorkspaceStore: () => ({ can: () => false }) }));
+const mockCan = jest.fn(() => false);
+jest.mock("@/store/workspace", () => ({ useWorkspaceStore: () => ({ can: mockCan }) }));
 jest.mock("@/components/SmilesImage.vue", () => ({ template: '<div />' }));
 jest.mock("@/components/references/ReactionReferences.vue", () => ({ template: '<div />' }));
-jest.mock("./RouteConditionDialog.vue", () => ({ template: '<div />' }));
+jest.mock("./RouteConditionDialog.vue", () => ({ name: "RouteConditionDialog", props: ["reaction", "origin"], template: '<div />' }));
 import { conditionRows } from "@/common/route-reading";
+
+test("condition preview retains the exact invoking action and step without a model request", async () => {
+  mockCan.mockReturnValue(true);
+  conditionRows.mockReturnValue([{ nodeId: "r-1", number: 1, confidence: "1.000", reactants: ["CCO"], product: "CC=O",
+    evidence: { conditions: [], links: [] } }]);
+  const wrapper = mount(RouteConditions, { global: { stubs: {
+    VBtn: { emits: ["click"], template: '<button class="predict" @click="$emit(\'click\', $event)"><slot /></button>' },
+  } } });
+  try {
+    const origin = wrapper.get("button.predict"); await origin.trigger("click");
+    const dialog = wrapper.getComponent({ name: "RouteConditionDialog" });
+    expect(dialog.props("origin")).toBe(origin.element);
+    expect(dialog.props("reaction")).toEqual({ precursors: ["CCO"], product: "CC=O" });
+  } finally { wrapper.unmount(); mockCan.mockReturnValue(false); }
+});
 
 test("step details forward the original keyboard and pointer events without predictions", () => {
   conditionRows.mockReturnValue([{ nodeId: "original-step", number: 1, confidence: "0", reactants: ["C"], product: "CO",

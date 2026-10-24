@@ -64,7 +64,7 @@
           size="small"
           variant="text"
           prepend-icon="mdi-beaker-outline"
-          @click="conditionOpen = true"
+          @click="showConditions"
           >{{ $tr('条件预测') }}</v-btn
         >
       </div>
@@ -122,6 +122,7 @@
       v-if="conditionOpen && reaction"
       :key="reaction.smiles"
       :reaction="reaction"
+      :origin="conditionOrigin"
       @close="conditionOpen = false"
     />
   </section>
@@ -162,6 +163,11 @@ defineEmits(["navigate"]);
 const workspace = useWorkspaceStore(),
   stockOpen = ref(false),
   conditionOpen = ref(false);
+const conditionOrigin = ref(null);
+function showConditions(event) {
+  conditionOrigin.value = event.currentTarget;
+  conditionOpen.value = true;
+}
 const exporting = ref(false),
   exportError = ref("");
 let exportGeneration = 0,
