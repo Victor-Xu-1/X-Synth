@@ -23,6 +23,88 @@ def snapshot(health, runtime=None, models="pistachio,pistachio_ringbreaker"):
     )
 
 
+@pytest.fixture
+def scientific_snapshot(monkeypatch):
+    """Keep scientific projection checks independent of native configuration."""
+    def catalog():
+        return {"status": "available", "modules": []}
+
+    monkeypatch.setattr(native_capability_catalog, "source_catalog", catalog)
+    monkeypatch.setattr(native_capabilities, "source_catalog", catalog)
+    return snapshot
+
+
+@pytest.mark.parametrize(
+    "freshness",
+    [
+        pytest.param({}, id="missing"),
+        pytest.param({"fresh_for_seconds": 0.0}, id="expired"),
+        pytest.param({"fresh_for_seconds": -0.001}, id="negative"),
+        pytest.param({"fresh_for_seconds": 60.001}, id="over-budget"),
+        pytest.param({"fresh_for_seconds": None}, id="null"),
+        pytest.param({"fresh_for_seconds": True}, id="boolean-true"),
+        pytest.param({"fresh_for_seconds": False}, id="boolean-false"),
+        pytest.param({"fresh_for_seconds": "60"}, id="string"),
+        pytest.param({"fresh_for_seconds": float("nan")}, id="nan"),
+        pytest.param({"fresh_for_seconds": float("inf")}, id="infinite"),
+        pytest.param({"fresh_for_seconds": float("-inf")}, id="negative-infinite"),
+        pytest.param({"fresh_for_seconds": []}, id="array"),
+        pytest.param({"fresh_for_seconds": {}}, id="object"),
+    ],
+)
+def test_scientific_engine_projection_rejects_stale_optimization(
+    scientific_snapshot, freshness
+):
+    versions = {"baybe": "fixture-version"}
+    status = {"ready": True, "versions": versions, **freshness}
+    health = {"scientific_engines": {"optimization": status}}
+    before = json.dumps(health)
+    result = scientific_snapshot(health)
+    optimization = result["scientific_engines"][0]
+    assert optimization["id"] == "optimization"
+    assert optimization["ready"] is False
+    assert set(optimization) == {"id", "name", "purpose", "ready", "versions"}
+    assert optimization["versions"] is versions
+    assert result["schema_version"] == 1
+    assert result["health"] is health
+    assert status["ready"] is True
+    assert json.dumps(health) == before
+
+
+@pytest.mark.parametrize(
+    ("ready", "lifetime", "expected"),
+    [
+        (True, 60, True),
+        (True, 60.0, True),
+        (True, 0.125, True),
+        (False, 60.0, False),
+        (1, 60.0, False),
+        ("true", 60.0, False),
+        (None, 60.0, False),
+    ],
+)
+def test_scientific_engine_projection_requires_verified_optimization(
+    scientific_snapshot, ready, lifetime, expected
+):
+    result = scientific_snapshot({"scientific_engines": {"optimization": {
+        "ready": ready, "fresh_for_seconds": lifetime,
+    }}})
+    assert result["scientific_engines"][0]["ready"] is expected
+
+
+@pytest.mark.parametrize("ready", [True, False, 1, "true", None])
+def test_scientific_engine_projection_preserves_other_engines(
+    scientific_snapshot, ready
+):
+    result = scientific_snapshot({"scientific_engines": {
+        "assessment": {"ready": ready}, "process": {"ready": ready},
+    }})
+    engines = {entry["id"]: entry for entry in result["scientific_engines"]}
+    assert engines["optimization"]["ready"] is False
+    assert engines["assessment"]["ready"] is (ready is True)
+    assert engines["process"]["ready"] is (ready is True)
+
+
 @pytest.mark.parametrize(
     ("health", "expected"),
     [
