@@ -8,7 +8,7 @@ import { API } from "@/common/api";
 import { initializeLocale, setLocale, useUiLanguage } from "@/i18n";
 
 const mockRouter = { replace: jest.fn() };
-const mockWorkspace = { local: true, can: jest.fn(() => false), refresh: jest.fn() };
+const mockWorkspace = { local: true, can: jest.fn(() => false), refreshCore: jest.fn() };
 jest.mock("vue-router", () => ({ useRoute: () => ({ query: {} }), useRouter: () => mockRouter }));
 jest.mock("@/common/api", () => ({ API: { get: jest.fn(), post: jest.fn() } }));
 jest.mock("@/store/config", () => ({ useConfigStore: () => ({ envs: {} }) }));
@@ -97,7 +97,7 @@ test.each([
   expect(API.post).not.toHaveBeenCalled();
   expect(API.get).not.toHaveBeenCalled();
   expect(mockRouter.replace).not.toHaveBeenCalled();
-  expect(mockWorkspace.refresh).toHaveBeenCalledTimes(1);
+  expect(mockWorkspace.refreshCore).toHaveBeenCalledTimes(1);
   if (props.sso) {
     expect(wrapper.text()).toContain("当前工作区未启用单点登录。");
     expect(wrapper.find('[data-cy="keycloakLogin"]').exists()).toBe(false);

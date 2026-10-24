@@ -1,6 +1,7 @@
 import { defineComponent } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
-import { API } from "@/common/api";
+import { createPinia, setActivePinia } from "pinia";
+import { useWorkspaceStore } from "@/store/workspace";
 import MeasurementTable from "./MeasurementTable.vue";
 import { useOptimization } from "./useOptimization";
 
@@ -18,7 +19,8 @@ const table = {
 };
 let wrapper, state;
 beforeEach(() => {
-  API.get.mockResolvedValue({ ready: false });
+  setActivePinia(createPinia());
+  jest.spyOn(useWorkspaceStore(), "refreshFeature").mockResolvedValue();
   wrapper = mount(defineComponent({
     components: { MeasurementTable },
     setup() {
