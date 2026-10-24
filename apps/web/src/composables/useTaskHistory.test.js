@@ -1,6 +1,8 @@
 import { defineComponent } from "vue";
 import { mount, flushPromises } from "@vue/test-utils";
 import { createMemoryHistory, createRouter, useRoute } from "vue-router";
+import { createPinia, setActivePinia } from "pinia";
+import { API } from "@/common/api";
 import { useTaskHistory } from "./useTaskHistory";
 import { deliveryReviewGrade, taskDeliveryReview, taskDeliveryReviewPending } from "@/common/delivery-review";
 
@@ -32,13 +34,17 @@ const deferred = () => {
   return { promise, resolve, reject };
 };
 const wrappers = [];
+const originalFetch = globalThis.fetch;
 async function setup(
   api = { get: jest.fn().mockResolvedValue(data()) },
   url = "/results",
 ) {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: "/results", component: { render: () => null } }],
+    routes: [
+      { path: "/results", component: { render: () => null } },
+      { path: "/", component: { render: () => null } },
+    ],
   });
   await router.push(url);
   let state;
@@ -55,9 +61,13 @@ async function setup(
   await flushPromises();
   return { state, router, api, wrapper };
 }
-beforeEach(() => jest.useFakeTimers());
+beforeEach(() => {
+  jest.useFakeTimers();
+  setActivePinia(createPinia());
+});
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
+  globalThis.fetch = originalFetch;
   jest.useRealTimers();
 });
 
@@ -74,6 +84,8 @@ test("mount makes one bounded server-page request and never loads the whole libr
         group: "all",
         archived: false,
       },
+      true,
+      expect.objectContaining({ timeoutMs: 15000, signal: expect.any(AbortSignal) }),
     ],
   ]);
   expect(state.total.value).toBe(1);
@@ -82,6 +94,148 @@ test("mount makes one bounded server-page request and never loads the whole libr
   expect(state.groups.value[0].count).toBe(25);
   expect(state.loaded.value).toBe(true);
   expect(state.more.value).toBe(false);
+});
+
+test.each(["fetch", "body"])("a never-settling %s is bounded by the existing API timeout and can be retried", async (phase) => {
+  const pending = deferred();
+  const response = (value) => ({ ok: true, status: 200, json: async () => value });
+  globalThis.fetch = jest.fn()
+    .mockImplementationOnce(() => phase === "fetch" ? pending.promise
+      : Promise.resolve({ ...response(null), json: () => pending.promise }))
+    .mockResolvedValue(response(data([row("recovered")])));
+  const { state, wrapper } = await setup(API);
+  expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  jest.advanceTimersByTime(API.pollRequestTimeoutMs - 1);
+  await flushPromises();
+  expect(state.loading.value).toBe(true);
+  jest.advanceTimersByTime(1);
+  await flushPromises();
+  expect(state.loading.value).toBe(false);
+  expect(state.error.value).toContain("服务请求超时");
+  expect(state.loaded.value).toBe(false);
+  expect(state.stale.value).toBe(false);
+  expect(state.rows.value).toEqual([]);
+  expect(globalThis.fetch.mock.calls[0][1].signal.aborted).toBe(true);
+  expect(await state.refresh()).toBe(true);
+  pending.resolve(phase === "fetch" ? response(data([row("late")])) : data([row("late")]));
+  await flushPromises();
+  expect(state.rows.value[0].result_id).toBe("recovered");
+  expect(state.error.value).toBe("");
+  expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  const unmounted = deferred();
+  globalThis.fetch.mockReturnValueOnce(unmounted.promise);
+  const interrupted = state.refresh();
+  await flushPromises();
+  wrapper.unmount();
+  expect(await interrupted).toBe(false);
+  expect(globalThis.fetch.mock.calls[2][1].signal.aborted).toBe(true);
+  unmounted.resolve(response(data([row("after-unmount")])));
+  await flushPromises();
+  expect(state.rows.value[0].result_id).toBe("recovered");
+  expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+});
+
+test.each(
+  ["refresh", "invalid URL", "navigation", "unmount"].flatMap(action =>
+    ["resolve", "reject"].map(mode => [action, mode]),
+  ),
+)("%s aborts its owned read and ignores a late %s", async (action, mode) => {
+  const old = deferred();
+  const api = { get: jest.fn().mockReturnValueOnce(old.promise)
+    .mockResolvedValue(data([row("current")])) };
+  const { state, router, wrapper } = await setup(api);
+  const signal = api.get.mock.calls[0][3]?.signal;
+  expect(signal).toBeInstanceOf(AbortSignal);
+  if (action === "refresh") await state.refresh();
+  else if (action === "invalid URL") await router.replace("/results?page=NaN");
+  else if (action === "navigation") await router.push("/");
+  else wrapper.unmount();
+  expect(signal.aborted).toBe(true);
+  const before = { rows: state.rows.value, error: state.error.value, loading: state.loading.value };
+  old[mode](mode === "resolve" ? data([row("late")]) : new Error("late failure"));
+  await flushPromises();
+  expect({ rows: state.rows.value, error: state.error.value, loading: state.loading.value }).toEqual(before);
+  if (action === "navigation") {
+    await router.push("/results");
+    await flushPromises();
+    expect(state.rows.value[0].result_id).toBe("current");
+    expect(state.loading.value).toBe(false);
+  }
+  jest.advanceTimersByTime(18000);
+  await flushPromises();
+  expect(api.get).toHaveBeenCalledTimes(["refresh", "navigation"].includes(action) ? 2 : 1);
+});
+
+test.each([[], [row()]].map(accepted => [accepted]))("accepted history remains stale through a pending retry until valid success (%j)", async (accepted) => {
+  const retry = deferred();
+  const api = { get: jest.fn().mockResolvedValueOnce(data(accepted))
+    .mockRejectedValueOnce(new Error(JSON.stringify({ detail: "History unavailable" })))
+    .mockReturnValueOnce(retry.promise) };
+  const { state } = await setup(api);
+  expect(state.loaded.value).toBe(true);
+  expect(state.rows.value).toEqual(accepted);
+  await state.refresh();
+  expect(state.stale.value).toBe(true);
+  const pending = state.refresh();
+  await flushPromises();
+  expect(state.error.value).toBe("");
+  expect(state.loading.value).toBe(true);
+  expect(state.stale.value).toBe(true);
+  expect(state.rows.value).toEqual(accepted);
+  retry.resolve(data([row("fresh")]));
+  expect(await pending).toBe(true);
+  expect(state.stale.value).toBe(false);
+  expect(state.rows.value[0].result_id).toBe("fresh");
+});
+
+test("old query success cannot clear current history staleness or finish its pending retry", async () => {
+  const old = deferred(), retry = deferred();
+  const api = { get: jest.fn().mockResolvedValueOnce(data([row("first")]))
+    .mockRejectedValueOnce(new Error(JSON.stringify({ detail: "Previous unavailable" })))
+    .mockReturnValueOnce(old.promise).mockResolvedValueOnce(data([row("current")]))
+    .mockRejectedValueOnce(new Error(JSON.stringify({ detail: "Current unavailable" })))
+    .mockReturnValueOnce(retry.promise) };
+  const { state } = await setup(api);
+  await state.refresh();
+  expect(state.stale.value).toBe(true);
+  const previous = state.refresh();
+  await flushPromises();
+  state.query.value = "current";
+  expect(state.stale.value).toBe(false);
+  jest.advanceTimersByTime(300);
+  await flushPromises();
+  await state.refresh();
+  expect(state.stale.value).toBe(true);
+  const pending = state.refresh();
+  await flushPromises();
+  old.resolve(data([row("old")]));
+  await previous;
+  expect(state.stale.value).toBe(true);
+  expect(state.loading.value).toBe(true);
+  expect(state.rows.value[0].result_id).toBe("current");
+  retry.resolve(data([row("fresh-current")]));
+  await pending;
+  expect(state.stale.value).toBe(false);
+  expect(state.rows.value[0].result_id).toBe("fresh-current");
+});
+
+test.each(["query", "group", "navigation", "view"])("an explicit %s edit repairs an invalid URL through the existing owner once", async (intent) => {
+  const { state, router, api } = await setup({ get: jest.fn().mockResolvedValue(data()) }, "/results?page=NaN&status=bad");
+  expect(api.get).not.toHaveBeenCalled();
+  if (intent === "query") {
+    state.query.value = "CCO";
+    jest.advanceTimersByTime(300);
+  } else if (intent === "group") await state.chooseGroup("all");
+  else if (intent === "view") state.view.value = "list";
+  else await router.push("/results");
+  await flushPromises();
+  expect(api.get).toHaveBeenCalledTimes(1);
+  expect(router.currentRoute.value.query).toEqual(intent === "query" ? { query: "CCO" } : intent === "view" ? { view: "list" } : {});
+  expect(state.routeValid.value).toBe(true);
+  expect(state.error.value).toBe("");
+  await router.push({ path: "/results", query: { ...router.currentRoute.value.query, origin: "sidebar" } });
+  await flushPromises();
+  expect(api.get).toHaveBeenCalledTimes(1);
 });
 test("all URL controls take priority on refresh; no page-local filtering discards server matches", async () => {
   const api = {
@@ -119,7 +273,9 @@ test("search debounces 300 ms, resets page, invalidates old requests immediately
       .mockResolvedValue(data([row("new-match")], 1)),
   };
   const { state, router } = await setup(api, "/results?page=2");
+  const oldSignal = api.get.mock.calls[0][3]?.signal;
   state.query.value = "[NH3+]CC.[Cl-]";
+  expect(oldSignal?.aborted).toBe(true);
   expect(state.page.value).toBe(0);
   expect(state.loading.value).toBe(true);
   old.resolve(data([row("old-page")], 25));

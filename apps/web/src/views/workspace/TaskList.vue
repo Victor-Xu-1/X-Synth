@@ -1,5 +1,6 @@
 <template>
-  <section ref="historyRoot" class="standard-page task-history" :aria-busy="loading">
+  <section ref="historyRoot" class="standard-page task-history" :aria-busy="loading"
+    :data-history-freshness="stale ? 'stale' : loading ? 'updating' : loaded ? 'fresh' : 'unread'">
     <header class="page-heading history-heading">
       <h1>{{ $tr('任务记录') }}</h1>
       <div class="page-actions">
@@ -11,7 +12,7 @@
               variant="text"
               :aria-label="$tr('刷新任务')"
               :loading="loading"
-              :disabled="loading"
+              :disabled="loading || !routeValid"
               @click="refresh"
             />
           </template>
@@ -127,10 +128,10 @@
           ><v-btn
             variant="text"
             size="small"
-            prepend-icon="mdi-refresh"
+            :prepend-icon="routeValid ? 'mdi-refresh' : 'mdi-filter-remove-outline'"
             :disabled="loading"
-            @click="refresh"
-            >{{ $tr('重试') }}</v-btn
+            @click="routeValid ? refresh() : resetInvalidRoute()"
+            >{{ $tr(routeValid ? '重试' : '清除筛选') }}</v-btn
           >
         </div>
         <div v-if="actionError" class="tool-error" role="alert">
@@ -448,6 +449,8 @@ const {
   ungroupedTotal,
   loading,
   loaded,
+  stale,
+  routeValid,
   error,
   query,
   status,
@@ -463,6 +466,7 @@ const {
   chooseGroup,
   chooseArchive,
   clearFilters,
+  resetInvalidRoute,
   selection,
   selectedIds,
   allSelected,
@@ -555,10 +559,16 @@ const previewDetailQuery = computed(() =>
         .query
     : {},
 );
-const countLabel = computed(() => !loaded.value
-  ? uiText(loading.value ? "正在读取任务" : "任务尚未加载")
-  : uiText("共 {total} 个任务，第 {page} / {pageCount} 页",
-    { total: total.value, page: page.value + 1, pageCount: pageCount.value }));
+const countLabel = computed(() =>
+  !loaded.value
+    ? uiText(loading.value ? "正在读取任务" : "任务尚未加载")
+    : uiText(
+        stale.value
+          ? "上次读取：{total} 个任务，第 {page} / {pageCount} 页"
+          : "共 {total} 个任务，第 {page} / {pageCount} 页",
+        { total: total.value, page: page.value + 1, pageCount: pageCount.value },
+      ),
+);
 const selectionArchivable = computed(
   () =>
     selection.value.length > 0 &&

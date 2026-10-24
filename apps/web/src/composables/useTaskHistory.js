@@ -24,6 +24,7 @@ export function useTaskHistory({ api = API, route, router } = {}) {
     ungroupedTotal = ref(0);
   const loading = ref(false),
     loaded = ref(false),
+    stale = ref(false),
     error = ref(""),
     selection = ref([]);
   let initial;
@@ -38,7 +39,8 @@ export function useTaskHistory({ api = API, route, router } = {}) {
     group = ref(initial.group);
   const page = ref(initial.page),
     view = ref(initial.view),
-    archived = ref(initial.archived);
+    archived = ref(initial.archived),
+    routeValid = ref(!error.value);
   const pageCount = computed(() =>
     Math.max(1, Math.ceil(total.value / HISTORY_PAGE_SIZE)),
   );
@@ -56,11 +58,16 @@ export function useTaskHistory({ api = API, route, router } = {}) {
     disposed = false,
     suspended = false,
     polling = false,
-    routeValid = !error.value,
+    controller,
     debounce,
     poll;
   const historyPath = route?.path;
   const ownLocations = new Set();
+  function invalidateRead() {
+    generation++;
+    controller?.abort();
+    controller = null;
+  }
   const state = () => ({
     query: query.value || "",
     status: status.value,
@@ -102,11 +109,14 @@ export function useTaskHistory({ api = API, route, router } = {}) {
   }
 
   async function refresh({ background = false } = {}) {
-    if (disposed || !routeValid || (route && route.path !== historyPath))
+    if (disposed || !routeValid.value || (route && route.path !== historyPath))
       return false;
     clearTimeout(debounce);
-    const current = ++generation,
+    invalidateRead();
+    const current = generation,
+      readController = new AbortController(),
       filters = state();
+    controller = readController;
     polling = background;
     loading.value = !background;
     error.value = "";
@@ -118,7 +128,7 @@ export function useTaskHistory({ api = API, route, router } = {}) {
         status: filters.status,
         group: filters.group,
         archived: filters.archived,
-      });
+      }, true, { signal: readController.signal, timeoutMs: API.pollRequestTimeoutMs });
     try {
       await syncLocation();
       if (disposed || current !== generation) return false;
@@ -136,6 +146,7 @@ export function useTaskHistory({ api = API, route, router } = {}) {
         clearSelection();
         rows.value = [];
         loaded.value = false;
+        stale.value = false;
         loading.value = true;
         filters.page = lastPage;
         await syncLocation();
@@ -173,12 +184,16 @@ export function useTaskHistory({ api = API, route, router } = {}) {
       ungroupedTotal.value = result.ungrouped_total;
       selection.value = reconcileHistorySelection(selection.value, rows.value);
       loaded.value = true;
+      stale.value = false;
       return true;
     } catch (e) {
-      if (!disposed && current === generation)
+      if (!disposed && current === generation) {
+        stale.value = loaded.value;
         error.value = errorMessage(e, "任务历史加载失败。");
+      }
       return false;
     } finally {
+      if (controller === readController) controller = null;
       if (!disposed && current === generation) {
         loading.value = false;
         polling = false;
@@ -188,13 +203,14 @@ export function useTaskHistory({ api = API, route, router } = {}) {
 
   function schedule(delay = 0) {
     clearTimeout(debounce);
-    generation++;
+    invalidateRead();
     clearSelection();
     rows.value = [];
     loaded.value = false;
+    stale.value = false;
     loading.value = true;
     error.value = "";
-    routeValid = true;
+    routeValid.value = true;
     const load = () => {
       void refresh();
     };
@@ -236,17 +252,24 @@ export function useTaskHistory({ api = API, route, router } = {}) {
   if (route)
     watch(
       [() => route.path, () => route.query],
-      ([path, params]) => {
+      ([path, params], [previousPath]) => {
         if (disposed) return;
         if (path !== historyPath) {
           clearTimeout(debounce);
-          generation++;
+          invalidateRead();
+          loading.value = false;
+          polling = false;
           return;
         }
         try {
           const next = readHistoryRouteQuery(params);
-          routeValid = true;
-          if (ownLocations.has(key(next)) || key(next) === key(state())) return;
+          const wasValid = routeValid.value;
+          routeValid.value = true;
+          if (
+            wasValid &&
+            (ownLocations.has(key(next)) ||
+              (previousPath === historyPath && key(next) === key(state())))
+          ) return;
           suspended = true;
           for (const [name, value] of Object.entries(next))
             ({ query, status, group, page, view, archived })[name].value =
@@ -255,13 +278,15 @@ export function useTaskHistory({ api = API, route, router } = {}) {
           schedule();
         } catch (e) {
           clearTimeout(debounce);
-          generation++;
+          invalidateRead();
           clearSelection();
           rows.value = [];
           loaded.value = false;
+          stale.value = false;
           loading.value = false;
+          polling = false;
           error.value = errorMessage(e);
-          routeValid = false;
+          routeValid.value = false;
         }
       },
       { flush: "sync" },
@@ -274,7 +299,7 @@ export function useTaskHistory({ api = API, route, router } = {}) {
   function togglePage(checked) {
     if (!loading.value) selection.value = checked ? pageSelection.value : [];
   }
-  async function navigate(values) {
+  async function navigate(values, replace = false) {
     if (disposed) return;
     if (!router || !route) {
       change(values);
@@ -282,7 +307,7 @@ export function useTaskHistory({ api = API, route, router } = {}) {
     }
     clearSelection();
     try {
-      await router.push({
+      await router[replace ? "replace" : "push"]({
         query: historyRouteQuery({ ...state(), ...values }, route.query),
       });
     } catch (e) {
@@ -305,6 +330,10 @@ export function useTaskHistory({ api = API, route, router } = {}) {
   function clearFilters() {
     change({ query: "", status: "all", page: 0 });
   }
+  function resetInvalidRoute() {
+    if (disposed || routeValid.value || (route && route.path !== historyPath)) return false;
+    return navigate(readHistoryRouteQuery(), true);
+  }
 
   onMounted(() => {
     if (!error.value) void refresh();
@@ -321,7 +350,7 @@ export function useTaskHistory({ api = API, route, router } = {}) {
   });
   onBeforeUnmount(() => {
     disposed = true;
-    generation++;
+    invalidateRead();
     clearTimeout(debounce);
     clearInterval(poll);
   });
@@ -333,6 +362,8 @@ export function useTaskHistory({ api = API, route, router } = {}) {
     ungroupedTotal,
     loading,
     loaded,
+    stale,
+    routeValid,
     error,
     query,
     status,
@@ -348,6 +379,7 @@ export function useTaskHistory({ api = API, route, router } = {}) {
     chooseGroup,
     chooseArchive,
     clearFilters,
+    resetInvalidRoute,
     selection,
     selectedIds,
     allSelected,
