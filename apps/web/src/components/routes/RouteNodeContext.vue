@@ -130,6 +130,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { API } from "@/common/api";
 import { downloadChemicalFile } from "@/common/chemical-files";
+import { REACTION_REQUEST_TIMEOUT_MS } from "@/common/reaction-input";
 import { errorMessage } from "@/common/workspace-errors";
 import { useWorkspaceStore } from "@/store/workspace";
 import {
@@ -164,6 +165,7 @@ const workspace = useWorkspaceStore(),
 const exporting = ref(false),
   exportError = ref("");
 let exportGeneration = 0,
+  exportController,
   disposed = false;
 const locations = computed(() =>
   moleculeLocations(props.node.smiles, props.snapshot),
@@ -187,33 +189,41 @@ watch(
     stockOpen.value = false;
     conditionOpen.value = false;
     exportGeneration++;
+    exportController?.abort();
+    exportController = undefined;
     exporting.value = false;
     exportError.value = "";
   },
+  { flush: "sync" },
 );
 async function exportRxn() {
   if (exporting.value || !reaction.value) return;
   const current = ++exportGeneration,
-    value = reaction.value;
+    value = reaction.value,
+    controller = new AbortController();
+  exportController = controller;
   exporting.value = true;
   exportError.value = "";
   try {
     const output = await API.post("/api/v1/structure/reaction-export", {
       reactants: value.precursors,
       product: value.product,
-    });
+    }, false, { signal: controller.signal, timeoutMs: REACTION_REQUEST_TIMEOUT_MS });
     if (!disposed && current === exportGeneration)
       downloadChemicalFile(output, "reaction");
   } catch (error) {
     if (!disposed && current === exportGeneration)
       exportError.value = errorMessage(error, "RXN 导出失败。");
   } finally {
+    if (exportController === controller) exportController = undefined;
     if (!disposed && current === exportGeneration) exporting.value = false;
   }
 }
 onBeforeUnmount(() => {
   disposed = true;
   exportGeneration++;
+  exportController?.abort();
+  exportController = undefined;
 });
 </script>
 <style scoped>
