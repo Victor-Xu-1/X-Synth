@@ -19,8 +19,8 @@
               variant="text"
               size="x-small"
               :aria-label="$tr('放大绘制{label}', { label: $tr(label) })"
-              :disabled="disabled || fileBusy"
-              @click="drawing = true" /></template
+              :disabled="disabled || pending"
+              @click="openDrawing" /></template
         ></v-tooltip>
       </div>
     </div>
@@ -137,6 +137,10 @@ defineExpose({
   draftRevision,
   read,
 });
+function openDrawing() {
+  if (props.disabled || pending.value) return;
+  drawing.value = true;
+}
 async function read() {
   if (
     drawing.value ||
