@@ -1,9 +1,14 @@
 import { installKetcherScrollCoordinates, resetKetcherScrollCoordinates } from "./ketcher-scroll";
 import { installKetcherPaperExtent } from "./ketcher-paper";
 
-export function prepareKetcherDocument(doc) {
-  if (!doc?.head || doc.getElementById("x-synth-ketcher-responsive-style"))
-    return;
+export function prepareKetcherDocument(
+  doc,
+  { hostViewTools = false, hostFullscreen = false } = {},
+) {
+  if (!doc?.head) return;
+  doc.documentElement?.toggleAttribute("data-x-synth-host-view-tools", hostViewTools);
+  doc.documentElement?.toggleAttribute("data-x-synth-host-fullscreen", hostViewTools && hostFullscreen);
+  if (doc.getElementById("x-synth-ketcher-responsive-style")) return;
   const style = doc.createElement("style");
   style.id = "x-synth-ketcher-responsive-style";
   style.textContent = `
@@ -12,6 +17,10 @@ export function prepareKetcherDocument(doc) {
       width: 100% !important; height: 100% !important; min-width: 0 !important; min-height: 0 !important;
     }
     [class*="App-module_canvas"] { min-width: 0 !important; min-height: 0 !important; }
+    html[data-x-synth-host-view-tools] [class*="App-module_top"] > :has(> button > [data-testid="zoom-input"]),
+    html[data-x-synth-host-fullscreen] [class*="App-module_top"] button[title="Fullscreen mode"] {
+      display: none !important;
+    }
     @media (max-width: 360px) {
       [class*="App-module_top"] {
         padding-inline: 6px !important;

@@ -1,5 +1,29 @@
 import { fitKetcherCanvas, prepareKetcherDocument, zoomKetcherCanvas } from "./ketcher-layout";
 
+const viewSelectors = [
+  'html[data-x-synth-host-view-tools] [class*="App-module_top"] > :has(> button > [data-testid="zoom-input"])',
+  'html[data-x-synth-host-fullscreen] [class*="App-module_top"] button[title="Fullscreen mode"]',
+];
+
+function hiddenRules(rules) {
+  return [...rules].flatMap(rule => [
+    ...(rule.style?.display?.trim().toLowerCase() === "none" ? [rule] : []),
+    ...(rule.cssRules ? hiddenRules(rule.cssRules) : []),
+  ]);
+}
+
+function prohibitedHidingSelectors(rules) {
+  return hiddenRules(rules).flatMap(rule => typeof rule.selectorText === "string"
+    ? rule.selectorText.split(",").map(selector => selector.trim()).filter(selector => !viewSelectors.includes(selector))
+    : ["Unscoped display:none rule"]);
+}
+
+afterEach(() => {
+  document.getElementById("x-synth-ketcher-responsive-style")?.remove();
+  document.documentElement.removeAttribute("data-x-synth-host-view-tools");
+  document.documentElement.removeAttribute("data-x-synth-host-fullscreen");
+});
+
 class Point {
   constructor(x = 0, y = 0) { this.x = x; this.y = y; }
   add(value) { return new Point(this.x + value.x, this.y + value.y); }
@@ -48,7 +72,7 @@ test("inline and modal editors share one responsive compatibility adapter", () =
   document.querySelector("#x-synth-ketcher-responsive-style").remove();
 });
 
-test("narrow native toolbars remain reachable without scaling or suppressing their controls", () => {
+test("narrow native toolbars remain reachable without scaling or suppressing chemistry controls", () => {
   prepareKetcherDocument(document);
   const css = document.querySelector("#x-synth-ketcher-responsive-style").textContent;
   expect(css).toContain("@media (max-width: 360px)");
@@ -59,8 +83,55 @@ test("narrow native toolbars remain reachable without scaling or suppressing the
   expect(css).toContain('[class*="Dialog-module_dialog"]');
   expect(css).toContain("max-width: calc(100% - 16px)");
   expect(css).not.toContain("transform: scale");
-  expect(css).not.toContain("display: none");
+  expect(prohibitedHidingSelectors(document.querySelector("#x-synth-ketcher-responsive-style").sheet.cssRules)).toStrictEqual([]);
   document.querySelector("#x-synth-ketcher-responsive-style").remove();
+});
+
+test("standalone and modal documents retain native view controls by default", () => {
+  prepareKetcherDocument(document);
+  expect(document.documentElement.hasAttribute("data-x-synth-host-view-tools")).toBe(false);
+  expect(document.documentElement.hasAttribute("data-x-synth-host-fullscreen")).toBe(false);
+  expect(() => prepareKetcherDocument(null, { hostViewTools: true })).not.toThrow();
+});
+
+test("host view ownership is explicit, idempotent and reversible", () => {
+  prepareKetcherDocument(document, { hostViewTools: true });
+  expect(document.documentElement.hasAttribute("data-x-synth-host-view-tools")).toBe(true);
+  prepareKetcherDocument(document, { hostViewTools: true });
+  expect(document.querySelectorAll("#x-synth-ketcher-responsive-style")).toHaveLength(1);
+  prepareKetcherDocument(document);
+  expect(document.documentElement.hasAttribute("data-x-synth-host-view-tools")).toBe(false);
+  expect(document.querySelectorAll("#x-synth-ketcher-responsive-style")).toHaveLength(1);
+});
+
+test("only host-owned duplicate native view commands can be suppressed", () => {
+  prepareKetcherDocument(document, { hostViewTools: true });
+  const hidden = hiddenRules(document.querySelector("#x-synth-ketcher-responsive-style").sheet.cssRules);
+  expect(hidden).toHaveLength(1);
+  expect(hidden[0].selectorText.split(",").map(selector => selector.trim())).toStrictEqual(viewSelectors);
+  expect(Array.from(hidden[0].style)).toStrictEqual(["display"]);
+  expect(hidden[0].style.getPropertyPriority("display")).toBe("important");
+});
+
+test.each([
+  ["media", "@media (max-width: 360px) { .Ketcher-root { display: none !important; } }"],
+  ["supports/media", "@supports (display: grid) { @media (max-width: 360px) { .Ketcher-root { display: NONE; } } }"],
+])("chemistry hiding inside nested %s rules cannot bypass the guard", (_, css) => {
+  const style = document.createElement("style");
+  style.textContent = css;
+  document.head.appendChild(style);
+  try {
+    expect(hiddenRules(style.sheet.cssRules)).toHaveLength(1);
+    expect(prohibitedHidingSelectors(style.sheet.cssRules)).toStrictEqual([".Ketcher-root"]);
+  } finally { style.remove(); }
+});
+
+test.each([false, true])("native fullscreen stays available unless a supported host replaces it: %s", supported => {
+  prepareKetcherDocument(document, { hostViewTools: true, hostFullscreen: supported });
+  expect(document.documentElement.hasAttribute("data-x-synth-host-fullscreen")).toBe(supported);
+  prepareKetcherDocument(document, { hostFullscreen: true });
+  expect(document.documentElement.hasAttribute("data-x-synth-host-view-tools")).toBe(false);
+  expect(document.documentElement.hasAttribute("data-x-synth-host-fullscreen")).toBe(false);
 });
 
 test("the complete visual box is fitted once without native double-shrinking", () => {
