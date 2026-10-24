@@ -17,8 +17,8 @@ from packages.platform.performance import PerformanceBudget
 
 PUBLIC_ROWS = [
     {"key": "VITE_EMAIL_REQUIRED", "value": "True"},
-    {"key": "VITE_GTAG", "value": " G-PUBLIC-UNIT "},
 ]
+RETIRED_ROW = {"key": "VITE_GTAG", "value": " G-RETIRED-UNIT "}
 PRIVATE_ROW = {"key": "UNRELATED_OPTION", "value": "unit-private-marker"}
 
 
@@ -43,7 +43,7 @@ INVALID_PAYLOADS = [
     pytest.param(encoded([PUBLIC_ROWS[0], {**PUBLIC_ROWS[0], "value": "False"}]), id="conflicting-public-duplicate"),
     pytest.param(b'[{"key":"VITE_GTAG","key":"UNRELATED_OPTION","value":"unit-private-marker"}]', id="duplicate-json-key"),
     pytest.param(b'[{"key":"VITE_GTAG","value":"public","value":"unit-private-marker"}]', id="duplicate-json-value"),
-    pytest.param(b'[{"key":"VITE_GTAG","value":"a"},{"key":"VITE_\\u0047TAG","value":"b"}]', id="escaped-public-duplicate"),
+    pytest.param(b'[{"key":"VITE_EMAIL_REQUIRED","value":"a"},{"key":"VITE_EMAIL_\\u0052EQUIRED","value":"b"}]', id="escaped-public-duplicate"),
     pytest.param(b'[{"key":"UNRELATED_OPTION","value":NaN}]', id="non-finite-json"),
     pytest.param(b'[{"key":"VITE_GTAG","value":"\xff"}]', id="invalid-encoding"),
     pytest.param(b'[{"key":"VITE_GTAG","value":"\xed\xa0\x80"}]', id="raw-surrogate-encoding"),
@@ -74,25 +74,35 @@ def test_projection_rejects_malformed_or_ambiguous_payload(projection, payload):
         project(payload)
 
 
-@pytest.mark.parametrize("rows", [[], [PRIVATE_ROW], [PUBLIC_ROWS[0]], PUBLIC_ROWS])
+@pytest.mark.parametrize("rows", [
+    [], [PRIVATE_ROW], [RETIRED_ROW], PUBLIC_ROWS,
+    [RETIRED_ROW, PUBLIC_ROWS[0]], [PUBLIC_ROWS[0], RETIRED_ROW],
+])
 def test_projection_preserves_optional_keys_and_order(projection, rows):
     project, _ = projection
     before = encoded(rows)
     result = json.loads(project(before))
-    assert result == [row for row in rows if row["key"] in {"VITE_GTAG", "VITE_EMAIL_REQUIRED"}]
+    assert result == [row for row in rows if row["key"] == "VITE_EMAIL_REQUIRED"]
     assert encoded(rows) == before
 
 
 @pytest.mark.parametrize("value", ["", "False", "true", "0", " quoted ", "a\nb\t\\\"", "\u6d4b\u8bd5", "\U00010400"])
 def test_projection_preserves_opaque_string_values(projection, value):
     project, _ = projection
-    rows = [{"value": value, "key": "VITE_GTAG"}]
+    rows = [{"value": value, "key": "VITE_EMAIL_REQUIRED"}]
     assert json.loads(project(encoded(rows))) == rows
 
 
 def test_projection_discards_repeated_disallowed_rows_without_reordering_public_rows(projection):
     project, _ = projection
-    rows = [PRIVATE_ROW, PUBLIC_ROWS[0], PRIVATE_ROW, PUBLIC_ROWS[1]]
+    rows = [PRIVATE_ROW, RETIRED_ROW, PUBLIC_ROWS[0], PRIVATE_ROW]
+    assert json.loads(project(encoded(rows))) == PUBLIC_ROWS
+
+
+@pytest.mark.parametrize("last_value", [RETIRED_ROW["value"], "different-retired-value"])
+def test_projection_discards_repeated_retired_telemetry_keys(projection, last_value):
+    project, _ = projection
+    rows = [RETIRED_ROW, PUBLIC_ROWS[0], {**RETIRED_ROW, "value": last_value}]
     assert json.loads(project(encoded(rows))) == PUBLIC_ROWS
 
 
@@ -153,13 +163,28 @@ def proxy(monkeypatch):
 @pytest.mark.parametrize("suffix", ["", "/", "?unit=1"])
 def test_proxy_projects_public_rows_and_preserves_transport(proxy, method, suffix):
     client, upstream = proxy
-    upstream.payload = encoded([PRIVATE_ROW, PUBLIC_ROWS[0], PRIVATE_ROW, PUBLIC_ROWS[1]])
+    upstream.payload = encoded([PRIVATE_ROW, RETIRED_ROW, PUBLIC_ROWS[0], PRIVATE_ROW])
     path = "/api/frontend-config/get-all-config" + suffix
     response = client.request(method, path, headers={"Authorization": "Bearer synthetic-unit-value"})
     assert response.status_code == 200
     assert response.json() == PUBLIC_ROWS
     assert "unit-private-marker" not in response.text
+    assert "G-RETIRED-UNIT" not in response.text
     assert upstream.requests == [(method, path, b"", "Bearer synthetic-unit-value")]
+
+
+@pytest.mark.parametrize("rows", [
+    [RETIRED_ROW], [RETIRED_ROW, RETIRED_ROW],
+    [RETIRED_ROW, PUBLIC_ROWS[0], {**RETIRED_ROW, "value": "other-retired-value"}],
+])
+def test_proxy_drops_retired_telemetry_including_duplicate_rows(proxy, rows):
+    client, upstream = proxy
+    upstream.payload = encoded(rows)
+    response = client.get("/api/frontend-config/get-all-config")
+    assert response.status_code == 200
+    assert response.json() == [row for row in rows if row["key"] == "VITE_EMAIL_REQUIRED"]
+    assert "G-RETIRED-UNIT" not in response.text
+    assert len(upstream.requests) == 1
 
 
 @pytest.mark.parametrize("payload", INVALID_PAYLOADS)
@@ -186,7 +211,7 @@ def test_proxy_projects_with_json_media_type(proxy):
 def test_proxy_preserves_success_status_while_projecting(proxy, status):
     client, upstream = proxy
     upstream.status = status
-    upstream.payload = encoded([PRIVATE_ROW, PUBLIC_ROWS[0]])
+    upstream.payload = encoded([PRIVATE_ROW, RETIRED_ROW, PUBLIC_ROWS[0]])
     response = client.get("/api/frontend-config/get-all-config")
     assert response.status_code == status
     assert response.json() == [PUBLIC_ROWS[0]]
@@ -218,7 +243,7 @@ def test_proxy_preserves_byte_budgets_before_projection(proxy, direction):
 def test_proxy_preserves_response_budget_after_projection_encoding(proxy):
     client, upstream = proxy
     upstream.payload = json.dumps(
-        [{"key": "VITE_GTAG", "value": "\u6d4b" * 100}], ensure_ascii=False
+        [{"key": "VITE_EMAIL_REQUIRED", "value": "\u6d4b" * 100}], ensure_ascii=False
     ).encode("utf-8")
     assert len(upstream.payload) <= 512
     response = client.get("/api/frontend-config/get-all-config")
