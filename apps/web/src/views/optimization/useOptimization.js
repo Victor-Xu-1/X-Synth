@@ -239,7 +239,7 @@ export function useOptimization({ onResult, blocked = () => false } = {}) {
       );
       if (disposed || ticket !== revision || !identityCurrent()) return;
       result.value = validateResult(response, request);
-      if (onResult && identityCurrent()) await onResult(response);
+      if (onResult && identityCurrent()) await onResult(response, identityCurrent);
     } catch (failure) {
       if (!disposed && ticket === revision && identityCurrent())
         error.value = API.toErrorObject(failure).string_error;

@@ -6,6 +6,13 @@ import { defineComponent } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import { API } from "@/common/api";
 import { useOptimization } from "./useOptimization";
+import { useAnalysisDelivery } from "@/composables/useAnalysisDelivery";
+import { useRouter } from "vue-router";
+
+jest.mock("vue-router", () => ({
+  useRoute: jest.fn(() => ({ fullPath: "/optimization" })),
+  useRouter: jest.fn(),
+}));
 
 jest.mock("@/common/api", () => ({
   API: {
@@ -211,7 +218,7 @@ test("validated recommendation is delivered to the persisted result view only on
   API.post.mockImplementationOnce((_, body) => Promise.resolve(response(body)));
   await state.recommend();
   expect(onResult).toHaveBeenCalledTimes(1);
-  expect(onResult).toHaveBeenCalledWith(state.result.value);
+  expect(onResult).toHaveBeenCalledWith(state.result.value, expect.any(Function));
 });
 
 test("a failed result-page navigation retains the validated saved result for an explicit recovery link", async () => {
@@ -397,4 +404,33 @@ test("retired ownership ignores a deferred delivery error after an accepted resu
     expect(state.result.value).toEqual(current);
     expect(state.error.value).toBe("Current delivery notice");
   } finally { delivery.resolve(); await pending; localStorage.removeItem("accessToken"); }
+});
+
+test.each(["success", "reject"])("deferred onCommitted %s cannot deliver or overwrite current optimization UI after A-to-B", async outcome => {
+  localStorage.setItem("accessToken", "fixture-async-owner-a");
+  const committed = deferred(), push = jest.fn().mockResolvedValue(undefined);
+  useRouter.mockReturnValue({ push });
+  const onResult = jest.fn(useAnalysisDelivery("optimization", { onCommitted: () => committed.promise }));
+  const { state } = setup({ onResult }); await confirmed(state); await flushPromises();
+  API.post.mockImplementationOnce((_, body) => Promise.resolve(response(body)));
+  const pending = state.recommend(); await flushPromises();
+  const draft = JSON.stringify([state.content.value, state.selectedRows.value, state.factors.value, state.target]);
+  localStorage.setItem("accessToken", "fixture-async-owner-b");
+  const current = { record_id: "d".repeat(32) };
+  state.result.value = current; state.error.value = "Current async delivery notice";
+  window.history.replaceState({ position: 16, retained: "Current owner history" }, "");
+  try {
+    if (outcome === "success") committed.resolve();
+    else committed.reject(new Error("Obsolete input commit error"));
+    await pending;
+    expect(onResult).toHaveBeenCalledWith(expect.any(Object), expect.any(Function));
+    expect(state.result.value).toEqual(current);
+    expect(state.error.value).toBe("Current async delivery notice");
+    expect(push).not.toHaveBeenCalled();
+    expect(window.history.state).toEqual({ position: 16, retained: "Current owner history" });
+    expect(JSON.stringify([state.content.value, state.selectedRows.value, state.factors.value, state.target])).toBe(draft);
+    expect(state.running.value).toBe(false);
+  } finally {
+    committed.resolve(); await pending; localStorage.removeItem("accessToken"); window.history.replaceState({}, "");
+  }
 });
