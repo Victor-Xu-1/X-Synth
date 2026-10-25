@@ -30,6 +30,7 @@
             ref="editor"
             v-model:smiles="smiles"
             :show-actions="false"
+            :content-changed="markNativeDraft"
             fill-height
             @commit="acceptEditorCommit"
           />
@@ -101,13 +102,15 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { onBeforeRouteLeave, useRoute } from "vue-router";
 import { API } from "@/common/api";
 import ModuleWorkbench from "@/components/ModuleWorkbench.vue";
 import InlineKetcherEditor from "@/components/InlineKetcherEditor.vue";
 import SmilesImage from "@/components/SmilesImage.vue";
 import MoleculeFileControls from "@/components/workspace/MoleculeFileControls.vue";
 import { useWorkspaceStore } from "@/store/workspace";
+import { createInputDraftNavigation } from "@/common/input-draft-navigation";
+import { uiText } from "@/i18n";
 
 const workspace = useWorkspaceStore();
 const route = useRoute();
@@ -124,6 +127,7 @@ const smiles = ref(
   typeof route.query.smiles === "string" ? route.query.smiles : "",
 );
 const committedSmiles = ref("");
+const nativeDraft = ref(false);
 const applying = ref(false);
 const canonicalizing = ref(false);
 const busy = computed(() => applying.value || canonicalizing.value);
@@ -133,6 +137,16 @@ const clearBlocked = computed(() => busy.value || filePending.value || editorBus
 const errorMessage = ref("");
 const notice = ref("");
 let disposed = false, normalizationController = null;
+const navigation = createInputDraftNavigation({
+  snapshot: () => (smiles.value?.trim() || committedSmiles.value || nativeDraft.value
+    || filePending.value || busy.value) ? "drawing" : "",
+  confirm: () => window.confirm(uiText("离开并放弃当前绘图？")),
+});
+// Applying a canvas is not a persistent save; all current work stays protected.
+navigation.accept("");
+onBeforeRouteLeave(navigation.guard);
+window.addEventListener("beforeunload", navigation.beforeUnload);
+function markNativeDraft() { nativeDraft.value = true; }
 
 watch(() => workspace.can("drawing"), (allowed) => {
   if (!allowed) normalizationController?.abort();
@@ -140,10 +154,13 @@ watch(() => workspace.can("drawing"), (allowed) => {
 onBeforeUnmount(() => {
   disposed = true;
   normalizationController?.abort();
+  window.removeEventListener("beforeunload", navigation.beforeUnload);
+  navigation.dispose();
 });
 
 const commitStructure = (value) => {
   committedSmiles.value = value;
+  if (!value) nativeDraft.value = false;
   errorMessage.value = "";
   notice.value = value ? "结构已应用。" : "画板已清空。";
 };

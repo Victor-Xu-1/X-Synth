@@ -8,7 +8,7 @@ const mockAllowed = ref(true);
 const mockWorkspace = reactive({ loading: false, refreshed: 1, error: "",
   can: () => mockAllowed.value, checking: () => false, refresh: jest.fn() });
 jest.mock("@/store/workspace", () => ({ useWorkspaceStore: () => mockWorkspace }));
-jest.mock("vue-router", () => ({ useRoute: () => ({ path: "/drawing", meta: { feature: "drawing" }, query: { smiles: "[Na+].CC(=O)[O-]" } }) }));
+jest.mock("vue-router", () => ({ useRoute: () => ({ path: "/drawing", meta: { feature: "drawing" }, query: { smiles: "[Na+].CC(=O)[O-]" } }), onBeforeRouteLeave: jest.fn() }));
 jest.mock("@/common/api", () => ({ API: { post: jest.fn(), toErrorObject: jest.fn() } }));
 jest.mock("@/components/InlineKetcherEditor.vue", () => ({ name: "InlineKetcherEditor", template: "<div />" }));
 jest.mock("@/components/SmilesImage.vue", () => ({ name: "SmilesImage", template: "<div />" }));
