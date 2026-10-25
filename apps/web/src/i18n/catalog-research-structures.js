@@ -27,6 +27,7 @@ export default [
   ["已应用结构", "Structure applied"], ["标准化", "Canonicalize"], ["清空画板", "Clear canvas"], ["暂无结构", "No structure yet"],
   ["无法读取结构，请检查画板内容与绘制器状态。", "Could not read the structure. Check the canvas and editor status."],
   ["结构已应用。", "Structure applied."], ["结构已标准化。", "Structure canonicalized."],
+  ["离开并放弃当前绘图？", "Leave and discard the current drawing?"],
   ["结构标准化失败，请检查输入与服务状态。", "Structure canonicalization failed. Check inputs and service status."],
   ["结构读取失败，请检查画板状态。", "Could not read the structure. Check the canvas status."],
   ["画板已清空。", "Canvas cleared."], ["画板清空失败，请检查绘制器状态。", "Could not clear the canvas. Check the editor status."],
